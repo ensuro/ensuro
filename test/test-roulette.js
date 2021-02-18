@@ -12,6 +12,7 @@ describe("EnsuroRoulette", function() {
     const Roulette = await ethers.getContractFactory("EnsuroRoulette");
     roulette = await Roulette.deploy(protocol.address);
     await roulette.deployed();
+    await protocol.add_risk_module(roulette.address, 1 /*active*/);
     now = Math.floor(new Date().getTime() / 1000);
   });
 
@@ -44,19 +45,19 @@ describe("EnsuroRoulette", function() {
     expect(await roulette.get_roulette_value(2)).to.equal(15);
     expect(await protocol.mcr()).to.equal(72 + 108 - 2 - 3);
 
-    // Swipe roulette for first policy
+    // Swipe roulette for first policy - Customer WON
     expect(await roulette.swipe_roulette(1, 17)).to.changeEtherBalances(
       [cust, protocol], [72, -72]
     );
-    expect(await protocol.mcr()).to.equal(108 - 3);
-    expect(await protocol.ocean()).to.equal(1000 - (108 - 3) - 70);  // net loss == 70
+    expect(await protocol.mcr()).to.equal(108 - 3);  // 105
+    expect(await protocol.ocean_available()).to.equal(1000 - (108 - 3) - 70);  // net loss == 70
 
     // Swipe roulette for 2nd policy
     expect(await roulette.swipe_roulette(2, 3)).not.to.changeEtherBalances(
       [cust, protocol]
     );
     expect(await protocol.mcr()).to.equal(0);
-    expect(await protocol.ocean()).to.equal(1000 - 70 + 3);  // net loss == 67
+    expect(await protocol.ocean_available()).to.equal(1000 - 70 + 3);  // net loss == 67
   });
 
   it("Should remove from risk module expired policies", async function() {
@@ -68,7 +69,7 @@ describe("EnsuroRoulette", function() {
     await ethers.provider.send("evm_mine");
     await expect(protocol.expire_policy(roulette.address, 1)).not.to.be.reverted;
 
-    expect(await protocol.ocean()).to.equal(1002);
+    expect(await protocol.ocean_available()).to.equal(1002);
     expect(await protocol.mcr()).to.equal(0);
     expect(await roulette.get_roulette_value(1)).to.equal(9999);
   });

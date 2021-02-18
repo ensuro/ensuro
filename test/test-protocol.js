@@ -10,7 +10,7 @@ describe("EnsuroProtocol", function() {
   it("Should create with Ether and can only be destroyed by owner", async function() {
     const [owner, addr1] = await ethers.getSigners();
     const protocol = await Protocol.deploy({value: 1000});
-    expect(await protocol.ocean()).to.equal(1000); 
+    expect(await protocol.ocean_available()).to.equal(1000); 
     expect(await protocol.mcr()).to.equal(0); 
     await expect(protocol.connect(addr1).destroy()).to.be.revertedWith('Only owner can destroy'); 
     await expect(protocol.connect(owner).destroy()).not.to.be.reverted;
@@ -21,11 +21,16 @@ describe("EnsuroProtocol", function() {
 
     // Create protocol and fund it with 500 wei from provider
     const protocol = await Protocol.deploy();
-    expect(await protocol.ocean()).to.equal(0); 
+    expect(await protocol.ocean_available()).to.equal(0); 
     expect(await protocol.mcr()).to.equal(0); 
     expect(await protocol.connect(provider).invest({value: 500})).to.changeEtherBalance(protocol, 500); 
-    expect(await protocol.ocean()).to.equal(500); 
+    expect(await protocol.ocean_available()).to.equal(500); 
 
+    await expect(protocol.add_risk_module(risk_module.address, 1)).not.to.be.reverted;
+    
+    const riskm_status = await protocol.get_risk_module_status(risk_module.address);
+    expect(riskm_status.smart_contract).to.equal(risk_module.address);
+    expect(riskm_status.status).to.equal(1);
 
     let now = Math.floor(new Date().getTime() / 1000);
 
@@ -40,12 +45,12 @@ describe("EnsuroProtocol", function() {
 
     // Test valid policy - should be stored
     await expect(riskm_calls.new_policy(1234, now + 1000, 10, 360, cust.address, {value: 10})).not.to.be.reverted;
-    expect(await protocol.ocean()).to.equal(150); 
+    expect(await protocol.ocean_available()).to.equal(150); 
     expect(await protocol.mcr()).to.equal(350); 
 
     // Create another policy
     await expect(riskm_calls.new_policy(2222, now + 1000, 1, 100, cust.address, {value: 1})).not.to.be.reverted;
-    expect(await protocol.ocean()).to.equal(51); 
+    expect(await protocol.ocean_available()).to.equal(51); 
     expect(await protocol.mcr()).to.equal(449); 
     expect(await protocol.pending_premiums()).to.equal(11); 
 
@@ -62,7 +67,7 @@ describe("EnsuroProtocol", function() {
     await ethers.provider.send("evm_mine");
     await expect(protocol.expire_policy(risk_module.address, 1234)).not.to.be.reverted;
 
-    expect(await protocol.ocean()).to.equal(411); 
+    expect(await protocol.ocean_available()).to.equal(411); 
     expect(await protocol.mcr()).to.equal(99); 
     expect(await protocol.pending_premiums()).to.equal(1);
 
@@ -71,7 +76,7 @@ describe("EnsuroProtocol", function() {
       [cust, protocol], [100, -100]
     ); 
 
-    expect(await protocol.ocean()).to.equal(411); 
+    expect(await protocol.ocean_available()).to.equal(411); 
     expect(await protocol.mcr()).to.equal(0); 
     expect(await protocol.pending_premiums()).to.equal(0);
   });

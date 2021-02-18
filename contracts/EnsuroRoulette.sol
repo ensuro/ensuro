@@ -4,11 +4,17 @@ pragma solidity ^0.8.1;
 import "hardhat/console.sol";
 import "contracts/Ensuro.sol";
 
+/*
+* EnsuroRoulette
+* Risk module that accepts policies betting on a given number (0-36), validates prize/premium relation
+* and sends the policy to the protocol.
+* Later swipes the roulette and resolves the policy (win or not) and sends the resolution to the protocol.
+*/
 
 contract EnsuroRoulette {
   address owner;
   EnsuroProtocol public protocol;
-  uint public policy_count;
+  uint public policy_count;  // Always goes up - just for policy_id
   mapping(uint=>uint) roulette_values; // policy_id => (roulette_value + 1) (so 0 is invalid==not-found)
 
   constructor(address _protocol) {
@@ -19,6 +25,7 @@ contract EnsuroRoulette {
   }
 
   function new_policy(uint roulette_value, uint premium, uint prize, uint expiration_date) external payable returns (uint) {
+    // Accepts the policy, validates the calculation
     require(roulette_value <= 36, "Allowed roulette values are from 0 to 36");
     require(premium * 36 == prize, "Prize must be 36 times the premium");
     require(premium <= msg.value, "You must pay the premium");
