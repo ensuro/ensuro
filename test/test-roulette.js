@@ -1,5 +1,7 @@
 const { expect } = require("chai");
 
+const WEEK = 3600 * 24 * 7;
+
 describe("EnsuroRoulette", function() {
   let currency;
   let protocol;
@@ -19,7 +21,7 @@ describe("EnsuroRoulette", function() {
     // Fund the provider and authorize 1K from provider to protocol
     await currency.connect(owner).transfer(provider.address, 1000);
     await currency.connect(provider).approve(protocol.address, 1000);
-    await protocol.connect(provider).invest(1000);
+    await protocol.connect(provider).invest(1000, WEEK);
     expect(await protocol.ocean_available()).to.equal(1000);
 
     // Give some funds to the customer

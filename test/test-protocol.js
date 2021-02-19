@@ -1,5 +1,7 @@
 const { expect } = require("chai");
 
+const WEEK = 3600 * 24 * 7;
+
 describe("EnsuroProtocol", function() {
   let Protocol;
   let currency;
@@ -35,7 +37,7 @@ describe("EnsuroProtocol", function() {
     expect(await currency.balanceOf(owner.address)).to.equal(1500);
     expect(await currency.allowance(provider.address, protocol.address)).to.equal(500);
 
-    await expect(() => protocol.connect(provider).invest(500)).to.changeTokenBalances(
+    await expect(() => protocol.connect(provider).invest(500, WEEK)).to.changeTokenBalances(
       currency, [protocol, provider], [500, -500]
     );
     expect(await protocol.ocean_available()).to.equal(500);
