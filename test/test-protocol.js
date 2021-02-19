@@ -13,9 +13,9 @@ describe("EnsuroProtocol", function() {
   it("Should be created with currency and invest and can only be destroyed by owner", async function() {
     const [owner, addr1] = await ethers.getSigners();
     const protocol = await Protocol.deploy(currency.address);
-    expect(await protocol.ocean_available()).to.equal(0); 
-    expect(await protocol.mcr()).to.equal(0); 
-    await expect(protocol.connect(addr1).destroy()).to.be.revertedWith('Only owner can destroy'); 
+    expect(await protocol.ocean_available()).to.equal(0);
+    expect(await protocol.mcr()).to.equal(0);
+    await expect(protocol.connect(addr1).destroy()).to.be.revertedWith('Only owner can destroy');
     await expect(protocol.connect(owner).destroy()).not.to.be.reverted;
   });
 
@@ -26,7 +26,7 @@ describe("EnsuroProtocol", function() {
 
     // Create protocol and fund it with 500 wei from provider
     const protocol = await Protocol.deploy(currency.address);
-    expect(await protocol.ocean_available()).to.equal(0); 
+    expect(await protocol.ocean_available()).to.equal(0);
     expect(await protocol.mcr()).to.equal(0);
 
     // Fund the provider and authorize 500 from provider to protocol
@@ -37,11 +37,11 @@ describe("EnsuroProtocol", function() {
 
     await expect(() => protocol.connect(provider).invest(500)).to.changeTokenBalances(
       currency, [protocol, provider], [500, -500]
-    ); 
-    expect(await protocol.ocean_available()).to.equal(500); 
+    );
+    expect(await protocol.ocean_available()).to.equal(500);
 
     await expect(protocol.add_risk_module(risk_module.address, 1)).not.to.be.reverted;
-    
+
     const riskm_status = await protocol.get_risk_module_status(risk_module.address);
     expect(riskm_status.smart_contract).to.equal(risk_module.address);
     expect(riskm_status.status).to.equal(1);
@@ -63,8 +63,8 @@ describe("EnsuroProtocol", function() {
     await currency.connect(cust).approve(protocol.address, 10);
 
     await expect(riskm_calls.new_policy(1234, now + 1000, 10, 360, cust.address)).not.to.be.reverted;
-    expect(await protocol.ocean_available()).to.equal(150); 
-    expect(await protocol.mcr()).to.equal(350); 
+    expect(await protocol.ocean_available()).to.equal(150);
+    expect(await protocol.mcr()).to.equal(350);
 
     // Create another policy
     expect(await currency.allowance(cust.address, protocol.address)).to.equal(0);
@@ -74,9 +74,9 @@ describe("EnsuroProtocol", function() {
     await expect(riskm_calls.new_policy(2222, now + 1000, 1, 100, cust.address)).not.to.be.reverted;
     expect(await currency.balanceOf(protocol.address)).to.equal(51+11+449);
     expect(await currency.balanceOf(cust.address)).to.equal(0);
-    expect(await protocol.ocean_available()).to.equal(51); 
-    expect(await protocol.mcr()).to.equal(449); 
-    expect(await protocol.pending_premiums()).to.equal(11); 
+    expect(await protocol.ocean_available()).to.equal(51);
+    expect(await protocol.mcr()).to.equal(449);
+    expect(await protocol.pending_premiums()).to.equal(11);
 
     let policy = await protocol.get_policy(risk_module.address, 1234);
     expect(policy.customer).to.equal(cust.address);
@@ -91,8 +91,8 @@ describe("EnsuroProtocol", function() {
     await ethers.provider.send("evm_mine");
     await expect(protocol.expire_policy(risk_module.address, 1234)).not.to.be.reverted;
 
-    expect(await protocol.ocean_available()).to.equal(411); 
-    expect(await protocol.mcr()).to.equal(99); 
+    expect(await protocol.ocean_available()).to.equal(411);
+    expect(await protocol.mcr()).to.equal(99);
     expect(await protocol.pending_premiums()).to.equal(1);
 
     // Resolve 2nd policy in favor of the customer
@@ -100,8 +100,8 @@ describe("EnsuroProtocol", function() {
       currency, [protocol, cust], [-100, 100]
     );
 
-    expect(await protocol.ocean_available()).to.equal(411); 
-    expect(await protocol.mcr()).to.equal(0); 
+    expect(await protocol.ocean_available()).to.equal(411);
+    expect(await protocol.mcr()).to.equal(0);
     expect(await protocol.pending_premiums()).to.equal(0);
   });
 

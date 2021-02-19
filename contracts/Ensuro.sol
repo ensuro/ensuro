@@ -6,7 +6,7 @@ import "hardhat/console.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 
-// Very simple implementation of the protocol, just for testing the risk module. 
+// Very simple implementation of the protocol, just for testing the risk module.
 contract EnsuroProtocol {
   address owner;
   uint public ocean_available;  // Available money for new policies
@@ -119,7 +119,7 @@ contract EnsuroProtocol {
     // We TRUST the risk module on the result of the policy
     Policy storage policy = policies[msg.sender][policy_id];
     require(policy.premium > 0, "Policy not found");
-    
+
     if (customer_won) {
       currency.transfer(policy.customer, policy.prize);
       mcr -= policy.prize - policy.premium;

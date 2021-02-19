@@ -20,7 +20,7 @@ describe("EnsuroRoulette", function() {
     await currency.connect(owner).transfer(provider.address, 1000);
     await currency.connect(provider).approve(protocol.address, 1000);
     await protocol.connect(provider).invest(1000);
-    expect(await protocol.ocean_available()).to.equal(1000); 
+    expect(await protocol.ocean_available()).to.equal(1000);
 
     // Give some funds to the customer
     await currency.connect(owner).transfer(cust.address, 20);
@@ -55,7 +55,7 @@ describe("EnsuroRoulette", function() {
     await roulette.connect(cust).new_policy(17, 2, 72, now + 2000);
     await roulette.connect(cust).new_policy(15, 3, 108, now + 2000);
     // TODO: learn how to read the value from policy_id
-    
+
     expect(await roulette.policy_count()).to.equal(2);
 
     expect(await roulette.get_roulette_value(1)).to.equal(17);
@@ -81,7 +81,7 @@ describe("EnsuroRoulette", function() {
     await currency.connect(cust).approve(protocol.address, 2);  // authorize token transfer
     await roulette.connect(cust).new_policy(32, 2, 72, now + 2000);
     expect(await roulette.get_roulette_value(1)).to.equal(32);
-    
+
     await ethers.provider.send("evm_increaseTime", [2000]);
     await ethers.provider.send("evm_mine");
     await expect(protocol.expire_policy(roulette.address, 1)).not.to.be.reverted;
