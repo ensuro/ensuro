@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: Unlicense
-pragma solidity ^0.8.1;
+pragma solidity ^0.7.3;
 
 import "hardhat/console.sol";
 import "contracts/Ensuro.sol";
@@ -24,15 +24,15 @@ contract EnsuroRoulette {
     policy_count = 0;
   }
 
-  function new_policy(uint roulette_value, uint premium, uint prize, uint expiration_date) external payable returns (uint) {
+  function new_policy(uint roulette_value, uint premium, uint prize, uint expiration_date) external returns (uint) {
     // Accepts the policy, validates the calculation
     require(roulette_value <= 36, "Allowed roulette values are from 0 to 36");
     require(premium * 36 == prize, "Prize must be 36 times the premium");
-    require(premium <= msg.value, "You must pay the premium");
+    require(protocol.currency().allowance(msg.sender, address(protocol)) >= premium, "You must allow ENSURO to transfer the premium");
     console.log("Received new policy for number '%s' premium = '%s', prize = '%s'", roulette_value, premium, prize);
     policy_count++;
     uint policy_id = policy_count;
-    protocol.new_policy{value: msg.value}(policy_id, expiration_date, premium, prize, payable(msg.sender));
+    protocol.new_policy(policy_id, expiration_date, premium, prize, msg.sender);
     roulette_values[policy_id] = roulette_value + 1;
     return policy_id;
   }

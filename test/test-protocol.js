@@ -2,15 +2,18 @@ const { expect } = require("chai");
 
 describe("EnsuroProtocol", function() {
   let Protocol;
+  let currency;
 
   beforeEach(async () => {
+    Currency = await ethers.getContractFactory("TestCurrency");
+    currency = await Currency.deploy(2000);
     Protocol = await ethers.getContractFactory("EnsuroProtocol");
   });
 
-  it("Should create with Ether and can only be destroyed by owner", async function() {
+  it("Should be created with currency and invest and can only be destroyed by owner", async function() {
     const [owner, addr1] = await ethers.getSigners();
-    const protocol = await Protocol.deploy({value: 1000});
-    expect(await protocol.ocean_available()).to.equal(1000); 
+    const protocol = await Protocol.deploy(currency.address);
+    expect(await protocol.ocean_available()).to.equal(0); 
     expect(await protocol.mcr()).to.equal(0); 
     await expect(protocol.connect(addr1).destroy()).to.be.revertedWith('Only owner can destroy'); 
     await expect(protocol.connect(owner).destroy()).not.to.be.reverted;
@@ -19,11 +22,22 @@ describe("EnsuroProtocol", function() {
   it("Should accept new policies and lock capital", async function() {
     const [owner, risk_module, cust, provider] = await ethers.getSigners();
 
+    expect(await currency.balanceOf(owner.address)).to.equal(2000);
+
     // Create protocol and fund it with 500 wei from provider
-    const protocol = await Protocol.deploy();
+    const protocol = await Protocol.deploy(currency.address);
     expect(await protocol.ocean_available()).to.equal(0); 
-    expect(await protocol.mcr()).to.equal(0); 
-    expect(await protocol.connect(provider).invest({value: 500})).to.changeEtherBalance(protocol, 500); 
+    expect(await protocol.mcr()).to.equal(0);
+
+    // Fund the provider and authorize 500 from provider to protocol
+    await currency.transfer(provider.address, 500);
+    await currency.connect(provider).approve(protocol.address, 500);
+    expect(await currency.balanceOf(owner.address)).to.equal(1500);
+    expect(await currency.allowance(provider.address, protocol.address)).to.equal(500);
+
+    await expect(() => protocol.connect(provider).invest(500)).to.changeTokenBalances(
+      currency, [protocol, provider], [500, -500]
+    ); 
     expect(await protocol.ocean_available()).to.equal(500); 
 
     await expect(protocol.add_risk_module(risk_module.address, 1)).not.to.be.reverted;
@@ -44,12 +58,22 @@ describe("EnsuroProtocol", function() {
     );
 
     // Test valid policy - should be stored
-    await expect(riskm_calls.new_policy(1234, now + 1000, 10, 360, cust.address, {value: 10})).not.to.be.reverted;
+    // Fund the customer and authorize 10 from customer to protocol
+    await currency.transfer(cust.address, 11);
+    await currency.connect(cust).approve(protocol.address, 10);
+
+    await expect(riskm_calls.new_policy(1234, now + 1000, 10, 360, cust.address)).not.to.be.reverted;
     expect(await protocol.ocean_available()).to.equal(150); 
     expect(await protocol.mcr()).to.equal(350); 
 
     // Create another policy
-    await expect(riskm_calls.new_policy(2222, now + 1000, 1, 100, cust.address, {value: 1})).not.to.be.reverted;
+    expect(await currency.allowance(cust.address, protocol.address)).to.equal(0);
+    await expect(riskm_calls.new_policy(2222, now + 1000, 1, 100, cust.address)).to.be.reverted;
+    // Aprove allowance and it should work
+    await currency.connect(cust).approve(protocol.address, 1);
+    await expect(riskm_calls.new_policy(2222, now + 1000, 1, 100, cust.address)).not.to.be.reverted;
+    expect(await currency.balanceOf(protocol.address)).to.equal(51+11+449);
+    expect(await currency.balanceOf(cust.address)).to.equal(0);
     expect(await protocol.ocean_available()).to.equal(51); 
     expect(await protocol.mcr()).to.equal(449); 
     expect(await protocol.pending_premiums()).to.equal(11); 
@@ -72,9 +96,9 @@ describe("EnsuroProtocol", function() {
     expect(await protocol.pending_premiums()).to.equal(1);
 
     // Resolve 2nd policy in favor of the customer
-    expect(await riskm_calls.resolve_policy(2222, true)).to.changeEtherBalances(
-      [cust, protocol], [100, -100]
-    ); 
+    await expect(() => riskm_calls.resolve_policy(2222, true)).to.changeTokenBalances(
+      currency, [protocol, cust], [-100, 100]
+    );
 
     expect(await protocol.ocean_available()).to.equal(411); 
     expect(await protocol.mcr()).to.equal(0); 

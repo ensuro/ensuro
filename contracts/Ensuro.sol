@@ -1,20 +1,25 @@
 //SPDX-License-Identifier: Unlicense
-pragma solidity ^0.8.1;
+pragma solidity ^0.7.3;
+pragma experimental ABIEncoderV2;
 
 import "hardhat/console.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
 
 // Very simple implementation of the protocol, just for testing the risk module. 
 contract EnsuroProtocol {
-  address payable owner;
+  address owner;
   uint public ocean_available;  // Available money for new policies
   uint public mcr;  // Locked money in active policies
   uint public pending_premiums;  // Premiums received in active policies not yet collected
+
+  IERC20 public currency;
 
   struct Policy {
     uint premium;
     uint prize;
     uint expiration_date;
-    address payable customer;
+    address customer;
   }
 
   enum RiskModuleStatus { inactive, active, deprecated, suspended }
@@ -32,20 +37,22 @@ contract EnsuroProtocol {
   modifier assertBalance () {
     // Checks contract's balance is distributes in ocean_available / mcr / pending_premiums
     _;
-    assert(address(this).balance == (ocean_available + mcr + pending_premiums));
+    assert(currency.balanceOf(address(this)) == (ocean_available + mcr + pending_premiums));
   }
 
-  constructor() payable assertBalance {
-    owner = payable(msg.sender);
-    ocean_available = msg.value;
+  constructor(address _currency) assertBalance {
+    owner = msg.sender;
+    currency = IERC20(_currency);
+    ocean_available = 0;
     mcr = 0;
     pending_premiums = 0;
   }
 
   function destroy() external {
     require(msg.sender == owner, "Only owner can destroy");
-    require(mcr == 0, "Can't destroy the protocol because there is locked capital");
-    selfdestruct(owner);
+    require((mcr + ocean_available + pending_premiums) == 0, "Can't destroy the protocol because there is locked capital");
+    require(currency.balanceOf(address(this)) == 0, "Can't destroy the protocol because it has balance");
+    selfdestruct(payable(owner));
   }
 
   function add_risk_module(address risk_module, RiskModuleStatus status) public {
@@ -59,19 +66,20 @@ contract EnsuroProtocol {
     return risk_modules[risk_module];
   }
 
-  function invest() public payable assertBalance {
-    ocean_available += msg.value;
+  function invest(uint amount) public assertBalance {
+    require(currency.transferFrom(msg.sender, address(this), amount),
+           "Transfer of currency failed must approve us for the amount");
+    ocean_available += amount;
     // TODO: emit new investment event
   }
 
-  function new_policy(uint policy_id, uint expiration_date, uint premium, uint prize, address payable customer) public payable assertBalance {
+  function new_policy(uint policy_id, uint expiration_date, uint premium, uint prize, address customer) public assertBalance {
     // The UNIQUE identifier for a given policy is (<msg.sender(the risk module smart contract>, policy_id)
     // console.log("Received new policy(rm='%s', id='%s', expires: '%s', premium = '%s', prize = '%s'", msg.sender, policy_id, expiration_date, premium, prize);
     require(block.timestamp < expiration_date, "Policy can't expire in the past");
     require(ocean_available >= (prize - premium), "Not enought free capital in the pool");
     require(prize > premium);
     require(premium > 0, "Premium must be > 0, free policies not allowed");
-    require(msg.value == premium, "Show me the money");
     require(risk_modules[msg.sender].status == RiskModuleStatus.active, "Risk is not active");
     // TODO: check msg.sender is authorized and active risk_module
 
@@ -83,6 +91,8 @@ contract EnsuroProtocol {
     policy.prize = prize;
     policy.expiration_date = expiration_date;
     policy.customer = customer;
+    require(currency.transferFrom(customer, address(this), premium),
+            "Transfer of currency failed must approve us to transfer the premium");
     // TODO: emit new policy event
   }
 
@@ -111,7 +121,7 @@ contract EnsuroProtocol {
     require(policy.premium > 0, "Policy not found");
     
     if (customer_won) {
-      policy.customer.transfer(policy.prize);
+      currency.transfer(policy.customer, policy.prize);
       mcr -= policy.prize - policy.premium;
       pending_premiums -= policy.premium;
       // TODO: emit policy lost in favor of client event
