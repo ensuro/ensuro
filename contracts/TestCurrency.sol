@@ -2,7 +2,6 @@
 pragma solidity ^0.7.3;
 pragma experimental ABIEncoderV2;
 
-import "hardhat/console.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract TestCurrency is ERC20 {

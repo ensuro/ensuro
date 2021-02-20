@@ -2,7 +2,6 @@
 pragma solidity ^0.7.3;
 pragma experimental ABIEncoderV2;
 
-import "hardhat/console.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 
@@ -37,7 +36,7 @@ contract EnsuroProtocol {
     uint prize;
     uint expiration_date;
     address customer;
-    LockedCapital[] locked_funds;
+    LockedCapital[] locked_funds;  // sum(locked_funds.amount) == (prize - premium)
   }
 
   // This represents the active policies and it's indexed by (risk_module.address, policy_id)
@@ -112,6 +111,18 @@ contract EnsuroProtocol {
   event RiskModuleStatusChanged (
     address indexed risk_module,
     RiskModuleStatus indexed status
+  );
+
+  // Scheduling events
+  event ScheduleWithdraw (
+    uint indexed provider_id,
+    uint cashback_date
+  );
+
+  event SchedulePolicyExpire (
+    address indexed risk_module,
+    uint indexed policy_id,
+    uint expiration_date
   );
 
   modifier assertBalance () {
@@ -194,7 +205,9 @@ contract EnsuroProtocol {
     require(provider_index > 0, "Provider not found");
     provider_index -= 1;
     LiquidityProvider storage provider = providers[provider_index];
-    require(provider.provider == msg.sender, "You are not authorized to manage this funds");
+    if (provider.cashback_date == 0 || block.timestamp < provider.cashback_date)
+      require(provider.provider == msg.sender, "You are not authorized to manage this funds");
+    // else anyone is authorized to call this function to wake up us to do the withdrawal
 
     if (provider.cashback_date == 0)
       provider.cashback_date = block.timestamp + provider.cashback_period;
@@ -206,7 +219,7 @@ contract EnsuroProtocol {
     if (asap)
       return transfer_available_funds_to_provider(provider_index, provider);
     else {
-      // TODO: schedule withdrawal at cashback_date
+      emit ScheduleWithdraw(provider_id, provider.cashback_date);
       return 0;
     }
   }
@@ -257,6 +270,7 @@ contract EnsuroProtocol {
             "Transfer of currency failed must approve us to transfer the premium");
 
     emit NewPolicy(msg.sender, policy_id, customer, prize, premium, expiration_date);
+    emit SchedulePolicyExpire(msg.sender, policy_id, expiration_date);
   }
 
   function provider_cashback_date(LiquidityProvider storage provider) internal view returns (uint) {
@@ -356,13 +370,11 @@ contract EnsuroProtocol {
       currency.transfer(policy.customer, policy.prize);
       mcr -= policy.prize - policy.premium;
       pending_premiums -= policy.premium;
-      // TODO: emit policy lost in favor of client event
     } else {
       rounding += policy.premium - premium_distributed;
       ocean_available += policy.prize;
       mcr -= policy.prize - policy.premium;
       pending_premiums -= policy.premium;
-      // TODO: emit policy resolved before expiration event
     }
   }
 
