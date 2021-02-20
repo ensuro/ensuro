@@ -18,7 +18,6 @@ contract EnsuroRoulette {
   mapping(uint=>uint) roulette_values; // policy_id => (roulette_value + 1) (so 0 is invalid==not-found)
 
   constructor(address _protocol) {
-    console.log("Deploying a EnsuroRoulette with _protocol:", _protocol);
     protocol = EnsuroProtocol(_protocol);
     owner = msg.sender;
     policy_count = 0;
@@ -29,7 +28,6 @@ contract EnsuroRoulette {
     require(roulette_value <= 36, "Allowed roulette values are from 0 to 36");
     require(premium * 36 == prize, "Prize must be 36 times the premium");
     require(protocol.currency().allowance(msg.sender, address(protocol)) >= premium, "You must allow ENSURO to transfer the premium");
-    console.log("Received new policy for number '%s' premium = '%s', prize = '%s'", roulette_value, premium, prize);
     policy_count++;
     uint policy_id = policy_count;
     protocol.new_policy(policy_id, expiration_date, premium, prize, msg.sender);
@@ -47,7 +45,6 @@ contract EnsuroRoulette {
   }
 
   function policy_expired(uint policy_id) external {
-    console.log("Received policy_expired message'%s'", policy_id);
     require(msg.sender == address(protocol), "Only protocol can expire policies");
     delete roulette_values[policy_id];
   }

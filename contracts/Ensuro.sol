@@ -53,13 +53,66 @@ contract EnsuroProtocol {
     uint cashback_date;     // The cashback date. Initially 0 when not yet asked (and will be considereded block.timestamp + cashback_period)
                             // when withdraw asked it's fixed to ask_date + cashback_period
     address provider;
-    // uint acceptable_risk;   // relation between mean value / variance  with 3 decimals - NOT YET IMPLEMENTED
+    bool asap;              // Indicates if funds have to be transfered back As Soon As Possible or on cashback_date
+    // uint acceptable_risk;   // relation between mean value / variance with 3 decimals - NOT YET IMPLEMENTED
   }
 
   uint public provider_count;  // Always goes up - just for provider_id
   // This represents the active LPs and it's indexed by (provider_id)
   LiquidityProvider[] providers;
   mapping(uint=>uint) provider_id_2_index;  // mapping to track (provider_id => index of providers + 1);
+
+  // LP events
+  event NewLiquidityProvider (
+    address indexed provider,
+    uint provider_id,
+    uint capital,
+    uint cashback_period
+  );
+
+  event LiquidityProviderDeleted (
+    address indexed provider,
+    uint indexed provider_id
+  );
+
+  event LiquidityProviderWithdrawal (
+    address indexed provider,
+    uint indexed provider_id,
+    uint amount
+  );
+
+  // Policy events
+  event NewPolicy (
+    address indexed risk_module,
+    uint indexed policy_id,
+    address indexed customer,
+    uint prize,
+    uint premium,
+    uint expiration_date
+  );
+
+  event PolicyExpired (
+    address indexed risk_module,
+    uint indexed policy_id,
+    address indexed customer,
+    uint prize,
+    uint premium,
+    uint expiration_date
+  );
+
+  event PolicyResolved (
+    address indexed risk_module,
+    uint indexed policy_id,
+    address indexed customer,
+    bool customer_won,
+    uint prize,
+    uint premium
+  );
+
+  event RiskModuleStatusChanged (
+    address indexed risk_module,
+    RiskModuleStatus indexed status
+  );
 
   modifier assertBalance () {
     // Checks contract's balance is distributes in ocean_available / mcr / pending_premiums
@@ -88,10 +141,15 @@ contract EnsuroProtocol {
     RiskModule storage module = risk_modules[risk_module];
     module.smart_contract = risk_module;
     module.status = status;
+    emit RiskModuleStatusChanged(risk_module, status);
   }
 
   function get_risk_module_status(address risk_module) public view returns (RiskModule memory) {
     return risk_modules[risk_module];
+  }
+
+  function get_provider(uint provider_id) public view returns (LiquidityProvider memory) {
+    return providers[provider_id_2_index[provider_id] - 1];
   }
 
   // function check_invariants() public {
@@ -108,6 +166,9 @@ contract EnsuroProtocol {
   // }
 
   function invest(uint amount, uint cashback_period) public assertBalance returns (uint) {
+    /* Invest a given `amount` in the pool with `cashback_period` (seconds) indicating the max time can
+       wait for withdrawal after asking for it
+    */
     provider_count++;
     LiquidityProvider storage new_provider = providers.push();
     new_provider.provider_id = provider_count;
@@ -117,19 +178,65 @@ contract EnsuroProtocol {
     new_provider.cashback_period = cashback_period;
     // new_provider.cashback_date should be initialized as 0
     new_provider.provider = msg.sender;
+    new_provider.asap = false;
 
     provider_id_2_index[provider_count] = providers.length;
 
     require(currency.transferFrom(msg.sender, address(this), amount),
            "Transfer of currency failed must approve us for the amount");
     ocean_available += amount;
-    // TODO: emit new investment event
+    emit NewLiquidityProvider(msg.sender, provider_count, amount, cashback_period);
     return provider_count; // provider_id
+  }
+
+  function withdraw(uint provider_id, bool asap) public returns (uint) {
+    uint provider_index = provider_id_2_index[provider_id];
+    require(provider_index > 0, "Provider not found");
+    provider_index -= 1;
+    LiquidityProvider storage provider = providers[provider_index];
+    require(provider.provider == msg.sender, "You are not authorized to manage this funds");
+
+    if (provider.cashback_date == 0)
+      provider.cashback_date = block.timestamp + provider.cashback_period;
+    else if (provider.cashback_date < block.timestamp)
+      asap = true;
+
+    provider.asap = asap;
+
+    if (asap)
+      return transfer_available_funds_to_provider(provider_index, provider);
+    else {
+      // TODO: schedule withdrawal at cashback_date
+      return 0;
+    }
+  }
+
+  function transfer_available_funds_to_provider(uint provider_index, LiquidityProvider storage provider) internal returns (uint) {
+    if (provider.available_amount == 0 && provider.locked_amount > 0)
+      return 0;
+    require(currency.transfer(provider.provider, provider.available_amount));
+    emit LiquidityProviderWithdrawal(provider.provider, provider.provider_id, provider.available_amount);
+    provider.available_amount = 0;
+
+    if (provider.locked_amount == 0) {
+      // Delete provider
+      delete provider_id_2_index[provider.provider_id];
+      emit LiquidityProviderDeleted(provider.provider, provider.provider_id);
+
+      if (provider_index == (providers.length - 1)) {
+        // is the last provider - just pop
+        providers.pop();
+      } else {
+        // Move last provider to current position and fix id2index mapping
+        providers[provider_index] = providers[providers.length - 1];
+        providers.pop();
+        provider_id_2_index[providers[provider_index].provider_id] = provider_index + 1;
+      }
+    }
   }
 
   function new_policy(uint policy_id, uint expiration_date, uint premium, uint prize, address customer) public assertBalance {
     // The UNIQUE identifier for a given policy is (<msg.sender(the risk module smart contract>, policy_id)
-    // console.log("Received new policy(rm='%s', id='%s', expires: '%s', premium = '%s', prize = '%s'", msg.sender, policy_id, expiration_date, premium, prize);
     require(block.timestamp < expiration_date, "Policy can't expire in the past");
     require(ocean_available >= (prize - premium), "Not enought free capital in the pool");
     require(prize > premium);
@@ -149,7 +256,7 @@ contract EnsuroProtocol {
     require(currency.transferFrom(customer, address(this), premium),
             "Transfer of currency failed must approve us to transfer the premium");
 
-    // TODO: emit new policy event
+    emit NewPolicy(msg.sender, policy_id, customer, prize, premium, expiration_date);
   }
 
   function provider_cashback_date(LiquidityProvider storage provider) internal view returns (uint) {
@@ -208,13 +315,13 @@ contract EnsuroProtocol {
     require(policy.expiration_date <= block.timestamp, "Policy not expired yet");
 
     _resolve_policy(policy, false);
+    emit PolicyExpired(risk_module, policy_id, policy.customer, policy.prize, policy.premium, policy.expiration_date);
     delete policies[risk_module][policy_id];
 
     // Notify the risk_module so it updates internal state
     (bool expired_call, ) = address(risk_module).call(abi.encodeWithSignature("policy_expired(uint256)", policy_id));
     if (!expired_call)
       revert("Call to risk module notifying expiration failed");
-    // TODO: emit policy expired event
   }
 
   function resolve_policy(uint policy_id, bool customer_won) public assertBalance {
@@ -224,6 +331,7 @@ contract EnsuroProtocol {
     require(policy.premium > 0, "Policy not found");
 
     _resolve_policy(policy, customer_won);
+    emit PolicyResolved(msg.sender, policy_id, policy.customer, customer_won, policy.prize, policy.premium);
     delete policies[msg.sender][policy_id];
   }
 
@@ -240,6 +348,8 @@ contract EnsuroProtocol {
         uint premium_for_provider = (fund.amount * policy.premium) / policy_mcr;
         provider.available_amount += fund.amount + premium_for_provider;
         premium_distributed += premium_for_provider;
+        if (provider.asap)
+          transfer_available_funds_to_provider(provider_id_2_index[provider.provider_id] - 1, provider);
       }
     }
     if (customer_won) {

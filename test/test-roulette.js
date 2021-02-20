@@ -1,31 +1,25 @@
 const { expect } = require("chai");
-
-const WEEK = 3600 * 24 * 7;
+const { WEEK, init_currency } = require("./test-utils");
 
 describe("EnsuroRoulette", function() {
   let currency;
   let protocol;
   let roulette;
   let now;
-  let owner, cust, provider;
+  let cust, provider;
 
   beforeEach(async () => {
-    [owner, cust, provider] = await ethers.getSigners();
-    const Currency = await ethers.getContractFactory("TestCurrency");
-    currency = await Currency.deploy(2000);
+    [_, cust, provider] = await ethers.getSigners();
+    currency = await init_currency(2000, [provider, cust], [1000, 20]);
 
     const Protocol = await ethers.getContractFactory("EnsuroProtocol");
     protocol = await Protocol.deploy(currency.address);
     await protocol.deployed();
 
     // Fund the provider and authorize 1K from provider to protocol
-    await currency.connect(owner).transfer(provider.address, 1000);
     await currency.connect(provider).approve(protocol.address, 1000);
     await protocol.connect(provider).invest(1000, WEEK);
     expect(await protocol.ocean_available()).to.equal(1000);
-
-    // Give some funds to the customer
-    await currency.connect(owner).transfer(cust.address, 20);
 
     const Roulette = await ethers.getContractFactory("EnsuroRoulette");
     roulette = await Roulette.deploy(protocol.address);
