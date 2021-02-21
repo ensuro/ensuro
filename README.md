@@ -1,4 +1,4 @@
-# Ensuro_Binance Hackathon Demo walkthrough
+# Ensuro_Binance Hackathon
 
 ## Introduction
 
