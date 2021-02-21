@@ -52,9 +52,9 @@ Expected result:
 
 1. ocean_available = 25K (60K - 35K)
 2. All three providers eligible for this policy. MCR distributed among them proportionally
-   a. Prov1: 5833
-   b. Prov2: 11666
-   c. Prov3: 17501
+    1. Prov1: 5833
+    2. Prov2: 11666
+    3. Prov3: 17501
 
 
 ## 4. Customer 2 acquire policy
