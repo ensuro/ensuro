@@ -249,7 +249,115 @@ describe("EnsuroProtocol - LiquidityProviders", function() {
     );
   });
 
-  // TODO: test progressive withdrawal (with asap=true but not all funds available)
+  it("Should do the Binance Hackathon walkthrough", async function() {
+    const Roulette = await ethers.getContractFactory("EnsuroRoulette");
+    const roulette = await Roulette.deploy(protocol.address);
+    await expect(protocol.add_risk_module(roulette.address, 1)).not.to.be.reverted;
+
+    // 1. Initial wallets
+    // [prov1, prov2, prov3, cust1, cust2],
+    // [100K, 200K, 300K, 10K, 20K],
+    await approve_multiple(currency, protocol, [prov1, prov2, prov3, cust1, cust2],
+      [1e4, 2e4, 3e4, 1000, 500]  // 10K / 20K / 30K / 1K / 500
+    );
+
+    // 2. Providers investment
+    await expect(protocol.connect(prov1).invest(1e4, WEEK)).not.to.be.reverted;
+    await expect(protocol.connect(prov2).invest(2e4, 2 * WEEK)).not.to.be.reverted;
+    await expect(protocol.connect(prov3).invest(3e4, 4 * WEEK)).not.to.be.reverted;
+    await check_balances(currency, [prov1, prov2, prov3], [1e5 - 1e4, 2e5 - 2e4, 3e5 - 3e4]);
+
+    // 3. Customer 1 acquires policy
+    // First policy, available for all, distributes MCR 9000 proportional to available funds
+    await expect(roulette.connect(cust1).new_policy(17, 1000, 36000, now() + WEEK - DAY))
+      .to.emit(protocol, "NewPolicy");
+    let p1_status = await protocol.get_provider(1);
+    let p2_status = await protocol.get_provider(2);
+    let p3_status = await protocol.get_provider(3);
+    expect(p1_status.locked_amount).to.equal(5833);
+    expect(p2_status.locked_amount).to.equal(11666);
+    expect(p3_status.locked_amount).to.equal(17501);
+    expect(p1_status.available_amount).to.equal(1e4 - 5833);
+    expect(p2_status.available_amount).to.equal(2e4 - 11666);
+    expect(p3_status.available_amount).to.equal(3e4 - 17501);
+    expect(await protocol.mcr()).to.equal(35000);
+    expect(await protocol.ocean_available()).to.equal(25000);
+
+    // 4. Customer 2 acquires policy
+    // 2nd policy available only for prov2 and prov3
+    await expect(roulette.connect(cust2).new_policy(15, 500, 18000, now() + WEEK + DAY))
+      .to.emit(protocol, "NewPolicy");
+    let p1_newstatus = await protocol.get_provider(1);
+    expect(p1_newstatus.locked_amount).to.equal(p1_status.locked_amount);  // unchanged
+    expect(p1_newstatus.available_amount).to.equal(p1_status.available_amount);
+    p2_status = await protocol.get_provider(2);
+    p3_status = await protocol.get_provider(3);
+    expect(p2_status.locked_amount).to.equal(11666 + 7000);
+    expect(p3_status.locked_amount).to.equal(17501 + 10500);
+    expect(p2_status.available_amount).to.equal(1334);
+    expect(p3_status.available_amount).to.equal(1999);
+
+    expect(await protocol.ocean_available()).to.equal(7500);
+    expect(await protocol.mcr()).to.equal(35000 + 17500);
+    expect(await protocol.pending_premiums()).to.equal(1500);
+
+    // 5. Prov1 asks for withdrawal
+    // 1st provider ask for withdraw
+    expect(await protocol.connect(prov1).withdraw(1, true))
+      .to.emit(protocol, "LiquidityProviderWithdrawal")
+      .withArgs(prov1.address, 1, 4167)
+    ;
+    expect(await protocol.ocean_available()).to.equal(3333);
+
+    // 6. Swipe roulette for 1st policy - customer lost
+    await expect(roulette.swipe_roulette(1, 20))
+      .to.emit(protocol, "LiquidityProviderWithdrawal")
+      .withArgs(prov1.address, 1, 5833 + 166) // 5999
+      .to.emit(protocol, "LiquidityProviderDeleted");
+
+    p2_status = await protocol.get_provider(2);
+    p3_status = await protocol.get_provider(3);
+    expect(p2_status.locked_amount).to.equal(7000);
+    expect(p3_status.locked_amount).to.equal(10500);
+    expect(p2_status.available_amount).to.equal(1334 + 11666 + 333);
+    expect(p3_status.available_amount).to.equal(1999 + 17501 + 501);
+
+    expect(await protocol.ocean_available()).to.equal(50000 - 17500 + (1000 - 166));  // 33334
+    expect(await protocol.mcr()).to.equal(17500);
+    expect(await protocol.pending_premiums()).to.equal(500);
+
+    // 7. Swipe roulette for 2nd policy - customer won
+    await expect(roulette.swipe_roulette(2, 15))
+      .to.emit(protocol, "PolicyResolved")
+      .withArgs(roulette.address, 2, cust2.address, true, 18000, 500);
+
+
+    p2_status = await protocol.get_provider(2);
+    p3_status = await protocol.get_provider(3);
+    expect(p2_status.locked_amount).to.equal(0);
+    expect(p3_status.locked_amount).to.equal(0);
+    expect(p2_status.available_amount).to.equal(1334 + 11666 + 333);
+    expect(p3_status.available_amount).to.equal(1999 + 17501 + 501);
+
+    expect(await protocol.ocean_available()).to.equal(33334);
+    expect(await protocol.mcr()).to.equal(0);
+    expect(await protocol.pending_premiums()).to.equal(0);
+
+    await check_balances(currency, [prov1, prov2, prov3], [1e5 + 166, 2e5 - 2e4, 3e5 - 3e4]);
+
+    // Withdraw all
+    await expect(protocol.connect(prov2).withdraw(2, true))
+      .to.emit(protocol, "LiquidityProviderWithdrawal")
+      .to.emit(protocol, "LiquidityProviderDeleted");
+    await expect(protocol.connect(prov3).withdraw(3, true))
+      .to.emit(protocol, "LiquidityProviderWithdrawal")
+      .to.emit(protocol, "LiquidityProviderDeleted");
+
+    await check_balances(currency, [prov1, prov2, prov3], [1e5 + 166, 2e5 - 2e4 + 13333, 3e5 - 3e4 + 20001]);
+    await check_balances(currency, [cust1, cust2], [9000, 20000 + 17500]);
+
+  });
+
   // TODO: test progressive withdrawal (with asap=false)
 
 });

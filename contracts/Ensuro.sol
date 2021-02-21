@@ -3,6 +3,7 @@ pragma solidity ^0.7.3;
 pragma experimental ABIEncoderV2;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+// import "hardhat/console.sol";
 
 
 // Very simple implementation of the protocol, just for testing the risk module.
@@ -11,7 +12,6 @@ contract EnsuroProtocol {
   uint public ocean_available;  // Available money for new policies
   uint public mcr;  // Locked money in active policies
   uint public pending_premiums;  // Premiums received in active policies not yet collected
-  uint public rounding;  // premiums not distributed because of rounding error
 
   IERC20 public currency;
 
@@ -128,7 +128,7 @@ contract EnsuroProtocol {
   modifier assertBalance () {
     // Checks contract's balance is distributes in ocean_available / mcr / pending_premiums
     _;
-    assert(currency.balanceOf(address(this)) >= (ocean_available + mcr + pending_premiums + rounding));
+    assert(currency.balanceOf(address(this)) >= (ocean_available + mcr + pending_premiums));
     // greater than equal instead of equal because someone can give us tokens for free!
   }
 
@@ -200,7 +200,7 @@ contract EnsuroProtocol {
     return provider_count; // provider_id
   }
 
-  function withdraw(uint provider_id, bool asap) public returns (uint) {
+  function withdraw(uint provider_id, bool asap) public assertBalance returns (uint) {
     uint provider_index = provider_id_2_index[provider_id];
     require(provider_index > 0, "Provider not found");
     provider_index -= 1;
@@ -228,6 +228,8 @@ contract EnsuroProtocol {
     if (provider.available_amount == 0 && provider.locked_amount > 0)
       return 0;
     require(currency.transfer(provider.provider, provider.available_amount));
+    uint transferred = provider.available_amount;
+    ocean_available -= transferred;
     emit LiquidityProviderWithdrawal(provider.provider, provider.provider_id, provider.available_amount);
     provider.available_amount = 0;
 
@@ -246,6 +248,7 @@ contract EnsuroProtocol {
         provider_id_2_index[providers[provider_index].provider_id] = provider_index + 1;
       }
     }
+    return transferred;
   }
 
   function new_policy(uint policy_id, uint expiration_date, uint premium, uint prize, address customer) public assertBalance {
@@ -303,7 +306,7 @@ contract EnsuroProtocol {
       LockedCapital memory to_lock;
       // distribute based on the weight of a fund in all available funds
       to_lock.amount = (provider.available_amount * policy_mcr) / available_total;
-      if (to_lock.amount > to_distribute) // rounding effects
+      if (to_lock.amount > to_distribute || i == (providers.length - 1)) // rounding effects
         to_lock.amount = to_distribute;
       if (to_lock.amount == 0)
         continue;
@@ -360,6 +363,8 @@ contract EnsuroProtocol {
       provider.locked_amount -= fund.amount;
       if (!customer_won) {
         uint premium_for_provider = (fund.amount * policy.premium) / policy_mcr;
+        if (i == (policy.locked_funds.length - 1)) // last one gets rounding cents
+          premium_for_provider = policy.premium - premium_distributed;
         provider.available_amount += fund.amount + premium_for_provider;
         premium_distributed += premium_for_provider;
         if (provider.asap)
@@ -371,7 +376,6 @@ contract EnsuroProtocol {
       mcr -= policy.prize - policy.premium;
       pending_premiums -= policy.premium;
     } else {
-      rounding += policy.premium - premium_distributed;
       ocean_available += policy.prize;
       mcr -= policy.prize - policy.premium;
       pending_premiums -= policy.premium;
