@@ -68,9 +68,9 @@ Expected result:
 
 1. ocean_available = 7.5K (25K - 17.5K)
 2. Prov1 is not eligible for this policy because it's cashback period is 1 WEEK and this policy expires in 8 DAYS. So, policy MCR distributed among providers 2 and 3, Prov1 unaffected
-   a. Prov1.locked_amount: 5833 (unchanged)
-   b. Prov2.locked_amount: 18666 (11666 + 7000)
-   c. Prov3.locked_amount: 28001 (17501 + 10500)
+    1. Prov1.locked_amount: 5833 (unchanged)
+    2. Prov2.locked_amount: 18666 (11666 + 7000)
+    3. Prov3.locked_amount: 28001 (17501 + 10500)
 
 
 ## 5. Prov1 ask for withdrawal
@@ -93,9 +93,9 @@ EnsuroRoulette.swipe_roulette(1, 20)
 
 Expected result:
 1. Premium (1K) distributed proportionally among three providers.
-   a. Prov1 gets 166
-   b. Prov2 gets 333
-   c. Prov3 gets 501
+   1. Prov1 gets 166
+   2. Prov2 gets 333
+   3. Prov3 gets 501
 2. In the same operation Prov1 became unlocked, so we transfer the rest of the investment along with the earned premium. Prov1 balance = 100K + 166
 3. Ocean available: 33334
 
