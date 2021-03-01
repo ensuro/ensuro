@@ -1,5 +1,5 @@
 const { expect } = require("chai");
-const { DAY, WEEK, init_currency, approve_multiple, check_balances, now } = require("./test-utils");
+const { DAY, WEEK, init_currency, approve_multiple, check_balances, now, add_risk_module } = require("./test-utils");
 
 describe("EnsuroProtocol - Creation and policies", function() {
   let Protocol;
@@ -44,7 +44,7 @@ describe("EnsuroProtocol - Creation and policies", function() {
 
     expect(await protocol.ocean_available()).to.equal(500);
 
-    await expect(protocol.add_risk_module(risk_module.address, 1)).not.to.be.reverted;
+    await expect(add_risk_module(protocol, risk_module.address)).not.to.be.reverted;
 
     const riskm_status = await protocol.get_risk_module_status(risk_module.address);
     expect(riskm_status.smart_contract).to.equal(risk_module.address);
@@ -136,7 +136,7 @@ describe("EnsuroProtocol - LiquidityProviders", function() {
     protocol = await Protocol.deploy(currency.address);
     expect(await protocol.ocean_available()).to.equal(0);
     expect(await protocol.mcr()).to.equal(0);
-    await expect(protocol.add_risk_module(riskm.address, 1)).not.to.be.reverted;
+    await expect(add_risk_module(protocol, riskm.address)).not.to.be.reverted;
   });
 
   it("Should record investments and can be withdrawn inmediatelly if not used", async function() {
@@ -252,7 +252,7 @@ describe("EnsuroProtocol - LiquidityProviders", function() {
   it("Should do the Binance Hackathon walkthrough", async function() {
     const Roulette = await ethers.getContractFactory("EnsuroRoulette");
     const roulette = await Roulette.deploy(protocol.address);
-    await expect(protocol.add_risk_module(roulette.address, 1)).not.to.be.reverted;
+    await expect(add_risk_module(protocol, roulette.address)).not.to.be.reverted;
 
     // 1. Initial wallets
     // [prov1, prov2, prov3, cust1, cust2],

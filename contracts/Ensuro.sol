@@ -8,6 +8,8 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 // Very simple implementation of the protocol, just for testing the risk module.
 contract EnsuroProtocol {
+  uint constant MAX_PERCENTAGE = 100000;
+
   address owner;
   uint public ocean_available;  // Available money for new policies
   uint public mcr;  // Locked money in active policies
@@ -18,9 +20,24 @@ contract EnsuroProtocol {
   // Risk Modules plugged into the protocol
   enum RiskModuleStatus { inactive, active, deprecated, suspended }
 
-  struct RiskModule {
-    address smart_contract;
+  struct RiskModule {  // percentages all 100 based with 3 digits.
+    address smart_contract;   // address of the Smart Contract that sends new policies and resolves policies
+    address owner;            // "owner" of the RiskModule who can teak some parameters
     RiskModuleStatus status;
+
+    uint max_mcr_per_policy;  // max amount to cover, per policy
+    uint mcr_limit;           // max amount to cover - all policies
+    uint total_mcr;           // current mcr
+    uint mcr_percentage;      // MCR = mcr_percentage * (payout - premium) / 100000
+
+    uint premium_share;       // percentage of the premium that is collected by the risk_module owner.
+                              // This is how risk_module owner makes profit - Only changed by EnsuroProtocol.owner
+
+    // shared coverage: part of each policy is covered with capital of risk module owner.
+    address shared_coverage_wallet;      // wallet to transfer from the shared coverage amount - Can be changed by RiskModule.owner
+    uint shared_coverage_percentage;     // actual percentage covered by shared_coverage_wallet - Can be changed by RiskModule.owner
+    uint shared_coverage_min_percentage; // minimal percentage covered by shared_coverage_wallet - Only changed by EnsuroProtocol.owner
+    // shared_coverage_percentage >= shared_coverage_min_percentage
   }
 
   mapping(address=>RiskModule) risk_modules;
@@ -109,8 +126,9 @@ contract EnsuroProtocol {
   );
 
   event RiskModuleStatusChanged (
-    address indexed risk_module,
-    RiskModuleStatus indexed status
+    address indexed smart_contract,
+    RiskModuleStatus indexed status,
+    RiskModule module
   );
 
   // Scheduling events
@@ -147,12 +165,29 @@ contract EnsuroProtocol {
     selfdestruct(payable(owner));
   }
 
-  function add_risk_module(address risk_module, RiskModuleStatus status) public {
+  function add_risk_module(address smart_contract, address module_owner, RiskModuleStatus status, uint max_mcr_per_policy,
+                           uint mcr_limit, uint mcr_percentage, uint premium_share,
+                           address shared_coverage_wallet, uint shared_coverage_min_percentage) public {
+    /* this function adds or sets risk module parameters */
     require(msg.sender == owner, "Only the owner can change the risk modules");
-    RiskModule storage module = risk_modules[risk_module];
-    module.smart_contract = risk_module;
+    require(mcr_percentage <= MAX_PERCENTAGE);
+    require(premium_share <= MAX_PERCENTAGE);
+    require(shared_coverage_min_percentage <= MAX_PERCENTAGE);
+
+    RiskModule storage module = risk_modules[smart_contract];
+    module.smart_contract = smart_contract;
     module.status = status;
-    emit RiskModuleStatusChanged(risk_module, status);
+    module.owner = module_owner;
+    module.max_mcr_per_policy = max_mcr_per_policy;
+    require(module.total_mcr <= mcr_limit, "MCR limit under the current MCR for the module");
+    module.mcr_limit = mcr_limit;
+    module.mcr_percentage = mcr_percentage;
+    module.premium_share = premium_share;
+    module.shared_coverage_wallet = shared_coverage_wallet;
+    module.shared_coverage_min_percentage = shared_coverage_min_percentage;
+    if (module.shared_coverage_percentage < shared_coverage_min_percentage)
+      module.shared_coverage_percentage = shared_coverage_min_percentage;
+    emit RiskModuleStatusChanged(smart_contract, status, module);
   }
 
   function get_risk_module_status(address risk_module) public view returns (RiskModule memory) {
