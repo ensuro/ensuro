@@ -82,7 +82,7 @@ describe("EnsuroProtocol - Creation and policies", function() {
 
     let policy = await protocol.get_policy(risk_module.address, 1234);
     expect(policy.customer).to.equal(cust.address);
-    expect(policy.prize).to.equal(360);
+    expect(policy.payout).to.equal(360);
     expect(policy.premium).to.equal(10);
 
     // Provider available and locked funds should change

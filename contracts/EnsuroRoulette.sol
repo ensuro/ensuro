@@ -6,7 +6,7 @@ import "contracts/Ensuro.sol";
 
 /*
 * EnsuroRoulette
-* Risk module that accepts policies betting on a given number (0-36), validates prize/premium relation
+* Risk module that accepts policies betting on a given number (0-36), validates payout/premium relation
 * and sends the policy to the protocol.
 * Later swipes the roulette and resolves the policy (win or not) and sends the resolution to the protocol.
 */
@@ -23,14 +23,14 @@ contract EnsuroRoulette {
     policy_count = 0;
   }
 
-  function new_policy(uint roulette_value, uint premium, uint prize, uint expiration_date) external returns (uint) {
+  function new_policy(uint roulette_value, uint premium, uint payout, uint expiration_date) external returns (uint) {
     // Accepts the policy, validates the calculation
     require(roulette_value <= 36, "Allowed roulette values are from 0 to 36");
-    require(premium * 36 == prize, "Prize must be 36 times the premium");
+    require(premium * 36 == payout, "Prize must be 36 times the premium");
     require(protocol.currency().allowance(msg.sender, address(protocol)) >= premium, "You must allow ENSURO to transfer the premium");
     policy_count++;
     uint policy_id = policy_count;
-    protocol.new_policy(policy_id, expiration_date, premium, prize, msg.sender);
+    protocol.new_policy(policy_id, expiration_date, premium, payout, msg.sender);
     roulette_values[policy_id] = roulette_value + 1;
     return policy_id;
   }

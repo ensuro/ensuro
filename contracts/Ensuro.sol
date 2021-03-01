@@ -33,10 +33,10 @@ contract EnsuroProtocol {
   // Active Policies
   struct Policy {
     uint premium;
-    uint prize;
+    uint payout;
     uint expiration_date;
     address customer;
-    LockedCapital[] locked_funds;  // sum(locked_funds.amount) == (prize - premium)
+    LockedCapital[] locked_funds;  // sum(locked_funds.amount) == (payout - premium)
   }
 
   // This represents the active policies and it's indexed by (risk_module.address, policy_id)
@@ -85,7 +85,7 @@ contract EnsuroProtocol {
     address indexed risk_module,
     uint indexed policy_id,
     address indexed customer,
-    uint prize,
+    uint payout,
     uint premium,
     uint expiration_date
   );
@@ -94,7 +94,7 @@ contract EnsuroProtocol {
     address indexed risk_module,
     uint indexed policy_id,
     address indexed customer,
-    uint prize,
+    uint payout,
     uint premium,
     uint expiration_date
   );
@@ -104,7 +104,7 @@ contract EnsuroProtocol {
     uint indexed policy_id,
     address indexed customer,
     bool customer_won,
-    uint prize,
+    uint payout,
     uint premium
   );
 
@@ -251,28 +251,28 @@ contract EnsuroProtocol {
     return transferred;
   }
 
-  function new_policy(uint policy_id, uint expiration_date, uint premium, uint prize, address customer) public assertBalance {
+  function new_policy(uint policy_id, uint expiration_date, uint premium, uint payout, address customer) public assertBalance {
     // The UNIQUE identifier for a given policy is (<msg.sender(the risk module smart contract>, policy_id)
     require(block.timestamp < expiration_date, "Policy can't expire in the past");
-    require(ocean_available >= (prize - premium), "Not enought free capital in the pool");
-    require(prize > premium);
+    require(ocean_available >= (payout - premium), "Not enought free capital in the pool");
+    require(payout > premium);
     require(premium > 0, "Premium must be > 0, free policies not allowed");
     require(risk_modules[msg.sender].status == RiskModuleStatus.active, "Risk is not active");
     // TODO: check msg.sender is authorized and active risk_module
 
-    ocean_available -= prize - premium;
-    mcr += prize - premium;
+    ocean_available -= payout - premium;
+    mcr += payout - premium;
     pending_premiums += premium;
     Policy storage policy = policies[msg.sender][policy_id];
     policy.premium = premium;
-    policy.prize = prize;
+    policy.payout = payout;
     policy.expiration_date = expiration_date;
     policy.customer = customer;
     lock_funds(policy);
     require(currency.transferFrom(customer, address(this), premium),
             "Transfer of currency failed must approve us to transfer the premium");
 
-    emit NewPolicy(msg.sender, policy_id, customer, prize, premium, expiration_date);
+    emit NewPolicy(msg.sender, policy_id, customer, payout, premium, expiration_date);
     emit SchedulePolicyExpire(msg.sender, policy_id, expiration_date);
   }
 
@@ -285,7 +285,7 @@ contract EnsuroProtocol {
 
   function lock_funds(Policy storage policy) internal {
     // Distributes the amount between potential liquidity providers
-    uint policy_mcr = policy.prize - policy.premium;
+    uint policy_mcr = policy.payout - policy.premium;
     uint available_total = 0;
 
     // Iterate to calculate available amount
@@ -332,7 +332,7 @@ contract EnsuroProtocol {
     require(policy.expiration_date <= block.timestamp, "Policy not expired yet");
 
     _resolve_policy(policy, false);
-    emit PolicyExpired(risk_module, policy_id, policy.customer, policy.prize, policy.premium, policy.expiration_date);
+    emit PolicyExpired(risk_module, policy_id, policy.customer, policy.payout, policy.premium, policy.expiration_date);
     delete policies[risk_module][policy_id];
 
     // Notify the risk_module so it updates internal state
@@ -348,14 +348,14 @@ contract EnsuroProtocol {
     require(policy.premium > 0, "Policy not found");
 
     _resolve_policy(policy, customer_won);
-    emit PolicyResolved(msg.sender, policy_id, policy.customer, customer_won, policy.prize, policy.premium);
+    emit PolicyResolved(msg.sender, policy_id, policy.customer, customer_won, policy.payout, policy.premium);
     delete policies[msg.sender][policy_id];
   }
 
   function _resolve_policy(Policy storage policy, bool customer_won) internal {
     // Resolves the policy and updates affected LiquidityProviders
     uint premium_distributed = 0;
-    uint policy_mcr = policy.prize - policy.premium;
+    uint policy_mcr = policy.payout - policy.premium;
 
     for (uint i=0; i < policy.locked_funds.length; i++) {
       LockedCapital storage fund = policy.locked_funds[i];
@@ -372,12 +372,12 @@ contract EnsuroProtocol {
       }
     }
     if (customer_won) {
-      currency.transfer(policy.customer, policy.prize);
-      mcr -= policy.prize - policy.premium;
+      currency.transfer(policy.customer, policy.payout);
+      mcr -= policy.payout - policy.premium;
       pending_premiums -= policy.premium;
     } else {
-      ocean_available += policy.prize;
-      mcr -= policy.prize - policy.premium;
+      ocean_available += policy.payout;
+      mcr -= policy.payout - policy.premium;
       pending_premiums -= policy.premium;
     }
   }
