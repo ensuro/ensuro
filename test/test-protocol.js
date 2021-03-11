@@ -47,8 +47,7 @@ describe("EnsuroProtocol - Creation and policies", function() {
     await expect(add_risk_module(protocol, risk_module.address)).not.to.be.reverted;
 
     const riskm_status = await protocol.get_risk_module_status(risk_module.address);
-    expect(riskm_status.smart_contract).to.equal(risk_module.address);
-    expect(riskm_status.status).to.equal(1);
+    expect(riskm_status).to.equal(1);
 
     // Invalid policies should be reverted
     await expect(protocol.new_policy(1234, now() - 1000, 1, 36, cust.address)).to.be.revertedWith(
@@ -204,7 +203,9 @@ describe("EnsuroProtocol - LiquidityProviders", function() {
 
     // Resolve 2nd policy - customer lost
     await expect(riskm_calls.resolve_policy(2222, false))
-      .to.emit(protocol, "PolicyResolved").withArgs(riskm.address, 2222, cust1.address, false, 3000, 500);
+      .to.emit(protocol, "PolicyResolved").withArgs(
+        riskm.address, 2222, cust1.address, false, 3000, 500, 2500
+      );
 
     p1_newstatus = await protocol.get_provider(1);
     expect(p1_newstatus.locked_amount).to.equal(p1_status.locked_amount);  // still unchanged
@@ -329,7 +330,7 @@ describe("EnsuroProtocol - LiquidityProviders", function() {
     // 7. Swipe roulette for 2nd policy - customer won
     await expect(roulette.swipe_roulette(2, 15))
       .to.emit(protocol, "PolicyResolved")
-      .withArgs(roulette.address, 2, cust2.address, true, 18000, 500);
+      .withArgs(roulette.address, 2, cust2.address, true, 18000, 500, 17500);
 
 
     p2_status = await protocol.get_provider(2);

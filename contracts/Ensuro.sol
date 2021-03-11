@@ -32,7 +32,7 @@ contract EnsuroProtocol {
     uint max_mcr_per_policy;  // max amount to cover, per policy
     uint mcr_limit;           // max amount to cover - all policies
     uint total_mcr;           // current mcr
-    uint mcr_percentage;      // MCR = mcr_percentage * (payout - premium) / 100000
+    uint mcr_percentage;      // MCR = mcr_percentage * (payout - premium) / MAX_PERCENTAGE
 
     uint premium_share;       // percentage of the premium that is collected by the risk_module owner.
                               // This is how risk_module owner makes profit - Only changed by EnsuroProtocol.owner
@@ -42,6 +42,8 @@ contract EnsuroProtocol {
     uint shared_coverage_percentage;     // actual percentage covered by shared_coverage_wallet - Can be changed by RiskModule.owner
     uint shared_coverage_min_percentage; // minimal percentage covered by shared_coverage_wallet - Only changed by EnsuroProtocol.owner
     // shared_coverage_percentage >= shared_coverage_min_percentage
+
+    EnumerableSet.UintSet policy_ids;
   }
 
   mapping(address=>RiskModule) risk_modules;
@@ -56,9 +58,10 @@ contract EnsuroProtocol {
   struct Policy {
     uint premium;
     uint payout;
+    uint mcr;
     uint expiration_date;
     address customer;
-    LockedCapital[] locked_funds;  // sum(locked_funds.amount) == (payout - premium)
+    LockedCapital[] locked_funds;  // sum(locked_funds.amount) == (mcr)
   }
 
   // This represents the active policies and it's indexed by (risk_module.address, policy_id)
@@ -109,6 +112,7 @@ contract EnsuroProtocol {
     address indexed customer,
     uint payout,
     uint premium,
+    uint mcr,
     uint expiration_date
   );
 
@@ -118,6 +122,7 @@ contract EnsuroProtocol {
     address indexed customer,
     uint payout,
     uint premium,
+    uint mcr,
     uint expiration_date
   );
 
@@ -127,13 +132,13 @@ contract EnsuroProtocol {
     address indexed customer,
     bool customer_won,
     uint payout,
-    uint premium
+    uint premium,
+    uint mcr
   );
 
   event RiskModuleStatusChanged (
     address indexed smart_contract,
-    RiskModuleStatus indexed status,
-    RiskModule module
+    RiskModuleStatus indexed status
   );
 
   // Scheduling events
@@ -193,11 +198,11 @@ contract EnsuroProtocol {
     if (module.shared_coverage_percentage < shared_coverage_min_percentage)
       module.shared_coverage_percentage = shared_coverage_min_percentage;
     active_risk_modules.add(smart_contract);
-    emit RiskModuleStatusChanged(smart_contract, status, module);
+    emit RiskModuleStatusChanged(smart_contract, status);
   }
 
-  function get_risk_module_status(address risk_module) public view returns (RiskModule memory) {
-    return risk_modules[risk_module];
+  function get_risk_module_status(address risk_module) public view returns (RiskModuleStatus) {
+    return risk_modules[risk_module].status;
   }
 
   function get_provider(uint provider_id) public view returns (LiquidityProvider memory) {
@@ -284,17 +289,25 @@ contract EnsuroProtocol {
   function new_policy(uint policy_id, uint expiration_date, uint premium, uint payout, address customer) public assertBalance {
     // The UNIQUE identifier for a given policy is (<msg.sender(the risk module smart contract>, policy_id)
     require(block.timestamp < expiration_date, "Policy can't expire in the past");
-    require(ocean_available >= (payout - premium), "Not enought free capital in the pool");
     require(payout > premium);
     require(premium > 0, "Premium must be > 0, free policies not allowed");
-    require(risk_modules[msg.sender].status == RiskModuleStatus.active, "Risk is not active");
+    RiskModule storage risk_module = risk_modules[msg.sender];
+    require(risk_module.status == RiskModuleStatus.active, "Risk is not active");
     // TODO: check msg.sender is authorized and active risk_module
+    uint policy_mcr = (payout - premium) * MAX_PERCENTAGE / risk_module.mcr_percentage;
+    require(policy_mcr <= risk_module.max_mcr_per_policy, "MCR bigger than MAX_MCR for this module");
+    require(ocean_available >= policy_mcr, "Not enought free capital in the pool");
 
-    ocean_available -= payout - premium;
-    mcr += payout - premium;
+    ocean_available -= policy_mcr;
+    mcr += policy_mcr;
+    risk_module.total_mcr += policy_mcr;
+    require(risk_module.total_mcr <= risk_module.mcr_limit, "This risk module doesn't have enought limit to cover this policy");
+    risk_module.policy_ids.add(policy_id);
+
     pending_premiums += premium;
     Policy storage policy = policies[msg.sender][policy_id];
     policy.premium = premium;
+    policy.mcr = policy_mcr;
     policy.payout = payout;
     policy.expiration_date = expiration_date;
     policy.customer = customer;
@@ -302,7 +315,7 @@ contract EnsuroProtocol {
     require(currency.transferFrom(customer, address(this), premium),
             "Transfer of currency failed must approve us to transfer the premium");
 
-    emit NewPolicy(msg.sender, policy_id, customer, payout, premium, expiration_date);
+    emit NewPolicy(msg.sender, policy_id, customer, payout, premium, policy_mcr, expiration_date);
     emit SchedulePolicyExpire(msg.sender, policy_id, expiration_date);
   }
 
@@ -315,7 +328,7 @@ contract EnsuroProtocol {
 
   function lock_funds(Policy storage policy) internal {
     // Distributes the amount between potential liquidity providers
-    uint policy_mcr = policy.payout - policy.premium;
+    uint policy_mcr = policy.mcr;
     uint available_total = 0;
 
     // Iterate to calculate available amount
@@ -361,12 +374,15 @@ contract EnsuroProtocol {
     require(policy.premium > 0, "Policy not found");
     require(policy.expiration_date <= block.timestamp, "Policy not expired yet");
 
-    _resolve_policy(policy, false);
-    emit PolicyExpired(risk_module, policy_id, policy.customer, policy.payout, policy.premium, policy.expiration_date);
+    _resolve_policy(risk_module, policy_id, false);
+    emit PolicyExpired(risk_module, policy_id, policy.customer, policy.payout, policy.premium,
+                       policy.mcr, policy.expiration_date);
     delete policies[risk_module][policy_id];
 
     // Notify the risk_module so it updates internal state
-    (bool expired_call, ) = address(risk_module).call(abi.encodeWithSignature("policy_expired(uint256)", policy_id));
+    (bool expired_call, ) = address(risk_module).call(
+      abi.encodeWithSignature("policy_expired(uint256)", policy_id)
+    );
     if (!expired_call)
       revert("Call to risk module notifying expiration failed");
   }
@@ -377,22 +393,24 @@ contract EnsuroProtocol {
     Policy storage policy = policies[msg.sender][policy_id];
     require(policy.premium > 0, "Policy not found");
 
-    _resolve_policy(policy, customer_won);
-    emit PolicyResolved(msg.sender, policy_id, policy.customer, customer_won, policy.payout, policy.premium);
+    _resolve_policy(msg.sender, policy_id, customer_won);
+    emit PolicyResolved(msg.sender, policy_id, policy.customer, customer_won,
+                        policy.payout, policy.premium, policy.mcr);
     delete policies[msg.sender][policy_id];
   }
 
-  function _resolve_policy(Policy storage policy, bool customer_won) internal {
+  function _resolve_policy(address _risk_module, uint policy_id, bool customer_won) internal {
     // Resolves the policy and updates affected LiquidityProviders
+    Policy storage policy = policies[_risk_module][policy_id];
     uint premium_distributed = 0;
-    uint policy_mcr = policy.payout - policy.premium;
+    RiskModule storage risk_module = risk_modules[_risk_module];
 
     for (uint i=0; i < policy.locked_funds.length; i++) {
       LockedCapital storage fund = policy.locked_funds[i];
       LiquidityProvider storage provider = providers[fund.provider_id];
       provider.locked_amount -= fund.amount;
       if (!customer_won) {
-        uint premium_for_provider = (fund.amount * policy.premium) / policy_mcr;
+        uint premium_for_provider = (fund.amount * policy.premium) / policy.mcr;
         if (i == (policy.locked_funds.length - 1)) // last one gets rounding cents
           premium_for_provider = policy.premium - premium_distributed;
         provider.available_amount += fund.amount + premium_for_provider;
@@ -403,13 +421,15 @@ contract EnsuroProtocol {
     }
     if (customer_won) {
       currency.transfer(policy.customer, policy.payout);
-      mcr -= policy.payout - policy.premium;
+      mcr -= policy.mcr;
       pending_premiums -= policy.premium;
     } else {
-      ocean_available += policy.payout;
-      mcr -= policy.payout - policy.premium;
+      ocean_available += policy.mcr + policy.premium;
+      mcr -= policy.mcr;
       pending_premiums -= policy.premium;
     }
+    risk_module.total_mcr -= policy.mcr;
+    risk_module.policy_ids.remove(policy_id);
   }
 
 }
