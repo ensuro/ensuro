@@ -3,11 +3,15 @@ pragma solidity ^0.7.3;
 pragma experimental ABIEncoderV2;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/utils/EnumerableSet.sol";
 // import "hardhat/console.sol";
 
 
 // Very simple implementation of the protocol, just for testing the risk module.
 contract EnsuroProtocol {
+  using EnumerableSet for EnumerableSet.AddressSet;
+  using EnumerableSet for EnumerableSet.UintSet;
+
   uint constant MAX_PERCENTAGE = 100000;
 
   address owner;
@@ -41,6 +45,7 @@ contract EnsuroProtocol {
   }
 
   mapping(address=>RiskModule) risk_modules;
+  EnumerableSet.AddressSet private active_risk_modules;
 
   struct LockedCapital {
     uint provider_id;
@@ -75,8 +80,8 @@ contract EnsuroProtocol {
 
   uint public provider_count;  // Always goes up - just for provider_id
   // This represents the active LPs and it's indexed by (provider_id)
-  LiquidityProvider[] providers;
-  mapping(uint=>uint) provider_id_2_index;  // mapping to track (provider_id => index of providers + 1);
+  mapping(uint=>LiquidityProvider) providers;
+  EnumerableSet.UintSet provider_ids;
 
   // LP events
   event NewLiquidityProvider (
@@ -187,6 +192,7 @@ contract EnsuroProtocol {
     module.shared_coverage_min_percentage = shared_coverage_min_percentage;
     if (module.shared_coverage_percentage < shared_coverage_min_percentage)
       module.shared_coverage_percentage = shared_coverage_min_percentage;
+    active_risk_modules.add(smart_contract);
     emit RiskModuleStatusChanged(smart_contract, status, module);
   }
 
@@ -195,7 +201,7 @@ contract EnsuroProtocol {
   }
 
   function get_provider(uint provider_id) public view returns (LiquidityProvider memory) {
-    return providers[provider_id_2_index[provider_id] - 1];
+    return providers[provider_id];
   }
 
   // function check_invariants() public {
@@ -216,7 +222,7 @@ contract EnsuroProtocol {
        wait for withdrawal after asking for it
     */
     provider_count++;
-    LiquidityProvider storage new_provider = providers.push();
+    LiquidityProvider storage new_provider = providers[provider_count];
     new_provider.provider_id = provider_count;
     new_provider.invested_capital = amount;
     new_provider.available_amount = amount;
@@ -226,7 +232,7 @@ contract EnsuroProtocol {
     new_provider.provider = msg.sender;
     new_provider.asap = false;
 
-    provider_id_2_index[provider_count] = providers.length;
+    provider_ids.add(provider_count);
 
     require(currency.transferFrom(msg.sender, address(this), amount),
            "Transfer of currency failed must approve us for the amount");
@@ -236,10 +242,8 @@ contract EnsuroProtocol {
   }
 
   function withdraw(uint provider_id, bool asap) public assertBalance returns (uint) {
-    uint provider_index = provider_id_2_index[provider_id];
-    require(provider_index > 0, "Provider not found");
-    provider_index -= 1;
-    LiquidityProvider storage provider = providers[provider_index];
+    LiquidityProvider storage provider = providers[provider_id];
+    require(provider.provider_id > 0, "Provider not found");
     if (provider.cashback_date == 0 || block.timestamp < provider.cashback_date)
       require(provider.provider == msg.sender, "You are not authorized to manage this funds");
     // else anyone is authorized to call this function to wake up us to do the withdrawal
@@ -252,14 +256,14 @@ contract EnsuroProtocol {
     provider.asap = asap;
 
     if (asap)
-      return transfer_available_funds_to_provider(provider_index, provider);
+      return transfer_available_funds_to_provider(provider);
     else {
       emit ScheduleWithdraw(provider_id, provider.cashback_date);
       return 0;
     }
   }
 
-  function transfer_available_funds_to_provider(uint provider_index, LiquidityProvider storage provider) internal returns (uint) {
+  function transfer_available_funds_to_provider(LiquidityProvider storage provider) internal returns (uint) {
     if (provider.available_amount == 0 && provider.locked_amount > 0)
       return 0;
     require(currency.transfer(provider.provider, provider.available_amount));
@@ -270,18 +274,9 @@ contract EnsuroProtocol {
 
     if (provider.locked_amount == 0) {
       // Delete provider
-      delete provider_id_2_index[provider.provider_id];
+      provider_ids.remove(provider.provider_id);
+      delete providers[provider.provider_id];
       emit LiquidityProviderDeleted(provider.provider, provider.provider_id);
-
-      if (provider_index == (providers.length - 1)) {
-        // is the last provider - just pop
-        providers.pop();
-      } else {
-        // Move last provider to current position and fix id2index mapping
-        providers[provider_index] = providers[providers.length - 1];
-        providers.pop();
-        provider_id_2_index[providers[provider_index].provider_id] = provider_index + 1;
-      }
     }
     return transferred;
   }
@@ -324,8 +319,8 @@ contract EnsuroProtocol {
     uint available_total = 0;
 
     // Iterate to calculate available amount
-    for (uint i = 0; i < providers.length; i++) {
-      LiquidityProvider storage provider = providers[i];
+    for (uint i = 0; i < provider_ids.length(); i++) {
+      LiquidityProvider storage provider = providers[provider_ids.at(i)];
       // Filter provider by amount and cashback_date
       if ((provider.available_amount == 0) || (provider_cashback_date(provider) < policy.expiration_date))
         continue;
@@ -334,14 +329,14 @@ contract EnsuroProtocol {
 
     // Iterate AGAIN to distribute the policy_mcr among them
     uint to_distribute = policy_mcr;
-    for (uint i = 0; i < providers.length; i++) {
-      LiquidityProvider storage provider = providers[i];
+    for (uint i = 0; i < provider_ids.length(); i++) {
+      LiquidityProvider storage provider = providers[provider_ids.at(i)];
       if ((provider.available_amount == 0) || (provider_cashback_date(provider) < policy.expiration_date))
         continue;
       LockedCapital memory to_lock;
       // distribute based on the weight of a fund in all available funds
       to_lock.amount = (provider.available_amount * policy_mcr) / available_total;
-      if (to_lock.amount > to_distribute || i == (providers.length - 1)) // rounding effects
+      if (to_lock.amount > to_distribute || i == (provider_ids.length() - 1)) // rounding effects
         to_lock.amount = to_distribute;
       if (to_lock.amount == 0)
         continue;
@@ -394,7 +389,7 @@ contract EnsuroProtocol {
 
     for (uint i=0; i < policy.locked_funds.length; i++) {
       LockedCapital storage fund = policy.locked_funds[i];
-      LiquidityProvider storage provider = providers[provider_id_2_index[fund.provider_id] - 1];
+      LiquidityProvider storage provider = providers[fund.provider_id];
       provider.locked_amount -= fund.amount;
       if (!customer_won) {
         uint premium_for_provider = (fund.amount * policy.premium) / policy_mcr;
@@ -403,7 +398,7 @@ contract EnsuroProtocol {
         provider.available_amount += fund.amount + premium_for_provider;
         premium_distributed += premium_for_provider;
         if (provider.asap)
-          transfer_available_funds_to_provider(provider_id_2_index[provider.provider_id] - 1, provider);
+          transfer_available_funds_to_provider(provider);
       }
     }
     if (customer_won) {
