@@ -38,9 +38,9 @@ contract EnsuroProtocol {
                               // This is how risk_module owner makes profit - Only changed by EnsuroProtocol.owner
 
     // shared coverage: part of each policy is covered with capital of risk module owner.
-    address shared_coverage_wallet;      // wallet to transfer from the shared coverage amount - Can be changed by RiskModule.owner
-    uint shared_coverage_percentage;     // actual percentage covered by shared_coverage_wallet - Can be changed by RiskModule.owner
-    uint shared_coverage_min_percentage; // minimal percentage covered by shared_coverage_wallet - Only changed by EnsuroProtocol.owner
+    address wallet;      // wallet to transfer from the shared coverage amount - Can be changed by RiskModule.owner
+    uint shared_coverage_percentage;     // actual percentage covered by wallet - Can be changed by RiskModule.owner
+    uint shared_coverage_min_percentage; // minimal percentage covered by wallet - Only changed by EnsuroProtocol.owner
     // shared_coverage_percentage >= shared_coverage_min_percentage
 
     EnumerableSet.UintSet policy_ids;
@@ -177,7 +177,7 @@ contract EnsuroProtocol {
 
   function add_risk_module(address smart_contract, address module_owner, RiskModuleStatus status, uint max_mcr_per_policy,
                            uint mcr_limit, uint mcr_percentage, uint premium_share,
-                           address shared_coverage_wallet, uint shared_coverage_min_percentage) public {
+                           address wallet, uint shared_coverage_min_percentage) public {
     /* this function adds or sets risk module parameters */
     require(msg.sender == owner, "Only the owner can change the risk modules");
     require(mcr_percentage <= MAX_PERCENTAGE);
@@ -193,7 +193,7 @@ contract EnsuroProtocol {
     module.mcr_limit = mcr_limit;
     module.mcr_percentage = mcr_percentage;
     module.premium_share = premium_share;
-    module.shared_coverage_wallet = shared_coverage_wallet;
+    module.wallet = wallet;
     module.shared_coverage_min_percentage = shared_coverage_min_percentage;
     if (module.shared_coverage_percentage < shared_coverage_min_percentage)
       module.shared_coverage_percentage = shared_coverage_min_percentage;
@@ -294,7 +294,7 @@ contract EnsuroProtocol {
     RiskModule storage risk_module = risk_modules[msg.sender];
     require(risk_module.status == RiskModuleStatus.active, "Risk is not active");
     // TODO: check msg.sender is authorized and active risk_module
-    uint policy_mcr = (payout - premium) * MAX_PERCENTAGE / risk_module.mcr_percentage;
+    uint policy_mcr = (payout - premium) * risk_module.mcr_percentage / MAX_PERCENTAGE;
     require(policy_mcr <= risk_module.max_mcr_per_policy, "MCR bigger than MAX_MCR for this module");
     require(ocean_available >= policy_mcr, "Not enought free capital in the pool");
 
@@ -402,17 +402,24 @@ contract EnsuroProtocol {
   function _resolve_policy(address _risk_module, uint policy_id, bool customer_won) internal {
     // Resolves the policy and updates affected LiquidityProviders
     Policy storage policy = policies[_risk_module][policy_id];
+    uint policy_premium = policy.premium;
     uint premium_distributed = 0;
+    uint for_risk_module = 0;
     RiskModule storage risk_module = risk_modules[_risk_module];
+
+    if (!customer_won && risk_module.premium_share > 0) {
+      for_risk_module = policy_premium * risk_module.premium_share / MAX_PERCENTAGE;
+      policy_premium -= for_risk_module;
+    }
 
     for (uint i=0; i < policy.locked_funds.length; i++) {
       LockedCapital storage fund = policy.locked_funds[i];
       LiquidityProvider storage provider = providers[fund.provider_id];
       provider.locked_amount -= fund.amount;
       if (!customer_won) {
-        uint premium_for_provider = (fund.amount * policy.premium) / policy.mcr;
+        uint premium_for_provider = (fund.amount * policy_premium) / policy.mcr;
         if (i == (policy.locked_funds.length - 1)) // last one gets rounding cents
-          premium_for_provider = policy.premium - premium_distributed;
+          premium_for_provider = policy_premium - premium_distributed;
         provider.available_amount += fund.amount + premium_for_provider;
         premium_distributed += premium_for_provider;
         if (provider.asap)
@@ -424,10 +431,13 @@ contract EnsuroProtocol {
       mcr -= policy.mcr;
       pending_premiums -= policy.premium;
     } else {
-      ocean_available += policy.mcr + policy.premium;
+      ocean_available += policy.mcr + policy_premium;
       mcr -= policy.mcr;
       pending_premiums -= policy.premium;
     }
+
+    if (for_risk_module > 0)
+      currency.transfer(risk_module.wallet, for_risk_module);
     risk_module.total_mcr -= policy.mcr;
     risk_module.policy_ids.remove(policy_id);
   }

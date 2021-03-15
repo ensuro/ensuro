@@ -1,6 +1,10 @@
 const { expect } = require("chai");
 const { DAY, WEEK, init_currency, approve_multiple, check_balances, now, add_risk_module } = require("./test-utils");
 
+
+/*fit = it;
+it = function() {}*/
+
 describe("EnsuroProtocol - Creation and policies", function() {
   let Protocol;
   let currency;
@@ -360,5 +364,89 @@ describe("EnsuroProtocol - LiquidityProviders", function() {
   });
 
   // TODO: test progressive withdrawal (with asap=false)
+
+});
+
+describe("EnsuroProtocol - Risk Modules", function() {
+  let protocol;
+  let currency;
+  let owner, prov1, prov2, cust, riskm1, riskm2;
+
+  beforeEach(async () => {
+    [owner, prov1, prov2, cust, riskm1, riskm2] = await ethers.getSigners();
+    currency = await init_currency(1e10,
+      [prov1, prov2, cust],
+      [1e5, 2e5, 1e4],
+    );
+    Protocol = await ethers.getContractFactory("EnsuroProtocol");
+    protocol = await Protocol.deploy(currency.address);
+
+    // Customer approves all its capital
+    await approve_multiple(currency, protocol, [cust], [1e4]);
+
+    expect(await protocol.ocean_available()).to.equal(0);
+    expect(await protocol.mcr()).to.equal(0);
+    await approve_multiple(currency, protocol, [prov1, prov2], [1e5, 2e5]);
+    await expect(protocol.connect(prov1).invest(1e5, WEEK))
+      .to.emit(protocol, "NewLiquidityProvider");
+    await expect(protocol.connect(prov2).invest(2e5, 2 * WEEK))
+      .to.emit(protocol, "NewLiquidityProvider");
+  });
+
+  it("Should validate risk module limits", async function() {
+    await expect(add_risk_module(
+      protocol, riskm1.address, undefined, undefined,
+      1e4 /*max_mcr_per_policy */, 1e5 /* mcr_limit */, 80e3 /* mcr_percentage - 80% */,
+    )).not.to.be.reverted;
+
+    let riskm_calls = protocol.connect(riskm1);
+
+    await expect(riskm_calls.new_policy(1234, now() + 3000, 100, 2e4, cust.address)).to.be.revertedWith(
+      "MCR bigger than MAX_MCR for this module"
+    );
+
+    await expect(riskm_calls.new_policy(1234, now() + 3000, 100, 1e4, cust.address)).not.to.be.reverted;
+    expect(await protocol.mcr()).to.equal((1e4 - 100) * .8); // mcr_percentage = 80%
+
+    // Insert more policies
+    for (let i=0; i < 11; i++) {
+      await expect(riskm_calls.new_policy(1235 + i, now() + 3000, 100, 1e4, cust.address)).not.to.be.reverted;
+    }
+
+    await expect(riskm_calls.new_policy(1235 + 12, now() + 3000, 100, 1e4, cust.address)).to.be.revertedWith(
+      "This risk module doesn't have enought limit to cover this policy"
+    );
+
+
+  });
+
+  it("Should pay premium_share to risk module", async function() {
+    await expect(add_risk_module(
+      protocol, riskm1.address, undefined, undefined,
+      1e4 /*max_mcr_per_policy */, 1e5 /* mcr_limit */, 1e5 /* mcr_percentage - 100% */,
+      10e3 /* premium_share - 10% */
+    )).not.to.be.reverted;
+
+    let riskm_calls = protocol.connect(riskm1);
+
+    let initial_ocean = await protocol.ocean_available();
+
+    await expect(riskm_calls.new_policy(1234, now() + 2000, 100, 1e4, cust.address)).not.to.be.reverted;
+    expect(await protocol.mcr()).to.equal(1e4 - 100); // mcr_percentage = 100%
+    await expect(riskm_calls.new_policy(1235, now() + 2000, 100, 1e4, cust.address)).not.to.be.reverted;
+    expect(await protocol.mcr()).to.equal(2e4 - 200); // mcr_percentage = 100%
+
+    // Resolve 1nd policy in favor of the customer - riskm1 gets nothing
+    await expect(() => riskm_calls.resolve_policy(1234, true)).to.changeTokenBalances(
+      currency, [protocol, cust, riskm1], [-1e4, 1e4, 0]
+    );
+
+    // Resolve 2nd policy in favor of the pool - riskm1 gets 10% of premium = 10
+    await expect(() => riskm_calls.resolve_policy(1235, false)).to.changeTokenBalances(
+      currency, [protocol, cust, riskm1], [-10, 0, 10]
+    );
+    expect(await protocol.mcr()).to.equal(0);
+    expect(await protocol.ocean_available()).to.equal(initial_ocean - (1e4 - 100) + (100 - 10));
+  });
 
 });

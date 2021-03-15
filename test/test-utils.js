@@ -30,16 +30,16 @@ exports.now = function() {
 
 exports.add_risk_module = function(protocol, smart_contract, module_owner, status,
                                    max_mcr_per_policy, mcr_limit, mcr_percentage, premium_share,
-                                   shared_coverage_wallet, shared_coverage_min_percentage) {
+                                   wallet, shared_coverage_min_percentage) {
   // add_risk_module call with defaults
   module_owner = module_owner || smart_contract;
   status = status || 1;
   max_mcr_per_policy = max_mcr_per_policy || 1e10;
   mcr_limit = mcr_limit || 1e10;
   mcr_percentage = mcr_percentage || 1e5;
-  premium_share = premium_share || 1e5;
-  shared_coverage_wallet = shared_coverage_wallet || smart_contract;
+  premium_share = premium_share || 0;
+  wallet = wallet || smart_contract;
   shared_coverage_min_percentage = shared_coverage_min_percentage || 0;
   return protocol.add_risk_module(smart_contract, module_owner, status, max_mcr_per_policy, mcr_limit, mcr_percentage,
-                                  premium_share, shared_coverage_wallet, shared_coverage_min_percentage);
+                                  premium_share, wallet, shared_coverage_min_percentage);
 }
