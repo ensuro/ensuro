@@ -1,5 +1,6 @@
 const { expect } = require("chai");
-const { DAY, WEEK, init_currency, approve_multiple, check_balances, now, add_risk_module } = require("./test-utils");
+const { DAY, WEEK, init_currency, approve_multiple, check_balances,
+        now, add_risk_module, expected_change } = require("./test-utils");
 
 
 /*fit = it;
@@ -375,8 +376,8 @@ describe("EnsuroProtocol - Risk Modules", function() {
   beforeEach(async () => {
     [owner, prov1, prov2, cust, riskm1, riskm2] = await ethers.getSigners();
     currency = await init_currency(1e10,
-      [prov1, prov2, cust],
-      [1e5, 2e5, 1e4],
+      [prov1, prov2, cust, riskm1, riskm2],
+      [1e5, 2e5, 1e4, 3e4, 4e4],
     );
     Protocol = await ethers.getContractFactory("EnsuroProtocol");
     protocol = await Protocol.deploy(currency.address);
@@ -447,6 +448,81 @@ describe("EnsuroProtocol - Risk Modules", function() {
     );
     expect(await protocol.mcr()).to.equal(0);
     expect(await protocol.ocean_available()).to.equal(initial_ocean - (1e4 - 100) + (100 - 10));
+  });
+
+  it("Should allow shared coverage of the policies", async function() {
+    await expect(add_risk_module(
+      protocol, riskm1.address, undefined, undefined,
+      undefined, undefined, undefined,
+      10e3 /* premium_share - 10% */, undefined, 30e3 /* shared_coverage_min_percentage - 30% */
+    )).not.to.be.reverted;
+
+    await expect(add_risk_module(
+      protocol, riskm2.address, undefined, undefined,
+      undefined, undefined, undefined,
+      0 /* premium_share - 0% */, undefined, 80e3 /* shared_coverage_min_percentage - 80% */
+    )).not.to.be.reverted;
+
+    let riskm1_calls = protocol.connect(riskm1);
+    let riskm2_calls = protocol.connect(riskm2);
+
+    let ocean = await protocol.ocean_available();
+    let mcr = 0;
+
+    await expect(riskm1_calls.new_policy(1234, now() + 2000, 100, 1e4, cust.address)).to.be.revertedWith(
+      "ERC20: transfer amount exceeds allowance"
+    );
+
+    await approve_multiple(currency, protocol, [riskm1, riskm2], [2e4, 4e4]);
+
+    let rm1_shared_coverage = 1e4 * .3 - 100 * .3;
+
+    await expect(() => riskm1_calls.new_policy(1234, now() + 2000, 100, 1e4, cust.address)).to.changeTokenBalances(
+      currency, [protocol, cust, riskm1], [100 + rm1_shared_coverage, -100, -rm1_shared_coverage]
+    );
+    mcr = await expected_change(protocol.mcr, mcr, 7000 - 70)
+
+    let rm2_shared_coverage = 2e4 * .8 - 200 * .8;
+    await expect(() => riskm2_calls.new_policy(1234, now() + 2000, 200, 2e4, cust.address)).to.changeTokenBalances(
+      currency, [protocol, cust, riskm2], [200 + rm2_shared_coverage, -200, -rm2_shared_coverage]
+    );
+    mcr = await expected_change(protocol.mcr, mcr, 4000 - 40);
+    await expect(riskm1_calls.change_shared_coverage(riskm2.address, 100e3)).to.be.revertedWith(
+      "Only module owner can tweak this parameter"
+    );
+    await expect(riskm2_calls.change_shared_coverage(riskm2.address, 10e3)).to.be.revertedWith(
+      "Must be greater or equal to shared_coverage_min_percentage"
+    );
+    await expect(riskm2_calls.change_shared_coverage(riskm2.address, 100e3)).not.to.be.reverted;
+
+    await expect(() => riskm2_calls.new_policy(1235, now() + 2000, 200, 2e4, cust.address)).to.changeTokenBalances(
+      currency, [protocol, cust, riskm2], [2e4, -200, - 2e4 + 200]
+    );
+    mcr = await expected_change(protocol.mcr, mcr, 0); // Unchanged - full coverage by RM
+    ocean = await expected_change(protocol.ocean_available, ocean, -mcr);
+
+    // Resolve 1st policy in favor of the pool - riskm1 gets 30% of the premium + 10% of 70% + rm1_shared_coverage
+    await expect(() => riskm1_calls.resolve_policy(1234, false)).to.changeTokenBalances(
+      currency, [protocol, cust, riskm1], [-rm1_shared_coverage - 30 - 7, 0, rm1_shared_coverage + 30 + 7]
+    );
+
+    mcr = await expected_change(protocol.mcr, mcr, -(7000 - 70));
+    ocean = await expected_change(protocol.ocean_available, ocean, +(7000 - 70) + 63 /* premium after premium_share*/);
+
+    // Resolve 2nd policy in favor if the customer - riskm2 losts it's shared coverage, pool only the MCR
+    await expect(() => riskm2_calls.resolve_policy(1234, true)).to.changeTokenBalances(
+      currency, [protocol, cust, riskm2], [-2e4, 2e4, 0]
+    );
+    mcr = await expected_change(protocol.mcr, mcr, -(4000 - 40));
+    ocean = await expected_change(protocol.ocean_available, ocean, 0);
+
+    // Resolve 3rd policy againt the customer - riskm2 gets all because it was full coverage
+    await expect(() => riskm2_calls.resolve_policy(1235, false)).to.changeTokenBalances(
+      currency, [protocol, cust, riskm2], [-2e4, 0, 2e4]
+    );
+    // mcr and ocean unchanged
+    mcr = await expected_change(protocol.mcr, mcr, 0);
+    ocean = await expected_change(protocol.ocean_available, ocean, 0);
   });
 
 });

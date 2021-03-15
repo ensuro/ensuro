@@ -58,6 +58,7 @@ contract EnsuroProtocol {
   struct Policy {
     uint premium;
     uint payout;
+    uint rm_coverage;     // amount of the payout covered by risk_module
     uint mcr;
     uint expiration_date;
     address customer;
@@ -201,6 +202,14 @@ contract EnsuroProtocol {
     emit RiskModuleStatusChanged(smart_contract, status);
   }
 
+  function change_shared_coverage(address _risk_module, uint new_shared_coverage_percentage) public {
+    RiskModule storage module = risk_modules[_risk_module];
+    require(msg.sender == module.owner, "Only module owner can tweak this parameter");
+    require(new_shared_coverage_percentage >= module.shared_coverage_min_percentage,
+            "Must be greater or equal to shared_coverage_min_percentage");
+    module.shared_coverage_percentage = new_shared_coverage_percentage;
+  }
+
   function get_risk_module_status(address risk_module) public view returns (RiskModuleStatus) {
     return risk_modules[risk_module].status;
   }
@@ -293,8 +302,9 @@ contract EnsuroProtocol {
     require(premium > 0, "Premium must be > 0, free policies not allowed");
     RiskModule storage risk_module = risk_modules[msg.sender];
     require(risk_module.status == RiskModuleStatus.active, "Risk is not active");
-    // TODO: check msg.sender is authorized and active risk_module
-    uint policy_mcr = (payout - premium) * risk_module.mcr_percentage / MAX_PERCENTAGE;
+    uint rm_coverage = risk_module.shared_coverage_percentage * payout / MAX_PERCENTAGE;
+    uint rm_premium = premium * rm_coverage / payout;
+    uint policy_mcr = ((payout - rm_coverage) - (premium - rm_premium)) * risk_module.mcr_percentage / MAX_PERCENTAGE;
     require(policy_mcr <= risk_module.max_mcr_per_policy, "MCR bigger than MAX_MCR for this module");
     require(ocean_available >= policy_mcr, "Not enought free capital in the pool");
 
@@ -309,11 +319,15 @@ contract EnsuroProtocol {
     policy.premium = premium;
     policy.mcr = policy_mcr;
     policy.payout = payout;
+    policy.rm_coverage = rm_coverage;
     policy.expiration_date = expiration_date;
     policy.customer = customer;
-    lock_funds(policy);
     require(currency.transferFrom(customer, address(this), premium),
             "Transfer of currency failed must approve us to transfer the premium");
+    if (rm_coverage > 0)
+      require(currency.transferFrom(risk_module.wallet, address(this), rm_coverage - rm_premium),
+              "Transfer from risk_module wallet failed - unable to do shared coverage");
+    lock_funds(policy);
 
     emit NewPolicy(msg.sender, policy_id, customer, payout, premium, policy_mcr, expiration_date);
     emit SchedulePolicyExpire(msg.sender, policy_id, expiration_date);
@@ -403,13 +417,20 @@ contract EnsuroProtocol {
     // Resolves the policy and updates affected LiquidityProviders
     Policy storage policy = policies[_risk_module][policy_id];
     uint policy_premium = policy.premium;
+    uint rm_premium = policy.premium * policy.rm_coverage / policy.payout;
+    policy_premium -= rm_premium;
     uint premium_distributed = 0;
     uint for_risk_module = 0;
     RiskModule storage risk_module = risk_modules[_risk_module];
 
-    if (!customer_won && risk_module.premium_share > 0) {
-      for_risk_module = policy_premium * risk_module.premium_share / MAX_PERCENTAGE;
-      policy_premium -= for_risk_module;
+    if (!customer_won) {
+      // risk_module gets premium_share or the premium covered by the pool
+      if (risk_module.premium_share > 0) {
+        for_risk_module = policy_premium * risk_module.premium_share / MAX_PERCENTAGE;
+        policy_premium -= for_risk_module;
+      }
+      // risk_module also gets the locked money back
+      for_risk_module += policy.rm_coverage;
     }
 
     for (uint i=0; i < policy.locked_funds.length; i++) {

@@ -1,4 +1,5 @@
 const { expect } = require("chai");
+const { BigNumber } = require("ethers");
 exports.WEEK = 3600 * 24 * 7;
 exports.DAY = 3600 * 24;
 
@@ -42,4 +43,11 @@ exports.add_risk_module = function(protocol, smart_contract, module_owner, statu
   shared_coverage_min_percentage = shared_coverage_min_percentage || 0;
   return protocol.add_risk_module(smart_contract, module_owner, status, max_mcr_per_policy, mcr_limit, mcr_percentage,
                                   premium_share, wallet, shared_coverage_min_percentage);
+}
+
+exports.expected_change = async function(protocol_attribute, initial, change) {
+  change = BigNumber.from(change);
+  let actual_value = await protocol_attribute();
+  expect(actual_value.sub(initial)).to.equal(change);
+  return actual_value;
 }
