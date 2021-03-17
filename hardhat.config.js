@@ -1,4 +1,7 @@
 require("@nomiclabs/hardhat-waffle");
+require("hardhat-gas-reporter");
+require("solidity-coverage");
+
 // const { mnemonic } = require('./secrets.json');
 
 // This is a sample Hardhat task. To learn how to create your own go to
@@ -39,5 +42,10 @@ module.exports = {
 //      accounts: {mnemonic: mnemonic}
     }
   },
+  gasReporter: {
+    currency: 'USD',
+    coinmarketcap: "1b0c87b0-c123-48d1-86f9-1544ef487220",
+    enabled: (process.env.REPORT_GAS) ? true : false
+  }
 };
 

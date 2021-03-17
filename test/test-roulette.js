@@ -1,5 +1,5 @@
 const { expect } = require("chai");
-const { WEEK, init_currency } = require("./test-utils");
+const { WEEK, init_currency, add_risk_module } = require("./test-utils");
 
 describe("EnsuroRoulette", function() {
   let currency;
@@ -25,7 +25,7 @@ describe("EnsuroRoulette", function() {
     roulette = await Roulette.deploy(protocol.address);
     await roulette.deployed();
 
-    await protocol.add_risk_module(roulette.address, 1 );  // 1 == active
+    await add_risk_module(protocol, roulette.address);  // 1 == active
     now = Math.floor(new Date().getTime() / 1000);
   });
 
