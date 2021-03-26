@@ -1,0 +1,11 @@
+version: "3.4"
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ensuro_api
+    env_file: .env
+    expose:
+      - "8000"

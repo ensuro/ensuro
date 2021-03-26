@@ -1,0 +1,13 @@
+version: "3.4"
+
+services:
+  server:
+    command: ["sh", "-c", "while [ 0 ]; do date; sleep 30 ; done"]
+    build:
+      args:
+        DEV_ENV: "1"
+    ports:
+      - 25000:5000
+      - 24444:4444
+    volumes:
+      - ./:/usr/local/app/

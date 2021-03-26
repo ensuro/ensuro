@@ -1,0 +1,15 @@
+module: app.prototype
+risk_modules:
+  - name: Roulette
+    mcr_percentage: 100
+  - name: Flight Insurance
+    mcr_percentage: 90
+  - name: Fire Insurance
+    mcr_percentage: 80
+etokens:
+  - name: USD1WEEK
+    expiration_period: 604800
+  - name: USD1MONTH
+    expiration_period: 2592000
+  - name: USD1YEAR
+    expiration_period: 31536000
