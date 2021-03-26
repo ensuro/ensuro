@@ -81,6 +81,17 @@ def balance_of(etoken, provider):
     return jsonify({"balance": etoken_obj.int_to_float(etoken_obj.balance_of(provider))})
 
 
+@app.route('/redeem/<etoken>/<provider>/', methods=["POST"])
+def redeem(etoken, provider):
+    data = request.json
+    etoken_obj = protocol.etokens[etoken]
+    if data and "amount" in data:
+        amount = etoken_obj.float_to_int(data["amount"])
+    else:
+        amount = None
+    return jsonify({"amount": etoken_obj.int_to_float(etoken_obj.redeem(provider, amount))})
+
+
 @app.route('/fast-forward-time/', methods=["POST"])
 def fast_forward_time():
     data = request.json

@@ -36,6 +36,14 @@ def deposit(etoken, provider, amount):
 @cli.command()
 @click.argument("etoken")
 @click.argument("provider")
+@click.argument("amount", type=float, required=False)
+def redeem(etoken, provider, amount=None):
+    print(_call_server(f"/redeem/{etoken}/{provider}/", "POST", {"amount": amount} if amount else {}))
+
+
+@cli.command()
+@click.argument("etoken")
+@click.argument("provider")
 def balance(etoken, provider):
     print(_call_server(f"/balance-of/{etoken}/{provider}/", "GET"))
 

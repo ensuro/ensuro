@@ -80,8 +80,21 @@ class EToken:
         return principal_balance * self.current_index // self.indexes[provider]
 
     def redeem(self, provider, amount):
-        if amount > self.balance_of(provider):
-            amount = self.balance_of(provider)
+        balance = self.balance_of(provider)
+        if balance == 0:
+            return 0
+        if amount is None or amount > balance:
+            amount = balance
+        self.balances[provider] = balance - amount
+        self._update_current_index()
+        if balance == amount:  # full redeem
+            del self.balances[provider]
+            del self.indexes[provider]
+            del self.timestamps[provider]
+        else:
+            self.indexes[provider] = self.current_index
+            self.timestamps[provider] = now()
+        return amount
 
 
 class Protocol:

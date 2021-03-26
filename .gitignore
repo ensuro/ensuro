@@ -6,3 +6,6 @@ artifacts
 flatten
 coverage
 coverage.json
+__pycache__/
+*.pyc
+api/.env
