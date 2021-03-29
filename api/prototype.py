@@ -28,9 +28,9 @@ class RiskModule:
 
 
 class Policy:
-    def __init__(self, policy_id, risk_module, payout, premium, loss_prob, start, expiration,
+    def __init__(self, id, risk_module, payout, premium, loss_prob, start, expiration,
                  parameters={}):
-        self.policy_id = policy_id
+        self.id = id
         self.risk_module = risk_module
         self.premium = premium
         self.payout = payout
@@ -94,6 +94,10 @@ class EToken:
         self.current_index = self._calculate_current_index()
         self.last_index_update = now()
 
+    def _update_token_interest_rate(self):
+        """Should be called each time total_supply changes or mcr changes"""
+        self.token_interest_rate = self.mcr_interest_rate * self.mcr.to_ray() // self.total_supply().to_ray()
+
     def _calculate_current_index(self):
         seconds = now() - self.last_index_update
         if seconds <= 0:
@@ -132,7 +136,7 @@ class EToken:
             self.mcr_interest_rate = (
                 self.mcr_interest_rate * orig_mcr.to_ray() + policy.interest_rate * mcr_amount.to_ray()
             ) // self.mcr.to_ray()  # weighted average of previous and policy interest_rate
-        self.token_interest_rate = self.mcr_interest_rate * self.mcr.to_ray() // total_supply.to_ray()
+        self._update_token_interest_rate()
 
     def unlock_mcr(self, policy, mcr_amount):
         total_supply = self.total_supply()
@@ -148,18 +152,20 @@ class EToken:
             self.mcr_interest_rate = (
                 self.mcr_interest_rate * orig_mcr.to_ray() - policy.interest_rate * mcr_amount.to_ray()
             ) // self.mcr.to_ray()  # revert weighted average
-        self.token_interest_rate = self.mcr_interest_rate * self.mcr.to_ray() // total_supply.to_ray()
+        self._update_token_interest_rate()
 
     def discrete_earning(self, amount):
         assert now() == self.last_index_update
         new_total_supply = amount + self.total_supply()
         self.current_index = new_total_supply.to_ray() // self._base_supply().to_ray()
+        self._update_token_interest_rate()
 
     def deposit(self, provider, amount):
         self._update_current_index()
         self.balances[provider] = self.balance_of(provider) + amount
         self.indexes[provider] = self.current_index
         self.timestamps[provider] = now()
+        self._update_token_interest_rate()
         return self.balances[provider]
 
     def balance_of(self, provider):
@@ -184,6 +190,7 @@ class EToken:
         else:
             self.indexes[provider] = self.current_index
             self.timestamps[provider] = now()
+        self._update_token_interest_rate()
         return amount
 
     def accepts(self, policy):
@@ -196,7 +203,7 @@ class Protocol:
     def __init__(self, risk_modules={}, etokens={}):
         self.risk_modules = risk_modules or {}
         self.etokens = etokens or {}
-        self.policies = []
+        self.policies = {}
         self.policy_count = 0
 
     @classmethod
@@ -252,11 +259,11 @@ class Protocol:
             policy.locked_funds.append((token_name, mcr_for_token))
             mcr_not_locked -= mcr_for_token
 
-        self.policies.append(policy)
+        self.policies[policy.id] = policy
         return policy
 
     def resolve_policy(self, risk_module_name, policy_id, customer_won):
-        policy = [p for p in self.policies if p.policy_id == policy_id][0]
+        policy = self.policies[policy_id]
 
         if customer_won:
             result = -policy.mcr

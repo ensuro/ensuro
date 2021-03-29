@@ -2,6 +2,7 @@ import logging
 import click
 from environs import Env
 import requests
+from .utils import parse_period
 
 env = Env()
 
@@ -60,25 +61,10 @@ def get_interest_rates(etoken):
     print(_call_server(f"/get-interest-rates/{etoken}/", "GET"))
 
 
-def _parse_period(period):
-    if period.isdigit():
-        return int(period)
-    else:
-        count = int(period[:-1])
-        multiplier = {
-            "h": 3600,
-            "d": 3600 * 24,
-            "w": 3600 * 24 * 7,
-            "m": 3600 * 24 * 30,
-            "y": 3600 * 24 * 365,
-        }[period[-1]]
-        return count * multiplier
-
-
 @cli.command()
 @click.argument("period")
 def fast_forward_time(period):
-    secs = _parse_period(period)
+    secs = parse_period(period)
     print(_call_server(f"/fast-forward-time/", "POST", {"secs": secs}))
 
 
@@ -93,7 +79,7 @@ def new_policy(risk_module, payout, premium, loss_prob, expiration_period):
         "payout": payout,
         "premium": premium,
         "loss_prob": loss_prob,
-        "expiration_period": _parse_period(expiration_period),
+        "expiration_period": period(expiration_period),
     }))
 
 

@@ -9,5 +9,7 @@ services:
     ports:
       - 25000:5000
       - 24444:4444
+      - 28888:8888
     volumes:
-      - ./:/usr/local/app/
+      - ./:/home/jovyan/app/
+      - ./notebooks/:/home/jovyan/work/

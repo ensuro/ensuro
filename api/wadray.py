@@ -68,3 +68,7 @@ class Ray(int):
         if type(value) == str:
             value = Decimal(value)
         return cls(int(value * RAY))
+
+
+_R = Ray.from_value
+_W = Wad.from_value

@@ -9,3 +9,4 @@ coverage.json
 __pycache__/
 *.pyc
 api/.env
+.ipynb_checkpoints/

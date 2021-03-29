@@ -17,6 +17,6 @@ python -m app.cli balance USD1YEAR LP1
 python -m app.cli new-policy Roulette 36 1 --loss_prob .027027
 python -m app.cli total-supply USD1YEAR
 python -m app.cli get-interest-rates USD1YEAR
-python -m app.cli resolve-policy Roulette 36 --customer_won
+python -m app.cli resolve-policy Roulette 1 --customer_won=true
 
 ```

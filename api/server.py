@@ -1,72 +1,14 @@
 import os
-import re
 import logging
-from decimal import Decimal
-import importlib
-import yaml
-from flask import Flask, jsonify, request, abort, Response, send_file
-from environs import Env
+from flask import Flask, jsonify, request
 
 from .wadray import Wad, Ray
+from .config_loader import load_config
 
 app = Flask(__name__)
 application = app
 
-env = Env()
-
-envvar_matcher = re.compile(r'\$\{([A-Za-z0-9_]+)(:-[^\}]*)?\}')
-
-
-def envvar_constructor(loader, node):
-    '''
-    Extract the matched value, expand env variable, and replace the match
-    ${REQUIRED_ENV_VARIABLE} or ${ENV_VARIABLE:-default}
-    '''
-    global env
-    value = node.value
-    match = envvar_matcher.match(value)
-    env_var = match.group(1)
-    default_value = match.group(2)
-    if default_value is not None:
-        return env.str(env_var, default_value[2:]) + value[match.end():]
-    else:
-        return env.str(env_var) + value[match.end():]
-
-
-protocol = None
-
-
-def load_config(yaml_config=None):
-    """Loads the configuration
-
-    @params yaml_config must be a file-like object or None
-    """
-    global protocol
-
-    if yaml_config is None:
-        yaml_config_filename = env.path("SETUP_FILE")
-        yaml_config = open(yaml_config_filename)
-
-    yaml.add_implicit_resolver('!envvar', envvar_matcher, Loader=yaml.FullLoader)
-    yaml.add_constructor('!envvar', envvar_constructor, Loader=yaml.FullLoader)
-    config = yaml.load(yaml_config, Loader=yaml.FullLoader)
-
-    module = importlib.import_module(config["module"])
-
-    protocol = module.Protocol.build(**config.get("protocol", {}))
-
-    for risk_module_dict in config.get("risk_modules", []):
-        rm = module.RiskModule.build(**risk_module_dict)
-        protocol.add_risk_module(rm)
-
-    for etoken_dict in config.get("etokens", []):
-        etk = module.EToken.build(**etoken_dict)
-        protocol.add_etoken(etk)
-
-    return protocol
-
-
-load_config()
+protocol = load_config()
 
 # Routes
 @app.route('/deposit/<etoken>/<provider>/', methods=["POST"])
@@ -126,7 +68,7 @@ def new_policy(risk_module):
     )
 
     return jsonify({
-        "policy_id": policy.policy_id,
+        "policy_id": policy.id,
         "mcr": str(policy.mcr),
         "pure_premium": str(policy.pure_premium),
         "interest_rate": str(policy.interest_rate),

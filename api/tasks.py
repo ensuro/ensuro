@@ -25,6 +25,12 @@ def flask(c, port=8000):
 
 @ns.add_task
 @task
+def jupyter(c):
+    docker_exec(c, "tini -g -- start-notebook.sh")
+
+
+@ns.add_task
+@task
 def kill_flask(c):
     docker_exec(c, "killall flask")
 
