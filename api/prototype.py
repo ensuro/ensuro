@@ -45,17 +45,29 @@ class Policy:
     def pure_premium(self):
         return (self.payout.to_ray() * self.loss_prob).to_wad()
 
-    @property
-    def interest_rate(self):
-        profit_premium = self.premium - self.pure_premium
+    def premium_split(self):
+        pure_premium = self.pure_premium
+        profit_premium = self.premium - pure_premium
         for_ensuro = (profit_premium.to_ray() * self.risk_module.ensuro_share).to_wad()
         for_risk_module = (profit_premium.to_ray() * self.risk_module.premium_share).to_wad()
         for_lps = profit_premium - for_ensuro - for_risk_module
+        return pure_premium, for_ensuro, for_risk_module, for_lps
+
+    @property
+    def interest_rate(self):
+        _, for_ensuro, for_risk_module, for_lps = self.premium_split()
         return (
             for_lps * Wad.from_value(SECONDS_IN_YEAR) // (
                 Wad.from_value(self.expiration - self.start) * self.mcr
             )
         ).to_ray()
+
+    def accrued_interest(self):
+        seconds = Ray.from_value(now() - self.start)
+        return (
+            self.mcr.to_ray() * seconds * self.interest_rate //
+            Ray.from_value(SECONDS_IN_YEAR)
+        ).to_wad()
 
 
 class EToken:
@@ -83,15 +95,23 @@ class EToken:
         self.last_index_update = now()
 
     def _calculate_current_index(self):
+        seconds = now() - self.last_index_update
+        if seconds <= 0:
+            return self.current_index
         increment = (
-            self.current_index * Ray.from_value(now() - self.last_index_update) *
-            self.token_interest_rate // Ray.from_value(SECONDS_IN_YEAR)
+            self.current_index * Ray.from_value(seconds) * self.token_interest_rate //
+            Ray.from_value(SECONDS_IN_YEAR)
         )
         return self.current_index + increment
 
+    def get_interest_rates(self):
+        return self.token_interest_rate, self.mcr_interest_rate
+
+    def _base_supply(self):
+        return sum(self.balances.values(), Wad(0))  # in ERC20 we will use base total_supply
+
     def total_supply(self):
-        base_supply = sum(self.balances.values(), Wad(0))  # in ERC20 we will use base total_supply
-        return (base_supply.to_ray() * self._calculate_current_index()).to_wad()
+        return (self._base_supply().to_ray() * self._calculate_current_index()).to_wad()
 
     @property
     def ocean(self):
@@ -111,8 +131,29 @@ class EToken:
             self.mcr += mcr_amount
             self.mcr_interest_rate = (
                 self.mcr_interest_rate * orig_mcr.to_ray() + policy.interest_rate * mcr_amount.to_ray()
-            ) // self.mcr  # weighted average of previous and policy interest_rate
+            ) // self.mcr.to_ray()  # weighted average of previous and policy interest_rate
         self.token_interest_rate = self.mcr_interest_rate * self.mcr.to_ray() // total_supply.to_ray()
+
+    def unlock_mcr(self, policy, mcr_amount):
+        total_supply = self.total_supply()
+        assert mcr_amount <= self.mcr
+        self._update_current_index()
+
+        if self.mcr == mcr_amount:
+            self.mcr = Wad(0)
+            self.mcr_interest_rate = Ray(0)
+        else:
+            orig_mcr = self.mcr
+            self.mcr -= mcr_amount
+            self.mcr_interest_rate = (
+                self.mcr_interest_rate * orig_mcr.to_ray() - policy.interest_rate * mcr_amount.to_ray()
+            ) // self.mcr.to_ray()  # revert weighted average
+        self.token_interest_rate = self.mcr_interest_rate * self.mcr.to_ray() // total_supply.to_ray()
+
+    def discrete_earning(self, amount):
+        assert now() == self.last_index_update
+        new_total_supply = amount + self.total_supply()
+        self.current_index = new_total_supply.to_ray() // self._base_supply().to_ray()
 
     def deposit(self, provider, amount):
         self._update_current_index()
@@ -213,3 +254,20 @@ class Protocol:
 
         self.policies.append(policy)
         return policy
+
+    def resolve_policy(self, risk_module_name, policy_id, customer_won):
+        policy = [p for p in self.policies if p.policy_id == policy_id][0]
+
+        if customer_won:
+            result = -policy.mcr
+        else:
+            pure_premium, _, _, for_lps = policy.premium_split()
+            result = pure_premium + for_lps
+
+        adjustment = result - policy.accrued_interest()
+
+        for (etoken_name, mcr_amount) in policy.locked_funds:
+            etk = self.etokens[etoken_name]
+            etk.unlock_mcr(policy, mcr_amount)
+            etk_adjustment = adjustment * mcr_amount // policy.mcr
+            etk.discrete_earning(etk_adjustment)

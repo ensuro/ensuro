@@ -21,6 +21,9 @@ class Wad(int):
         assert isinstance(other, Wad)
         return Wad(int(self) - int(other))
 
+    def __neg__(self):
+        return Wad(-int(self))
+
     def __str__(self):
         return str(Decimal(self) / Decimal(WAD))
 
@@ -50,6 +53,9 @@ class Ray(int):
     def __sub__(self, other):
         assert isinstance(other, Ray)
         return Ray(int(self) - int(other))
+
+    def __neg__(self):
+        return Ray(-int(self))
 
     def __str__(self):
         return str(Decimal(self) / Decimal(RAY))

@@ -54,6 +54,12 @@ def total_supply(etoken):
     print(_call_server(f"/total-supply/{etoken}/", "GET"))
 
 
+@cli.command()
+@click.argument("etoken")
+def get_interest_rates(etoken):
+    print(_call_server(f"/get-interest-rates/{etoken}/", "GET"))
+
+
 def _parse_period(period):
     if period.isdigit():
         return int(period)
@@ -89,6 +95,14 @@ def new_policy(risk_module, payout, premium, loss_prob, expiration_period):
         "loss_prob": loss_prob,
         "expiration_period": _parse_period(expiration_period),
     }))
+
+
+@cli.command()
+@click.argument("risk_module")
+@click.argument("policy_id", type=int)
+@click.option("--customer_won", default=False)
+def resolve_policy(risk_module, policy_id, customer_won):
+    print(_call_server(f"/resolve-policy/{risk_module}/{policy_id}/{customer_won}/", "POST"))
 
 
 if __name__ == "__main__":

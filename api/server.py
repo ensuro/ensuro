@@ -88,6 +88,16 @@ def total_supply(etoken):
     return jsonify({"total_supply": str(etoken_obj.total_supply())})
 
 
+@app.route('/get-interest-rates/<etoken>/', methods=["GET"])
+def get_interest_rates(etoken):
+    etoken_obj = protocol.etokens[etoken]
+    token_interest_rate, mcr_interest_rate = etoken_obj.get_interest_rates()
+    return jsonify({
+        "token_interest_rate": str(token_interest_rate),
+        "mcr_interest_rate": str(mcr_interest_rate),
+    })
+
+
 @app.route('/redeem/<etoken>/<provider>/', methods=["POST"])
 def redeem(etoken, provider):
     data = request.json
@@ -122,6 +132,15 @@ def new_policy(risk_module):
         "interest_rate": str(policy.interest_rate),
         "locked_funds": dict((etoken, str(amount)) for (etoken, amount) in policy.locked_funds)
     })
+
+
+@app.route('/resolve-policy/<risk_module>/<policy_id>/<customer_won>/', methods=["POST"])
+def resolve_policy(risk_module, policy_id, customer_won):
+    policy_id = int(policy_id)
+    customer_won = customer_won.lower() == "true"
+    ret = protocol.resolve_policy(risk_module, policy_id, customer_won)
+
+    return jsonify(ret)
 
 
 @app.route('/fast-forward-time/', methods=["POST"])
