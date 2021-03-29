@@ -21,7 +21,7 @@ ENV DEV_ENV $DEV_ENV
 
 ENV SETUP_FILE "/usr/local/app/setup.yaml"
 
-ADD gunicorn.py server.py prototype.py cli.py setup.yaml /usr/local/app/
+ADD gunicorn.py server.py prototype.py cli.py wadray.py setup.yaml /usr/local/app/
 
 # ADD tests/ /usr/local/app/tests
 

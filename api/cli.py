@@ -28,7 +28,7 @@ def _call_server(path, method="GET", params={}):
 @cli.command()
 @click.argument("etoken")
 @click.argument("provider")
-@click.argument("amount", type=float)
+@click.argument("amount", type=str)
 def deposit(etoken, provider, amount):
     print(_call_server(f"/deposit/{etoken}/{provider}/", "POST", {"amount": amount}))
 
@@ -36,7 +36,7 @@ def deposit(etoken, provider, amount):
 @cli.command()
 @click.argument("etoken")
 @click.argument("provider")
-@click.argument("amount", type=float, required=False)
+@click.argument("amount", type=str, required=False)
 def redeem(etoken, provider, amount=None):
     print(_call_server(f"/redeem/{etoken}/{provider}/", "POST", {"amount": amount} if amount else {}))
 
@@ -49,10 +49,14 @@ def balance(etoken, provider):
 
 
 @cli.command()
-@click.argument("period")
-def fast_forward_time(period):
+@click.argument("etoken")
+def total_supply(etoken):
+    print(_call_server(f"/total-supply/{etoken}/", "GET"))
+
+
+def _parse_period(period):
     if period.isdigit():
-        secs = int(period)
+        return int(period)
     else:
         count = int(period[:-1])
         multiplier = {
@@ -62,9 +66,29 @@ def fast_forward_time(period):
             "m": 3600 * 24 * 30,
             "y": 3600 * 24 * 365,
         }[period[-1]]
-        secs = count * multiplier
+        return count * multiplier
 
+
+@cli.command()
+@click.argument("period")
+def fast_forward_time(period):
+    secs = _parse_period(period)
     print(_call_server(f"/fast-forward-time/", "POST", {"secs": secs}))
+
+
+@cli.command()
+@click.argument("risk_module")
+@click.argument("payout")
+@click.argument("premium")
+@click.option("--loss_prob", default="0.1")
+@click.option("--expiration_period", default="1w")
+def new_policy(risk_module, payout, premium, loss_prob, expiration_period):
+    print(_call_server(f"/new-policy/{risk_module}/", "POST", {
+        "payout": payout,
+        "premium": premium,
+        "loss_prob": loss_prob,
+        "expiration_period": _parse_period(expiration_period),
+    }))
 
 
 if __name__ == "__main__":
