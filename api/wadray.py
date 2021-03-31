@@ -36,6 +36,12 @@ class Wad(int):
             value = Decimal(value)
         return cls(int(value * WAD))
 
+    def to_float(self):
+        return int(self) / WAD
+
+    def to_decimal(self):
+        return Decimal(int(self)) / Decimal(WAD)
+
 
 class Ray(int):
     def __mul__(self, other):
@@ -68,6 +74,12 @@ class Ray(int):
         if type(value) == str:
             value = Decimal(value)
         return cls(int(value * RAY))
+
+    def to_float(self):
+        return int(self) / RAY
+
+    def to_decimal(self):
+        return Decimal(int(self)) / Decimal(RAY)
 
 
 _R = Ray.from_value

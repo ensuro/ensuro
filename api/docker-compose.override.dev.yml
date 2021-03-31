@@ -7,9 +7,8 @@ services:
       args:
         DEV_ENV: "1"
     ports:
-      - 25000:5000
-      - 24444:4444
-      - 28888:8888
+      - ${FLASK_EXT_PORT:-5000}:5000
+      - ${JUPYTER_EXT_PORT:-8888}:8888
     volumes:
       - ./:/home/jovyan/app/
       - ./notebooks/:/home/jovyan/work/

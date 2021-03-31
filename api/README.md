@@ -1,10 +1,27 @@
-# API server
+# Protocol simulation
 
 For testing purposes only (at least for now).
 
-Installing `pip install inv-py-docker-k8s-tasks` you can use `inv start-dev` to build and start the docker container. 
 
-Also other common commands for developing inside docker are available (`inv -l`)
+## Invoke
+
+This folder uses invoke (http://www.pyinvoke.org/) and inv-py-docker-k8s-tasks (`pip install inv-py-docker-k8s-tasks`) to 
+launch and run common task from inside docker.
+
+```
+pip install inv-py-docker-k8s-tasks
+cp .env.sample .env
+inv start-dev
+```
+
+This should build and run the docker container. This keeps the container running doing nothing and you can launch the tasks.
+
+
+## Jupyter Notebook
+
+To launch the Jupyter notebook from docker you can run `inv jupyter`. This will run jupyter inside the
+docker container (first you have to run `inv start-dev`). It will print a localhost address to launch in 
+the browser.
 
 
 ## CLI Commands
@@ -20,3 +37,4 @@ python -m app.cli get-interest-rates USD1YEAR
 python -m app.cli resolve-policy Roulette 1 --customer_won=true
 
 ```
+
