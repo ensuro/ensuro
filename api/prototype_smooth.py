@@ -87,9 +87,9 @@ class EToken:
         self.token_interest_rate = Ray(0)
 
         self.protocol_loan = Wad(0)
-        self.protocol_loan_interest_rate = Ray(0)  # TODO
-        self.protocol_loan_index = Ray(RAY)  # TODO
-        self.protocol_loan_last_index_update = None  # TODO
+        self.protocol_loan_interest_rate = Ray.from_value("0.05")
+        self.protocol_loan_index = Ray(RAY)
+        self.protocol_loan_last_index_update = None
 
     @classmethod
     def build(cls, **kwargs):
@@ -201,16 +201,34 @@ class EToken:
         return policy.expiration <= (now() + self.expiration_period)
 
     def lend_to_protocol(self, amount):
-        self.protocol_loan += amount
+        if self.protocol_loan == 0:
+            self.protocol_loan = amount
+            self.protocol_loan_index = Ray(RAY)
+            self.protocol_loan_last_index_update = now()
+        else:
+            self.protocol_loan_index = self._get_protocol_loan_index()
+            self.protocol_loan_last_index_update = now()
+            self.protocol_loan += self.get_protocol_loan() + amount
         self.discrete_earning(-amount)
 
     def repay_protocol_loan(self, amount):
-        self.protocol_loan -= amount
-        self._update_current_index()
+        self.protocol_loan_index = self._get_protocol_loan_index()
+        self.protocol_loan_last_index_update = now()
+        self.protocol_loan = self.get_protocol_loan() - amount
         self.discrete_earning(amount)
 
+    def _get_protocol_loan_index(self):
+        seconds = now() - self.protocol_loan_last_index_update
+        if seconds <= 0:
+            return self.protocol_loan_index
+        increment = (
+            self.protocol_loan_index * Ray.from_value(seconds) * self.protocol_loan_interest_rate //
+            Ray.from_value(SECONDS_IN_YEAR)
+        )
+        return self.protocol_loan_index + increment
+
     def get_protocol_loan(self):
-        return self.protocol_loan
+        return (self.protocol_loan.to_ray() * self._get_protocol_loan_index()).to_wad()
 
 
 class Protocol:
