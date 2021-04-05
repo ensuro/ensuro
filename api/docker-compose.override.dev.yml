@@ -6,6 +6,7 @@ services:
     build:
       args:
         DEV_ENV: "1"
+        # BASE_CONTAINER: "minimal-notebook-pypy:latest"
     ports:
       - ${FLASK_EXT_PORT:-5000}:5000
       - ${JUPYTER_EXT_PORT:-8888}:8888

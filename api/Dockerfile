@@ -1,4 +1,5 @@
-FROM jupyter/scipy-notebook
+ARG BASE_CONTAINER=jupyter/scipy-notebook
+FROM $BASE_CONTAINER
 
 ENV GUNICORN_WORKERS 1
 ENV GUNICORN_WORKER_CLASS "gevent"
