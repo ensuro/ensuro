@@ -228,6 +228,8 @@ class EToken:
         return self.protocol_loan_index + increment
 
     def get_protocol_loan(self):
+        if self.protocol_loan == 0:
+            return self.protocol_loan
         return (self.protocol_loan.to_ray() * self._get_protocol_loan_index()).to_wad()
 
 
@@ -240,7 +242,6 @@ class Protocol:
         self.policies = {}
         self.policy_count = 0
         self.pure_premiums = Wad(0)
-        self.borrowed_from_tokens = Wad(0)
 
     @classmethod
     def build(cls, **kwargs):
@@ -264,29 +265,6 @@ class Protocol:
     def now(self):
         return now()
 
-    def _repay_token_loan(self, amount):
-        "Repays loan and returns the remaining amount"
-
-        owed_by_token = {}
-        total_owed = Wad(0)
-        for etk in self.etokens.values():
-            owed = etk.get_protocol_loan()
-            if not owed:
-                continue
-            owed_by_token[etk.name] = owed
-            total_owed += owed
-
-        available = to_repay = min(amount, total_owed)
-        for index, (token_name, owed_token) in enumerate(owed_by_token.items()):
-            if index < (len(owed_by_token) - 1):
-                repay_for_token = to_repay * owed_token // total_owed
-            else:  # Last one gets the rest
-                repay_for_token = available
-            self.etokens[token_name].repay_protocol_loan(repay_for_token)
-            available -= repay_for_token
-
-        return amount - to_repay
-
     def new_policy(self, risk_module_name, payout, premium, loss_prob, expiration, parameters={}):
         rm = self.risk_modules[risk_module_name]
         start = now()
@@ -294,10 +272,7 @@ class Protocol:
         policy = Policy(self.policy_count, rm, payout, premium, loss_prob, start, expiration, parameters)
         assert policy.interest_rate > 0
 
-        if self.borrowed_from_tokens:
-            self.pure_premiums += self._repay_token_loan(policy.pure_premium)
-        else:
-            self.pure_premiums += policy.pure_premium
+        self.pure_premiums += policy.pure_premium
 
         ocean = Wad(0)
         ocean_per_token = {}
@@ -334,7 +309,8 @@ class Protocol:
             self.pure_premiums -= from_premiums
             borrow_from_mcr = policy.payout - from_premiums
         else:
-            _, _, _, for_lps = policy.premium_split()
+            pure_premium, _, _, for_lps = policy.premium_split()
+            pure_premium = min(pure_premium, self.pure_premiums)
             adjustment = for_lps - policy.accrued_interest()
 
         for (etoken_name, mcr_amount) in policy.locked_funds:
@@ -343,6 +319,11 @@ class Protocol:
             if not customer_won:
                 etk_adjustment = adjustment * mcr_amount // policy.mcr
                 etk.discrete_earning(etk_adjustment)
+                borrowed_from_etk = etk.get_protocol_loan()
+                if borrowed_from_etk:  # if we have debt with token, repay from pure_premium
+                    repay_amount = min(borrowed_from_etk, pure_premium * mcr_amount // policy.mcr)
+                    etk.repay_protocol_loan(repay_amount)
+                    self.pure_premiums -= repay_amount
             elif borrow_from_mcr:
                 etk_borrow = borrow_from_mcr * mcr_amount // policy.mcr
                 etk.lend_to_protocol(etk_borrow)
