@@ -30,6 +30,9 @@ class Wad(int):
     def to_ray(self):
         return Ray(int(self) * 10**9)
 
+    def equal(self, other, decimal_digits=4):
+        return abs(other - self) < (10**(18-decimal_digits))
+
     @classmethod
     def from_value(cls, value):
         if type(value) == str:
@@ -68,6 +71,9 @@ class Ray(int):
 
     def to_wad(self):
         return Wad(int(self) // 10**9)
+
+    def equal(self, other, decimal_digits=8):
+        return abs(other - self) < (10**(27-decimal_digits))
 
     @classmethod
     def from_value(cls, value):
