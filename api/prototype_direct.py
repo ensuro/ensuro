@@ -78,8 +78,6 @@ class EToken:
         self.current_index = Ray(RAY)
         self.last_index_update = now()
         self.balances = {}
-        self.indexes = {}
-        self.timestamps = {}
         assert decimals == 18  # Only 18 supported
         self.decimals = decimals
         self.mcr = Wad(0)
@@ -103,10 +101,10 @@ class EToken:
         if seconds <= 0:
             return self.current_index
         increment = (
-            self.current_index * Ray.from_value(seconds) * self.token_interest_rate //
+            Ray.from_value(seconds) * self.token_interest_rate //
             Ray.from_value(SECONDS_IN_YEAR)
         )
-        return self.current_index + increment
+        return self.current_index * (Ray(RAY) + increment)
 
     def get_interest_rates(self):
         return self.token_interest_rate, self.mcr_interest_rate
@@ -139,7 +137,6 @@ class EToken:
         self._update_token_interest_rate()
 
     def unlock_mcr(self, policy, mcr_amount):
-        total_supply = self.total_supply()
         assert mcr_amount <= self.mcr
         self._update_current_index()
 
@@ -162,34 +159,30 @@ class EToken:
 
     def deposit(self, provider, amount):
         self._update_current_index()
-        self.balances[provider] = self.balance_of(provider) + amount
-        self.indexes[provider] = self.current_index
-        self.timestamps[provider] = now()
+        scaled_amount = (amount.to_ray() // self.current_index).to_wad()
+        self.balances[provider] = self.balances.get(provider, Wad(0)) + scaled_amount
         self._update_token_interest_rate()
-        return self.balances[provider]
+        return self.balance_of(provider)
 
     def balance_of(self, provider):
         if provider not in self.balances:
             return Wad(0)
-        self._update_current_index()
+        current_index = self._calculate_current_index()
         principal_balance = self.balances[provider]
-        return (principal_balance.to_ray() * self.current_index // self.indexes[provider]).to_wad()
+        return (principal_balance.to_ray() * current_index).to_wad()
 
     def redeem(self, provider, amount):
+        self._update_current_index()
         balance = self.balance_of(provider)
         if balance == 0:
             return Wad(0)
         if amount is None or amount > balance:
             amount = balance
-        self.balances[provider] = balance - amount
-        self._update_current_index()
         if balance == amount:  # full redeem
             del self.balances[provider]
-            del self.indexes[provider]
-            del self.timestamps[provider]
         else:
-            self.indexes[provider] = self.current_index
-            self.timestamps[provider] = now()
+            scaled_amount = (amount.to_ray() // self.current_index).to_wad()
+            self.balances[provider] -= scaled_amount
         self._update_token_interest_rate()
         return amount
 

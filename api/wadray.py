@@ -27,6 +27,9 @@ class Wad(int):
     def __str__(self):
         return str(Decimal(self) / Decimal(WAD))
 
+    def __repr__(self):
+        return str(Decimal(self) / Decimal(WAD))
+
     def to_ray(self):
         return Ray(int(self) * 10**9)
 
@@ -67,6 +70,9 @@ class Ray(int):
         return Ray(-int(self))
 
     def __str__(self):
+        return str(Decimal(self) / Decimal(RAY))
+
+    def __repr__(self):
         return str(Decimal(self) / Decimal(RAY))
 
     def to_wad(self):

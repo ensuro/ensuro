@@ -143,7 +143,7 @@ class SimulationObserver:
     """
 
     def __init__(self, metrics=[]):
-        self.metrics = metrics or self.metrics
+        self.metrics = metrics or self.metrics  # reads from class
         self.metric_values = []
 
     def default_start(self, **kwargs):

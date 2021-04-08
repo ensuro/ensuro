@@ -39,7 +39,7 @@ class Policy:
         self.start = start
         self.expiration = expiration
         self.parameters = parameters or {}
-        self.locked_funds = []
+        self.locked_funds = {}
 
     @property
     def pure_premium(self):
@@ -69,6 +69,11 @@ class Policy:
             Ray.from_value(SECONDS_IN_YEAR)
         ).to_wad()
 
+    def get_mcr_share(self, etoken_name):
+        if etoken_name not in self.locked_funds:
+            return Ray(0)
+        return (self.locked_funds[etoken_name] // self.mcr).to_ray()
+
 
 class EToken:
 
@@ -78,8 +83,6 @@ class EToken:
         self.current_index = Ray(RAY)
         self.last_index_update = now()
         self.balances = {}
-        self.indexes = {}
-        self.timestamps = {}
         assert decimals == 18  # Only 18 supported
         self.decimals = decimals
         self.mcr = Wad(0)
@@ -108,10 +111,10 @@ class EToken:
         if seconds <= 0:
             return self.current_index
         increment = (
-            self.current_index * Ray.from_value(seconds) * self.token_interest_rate //
+            Ray.from_value(seconds) * self.token_interest_rate //
             Ray.from_value(SECONDS_IN_YEAR)
         )
-        return self.current_index + increment
+        return self.current_index * (Ray(RAY) + increment)
 
     def get_interest_rates(self):
         return self.token_interest_rate, self.mcr_interest_rate
@@ -166,34 +169,30 @@ class EToken:
 
     def deposit(self, provider, amount):
         self._update_current_index()
-        self.balances[provider] = self.balance_of(provider) + amount
-        self.indexes[provider] = self.current_index
-        self.timestamps[provider] = now()
+        scaled_amount = (amount.to_ray() // self.current_index).to_wad()
+        self.balances[provider] = self.balances.get(provider, Wad(0)) + scaled_amount
         self._update_token_interest_rate()
-        return self.balances[provider]
+        return self.balance_of(provider)
 
     def balance_of(self, provider):
         if provider not in self.balances:
             return Wad(0)
-        self._update_current_index()
+        current_index = self._calculate_current_index()
         principal_balance = self.balances[provider]
-        return (principal_balance.to_ray() * self.current_index // self.indexes[provider]).to_wad()
+        return (principal_balance.to_ray() * current_index).to_wad()
 
     def redeem(self, provider, amount):
+        self._update_current_index()
         balance = self.balance_of(provider)
         if balance == 0:
             return Wad(0)
         if amount is None or amount > balance:
             amount = balance
-        self.balances[provider] = balance - amount
-        self._update_current_index()
         if balance == amount:  # full redeem
             del self.balances[provider]
-            del self.indexes[provider]
-            del self.timestamps[provider]
         else:
-            self.indexes[provider] = self.current_index
-            self.timestamps[provider] = now()
+            scaled_amount = (amount.to_ray() // self.current_index).to_wad()
+            self.balances[provider] -= scaled_amount
         self._update_token_interest_rate()
         return amount
 
@@ -208,13 +207,15 @@ class EToken:
         else:
             self.protocol_loan_index = self._get_protocol_loan_index()
             self.protocol_loan_last_index_update = now()
-            self.protocol_loan += self.get_protocol_loan() + amount
+            self.protocol_loan += (amount.to_ray() // self.protocol_loan_index).to_wad()
         self.discrete_earning(-amount)
 
     def repay_protocol_loan(self, amount):
         self.protocol_loan_index = self._get_protocol_loan_index()
         self.protocol_loan_last_index_update = now()
-        self.protocol_loan = self.get_protocol_loan() - amount
+        self.protocol_loan = (
+            (self.get_protocol_loan() - amount).to_ray() // self.protocol_loan_index
+        ).to_wad()
         self.discrete_earning(amount)
 
     def _get_protocol_loan_index(self):
@@ -222,10 +223,10 @@ class EToken:
         if seconds <= 0:
             return self.protocol_loan_index
         increment = (
-            self.protocol_loan_index * Ray.from_value(seconds) * self.protocol_loan_interest_rate //
+            Ray.from_value(seconds) * self.protocol_loan_interest_rate //
             Ray.from_value(SECONDS_IN_YEAR)
         )
-        return self.protocol_loan_index + increment
+        return self.protocol_loan_index * (Ray(RAY) + increment)
 
     def get_protocol_loan(self):
         if self.protocol_loan == 0:
@@ -295,7 +296,7 @@ class Protocol:
             else:  # Last one gets the rest
                 mcr_for_token = mcr_not_locked
             self.etokens[token_name].lock_mcr(policy, mcr_for_token)
-            policy.locked_funds.append((token_name, mcr_for_token))
+            policy.locked_funds[token_name] = mcr_for_token
             mcr_not_locked -= mcr_for_token
 
         self.policies[policy.id] = policy
@@ -313,17 +314,19 @@ class Protocol:
             pure_premium = min(pure_premium, self.pure_premiums)
             adjustment = for_lps - policy.accrued_interest()
 
-        for (etoken_name, mcr_amount) in policy.locked_funds:
+        for (etoken_name, mcr_amount) in policy.locked_funds.items():
             etk = self.etokens[etoken_name]
             etk.unlock_mcr(policy, mcr_amount)
             if not customer_won:
                 etk_adjustment = adjustment * mcr_amount // policy.mcr
                 etk.discrete_earning(etk_adjustment)
                 borrowed_from_etk = etk.get_protocol_loan()
-                if borrowed_from_etk:  # if we have debt with token, repay from pure_premium
+                if borrowed_from_etk and pure_premium:  # if debt with token, repay from pure_premium
                     repay_amount = min(borrowed_from_etk, pure_premium * mcr_amount // policy.mcr)
                     etk.repay_protocol_loan(repay_amount)
                     self.pure_premiums -= repay_amount
             elif borrow_from_mcr:
                 etk_borrow = borrow_from_mcr * mcr_amount // policy.mcr
                 etk.lend_to_protocol(etk_borrow)
+
+        del self.policies[policy_id]
