@@ -9,6 +9,7 @@ ENV GUNICORN_ACCESSLOG -
 
 RUN pip install --no-cache-dir Flask \
                                gunicorn[gevent] \
+                               m9g \
                                pyyaml \
                                environs
 

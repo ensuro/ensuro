@@ -11,7 +11,7 @@ def now():
     return _now
 
 
-class RiskModule:
+class RiskModuleSettings:
     def __init__(self, name, mcr_percentage, premium_share, ensuro_share):
         self.name = name
         self.mcr_percentage = mcr_percentage

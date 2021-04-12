@@ -1,4 +1,7 @@
-from .wadray import RAY, Ray, Wad
+from m9g import Model
+from m9g.fields import StringField, IntField, DictField, CompositeField, ReferenceField
+from .contracts import Contract, ERC20Token, external, view, RayField, WadField
+from .wadray import RAY, Ray, Wad, _W, _R
 import time
 
 _now = int(time.time())
@@ -11,12 +14,11 @@ def now():
     return _now
 
 
-class RiskModule:
-    def __init__(self, name, mcr_percentage, premium_share, ensuro_share):
-        self.name = name
-        self.mcr_percentage = mcr_percentage
-        self.premium_share = premium_share
-        self.ensuro_share = ensuro_share
+class RiskModuleSettings(Model):
+    name = StringField()
+    mcr_percentage = RayField(default=Ray(0))
+    premium_share = RayField(default=Ray(0))
+    ensuro_share = RayField(default=Ray(0))
 
     @classmethod
     def build(cls, name, mcr_percentage=100, premium_share=0, ensuro_share=0):
@@ -27,19 +29,19 @@ class RiskModule:
         )
 
 
-class Policy:
-    def __init__(self, id, risk_module, payout, premium, loss_prob, start, expiration,
-                 parameters={}):
-        self.id = id
-        self.risk_module = risk_module
-        self.premium = premium
-        self.payout = payout
-        self.mcr = ((payout - premium).to_ray() * risk_module.mcr_percentage).to_wad()
-        self.loss_prob = loss_prob
-        self.start = start
-        self.expiration = expiration
-        self.parameters = parameters or {}
-        self.locked_funds = {}
+class Policy(Model):
+    id = IntField()
+    payout = WadField()
+    premium = WadField()
+    loss_prob = RayField()
+    start = IntField()
+    expiration = IntField()
+    locked_funds = DictField(StringField, WadField, default={})
+
+    def __init__(self, **kwargs):
+        self.risk_module = kwargs.pop("risk_module")
+        super().__init__(**kwargs)
+        self.mcr = ((self.payout - self.premium).to_ray() * self.risk_module.mcr_percentage).to_wad()
 
     @property
     def pure_premium(self):
@@ -57,8 +59,8 @@ class Policy:
     def interest_rate(self):
         _, for_ensuro, for_risk_module, for_lps = self.premium_split()
         return (
-            for_lps * Wad.from_value(SECONDS_IN_YEAR) // (
-                Wad.from_value(self.expiration - self.start) * self.mcr
+            for_lps * _W(SECONDS_IN_YEAR) // (
+                _W(self.expiration - self.start) * self.mcr
             )
         ).to_ray()
 
@@ -75,24 +77,19 @@ class Policy:
         return (self.locked_funds[etoken_name] // self.mcr).to_ray()
 
 
-class EToken:
+class EToken(ERC20Token):
+    expiration_period = IntField()
+    current_index = RayField(default=_R(1))
+    last_index_update = IntField(default=now)
 
-    def __init__(self, name, expiration_period, decimals=18):
-        self.name = name
-        self.expiration_period = expiration_period
-        self.current_index = Ray(RAY)
-        self.last_index_update = now()
-        self.balances = {}
-        assert decimals == 18  # Only 18 supported
-        self.decimals = decimals
-        self.mcr = Wad(0)
-        self.mcr_interest_rate = Ray(0)
-        self.token_interest_rate = Ray(0)
+    mcr = WadField(default=_W(0))
+    mcr_interest_rate = RayField(default=_R(0))
+    token_interest_rate = RayField(default=_R(0))
 
-        self.protocol_loan = Wad(0)
-        self.protocol_loan_interest_rate = Ray.from_value("0.05")
-        self.protocol_loan_index = Ray(RAY)
-        self.protocol_loan_last_index_update = None
+    protocol_loan = WadField(default=_W(0))
+    protocol_loan_interest_rate = RayField(default=_R("0.05"))
+    protocol_loan_index = RayField(default=_R(1))
+    protocol_loan_last_index_update = IntField(default=None)
 
     @classmethod
     def build(cls, **kwargs):
@@ -234,15 +231,12 @@ class EToken:
         return (self.protocol_loan.to_ray() * self._get_protocol_loan_index()).to_wad()
 
 
-class Protocol:
-    DECIMALS = 18
-
-    def __init__(self, risk_modules={}, etokens={}):
-        self.risk_modules = risk_modules or {}
-        self.etokens = etokens or {}
-        self.policies = {}
-        self.policy_count = 0
-        self.pure_premiums = Wad(0)
+class Protocol(Contract):
+    risk_modules = DictField(StringField, CompositeField(RiskModuleSettings), default={})
+    etokens = DictField(StringField, ReferenceField(EToken), default={})
+    policies = DictField(IntField, CompositeField(Policy), default={})
+    policy_count = IntField(default=0)
+    pure_premiums = WadField(default=Wad(0))
 
     @classmethod
     def build(cls, **kwargs):
@@ -266,11 +260,12 @@ class Protocol:
     def now(self):
         return now()
 
-    def new_policy(self, risk_module_name, payout, premium, loss_prob, expiration, parameters={}):
+    def new_policy(self, risk_module_name, payout, premium, loss_prob, expiration):
         rm = self.risk_modules[risk_module_name]
         start = now()
         self.policy_count += 1
-        policy = Policy(self.policy_count, rm, payout, premium, loss_prob, start, expiration, parameters)
+        policy = Policy(id=self.policy_count, risk_module=rm, payout=payout, premium=premium,
+                        loss_prob=loss_prob, start=start, expiration=expiration)
         assert policy.interest_rate > 0
 
         self.pure_premiums += policy.pure_premium
