@@ -1,4 +1,4 @@
-# Ensuro - Descentralized insurer
+# Ensuro - Decentralized insurer
 
 Ensuro is a decentralized pool of capital to support insurance products. It will democratize the possibilities and the benefits  of being an insurer for everyone, while allowing innovative companies to nurture and deploy novel, life changing insurance products.
 
