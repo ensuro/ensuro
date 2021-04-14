@@ -50,16 +50,30 @@ def view(method):
     return verify_unchanged
 
 
+class ContractManager:
+    def __init__(self):
+        self._contracts = {}
+
+    def add_contract(self, pk, contract):
+        self._contracts[pk] = contract
+
+    def findByPrimaryKey(self, pk):
+        return self._contracts[pk]
+
+
 class Contract(Model):
     version_format = "pydict"
     max_versions = 10
     contract_id = StringField(pk=True)
+
+    manager = ContractManager()
 
     def __init__(self, contract_id=None, **kwargs):
         if contract_id is None:
             contract_id = f"{self.__class__.__name__}-{id(self)}"
         super().__init__(contract_id=contract_id, **kwargs)
         self._versions = []
+        self.manager.add_contract(self.contract_id, self)
 
     def push_version(self, version_name=None):
         if version_name is None:
@@ -102,7 +116,7 @@ class ERC20Token(Contract):
             initial_supply = kwargs.pop("initial_supply")
         else:
             initial_supply = None
-        super().__init__(self, **kwargs)
+        super().__init__(**kwargs)
         if initial_supply:
             self.mint(self.owner, initial_supply)
 
@@ -149,7 +163,7 @@ class ERC20Token(Contract):
         else:
             self.allowances[(owner, spender)] = amount
 
-    def transferFrom(self, spender, sender, recipient, amount):
+    def transfer_from(self, spender, sender, recipient, amount):
         allowance = self.allowances.get((sender, spender), self.ZERO)
         if allowance < amount:
             raise RevertError("Not enought allowance")

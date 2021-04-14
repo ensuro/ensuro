@@ -12,6 +12,10 @@ risk_modules:
     mcr_percentage: 80
     premium_share: 0
     ensuro_share: 0.5
+currency:
+  name: USD
+  symbol: $
+  initial_supply: 1000000
 etokens:
   - name: USD1WEEK
     expiration_period: 604800

@@ -36,7 +36,7 @@ class Policy(Model):
     loss_prob = RayField()
     start = IntField()
     expiration = IntField()
-    locked_funds = DictField(StringField, WadField, default={})
+    locked_funds = DictField(StringField(), WadField(), default={})
 
     def __init__(self, **kwargs):
         self.risk_module = kwargs.pop("risk_module")
@@ -89,7 +89,7 @@ class EToken(ERC20Token):
     protocol_loan = WadField(default=_W(0))
     protocol_loan_interest_rate = RayField(default=_R("0.05"))
     protocol_loan_index = RayField(default=_R(1))
-    protocol_loan_last_index_update = IntField(default=None)
+    protocol_loan_last_index_update = IntField(default=None, allow_none=True)
 
     @classmethod
     def build(cls, **kwargs):
@@ -117,10 +117,10 @@ class EToken(ERC20Token):
         return self.token_interest_rate, self.mcr_interest_rate
 
     def _base_supply(self):
-        return sum(self.balances.values(), Wad(0))  # in ERC20 we will use base total_supply
+        return super().total_supply()
 
     def total_supply(self):
-        return (self._base_supply().to_ray() * self._calculate_current_index()).to_wad()
+        return (super().total_supply().to_ray() * self._calculate_current_index()).to_wad()
 
     @property
     def ocean(self):
@@ -167,15 +167,15 @@ class EToken(ERC20Token):
     def deposit(self, provider, amount):
         self._update_current_index()
         scaled_amount = (amount.to_ray() // self.current_index).to_wad()
-        self.balances[provider] = self.balances.get(provider, Wad(0)) + scaled_amount
+        self.mint(provider, scaled_amount)
         self._update_token_interest_rate()
         return self.balance_of(provider)
 
     def balance_of(self, provider):
-        if provider not in self.balances:
+        principal_balance = super().balance_of(provider)
+        if not principal_balance:
             return Wad(0)
         current_index = self._calculate_current_index()
-        principal_balance = self.balances[provider]
         return (principal_balance.to_ray() * current_index).to_wad()
 
     def redeem(self, provider, amount):
@@ -185,11 +185,8 @@ class EToken(ERC20Token):
             return Wad(0)
         if amount is None or amount > balance:
             amount = balance
-        if balance == amount:  # full redeem
-            del self.balances[provider]
-        else:
-            scaled_amount = (amount.to_ray() // self.current_index).to_wad()
-            self.balances[provider] -= scaled_amount
+        scaled_amount = (amount.to_ray() // self.current_index).to_wad()
+        self.burn(provider, scaled_amount)
         self._update_token_interest_rate()
         return amount
 
@@ -232,9 +229,10 @@ class EToken(ERC20Token):
 
 
 class Protocol(Contract):
-    risk_modules = DictField(StringField, CompositeField(RiskModuleSettings), default={})
-    etokens = DictField(StringField, ReferenceField(EToken), default={})
-    policies = DictField(IntField, CompositeField(Policy), default={})
+    currency = ReferenceField(ERC20Token, allow_none=False)
+    risk_modules = DictField(StringField(), CompositeField(RiskModuleSettings), default={})
+    etokens = DictField(StringField(), ReferenceField(EToken), default={})
+    policies = DictField(IntField(), CompositeField(Policy), default={})
     policy_count = IntField(default=0)
     pure_premiums = WadField(default=Wad(0))
 
@@ -248,7 +246,9 @@ class Protocol(Contract):
     def add_etoken(self, etoken):
         self.etokens[etoken.name] = etoken
 
+    @external
     def deposit(self, etoken, provider, amount):
+        self.currency.transfer_from(self.contract_id, provider, self.contract_id, amount)
         token = self.etokens[etoken]
         return token.deposit(provider, amount)
 

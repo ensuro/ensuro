@@ -1,7 +1,8 @@
-from decimal import Decimal
 from io import StringIO
 from unittest import TestCase
-from ..wadray import Wad, Ray, _W, _R
+import pytest
+from ..contracts import RevertError
+from ..wadray import _W, _R
 from ..utils import load_config, WEEK, DAY
 
 
@@ -27,6 +28,17 @@ class TestWalkthrough(TestCase):
             mcr_percentage: 80
             premium_share: 0
             ensuro_share: 0.5
+        currency:
+            name: USD
+            symbol: $
+            initial_supply: 6000
+            initial_balances:
+            - user: LP1
+              amount: 1000
+            - user: LP2
+              amount: 2000
+            - user: LP3
+              amount: 2000
         etokens:
           - name: eUSD1WEEK
             expiration_period: 604800
@@ -38,6 +50,12 @@ class TestWalkthrough(TestCase):
 
         protocol = load_config(StringIO(YAML_SETUP))
 
+        with pytest.raises(RevertError, match="Not enought allowance"):
+            protocol.deposit("eUSD1YEAR", "LP1", _W(1000))
+
+        assert protocol.currency.balance_of("LP1") == _W(1000)  # unchanged
+
+        protocol.currency.approve("LP1", protocol.contract_id, _W(1000))
         assert protocol.deposit("eUSD1YEAR", "LP1", _W(1000)) == _W(1000)
 
         eUSD1YEAR = protocol.etokens["eUSD1YEAR"]
@@ -67,6 +85,7 @@ class TestWalkthrough(TestCase):
         p1_one_day_interest = policy.premium_split()[-1] // _W(7)  # 1/7 since the policy lasts 1 WEEK
         assert eUSD1YEAR.balance_of('LP1').equal(_W("1000") + p1_one_day_interest)
 
+        protocol.currency.approve("LP2", protocol.contract_id, _W(2000))
         assert protocol.deposit("eUSD1YEAR", "LP2", _W(2000)).equal(_W(2000))
 
         # After one day both balances increase
@@ -79,6 +98,7 @@ class TestWalkthrough(TestCase):
         )
 
         # New deposits
+        protocol.currency.approve("LP3", protocol.contract_id, _W(3000))
         assert protocol.deposit("eUSD1WEEK", "LP3", _W(500)) == _W(500)
         assert protocol.deposit("eUSD1MONTH", "LP3", _W(1500)) == _W(1500)
 

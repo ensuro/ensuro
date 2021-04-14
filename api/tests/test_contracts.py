@@ -93,19 +93,19 @@ class TestERC20Token(TestCase):
         token.approve("Owner", "Spender", _W(500))
         assert token.allowance("Owner", "Spender") == _W(500)
 
-        token.transferFrom("Spender", "Owner", "Guillo", _W(200))
+        token.transfer_from("Spender", "Owner", "Guillo", _W(200))
         assert token.balance_of("Guillo") == _W(200)
         assert token.balance_of("Owner") == _W(1800)
         assert token.allowance("Owner", "Spender") == _W(300)
 
         with pytest.raises(RevertError):
-            token.transferFrom("Spender", "Owner", "Luca", _W(400))
+            token.transfer_from("Spender", "Owner", "Luca", _W(400))
 
-        token.transferFrom("Spender", "Owner", "Giacomo", _W(300))
+        token.transfer_from("Spender", "Owner", "Giacomo", _W(300))
         assert token.allowance("Owner", "Spender") == _W(0)
 
         with pytest.raises(RevertError):
-            token.transferFrom("Spender", "Owner", "Luca", _W(1))
+            token.transfer_from("Spender", "Owner", "Luca", _W(1))
 
         assert token.balance_of("Guillo") == _W(200)
         assert token.balance_of("Owner") == _W(1500)

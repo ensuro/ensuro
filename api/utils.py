@@ -4,6 +4,7 @@ import random
 import yaml
 from environs import Env
 import numpy as np
+from .wadray import _W
 
 env = Env()
 
@@ -63,13 +64,25 @@ def load_config(yaml_config=None):
 
     module = importlib.import_module(config["module"])
 
-    protocol = module.Protocol.build(**config.get("protocol", {}))
+    currency_params = config.get("currency", {})
+    currency_params["owner"] = currency_params.get("owner", "owner")
+    if "initial_supply" in currency_params:
+        currency_params["initial_supply"] = _W(currency_params["initial_supply"])
+    initial_balances = currency_params.pop("initial_balances", {})
+    currency = module.ERC20Token(**currency_params)
+    for balance in initial_balances:
+        currency.transfer(currency.owner, balance["user"], _W(balance["amount"]))
+
+    protocol_params = config.get("protocol", {})
+    protocol_params["currency"] = currency
+    protocol = module.Protocol.build(**protocol_params)
 
     for risk_module_dict in config.get("risk_modules", []):
         rm = module.RiskModuleSettings.build(**risk_module_dict)
         protocol.add_risk_module(rm)
 
     for etoken_dict in config.get("etokens", []):
+        etoken_dict["owner"] = protocol.contract_id
         etk = module.EToken.build(**etoken_dict)
         protocol.add_etoken(etk)
 

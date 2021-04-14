@@ -193,7 +193,8 @@ class EToken:
 class Protocol:
     DECIMALS = 18
 
-    def __init__(self, risk_modules={}, etokens={}):
+    def __init__(self, currency, risk_modules={}, etokens={}):
+        self.currency = currency
         self.risk_modules = risk_modules or {}
         self.etokens = etokens or {}
         self.policies = {}
