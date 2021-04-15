@@ -1,6 +1,6 @@
 from m9g import Model
 from m9g.fields import StringField, IntField, DictField, CompositeField, ReferenceField
-from .contracts import Contract, ERC20Token, external, view, RayField, WadField
+from .contracts import Contract, ERC20Token, external, view, RayField, WadField, AddressField
 from .wadray import RAY, Ray, Wad, _W, _R
 import time
 
@@ -36,6 +36,7 @@ class Policy(Model):
     loss_prob = RayField()
     start = IntField()
     expiration = IntField()
+    customer = AddressField()
     locked_funds = DictField(StringField(), WadField(), default={})
 
     def __init__(self, **kwargs):
@@ -101,7 +102,11 @@ class EToken(ERC20Token):
 
     def _update_token_interest_rate(self):
         """Should be called each time total_supply changes or mcr changes"""
-        self.token_interest_rate = self.mcr_interest_rate * self.mcr.to_ray() // self.total_supply().to_ray()
+        total_supply = self.total_supply().to_ray()
+        if total_supply:
+            self.token_interest_rate = self.mcr_interest_rate * self.mcr.to_ray() // total_supply
+        else:
+            self.token_interest_rate = Ray(0)
 
     def _calculate_current_index(self):
         seconds = now() - self.last_index_update
@@ -252,6 +257,14 @@ class Protocol(Contract):
         token = self.etokens[etoken]
         return token.deposit(provider, amount)
 
+    @external
+    def redeem(self, etoken, provider, amount):
+        token = self.etokens[etoken]
+        redeemed = token.redeem(provider, amount)
+        if redeemed:
+            self.currency.transfer(self.contract_id, provider, redeemed)
+        return redeemed
+
     def fast_forward_time(self, secs):
         global _now
         _now += secs
@@ -260,12 +273,14 @@ class Protocol(Contract):
     def now(self):
         return now()
 
-    def new_policy(self, risk_module_name, payout, premium, loss_prob, expiration):
+    @external
+    def new_policy(self, risk_module_name, payout, premium, loss_prob, expiration, customer):
         rm = self.risk_modules[risk_module_name]
         start = now()
         self.policy_count += 1
+        self.currency.transfer_from(self.contract_id, customer, self.contract_id, premium)
         policy = Policy(id=self.policy_count, risk_module=rm, payout=payout, premium=premium,
-                        loss_prob=loss_prob, start=start, expiration=expiration)
+                        loss_prob=loss_prob, start=start, expiration=expiration, customer=customer)
         assert policy.interest_rate > 0
 
         self.pure_premiums += policy.pure_premium
@@ -304,6 +319,7 @@ class Protocol(Contract):
             from_premiums = min(self.pure_premiums, policy.payout)
             self.pure_premiums -= from_premiums
             borrow_from_mcr = policy.payout - from_premiums
+            self.currency.transfer(self.contract_id, policy.customer, policy.payout)
         else:
             pure_premium, _, _, for_lps = policy.premium_split()
             pure_premium = min(pure_premium, self.pure_premiums)

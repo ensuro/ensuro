@@ -39,6 +39,12 @@ class TestWalkthrough(TestCase):
               amount: 2000
             - user: LP3
               amount: 2000
+            - user: CUST1
+              amount: 1
+            - user: CUST2
+              amount: 2
+            - user: CUST3
+              amount: 120
         etokens:
           - name: eUSD1WEEK
             expiration_period: 604800
@@ -60,14 +66,25 @@ class TestWalkthrough(TestCase):
 
         eUSD1YEAR = protocol.etokens["eUSD1YEAR"]
         eUSD1MONTH = protocol.etokens["eUSD1MONTH"]
+        USD = protocol.currency
+
         assert eUSD1YEAR.balance_of("LP1") == _W(1000)
+        assert eUSD1YEAR.ocean == _W(1000)
+        assert USD.balance_of("LP1") == _W(0)
 
         protocol.fast_forward_time(WEEK)
 
         assert eUSD1YEAR.balance_of("LP1") == _W(1000)  # Unchanged
 
+        with pytest.raises(RevertError, match="Not enought allowance"):
+            policy = policy_1 = policy = protocol.new_policy(
+                "Roulette", payout=_W(36), premium=_W(1), customer="CUST1",
+                loss_prob=_R(1/37), expiration=protocol.now() + WEEK
+            )
+
+        protocol.currency.approve("CUST1", protocol.contract_id, _W(1))
         policy = policy_1 = policy = protocol.new_policy(
-            "Roulette", payout=_W(36), premium=_W(1),
+            "Roulette", payout=_W(36), premium=_W(1), customer="CUST1",
             loss_prob=_R(1/37), expiration=protocol.now() + WEEK
         )
 
@@ -98,15 +115,16 @@ class TestWalkthrough(TestCase):
         )
 
         # New deposits
-        protocol.currency.approve("LP3", protocol.contract_id, _W(3000))
+        protocol.currency.approve("LP3", protocol.contract_id, _W(2000))
         assert protocol.deposit("eUSD1WEEK", "LP3", _W(500)) == _W(500)
         assert protocol.deposit("eUSD1MONTH", "LP3", _W(1500)) == _W(1500)
 
         balances_1y = dict((lp, eUSD1YEAR.balance_of(lp)) for lp in ("LP1", "LP2", "LP3"))
         shares_1y = self._calculate_shares(balances_1y, eUSD1YEAR.total_supply())
 
+        protocol.currency.approve("CUST2", protocol.contract_id, _W(2))
         policy_2 = policy = protocol.new_policy(
-            "Roulette", payout=_W(72), premium=_W(2),
+            "Roulette", payout=_W(72), premium=_W(2), customer="CUST2",
             loss_prob=_R(1/37), expiration=protocol.now() + 10 * DAY
         )
 
@@ -147,6 +165,10 @@ class TestWalkthrough(TestCase):
 
         borrow_from_mcr = policy_1.payout - protocol.pure_premiums
         protocol.resolve_policy("Roulette", policy_1.id, customer_won=True)
+
+        assert USD.balance_of("CUST1") == _W(36)
+        assert USD.balance_of(protocol.contract_id) == _W(1000 + 2000 + 2000 + 2 - 35)
+
         assert borrow_from_mcr.equal(eUSD1YEAR.protocol_loan)
         daily_protocol_loan_interest = eUSD1YEAR.protocol_loan_interest_rate // _R(365)
 
@@ -175,6 +197,9 @@ class TestWalkthrough(TestCase):
         adjustment = p2_for_lps - p2_accrued_interest
         protocol.resolve_policy("Roulette", policy_2.id, customer_won=False)
 
+        assert USD.balance_of("CUST2") == _W(0)
+        assert USD.balance_of(protocol.contract_id) == _W(1000 + 2000 + 2000 + 2 - 35)  # unchanged
+
         for lp in ("LP1", "LP2", "LP3"):
             balance = eUSD1YEAR.balance_of(lp)
 
@@ -195,17 +220,23 @@ class TestWalkthrough(TestCase):
 
         policies = []
 
+        protocol.currency.approve("CUST3", protocol.contract_id, _W(120))
+
+        won_count = 0
+
         for day in range(60):
             protocol_loan = eUSD1YEAR.get_protocol_loan()
             new_p = protocol.new_policy(
                 "Roulette", payout=_W(72), premium=_W(2),
-                loss_prob=_R(1/37), expiration=protocol.now() + 6 * DAY
+                loss_prob=_R(1/37), expiration=protocol.now() + 6 * DAY,
+                customer="CUST3",
             )
             customer_won = day % 37 == 36
             for p in list(policies):
                 if p.expiration > protocol.now():
                     break
                 if customer_won:
+                    won_count += 1
                     if p.payout < protocol.pure_premiums:
                         change = _W(0)
                     else:
@@ -233,6 +264,7 @@ class TestWalkthrough(TestCase):
             customer_won = day % 37 == 36
             protocol.resolve_policy("Roulette", p.id, customer_won=customer_won)
             if customer_won:
+                won_count += 1
                 repay = _W(0)
             else:
                 repay = min(
@@ -248,3 +280,20 @@ class TestWalkthrough(TestCase):
 
         assert eUSD1YEAR.get_protocol_loan() == _W(0)
         assert protocol.pure_premiums.equal(_W("11.5358414574"))  # from jypiter prints
+
+        assert USD.balance_of(protocol.contract_id) == _W(
+            1000 + 2000 + 2000 + 2 - 35 + 2 * 60 - 72 * won_count
+        )
+
+        assert protocol.redeem("eUSD1YEAR", "LP1", None) == _W("1000.707199500583348273")
+        assert protocol.redeem("eUSD1YEAR", "LP2", None) == _W("2001.406671562280355729")
+        assert protocol.redeem("eUSD1WEEK", "LP3", None) == _W("500.329168071013453019")
+        assert protocol.redeem("eUSD1MONTH", "LP3", None) == _W("1501.005675393190235413")
+        assert USD.balance_of(protocol.contract_id).equal(
+            _W("11.5512854729")  # TODO: understand the difference with 11.535 of pure premiums
+        )
+
+        assert USD.balance_of("LP1") == _W("1000.707199500583348273")
+        assert USD.balance_of("LP2") == _W("2001.406671562280355729")
+        assert USD.balance_of("LP3") == (_W("500.329168071013453019") + _W("1501.005675393190235413"))
+        assert USD.balance_of("CUST3") == _W(72)
