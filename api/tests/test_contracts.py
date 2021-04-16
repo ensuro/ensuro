@@ -2,7 +2,7 @@ from unittest import TestCase
 import pytest
 from m9g.fields import IntField
 from ..wadray import _W
-from ..contracts import Contract, WadField, external, ERC20Token, RevertError
+from ..contracts import Contract, WadField, external, ERC20Token, RevertError, view
 
 
 class MyTestContract(Contract):
@@ -20,6 +20,18 @@ class MyTestContract(Contract):
         self.amount += amount
         if amount <= _W(0):
             raise RevertError("amount cannot be equal or less than zero")
+
+    @view
+    def bad_view(self):
+        self.counter += 1
+
+    @view
+    def bad_view_two(self):
+        self.inc_counter(5)
+
+    @view
+    def good_view(self):
+        return self.amount
 
 
 class TestReversion(TestCase):
@@ -44,6 +56,16 @@ class TestReversion(TestCase):
             tcontract.inc_amount(_W(-5))
 
         assert tcontract.amount == _W(5)
+
+    def test_view_cannot_modify(self):
+        tcontract = MyTestContract()
+        with pytest.raises(AssertionError, match="Contract .* modified in view"):
+            tcontract.bad_view()
+
+    def test_view_cannot_call_external(self):
+        tcontract = MyTestContract()
+        with pytest.raises(RuntimeError):
+            tcontract.bad_view_two()
 
 
 class TestERC20Token(TestCase):

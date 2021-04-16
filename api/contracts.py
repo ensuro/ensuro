@@ -1,5 +1,7 @@
 import time
 from functools import wraps
+from contextlib import contextmanager
+from weakref import WeakValueDictionary
 from m9g import Model
 from m9g.fields import IntField, DictField, StringField, TupleField
 from .wadray import Wad, Ray
@@ -21,16 +23,102 @@ class AddressField(StringField):
     pass
 
 
+_current_transaction = None
+
+
+class RWTransaction:
+    def __init__(self):
+        self.modified_contract_ids = set()
+        self.modified_contracts = []
+        self.track_count = 0
+
+    @contextmanager
+    def track(self, contract):
+        if contract.contract_id not in self.modified_contract_ids:
+            self.modified_contract_ids.add(contract.contract_id)
+            self.modified_contracts.append(contract)
+            contract.push_version()
+        self.track_count += 1
+        try:
+            yield self
+        except RevertError:
+            self.track_count -= 1
+            if self.track_count == 0:
+                self.archive()
+                self._on_revert()
+            raise
+        except Exception:
+            self.track_count -= 1
+            if self.track_count == 0:
+                self.archive()
+        else:
+            self.track_count -= 1
+            if self.track_count == 0:
+                self.archive()
+                self._on_end()
+
+    def _on_revert(self):
+        while self.modified_contracts:
+            contract = self.modified_contracts.pop()
+            self.modified_contract_ids.remove(contract.contract_id)
+            contract.pop_version()
+
+    def _on_end(self):
+        pass
+
+    def archive(self):
+        "Archives the transaction - No longer current transaction"
+        global _current_transaction
+        _current_transaction = None
+        # TODO: keep transaction somewhere to track events for example
+
+
+class ROTransaction:
+    def __init__(self):
+        self.modified_contracts = []
+        self.serialized_contracts = {}
+        self.track_count = 0
+
+    @contextmanager
+    def track(self, contract):
+        if contract.contract_id not in self.serialized_contracts:
+            self.serialized_contracts[contract.contract_id] = contract.serialize("pydict")
+            self.modified_contracts.append(contract)
+        self.track_count += 1
+        try:
+            yield self
+        finally:
+            self.track_count -= 1
+            if self.track_count == 0:
+                self.archive()
+                self._on_end()
+
+    def _on_end(self):
+        while self.modified_contracts:
+            contract = self.modified_contracts.pop()
+            assert contract.serialize("pydict") == self.serialized_contracts[
+                contract.contract_id
+            ], f"Contract {contract.contract_id} modified in view"
+            del self.serialized_contracts[contract.contract_id]
+
+    def archive(self):
+        "Archives the transaction - No longer current transaction"
+        global _current_transaction
+        _current_transaction = None
+        # TODO: keep transaction somewhere to track events for example
+
+
 def external(method):
     @wraps(method)
     def rollback_on_error(self, *args, **kwargs):
-        self.push_version()
-        try:
-            ret = method(self, *args, **kwargs)
-        except Exception:
-            self.pop_version()
-            raise
-        return ret
+        global _current_transaction
+        if _current_transaction is None:
+            _current_transaction = RWTransaction()
+        elif isinstance(_current_transaction, ROTransaction):
+            raise RuntimeError("Calling external from view")
+
+        with _current_transaction.track(self):
+            return method(self, *args, **kwargs)
 
     return rollback_on_error
 
@@ -38,21 +126,19 @@ def external(method):
 def view(method):
     @wraps(method)
     def verify_unchanged(self, *args, **kwargs):
-        before = self.serialize("pydict")
-        try:
-            ret = method(self, *args, **kwargs)
-        finally:
-            after = self.serialize("pydict")
-            if before != after:
-                raise RuntimeError("Object changed in a view")
-        return ret
+        global _current_transaction
+        if _current_transaction is None:
+            _current_transaction = ROTransaction()
+
+        with _current_transaction.track(self):
+            return method(self, *args, **kwargs)
 
     return verify_unchanged
 
 
 class ContractManager:
     def __init__(self):
-        self._contracts = {}
+        self._contracts = WeakValueDictionary()
 
     def add_contract(self, pk, contract):
         self._contracts[pk] = contract

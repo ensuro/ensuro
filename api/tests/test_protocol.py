@@ -44,7 +44,7 @@ class TestWalkthrough(TestCase):
             - user: CUST2
               amount: 2
             - user: CUST3
-              amount: 120
+              amount: 130
         etokens:
           - name: eUSD1WEEK
             expiration_period: 604800
@@ -83,7 +83,7 @@ class TestWalkthrough(TestCase):
             )
 
         protocol.currency.approve("CUST1", protocol.contract_id, _W(1))
-        policy = policy_1 = policy = protocol.new_policy(
+        policy_1 = policy = protocol.new_policy(
             "Roulette", payout=_W(36), premium=_W(1), customer="CUST1",
             loss_prob=_R(1/37), expiration=protocol.now() + WEEK
         )
@@ -218,13 +218,15 @@ class TestWalkthrough(TestCase):
         ).to_wad())  # protocol_loan is the same but with 2 days interest
         assert eUSD1YEAR.total_supply().equal(_W("2966.96639675928"))  # from Jupyter
 
+        assert protocol.redeem("eUSD1YEAR", "LP2", None) == _W("1977.97505218308246292")
+
         policies = []
 
-        protocol.currency.approve("CUST3", protocol.contract_id, _W(120))
+        protocol.currency.approve("CUST3", protocol.contract_id, _W(130))
 
         won_count = 0
 
-        for day in range(60):
+        for day in range(65):
             protocol_loan = eUSD1YEAR.get_protocol_loan()
             new_p = protocol.new_policy(
                 "Roulette", payout=_W(72), premium=_W(2),
@@ -257,10 +259,10 @@ class TestWalkthrough(TestCase):
                 protocol_loan * (_R(1) + daily_protocol_loan_interest).to_wad()
             )
 
-        assert eUSD1YEAR.get_protocol_loan() == _W(0)
+        protocol_loan = eUSD1YEAR.get_protocol_loan()
 
         for i, p in enumerate(policies):
-            day = 60 + i
+            day = 65 + i
             customer_won = day % 37 == 36
             protocol.resolve_policy("Roulette", p.id, customer_won=customer_won)
             if customer_won:
@@ -279,21 +281,20 @@ class TestWalkthrough(TestCase):
             protocol_loan = eUSD1YEAR.get_protocol_loan()
 
         assert eUSD1YEAR.get_protocol_loan() == _W(0)
-        assert protocol.pure_premiums.equal(_W("11.5358414574"))  # from jypiter prints
+        assert protocol.pure_premiums.equal(_W("21.2194318750412539"))  # from jypiter prints
 
-        assert USD.balance_of(protocol.contract_id) == _W(
-            1000 + 2000 + 2000 + 2 - 35 + 2 * 60 - 72 * won_count
-        )
-
-        assert protocol.redeem("eUSD1YEAR", "LP1", None) == _W("1000.707199500583348273")
-        assert protocol.redeem("eUSD1YEAR", "LP2", None) == _W("2001.406671562280355729")
-        assert protocol.redeem("eUSD1WEEK", "LP3", None) == _W("500.329168071013453019")
-        assert protocol.redeem("eUSD1MONTH", "LP3", None) == _W("1501.005675393190235413")
         assert USD.balance_of(protocol.contract_id).equal(
-            _W("11.5512854729")  # TODO: understand the difference with 11.535 of pure premiums
+            _W(1000 + 2000 + 2 - 35 + 2 * 65 - 72 * won_count) +
+            _W(2000) - _W("1977.975052183")
         )
 
-        assert USD.balance_of("LP1") == _W("1000.707199500583348273")
-        assert USD.balance_of("LP2") == _W("2001.406671562280355729")
-        assert USD.balance_of("LP3") == (_W("500.329168071013453019") + _W("1501.005675393190235413"))
+        assert protocol.redeem("eUSD1YEAR", "LP1", None) == _W("1023.422734019840732922")
+        assert protocol.redeem("eUSD1WEEK", "LP3", None) == _W("500.587289337969297047")
+        assert protocol.redeem("eUSD1MONTH", "LP3", None) == _W("1501.780048568622237637")
+        USD.balance_of(protocol.contract_id).assert_equal(
+            _W("21.23487")  # TODO: understand the difference with 21.21943... of pure premiums
+        )
+
+        assert USD.balance_of("LP1") == _W("1023.422734019840732922")
+        assert USD.balance_of("LP3") == (_W("500.587289337969297047") + _W("1501.780048568622237637"))
         assert USD.balance_of("CUST3") == _W(72)

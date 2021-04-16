@@ -36,6 +36,11 @@ class Wad(int):
     def equal(self, other, decimal_digits=4):
         return abs(other - self) < (10**(18-decimal_digits))
 
+    def assert_equal(self, other, decimal_digits=4):
+        diff = abs(other - self)
+        max_diff = (10**(18-decimal_digits))
+        assert diff < max_diff, f"{self} != {other} diff {self - other}"
+
     @classmethod
     def from_value(cls, value):
         if type(value) == str:
