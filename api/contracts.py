@@ -206,12 +206,10 @@ class ERC20Token(Contract):
         if initial_supply:
             self.mint(self.owner, initial_supply)
 
-    @external
     def mint(self, address, amount):
         self.balances[address] = self.balances.get(address, self.ZERO) + amount
         self._total_supply += amount
 
-    @external
     def burn(self, address, amount):
         if amount == self.ZERO:
             return
@@ -227,7 +225,11 @@ class ERC20Token(Contract):
     def balance_of(self, account):
         return self.balances.get(account, self.ZERO)
 
+    @external
     def transfer(self, sender, recipient, amount):
+        return self._transfer(sender, recipient, amount)
+
+    def _transfer(self, sender, recipient, amount):
         if self.balance_of(sender) < amount:
             raise RevertError("Not enought balance")
         elif self.balances[sender] == amount:
@@ -237,9 +239,11 @@ class ERC20Token(Contract):
         self.balances[recipient] = self.balances.get(recipient, self.ZERO) + amount
         return True
 
+    @view
     def allowance(self, owner, spender):
         return self.allowances.get((owner, spender), self.ZERO)
 
+    @external
     def approve(self, owner, spender, amount):
         if amount == self.ZERO:
             try:
@@ -249,11 +253,12 @@ class ERC20Token(Contract):
         else:
             self.allowances[(owner, spender)] = amount
 
+    @external
     def transfer_from(self, spender, sender, recipient, amount):
         allowance = self.allowances.get((sender, spender), self.ZERO)
         if allowance < amount:
             raise RevertError("Not enought allowance")
-        self.transfer(sender, recipient, amount)
+        self._transfer(sender, recipient, amount)
         if amount == allowance:
             del self.allowances[(sender, spender)]
         else:

@@ -183,6 +183,10 @@ class EToken(ERC20Token):
         current_index = self._calculate_current_index()
         return (principal_balance.to_ray() * current_index).to_wad()
 
+    def _transfer(self, sender, recipient, amount):
+        scaled_amount = (amount.to_ray() // self._calculate_current_index()).to_wad()
+        super()._transfer(sender, recipient, scaled_amount)
+
     def redeem(self, provider, amount):
         self._update_current_index()
         balance = self.balance_of(provider)

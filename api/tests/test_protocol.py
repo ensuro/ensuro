@@ -6,7 +6,7 @@ from ..wadray import _W, _R
 from ..utils import load_config, WEEK, DAY
 
 
-class TestWalkthrough(TestCase):
+class TestProtocol(TestCase):
 
     def _calculate_shares(self, balances, total_supply):
         return dict((k, v // total_supply) for (k, v) in balances.items())
@@ -298,3 +298,72 @@ class TestWalkthrough(TestCase):
         assert USD.balance_of("LP1") == _W("1023.422734019840732922")
         assert USD.balance_of("LP3") == (_W("500.587289337969297047") + _W("1501.780048568622237637"))
         assert USD.balance_of("CUST3") == _W(72)
+
+    def test_transfers(self):
+
+        YAML_SETUP = """
+        module: app.prototype
+        risk_modules:
+          - name: Roulette
+            mcr_percentage: 100
+            premium_share: 0
+            ensuro_share: 0
+        currency:
+            name: USD
+            symbol: $
+            initial_supply: 6000
+            initial_balances:
+            - user: LP1
+              amount: 3500
+            - user: CUST1
+              amount: 100
+        etokens:
+          - name: eUSD1WEEK
+            expiration_period: 604800
+          - name: eUSD1MONTH
+            expiration_period: 2592000
+          - name: eUSD1YEAR
+            expiration_period: 31536000
+        """
+
+        protocol = load_config(StringIO(YAML_SETUP))
+
+        protocol.currency.approve("LP1", protocol.contract_id, _W(3500))
+        etoken = protocol.etokens["eUSD1YEAR"]
+
+        assert protocol.deposit("eUSD1YEAR", "LP1", _W(3500)) == _W(3500)
+
+        protocol.currency.approve("CUST1", protocol.contract_id, _W(100))
+        policy = protocol.new_policy(
+            "Roulette", payout=_W(3600), premium=_W(100), customer="CUST1",
+            loss_prob=_R(1/37), expiration=protocol.now() + WEEK
+        )
+
+        assert etoken.ocean == _W(0)
+        protocol.fast_forward_time(3 * DAY)
+
+        pure_premium, _, _, interest = policy.premium_split()
+
+        etoken.balance_of("LP1").assert_equal(
+            _W(3500) + interest * _W(3/7)
+        )
+        lp1_balance = etoken.balance_of("LP1")
+
+        etoken.transfer("LP1", "LP2", lp1_balance // _W(3))
+        etoken.approve("LP1", "spender", lp1_balance // _W(3))
+        etoken.transfer_from("spender", "LP1", "LP3", lp1_balance // _W(3))
+
+        etoken.balance_of("LP1").assert_equal(lp1_balance // _W(3))
+        etoken.balance_of("LP2").assert_equal(lp1_balance // _W(3))
+        etoken.balance_of("LP3").assert_equal(lp1_balance // _W(3))
+
+        protocol.fast_forward_time(4 * DAY)
+
+        etoken.balance_of("LP1").assert_equal(lp1_balance // _W(3) + interest * _W(4/7) // _W(3))
+        etoken.balance_of("LP2").assert_equal(lp1_balance // _W(3) + interest * _W(4/7) // _W(3))
+        etoken.balance_of("LP3").assert_equal(lp1_balance // _W(3) + interest * _W(4/7) // _W(3))
+
+        protocol.resolve_policy("Roulette", policy.id, customer_won=True)
+        etoken.balance_of("LP1").assert_equal(_W(0))
+        etoken.balance_of("LP2").assert_equal(_W(0))
+        etoken.balance_of("LP3").assert_equal(_W(0))
