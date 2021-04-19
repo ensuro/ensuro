@@ -34,6 +34,7 @@ contract EnsuroProtocol {
     uint total_mcr;           // current mcr
     uint mcr_percentage;      // MCR = mcr_percentage * (payout - premium) / MAX_PERCENTAGE
 
+    uint ensuro_share;        // percentage of the premium that is collected by the Ensuro
     uint premium_share;       // percentage of the premium that is collected by the risk_module owner.
                               // This is how risk_module owner makes profit - Only changed by EnsuroProtocol.owner
 

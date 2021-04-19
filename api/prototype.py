@@ -1,6 +1,7 @@
 from m9g import Model
 from m9g.fields import StringField, IntField, DictField, CompositeField, ReferenceField
-from .contracts import Contract, ERC20Token, external, view, RayField, WadField, AddressField
+from .contracts import Contract, ERC20Token, external, view, RayField, WadField, AddressField, \
+    ContractProxyField, ContractProxy
 from .wadray import RAY, Ray, Wad, _W, _R
 import time
 
@@ -238,9 +239,9 @@ class EToken(ERC20Token):
 
 
 class Protocol(Contract):
-    currency = ReferenceField(ERC20Token, allow_none=False)
+    currency = ContractProxyField()
     risk_modules = DictField(StringField(), CompositeField(RiskModuleSettings), default={})
-    etokens = DictField(StringField(), ReferenceField(EToken), default={})
+    etokens = DictField(StringField(), ContractProxyField(), default={})
     policies = DictField(IntField(), CompositeField(Policy), default={})
     policy_count = IntField(default=0)
     pure_premiums = WadField(default=Wad(0))
@@ -253,7 +254,7 @@ class Protocol(Contract):
         self.risk_modules[risk_module.name] = risk_module
 
     def add_etoken(self, etoken):
-        self.etokens[etoken.name] = etoken
+        self.etokens[etoken.name] = ContractProxy(etoken.contract_id)
 
     @external
     def deposit(self, etoken, provider, amount):

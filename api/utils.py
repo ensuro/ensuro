@@ -74,7 +74,7 @@ def load_config(yaml_config=None):
         currency.transfer(currency.owner, balance["user"], _W(balance["amount"]))
 
     protocol_params = config.get("protocol", {})
-    protocol_params["currency"] = currency
+    protocol_params["currency"] = currency.contract_id
     protocol = module.Protocol.build(**protocol_params)
 
     for risk_module_dict in config.get("risk_modules", []):

@@ -1,7 +1,6 @@
 import time
 from functools import wraps
 from contextlib import contextmanager
-from weakref import WeakValueDictionary
 from m9g import Model
 from m9g.fields import IntField, DictField, StringField, TupleField
 from .wadray import Wad, Ray
@@ -21,6 +20,25 @@ class RayField(IntField):
 
 class AddressField(StringField):
     pass
+
+
+class ContractProxy(str):
+    def _get_contract(self):
+        return Contract.manager.findByPrimaryKey(self)
+
+    def __getattr__(self, attr_name):
+        return getattr(self._get_contract(), attr_name)
+
+
+class ContractProxyField(AddressField):
+    FIELD_TYPE = ContractProxy
+
+    def adapt(self, value):
+        if type(value) == str:
+            return ContractProxy(value)
+        elif isinstance(value, ContractProxy):
+            return value
+        raise ValueError("Invalid value")
 
 
 _current_transaction = None
@@ -51,6 +69,7 @@ class RWTransaction:
             self.track_count -= 1
             if self.track_count == 0:
                 self.archive()
+            raise
         else:
             self.track_count -= 1
             if self.track_count == 0:
@@ -138,7 +157,7 @@ def view(method):
 
 class ContractManager:
     def __init__(self):
-        self._contracts = WeakValueDictionary()
+        self._contracts = {}
 
     def add_contract(self, pk, contract):
         self._contracts[pk] = contract
