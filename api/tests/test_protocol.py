@@ -220,7 +220,7 @@ class TestProtocol(TestCase):
         ).to_wad())  # protocol_loan is the same but with 2 days interest
         assert eUSD1YEAR.total_supply().equal(_W("2966.96639675928"))  # from Jupyter
 
-        assert protocol.redeem("eUSD1YEAR", "LP2", None) == _W("1977.97505218308246292")
+        assert protocol.withdraw("eUSD1YEAR", "LP2", None) == _W("1977.97505218308246292")
 
         policies = []
 
@@ -290,9 +290,9 @@ class TestProtocol(TestCase):
             _W(2000) - _W("1977.975052183")
         )
 
-        assert protocol.redeem("eUSD1YEAR", "LP1", None) == _W("1023.422734019840732922")
-        assert protocol.redeem("eUSD1WEEK", "LP3", None) == _W("500.587289337969297047")
-        assert protocol.redeem("eUSD1MONTH", "LP3", None) == _W("1501.780048568622237637")
+        assert protocol.withdraw("eUSD1YEAR", "LP1", None) == _W("1023.422734019840732922")
+        assert protocol.withdraw("eUSD1WEEK", "LP3", None) == _W("500.587289337969297047")
+        assert protocol.withdraw("eUSD1MONTH", "LP3", None) == _W("1501.780048568622237637")
         USD.balance_of(protocol.contract_id).assert_equal(
             _W("21.23487")  # TODO: understand the difference with 21.21943... of pure premiums
         )
@@ -370,7 +370,7 @@ class TestProtocol(TestCase):
         etoken.balance_of("LP2").assert_equal(_W(0))
         etoken.balance_of("LP3").assert_equal(_W(0))
 
-    def test_redeem_queue(self):
+    def test_withdraw_queue(self):
 
         YAML_SETUP = """
         module: app.prototype
@@ -393,7 +393,7 @@ class TestProtocol(TestCase):
         etokens:
           - name: eUSD1YEAR
             expiration_period: 31536000
-            min_queued_redeem: 20
+            min_queued_withdraw: 20
             liquidity_requirement: "1.1"
         """
 
@@ -416,23 +416,23 @@ class TestProtocol(TestCase):
         _, _, _, for_lps = policy.premium_split()
 
         assert etoken.mcr_interest_rate == policy.interest_rate
-        etoken.total_redeemable().assert_equal(
+        etoken.total_withdrawable().assert_equal(
             _W(3000) - (_R(2200) * (_R(1) + policy.interest_rate) * _R("1.1")).to_wad()
         )
-        redeemable = etoken.total_redeemable()
+        withdrawable = etoken.total_withdrawable()
 
-        assert protocol.redeem("eUSD1YEAR", "LP2", None) == redeemable
-        assert protocol.currency.balance_of("LP2") == redeemable
+        assert protocol.withdraw("eUSD1YEAR", "LP2", None) == withdrawable
+        assert protocol.currency.balance_of("LP2") == withdrawable
 
         protocol.fast_forward_time(4 * DAY)
-        to_redeem = etoken.balance_of("LP2")
-        assert etoken.queue_redeem("LP2", None) == to_redeem
+        to_withdraw = etoken.balance_of("LP2")
+        assert etoken.queue_withdraw("LP2", None) == to_withdraw
 
         protocol.fast_forward_time(361 * DAY)
         protocol.resolve_policy("Roulette", policy.id, customer_won=False)
-        assert protocol.currency.balance_of("LP2") == (redeemable + to_redeem)
+        assert protocol.currency.balance_of("LP2") == (withdrawable + to_withdraw)
 
-        protocol.redeem("eUSD1YEAR", "LP2", None).assert_equal(
-            for_lps * _W(361/365) * to_redeem // (to_redeem + _W(2000)),
+        protocol.withdraw("eUSD1YEAR", "LP2", None).assert_equal(
+            for_lps * _W(361/365) * to_withdraw // (to_withdraw + _W(2000)),
             decimals=2
         )

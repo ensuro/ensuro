@@ -81,10 +81,10 @@ class EToken(ERC20Token):
     token_interest_rate = RayField(default=_R(0))
     liquidity_requirement = RayField(default=_R(1))
 
-    min_queued_redeem = WadField(default=_W(0))
-    redeem_queue = ListField(AddressField(), default=[])
-    redeemers = DictField(AddressField(), WadField(), default={})
-    to_redeem_amount = WadField(default=_W(0))
+    min_queued_withdraw = WadField(default=_W(0))
+    withdraw_queue = ListField(AddressField(), default=[])
+    withdrawers = DictField(AddressField(), WadField(), default={})
+    to_withdraw_amount = WadField(default=_W(0))
 
     protocol_loan = WadField(default=_W(0))
     protocol_loan_interest_rate = RayField(default=_R("0.05"))
@@ -125,7 +125,7 @@ class EToken(ERC20Token):
 
     @property
     def ocean(self):
-        return max(self.total_supply() - self.mcr - self.to_redeem_amount, _W(0))
+        return max(self.total_supply() - self.mcr - self.to_withdraw_amount, _W(0))
 
     def lock_mcr(self, policy, mcr_amount):
         total_supply = self.total_supply()
@@ -184,95 +184,95 @@ class EToken(ERC20Token):
         super()._transfer(sender, recipient, scaled_amount)
 
     @view
-    def total_redeemable(self):
-        """Returns the amount that's available to be redeemed"""
+    def total_withdrawable(self):
+        """Returns the amount that's available to be withdrawed"""
         locked = (
             self.mcr.to_ray() * (_R(1) + self.mcr_interest_rate) * self.liquidity_requirement
         ).to_wad()
         return max(_W(0), self.total_supply() - locked)
 
-    def redeem(self, provider, amount):
+    def withdraw(self, provider, amount):
         self._update_current_index()
         balance = self.balance_of(provider)
         if balance == 0:
             return Wad(0)
         if amount is None or amount > balance:
             amount = balance
-        amount = min(amount, self.total_redeemable())
+        amount = min(amount, self.total_withdrawable())
         if amount == 0:
             return Wad(0)
 
-        self._redeem(provider, amount)
+        self._withdraw(provider, amount)
         self._update_token_interest_rate()
 
-        # If provider in redeems and remaining balance < to_redeem, remove from queue
-        if provider in self.redeemers and (balance - amount) < self.redeemers[provider]:
-            self.to_redeem_amount -= self.redeemers[provider]
-            del self.redeemers[provider]
+        # If provider in withdraws and remaining balance < to_withdraw, remove from queue
+        if provider in self.withdrawers and (balance - amount) < self.withdrawers[provider]:
+            self.to_withdraw_amount -= self.withdrawers[provider]
+            del self.withdrawers[provider]
         return amount
 
-    def _redeem(self, provider, amount):
+    def _withdraw(self, provider, amount):
         scaled_amount = (amount.to_ray() // self.current_index).to_wad()
         self.burn(provider, scaled_amount)
 
     @external
-    def queue_redeem(self, provider, amount):
+    def queue_withdraw(self, provider, amount):
         balance = self.balance_of(provider)
         if amount is None or amount > balance:
             amount = balance
 
-        if provider in self.redeemers:
+        if provider in self.withdrawers:
             # clean first
-            self.to_redeem_amount -= self.redeemers[provider]
-            del self.redeemers[provider]
+            self.to_withdraw_amount -= self.withdrawers[provider]
+            del self.withdrawers[provider]
 
-        if amount < self.min_queued_redeem:
+        if amount < self.min_queued_withdraw:
             return _W(0)
 
-        self.redeemers[provider] = amount
-        self.redeem_queue.append(provider)
-        self.to_redeem_amount += amount
+        self.withdrawers[provider] = amount
+        self.withdraw_queue.append(provider)
+        self.to_withdraw_amount += amount
         return amount
 
-    def process_redeemers(self):
+    def process_withdrawers(self):
         self._update_current_index()
-        redeemable = self.total_redeemable()
+        withdrawable = self.total_withdrawable()
         transfer_amounts = []
         total_transfer = Wad(0)
 
-        while self.to_redeem_amount and redeemable >= self.min_queued_redeem:
-            provider = self.redeem_queue.pop(0)
-            provider_amount = self.redeemers.get(provider, Wad(0))
+        while self.to_withdraw_amount and withdrawable >= self.min_queued_withdraw:
+            provider = self.withdraw_queue.pop(0)
+            provider_amount = self.withdrawers.get(provider, Wad(0))
             if not provider_amount:
                 continue
-            if provider_amount < self.min_queued_redeem:
-                # skip provider - amount < min_queued_redeem must do manual redeem
-                del self.redeemers[provider]
-                self.to_redeem_amount -= provider_amount
+            if provider_amount < self.min_queued_withdraw:
+                # skip provider - amount < min_queued_withdraw must do manual withdraw
+                del self.withdrawers[provider]
+                self.to_withdraw_amount -= provider_amount
                 continue
             provider_amount = min(provider_amount, self.balance_of(provider))
-            if provider_amount <= redeemable:
-                full_redeem = True
-            elif (provider_amount - redeemable) < self.min_queued_redeem:
-                full_redeem = True
-                provider_amount = redeemable
+            if provider_amount <= withdrawable:
+                full_withdraw = True
+            elif (provider_amount - withdrawable) < self.min_queued_withdraw:
+                full_withdraw = True
+                provider_amount = withdrawable
             else:
-                full_redeem = False
-            if full_redeem:
-                self._redeem(provider, provider_amount)
+                full_withdraw = False
+            if full_withdraw:
+                self._withdraw(provider, provider_amount)
                 transfer_amounts.append((provider, provider_amount))
                 total_transfer += provider_amount
-                redeemable -= provider_amount
-                del self.redeemers[provider]
-                self.to_redeem_amount -= provider_amount
-            else:  # partial redeem
-                self._redeem(provider, redeemable)
-                transfer_amounts.append((provider, redeemable))
-                total_transfer += redeemable
-                self.redeemers[provider] = provider_amount - redeemable
-                self.redeem_queue.append(provider)  # requeue at the end
-                redeemable = Wad(0)
-                self.to_redeem_amount -= redeemable
+                withdrawable -= provider_amount
+                del self.withdrawers[provider]
+                self.to_withdraw_amount -= provider_amount
+            else:  # partial withdraw
+                self._withdraw(provider, withdrawable)
+                transfer_amounts.append((provider, withdrawable))
+                total_transfer += withdrawable
+                self.withdrawers[provider] = provider_amount - withdrawable
+                self.withdraw_queue.append(provider)  # requeue at the end
+                withdrawable = Wad(0)
+                self.to_withdraw_amount -= withdrawable
 
         return total_transfer, transfer_amounts
 
@@ -335,17 +335,17 @@ class Protocol(Contract):
         return token.deposit(provider, amount)
 
     @external
-    def redeem(self, etoken, provider, amount):
+    def withdraw(self, etoken, provider, amount):
         token = self.etokens[etoken]
-        redeemed = token.redeem(provider, amount)
-        if redeemed:
-            self.currency.transfer(self.contract_id, provider, redeemed)
-        return redeemed
+        withdrawed = token.withdraw(provider, amount)
+        if withdrawed:
+            self.currency.transfer(self.contract_id, provider, withdrawed)
+        return withdrawed
 
     @external
-    def process_redeemers(self, etoken):
+    def process_withdrawers(self, etoken):
         token = self.etokens[etoken]
-        total_transfer, transfer_amounts = token.process_redeemers()
+        total_transfer, transfer_amounts = token.process_withdrawers()
         if total_transfer:
             for provider, amount in transfer_amounts:
                 self.currency.transfer(self.contract_id, provider, amount)
@@ -422,7 +422,7 @@ class Protocol(Contract):
                     repay_amount = min(borrowed_from_etk, pure_premium * mcr_amount // policy.mcr)
                     etk.repay_protocol_loan(repay_amount)
                     self.pure_premiums -= repay_amount
-                self.process_redeemers(etoken_name)
+                self.process_withdrawers(etoken_name)
             elif borrow_from_mcr:
                 etk_borrow = borrow_from_mcr * mcr_amount // policy.mcr
                 etk.lend_to_protocol(etk_borrow)
