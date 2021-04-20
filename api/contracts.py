@@ -1,4 +1,5 @@
 import time
+from decimal import Decimal
 from functools import wraps
 from contextlib import contextmanager
 from m9g import Model
@@ -13,9 +14,23 @@ class RevertError(Exception):
 class WadField(IntField):
     FIELD_TYPE = Wad
 
+    def adapt(self, value):
+        if type(value) in (str, float, Decimal, int):
+            return Wad.from_value(value)
+        elif isinstance(value, Wad):
+            return value
+        raise ValueError("Invalid value")
+
 
 class RayField(IntField):
     FIELD_TYPE = Ray
+
+    def adapt(self, value):
+        if type(value) in (str, float, Decimal, int):
+            return Ray.from_value(value)
+        elif isinstance(value, Ray):
+            return value
+        raise ValueError("Invalid value")
 
 
 class AddressField(StringField):
@@ -164,6 +179,9 @@ class ContractManager:
 
     def findByPrimaryKey(self, pk):
         return self._contracts[pk]
+
+    def clean_all(self):
+        self._contracts = {}
 
 
 class Contract(Model):

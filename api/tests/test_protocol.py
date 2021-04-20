@@ -1,12 +1,14 @@
 from io import StringIO
 from unittest import TestCase
 import pytest
-from ..contracts import RevertError
+from ..contracts import RevertError, Contract
 from ..wadray import _W, _R
 from ..utils import load_config, WEEK, DAY
 
 
 class TestProtocol(TestCase):
+    def tearDown(self):
+        Contract.manager.clean_all()
 
     def _calculate_shares(self, balances, total_supply):
         return dict((k, v // total_supply) for (k, v) in balances.items())
@@ -17,17 +19,17 @@ class TestProtocol(TestCase):
         module: app.prototype
         risk_modules:
           - name: Roulette
-            mcr_percentage: 100
+            mcr_percentage: 1
             premium_share: 0
             ensuro_share: 0
           - name: Flight-Insurance
-            mcr_percentage: 90
-            premium_share: 3
-            ensuro_share: 1.5
+            mcr_percentage: "0.9"
+            premium_share: "0.03"
+            ensuro_share: "0.015"
           - name: Fire-Insurance
-            mcr_percentage: 80
+            mcr_percentage: "0.8"
             premium_share: 0
-            ensuro_share: 0.5
+            ensuro_share: "0.005"
         currency:
             name: USD
             symbol: $
@@ -305,7 +307,7 @@ class TestProtocol(TestCase):
         module: app.prototype
         risk_modules:
           - name: Roulette
-            mcr_percentage: 100
+            mcr_percentage: 1
             premium_share: 0
             ensuro_share: 0
         currency:
@@ -367,3 +369,70 @@ class TestProtocol(TestCase):
         etoken.balance_of("LP1").assert_equal(_W(0))
         etoken.balance_of("LP2").assert_equal(_W(0))
         etoken.balance_of("LP3").assert_equal(_W(0))
+
+    def test_redeem_queue(self):
+
+        YAML_SETUP = """
+        module: app.prototype
+        risk_modules:
+          - name: Roulette
+            mcr_percentage: 1
+            premium_share: 0
+            ensuro_share: 0
+        currency:
+            name: USD
+            symbol: $
+            initial_supply: 6000
+            initial_balances:
+            - user: LP1
+              amount: 2000
+            - user: LP2
+              amount: 1000
+            - user: CUST1
+              amount: 100
+        etokens:
+          - name: eUSD1YEAR
+            expiration_period: 31536000
+            min_queued_redeem: 20
+            liquidity_requirement: "1.1"
+        """
+
+        protocol = load_config(StringIO(YAML_SETUP))
+
+        protocol.currency.approve("LP1", protocol.contract_id, _W(2000))
+        protocol.currency.approve("LP2", protocol.contract_id, _W(1000))
+        etoken = protocol.etokens["eUSD1YEAR"]
+
+        assert protocol.deposit("eUSD1YEAR", "LP1", _W(2000)) == _W(2000)
+        assert protocol.deposit("eUSD1YEAR", "LP2", _W(1000)) == _W(1000)
+
+        protocol.currency.approve("CUST1", protocol.contract_id, _W(100))
+        policy = protocol.new_policy(
+            "Roulette", payout=_W(2300), premium=_W(100), customer="CUST1",
+            loss_prob=_R("0.01"), expiration=protocol.now() + 365 * DAY
+        )
+        assert policy.mcr == _W(2200)
+        assert etoken.ocean == _W(800)
+        _, _, _, for_lps = policy.premium_split()
+
+        assert etoken.mcr_interest_rate == policy.interest_rate
+        etoken.total_redeemable().assert_equal(
+            _W(3000) - (_R(2200) * (_R(1) + policy.interest_rate) * _R("1.1")).to_wad()
+        )
+        redeemable = etoken.total_redeemable()
+
+        assert protocol.redeem("eUSD1YEAR", "LP2", None) == redeemable
+        assert protocol.currency.balance_of("LP2") == redeemable
+
+        protocol.fast_forward_time(4 * DAY)
+        to_redeem = etoken.balance_of("LP2")
+        assert etoken.queue_redeem("LP2", None) == to_redeem
+
+        protocol.fast_forward_time(361 * DAY)
+        protocol.resolve_policy("Roulette", policy.id, customer_won=False)
+        assert protocol.currency.balance_of("LP2") == (redeemable + to_redeem)
+
+        protocol.redeem("eUSD1YEAR", "LP2", None).assert_equal(
+            for_lps * _W(361/365) * to_redeem // (to_redeem + _W(2000)),
+            decimals=2
+        )

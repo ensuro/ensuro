@@ -75,15 +75,15 @@ def load_config(yaml_config=None):
 
     protocol_params = config.get("protocol", {})
     protocol_params["currency"] = currency.contract_id
-    protocol = module.Protocol.build(**protocol_params)
+    protocol = module.Protocol(**protocol_params)
 
     for risk_module_dict in config.get("risk_modules", []):
-        rm = module.RiskModuleSettings.build(**risk_module_dict)
+        rm = module.RiskModuleSettings(**risk_module_dict)
         protocol.add_risk_module(rm)
 
     for etoken_dict in config.get("etokens", []):
         etoken_dict["owner"] = protocol.contract_id
-        etk = module.EToken.build(**etoken_dict)
+        etk = module.EToken(**etoken_dict)
         protocol.add_etoken(etk)
 
     return protocol

@@ -33,12 +33,12 @@ class Wad(int):
     def to_ray(self):
         return Ray(int(self) * 10**9)
 
-    def equal(self, other, decimal_digits=4):
-        return abs(other - self) < (10**(18-decimal_digits))
+    def equal(self, other, decimals=4):
+        return abs(other - self) < (10**(18-decimals))
 
-    def assert_equal(self, other, decimal_digits=4):
+    def assert_equal(self, other, decimals=4):
         diff = abs(other - self)
-        max_diff = (10**(18-decimal_digits))
+        max_diff = (10**(18-decimals))
         assert diff < max_diff, f"{self} != {other} diff {self - other}"
 
     @classmethod
@@ -83,8 +83,8 @@ class Ray(int):
     def to_wad(self):
         return Wad(int(self) // 10**9)
 
-    def equal(self, other, decimal_digits=8):
-        return abs(other - self) < (10**(27-decimal_digits))
+    def equal(self, other, decimals=8):
+        return abs(other - self) < (10**(27-decimals))
 
     @classmethod
     def from_value(cls, value):

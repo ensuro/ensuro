@@ -1,5 +1,5 @@
 from m9g import Model
-from m9g.fields import StringField, IntField, DictField, CompositeField, ReferenceField
+from m9g.fields import StringField, IntField, DictField, CompositeField, ListField
 from .contracts import Contract, ERC20Token, external, view, RayField, WadField, AddressField, \
     ContractProxyField, ContractProxy
 from .wadray import RAY, Ray, Wad, _W, _R
@@ -20,14 +20,6 @@ class RiskModuleSettings(Model):
     mcr_percentage = RayField(default=Ray(0))
     premium_share = RayField(default=Ray(0))
     ensuro_share = RayField(default=Ray(0))
-
-    @classmethod
-    def build(cls, name, mcr_percentage=100, premium_share=0, ensuro_share=0):
-        return cls(
-            name=name, mcr_percentage=Ray.from_value(mcr_percentage) // Ray.from_value(100),
-            premium_share=Ray.from_value(premium_share) // Ray.from_value(100),
-            ensuro_share=Ray.from_value(ensuro_share) // Ray.from_value(100)
-        )
 
 
 class Policy(Model):
@@ -87,15 +79,17 @@ class EToken(ERC20Token):
     mcr = WadField(default=_W(0))
     mcr_interest_rate = RayField(default=_R(0))
     token_interest_rate = RayField(default=_R(0))
+    liquidity_requirement = RayField(default=_R(1))
+
+    min_queued_redeem = WadField(default=_W(0))
+    redeem_queue = ListField(AddressField(), default=[])
+    redeemers = DictField(AddressField(), WadField(), default={})
+    to_redeem_amount = WadField(default=_W(0))
 
     protocol_loan = WadField(default=_W(0))
     protocol_loan_interest_rate = RayField(default=_R("0.05"))
     protocol_loan_index = RayField(default=_R(1))
     protocol_loan_last_index_update = IntField(default=None, allow_none=True)
-
-    @classmethod
-    def build(cls, **kwargs):
-        return cls(**kwargs)
 
     def _update_current_index(self):
         self.current_index = self._calculate_current_index()
@@ -125,12 +119,13 @@ class EToken(ERC20Token):
     def _base_supply(self):
         return super().total_supply()
 
+    @view
     def total_supply(self):
         return (super().total_supply().to_ray() * self._calculate_current_index()).to_wad()
 
     @property
     def ocean(self):
-        return self.total_supply() - self.mcr
+        return max(self.total_supply() - self.mcr - self.to_redeem_amount, _W(0))
 
     def lock_mcr(self, policy, mcr_amount):
         total_supply = self.total_supply()
@@ -188,6 +183,14 @@ class EToken(ERC20Token):
         scaled_amount = (amount.to_ray() // self._calculate_current_index()).to_wad()
         super()._transfer(sender, recipient, scaled_amount)
 
+    @view
+    def total_redeemable(self):
+        """Returns the amount that's available to be redeemed"""
+        locked = (
+            self.mcr.to_ray() * (_R(1) + self.mcr_interest_rate) * self.liquidity_requirement
+        ).to_wad()
+        return max(_W(0), self.total_supply() - locked)
+
     def redeem(self, provider, amount):
         self._update_current_index()
         balance = self.balance_of(provider)
@@ -195,10 +198,83 @@ class EToken(ERC20Token):
             return Wad(0)
         if amount is None or amount > balance:
             amount = balance
+        amount = min(amount, self.total_redeemable())
+        if amount == 0:
+            return Wad(0)
+
+        self._redeem(provider, amount)
+        self._update_token_interest_rate()
+
+        # If provider in redeems and remaining balance < to_redeem, remove from queue
+        if provider in self.redeemers and (balance - amount) < self.redeemers[provider]:
+            self.to_redeem_amount -= self.redeemers[provider]
+            del self.redeemers[provider]
+        return amount
+
+    def _redeem(self, provider, amount):
         scaled_amount = (amount.to_ray() // self.current_index).to_wad()
         self.burn(provider, scaled_amount)
-        self._update_token_interest_rate()
+
+    @external
+    def queue_redeem(self, provider, amount):
+        balance = self.balance_of(provider)
+        if amount is None or amount > balance:
+            amount = balance
+
+        if provider in self.redeemers:
+            # clean first
+            self.to_redeem_amount -= self.redeemers[provider]
+            del self.redeemers[provider]
+
+        if amount < self.min_queued_redeem:
+            return _W(0)
+
+        self.redeemers[provider] = amount
+        self.redeem_queue.append(provider)
+        self.to_redeem_amount += amount
         return amount
+
+    def process_redeemers(self):
+        self._update_current_index()
+        redeemable = self.total_redeemable()
+        transfer_amounts = []
+        total_transfer = Wad(0)
+
+        while self.to_redeem_amount and redeemable >= self.min_queued_redeem:
+            provider = self.redeem_queue.pop(0)
+            provider_amount = self.redeemers.get(provider, Wad(0))
+            if not provider_amount:
+                continue
+            if provider_amount < self.min_queued_redeem:
+                # skip provider - amount < min_queued_redeem must do manual redeem
+                del self.redeemers[provider]
+                self.to_redeem_amount -= provider_amount
+                continue
+            provider_amount = min(provider_amount, self.balance_of(provider))
+            if provider_amount <= redeemable:
+                full_redeem = True
+            elif (provider_amount - redeemable) < self.min_queued_redeem:
+                full_redeem = True
+                provider_amount = redeemable
+            else:
+                full_redeem = False
+            if full_redeem:
+                self._redeem(provider, provider_amount)
+                transfer_amounts.append((provider, provider_amount))
+                total_transfer += provider_amount
+                redeemable -= provider_amount
+                del self.redeemers[provider]
+                self.to_redeem_amount -= provider_amount
+            else:  # partial redeem
+                self._redeem(provider, redeemable)
+                transfer_amounts.append((provider, redeemable))
+                total_transfer += redeemable
+                self.redeemers[provider] = provider_amount - redeemable
+                self.redeem_queue.append(provider)  # requeue at the end
+                redeemable = Wad(0)
+                self.to_redeem_amount -= redeemable
+
+        return total_transfer, transfer_amounts
 
     def accepts(self, policy):
         return policy.expiration <= (now() + self.expiration_period)
@@ -246,10 +322,6 @@ class Protocol(Contract):
     policy_count = IntField(default=0)
     pure_premiums = WadField(default=Wad(0))
 
-    @classmethod
-    def build(cls, **kwargs):
-        return cls(**kwargs)
-
     def add_risk_module(self, risk_module):
         self.risk_modules[risk_module.name] = risk_module
 
@@ -269,6 +341,15 @@ class Protocol(Contract):
         if redeemed:
             self.currency.transfer(self.contract_id, provider, redeemed)
         return redeemed
+
+    @external
+    def process_redeemers(self, etoken):
+        token = self.etokens[etoken]
+        total_transfer, transfer_amounts = token.process_redeemers()
+        if total_transfer:
+            for provider, amount in transfer_amounts:
+                self.currency.transfer(self.contract_id, provider, amount)
+        return total_transfer
 
     def fast_forward_time(self, secs):
         global _now
@@ -341,6 +422,7 @@ class Protocol(Contract):
                     repay_amount = min(borrowed_from_etk, pure_premium * mcr_amount // policy.mcr)
                     etk.repay_protocol_loan(repay_amount)
                     self.pure_premiums -= repay_amount
+                self.process_redeemers(etoken_name)
             elif borrow_from_mcr:
                 etk_borrow = borrow_from_mcr * mcr_amount // policy.mcr
                 etk.lend_to_protocol(etk_borrow)
