@@ -436,3 +436,86 @@ class TestProtocol(TestCase):
             for_lps * _W(361/365) * to_withdraw // (to_withdraw + _W(2000)),
             decimals=2
         )
+
+    def test_rebalance_policy(self):
+        YAML_SETUP = """
+        module: app.prototype
+        risk_modules:
+          - name: Roulette
+            mcr_percentage: 1
+            premium_share: 0
+            ensuro_share: 0
+        currency:
+            name: USD
+            symbol: $
+            initial_supply: 6000
+            initial_balances:
+            - user: LP1
+              amount: 1000
+            - user: LP2
+              amount: 1000
+            - user: LP3
+              amount: 1000
+            - user: CUST1
+              amount: 100
+        etokens:
+          - name: eUSD1WEEK
+            expiration_period: 604800
+          - name: eUSD1MONTH
+            expiration_period: 2592000
+          - name: eUSD1YEAR
+            expiration_period: 31536000
+        """
+
+        protocol = load_config(StringIO(YAML_SETUP))
+
+        protocol.currency.approve("LP1", protocol.contract_id, _W(1000))
+        protocol.currency.approve("LP2", protocol.contract_id, _W(1000))
+        protocol.currency.approve("LP3", protocol.contract_id, _W(1000))
+
+        # each pool has 1000
+        assert protocol.deposit("eUSD1YEAR", "LP1", _W(1000)) == _W(1000)
+        assert protocol.deposit("eUSD1MONTH", "LP2", _W(1000)) == _W(1000)
+        assert protocol.deposit("eUSD1WEEK", "LP3", _W(1000)) == _W(1000)
+
+        protocol.currency.approve("CUST1", protocol.contract_id, _W(100))
+        policy = protocol.new_policy(
+            "Roulette", payout=_W(2100), premium=_W(100), customer="CUST1",
+            loss_prob=_R("0.03"), expiration=protocol.now() + 10 * DAY
+        )
+        assert policy.mcr == _W(2000)
+        for_lps = policy.premium_split()[-1]
+
+        # Only eUSD1YEAR and eUSD1MONTH are affected
+        assert protocol.etokens["eUSD1YEAR"].ocean == _W(0)
+        assert protocol.etokens["eUSD1MONTH"].ocean == _W(0)
+        assert protocol.etokens["eUSD1WEEK"].ocean == _W(1000)
+
+        assert len(policy.locked_funds) == 2
+
+        protocol.fast_forward_time(4 * DAY)
+
+        # After four days, now the policy expires in less than a week, so eUSD1WEEK is eligible
+        protocol.rebalance_policy("Roulette", policy.id)
+
+        # Now funds are locked in the three pools
+        protocol.etokens["eUSD1YEAR"].mcr.assert_equal(_W(2000 / 3) + _W("1.63637"))
+        protocol.etokens["eUSD1MONTH"].mcr.assert_equal(_W(2000 / 3) + _W("1.63637"))
+        protocol.etokens["eUSD1WEEK"].mcr.assert_equal(_W(2000 / 3) - _W("1.63637") * _W(2))
+        mcr_week_share = protocol.etokens["eUSD1WEEK"].mcr // policy.mcr
+        mcr_others_share = (_W(1) - mcr_week_share) // _W(2)
+
+        mcr_week_share.assert_equal(_W(1/3), decimals=2)  # not exactly 1/3 because accrued interest
+        mcr_others_share.assert_equal(_W(1/3), decimals=2)
+
+        protocol.fast_forward_time(6 * DAY)
+
+        protocol.etokens["eUSD1YEAR"].total_supply().assert_equal(
+            _W(1000) + for_lps * _W("0.4") * _W("0.5") + for_lps * _W("0.6") * mcr_others_share,
+        )
+        protocol.etokens["eUSD1MONTH"].total_supply().assert_equal(
+            _W(1000) + for_lps * _W("0.4") * _W("0.5") + for_lps * _W("0.6") * mcr_others_share,
+        )
+        protocol.etokens["eUSD1WEEK"].total_supply().assert_equal(
+            _W(1000) + for_lps * _W("0.6") * mcr_week_share,
+        )

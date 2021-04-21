@@ -371,6 +371,12 @@ class Protocol(Contract):
 
         self.pure_premiums += policy.pure_premium
 
+        self._lock_mcr(policy)
+
+        self.policies[policy.id] = policy
+        return policy
+
+    def _lock_mcr(self, policy):
         ocean = Wad(0)
         ocean_per_token = {}
         for etk in self.etokens.values():
@@ -395,9 +401,7 @@ class Protocol(Contract):
             policy.locked_funds[token_name] = mcr_for_token
             mcr_not_locked -= mcr_for_token
 
-        self.policies[policy.id] = policy
-        return policy
-
+    @external
     def resolve_policy(self, risk_module_name, policy_id, customer_won):
         policy = self.policies[policy_id]
 
@@ -428,3 +432,21 @@ class Protocol(Contract):
                 etk.lend_to_protocol(etk_borrow)
 
         del self.policies[policy_id]
+
+    @external
+    def rebalance_policy(self, risk_module_name, policy_id):
+        policy = self.policies[policy_id]
+
+        modified_etokens = set()
+
+        # unlock previous MCR
+        for (etoken_name, mcr_amount) in policy.locked_funds.items():
+            etk = self.etokens[etoken_name]
+            etk.unlock_mcr(policy, mcr_amount)
+            modified_etokens.add(etoken_name)
+
+        policy.locked_funds = {}
+        self._lock_mcr(policy)
+
+        for etoken_name in modified_etokens:
+            self.process_withdrawers(etoken_name)
