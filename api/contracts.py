@@ -53,6 +53,8 @@ class ContractProxyField(AddressField):
             return ContractProxy(value)
         elif isinstance(value, ContractProxy):
             return value
+        elif isinstance(value, Contract):
+            return value.contract_id
         raise ValueError("Invalid value")
 
 

@@ -1,7 +1,7 @@
 from m9g import Model
 from m9g.fields import StringField, IntField, DictField, CompositeField, ListField
 from .contracts import Contract, ERC20Token, external, view, RayField, WadField, AddressField, \
-    ContractProxyField, ContractProxy
+    ContractProxyField, ContractProxy, RevertError
 from .wadray import RAY, Ray, Wad, _W, _R
 import time
 
@@ -15,17 +15,45 @@ def now():
     return _now
 
 
-class RiskModuleSettings(Model):
+class RiskModule(Contract):
     name = StringField()
     mcr_percentage = RayField(default=Ray(0))
     premium_share = RayField(default=Ray(0))
     ensuro_share = RayField(default=Ray(0))
+    max_mcr_per_policy = WadField(default=_W(1000000))
+    mcr_limit = WadField(default=_W(10000000))
+    total_mcr = WadField(default=_W(0))
+
+    wallet = AddressField(default="RM")
+    shared_coverage_percentage = RayField(default=Ray(0))
+    shared_coverage_min_percentage = RayField(default=Ray(0))
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        if self.shared_coverage_percentage < self.shared_coverage_min_percentage:
+            self.shared_coverage_percentage = self.shared_coverage_min_percentage
+
+    @external
+    def add_policy(self, policy):
+        if policy.mcr > self.max_mcr_per_policy:
+            raise RevertError(f"Policy MCR: {policy.mcr} > max for this module {self.max_mcr_per_policy}")
+        total_mcr = self.total_mcr + policy.mcr
+        if total_mcr > self.mcr_limit:
+            raise RevertError(f"MCR exceeds the allowed for this module")
+        self.total_mcr = total_mcr
+
+    @external
+    def remove_policy(self, policy):
+        self.total_mcr -= policy.mcr
 
 
 class Policy(Model):
     id = IntField()
+    risk_module = ContractProxyField()
     payout = WadField()
     premium = WadField()
+    mcr = WadField(default=Wad(0))
+    rm_coverage = WadField(default=Wad(0))
     loss_prob = RayField()
     start = IntField()
     expiration = IntField()
@@ -33,20 +61,35 @@ class Policy(Model):
     locked_funds = DictField(StringField(), WadField(), default={})
 
     def __init__(self, **kwargs):
-        self.risk_module = kwargs.pop("risk_module")
         super().__init__(**kwargs)
-        self.mcr = ((self.payout - self.premium).to_ray() * self.risk_module.mcr_percentage).to_wad()
+        self.rm_coverage = self.risk_module.shared_coverage_percentage.to_wad() * self.payout
+        ens_premium, rm_premium = self._coverage_premium_split()
+        self.mcr = (self.payout - ens_premium - self.rm_coverage) * self.risk_module.mcr_percentage.to_wad()
+
+    def _coverage_premium_split(self):
+        ens_premium = self.premium * (self.payout - self.rm_coverage) // self.payout
+        rm_premium = self.premium - ens_premium
+        return ens_premium, rm_premium
 
     @property
     def pure_premium(self):
-        return (self.payout.to_ray() * self.loss_prob).to_wad()
+        payout = self.payout - self.rm_coverage
+        return (payout.to_ray() * self.loss_prob).to_wad()
+
+    @property
+    def rm_mcr(self):
+        ens_premium, rm_premium = self._coverage_premium_split()
+        return self.rm_coverage - rm_premium
 
     def premium_split(self):
+        ens_premium, rm_premium = self._coverage_premium_split()
+
         pure_premium = self.pure_premium
-        profit_premium = self.premium - pure_premium
+        profit_premium = ens_premium - pure_premium
         for_ensuro = (profit_premium.to_ray() * self.risk_module.ensuro_share).to_wad()
         for_risk_module = (profit_premium.to_ray() * self.risk_module.premium_share).to_wad()
         for_lps = profit_premium - for_ensuro - for_risk_module
+        for_risk_module += rm_premium  # after calculating for_lps...
         return pure_premium, for_ensuro, for_risk_module, for_lps
 
     @property
@@ -316,14 +359,17 @@ class EToken(ERC20Token):
 
 class Protocol(Contract):
     currency = ContractProxyField()
-    risk_modules = DictField(StringField(), CompositeField(RiskModuleSettings), default={})
+    risk_modules = DictField(StringField(), ContractProxyField(), default={})
     etokens = DictField(StringField(), ContractProxyField(), default={})
     policies = DictField(IntField(), CompositeField(Policy), default={})
     policy_count = IntField(default=0)
+    active_policy_premiums = WadField(default=Wad(0))
+    rm_mcr = WadField(default=Wad(0))
     pure_premiums = WadField(default=Wad(0))
+    treasury = AddressField(default="ENS")
 
     def add_risk_module(self, risk_module):
-        self.risk_modules[risk_module.name] = risk_module
+        self.risk_modules[risk_module.name] = ContractProxy(risk_module.contract_id)
 
     def add_etoken(self, etoken):
         self.etokens[etoken.name] = ContractProxy(etoken.contract_id)
@@ -339,7 +385,7 @@ class Protocol(Contract):
         token = self.etokens[etoken]
         withdrawed = token.withdraw(provider, amount)
         if withdrawed:
-            self.currency.transfer(self.contract_id, provider, withdrawed)
+            self._transfer_to(provider, withdrawed)
         return withdrawed
 
     @external
@@ -348,7 +394,7 @@ class Protocol(Contract):
         total_transfer, transfer_amounts = token.process_withdrawers()
         if total_transfer:
             for provider, amount in transfer_amounts:
-                self.currency.transfer(self.contract_id, provider, amount)
+                self._transfer_to(provider, amount)
         return total_transfer
 
     def fast_forward_time(self, secs):
@@ -367,9 +413,16 @@ class Protocol(Contract):
         self.currency.transfer_from(self.contract_id, customer, self.contract_id, premium)
         policy = Policy(id=self.policy_count, risk_module=rm, payout=payout, premium=premium,
                         loss_prob=loss_prob, start=start, expiration=expiration, customer=customer)
-        assert policy.interest_rate > 0
+
+        rm.add_policy(policy)
+        if policy.rm_mcr:
+            self.currency.transfer_from(self.contract_id, rm.wallet, self.contract_id, policy.rm_mcr)
+            self.rm_mcr += policy.rm_mcr
+
+        assert policy.interest_rate >= 0
 
         self.pure_premiums += policy.pure_premium
+        self.active_policy_premiums += policy.premium
 
         self._lock_mcr(policy)
 
@@ -401,6 +454,12 @@ class Protocol(Contract):
             policy.locked_funds[token_name] = mcr_for_token
             mcr_not_locked -= mcr_for_token
 
+    def _transfer_to(self, target, amount):
+        # TODO: here we need to verify we have balance or call the asset manager
+        if amount == _W(0):
+            return
+        return self.currency.transfer(self.contract_id, target, amount)
+
     @external
     def resolve_policy(self, risk_module_name, policy_id, customer_won):
         policy = self.policies[policy_id]
@@ -409,11 +468,13 @@ class Protocol(Contract):
             from_premiums = min(self.pure_premiums, policy.payout)
             self.pure_premiums -= from_premiums
             borrow_from_mcr = policy.payout - from_premiums
-            self.currency.transfer(self.contract_id, policy.customer, policy.payout)
+            self._transfer_to(policy.customer, policy.payout)
         else:
-            pure_premium, _, _, for_lps = policy.premium_split()
+            pure_premium, for_ensuro, for_rm, for_lps = policy.premium_split()
             pure_premium = min(pure_premium, self.pure_premiums)
             adjustment = for_lps - policy.accrued_interest()
+            self._transfer_to(policy.risk_module.wallet, for_rm + policy.rm_mcr)
+            self._transfer_to(self.treasury, for_ensuro)
 
         for (etoken_name, mcr_amount) in policy.locked_funds.items():
             etk = self.etokens[etoken_name]
@@ -431,6 +492,8 @@ class Protocol(Contract):
                 etk_borrow = borrow_from_mcr * mcr_amount // policy.mcr
                 etk.lend_to_protocol(etk_borrow)
 
+        self.active_policy_premiums -= policy.premium
+        policy.risk_module.remove_policy(policy)
         del self.policies[policy_id]
 
     @external

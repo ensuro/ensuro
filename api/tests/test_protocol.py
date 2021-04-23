@@ -519,3 +519,75 @@ class TestProtocol(TestCase):
         protocol.etokens["eUSD1WEEK"].total_supply().assert_equal(
             _W(1000) + for_lps * _W("0.6") * mcr_week_share,
         )
+
+    def test_risk_module_shared_coverage(self):
+        YAML_SETUP = """
+        module: app.prototype
+        risk_modules:
+          - name: Roulette
+            mcr_percentage: 1
+            premium_share: 0.015
+            ensuro_share: 0.01
+            max_mcr_per_policy: 1000
+            mcr_limit: 1200
+            shared_coverage_min_percentage: .25
+        currency:
+            name: USD
+            symbol: $
+            initial_supply: 20000
+            initial_balances:
+            - user: LP1
+              amount: 10000
+            - user: RM
+              amount: 5000
+            - user: CUST1
+              amount: 200
+        etokens:
+          - name: eUSD1YEAR
+            expiration_period: 31536000
+        """
+
+        protocol = load_config(StringIO(YAML_SETUP))
+        USD = protocol.currency
+
+        USD.approve("LP1", protocol.contract_id, _W(10000))
+        assert protocol.deposit("eUSD1YEAR", "LP1", _W(10000)) == _W(10000)
+
+        USD.approve("CUST1", protocol.contract_id, _W(200))
+
+        # Should fail if more than max for policy
+        with pytest.raises(RevertError, match="max for this module"):
+            policy = protocol.new_policy(
+                "Roulette", payout=_W(2100), premium=_W(100), customer="CUST1",
+                loss_prob=_R("0.02"), expiration=protocol.now() + 10 * DAY
+            )
+
+        USD.approve("RM", protocol.contract_id, _W(1000))
+        policy = protocol.new_policy(
+            "Roulette", payout=_W(1100), premium=_W(100), customer="CUST1",
+            loss_prob=_R("0.02"), expiration=protocol.now() + 10 * DAY
+        )
+        policy.rm_coverage.assert_equal(_W(1100) * _W("0.25"))
+        USD.balance_of("RM").assert_equal(_W(4750))  # 250 locked in the protocol
+
+        policy.mcr.assert_equal(_W(750))
+        pure_premium, for_ensuro, for_rm, for_lps = policy.premium_split()
+
+        pure_premium.assert_equal(_W(1100) * _W("0.75") * _W("0.02"))
+        rm_shared_premium = _W(100) * _W("0.25")
+        profit_premium = _W(100) - rm_shared_premium - pure_premium
+        for_ensuro.assert_equal(profit_premium * _W("0.01"))
+        for_rm.assert_equal(profit_premium * _W("0.015") + rm_shared_premium)
+        assert (pure_premium + for_ensuro + for_rm + for_lps) == policy.premium
+
+        # Another policy with the same parameters fails because of MCR limit
+        with pytest.raises(RevertError, match="MCR exceeds the allowed for this module"):
+            policy = protocol.new_policy(
+                "Roulette", payout=_W(1100), premium=_W(100), customer="CUST1",
+                loss_prob=_R("0.02"), expiration=protocol.now() + 10 * DAY
+            )
+
+        protocol.resolve_policy("Roulette", policy.id, False)
+
+        USD.balance_of("RM").assert_equal(_W(5000) + for_rm)  # received back the MCR + part of premium
+        USD.balance_of("ENS").assert_equal(for_ensuro)

@@ -78,7 +78,7 @@ def load_config(yaml_config=None):
     protocol = module.Protocol(**protocol_params)
 
     for risk_module_dict in config.get("risk_modules", []):
-        rm = module.RiskModuleSettings(**risk_module_dict)
+        rm = module.RiskModule(**risk_module_dict)
         protocol.add_risk_module(rm)
 
     for etoken_dict in config.get("etokens", []):
