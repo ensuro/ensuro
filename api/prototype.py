@@ -494,6 +494,7 @@ class Protocol(Contract):
 
         self.active_policy_premiums -= policy.premium
         policy.risk_module.remove_policy(policy)
+        self.rm_mcr -= policy.rm_mcr
         del self.policies[policy_id]
 
     @external
