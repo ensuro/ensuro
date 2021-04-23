@@ -27,6 +27,7 @@ class RiskModule(Contract):
     wallet = AddressField(default="RM")
     shared_coverage_percentage = RayField(default=Ray(0))
     shared_coverage_min_percentage = RayField(default=Ray(0))
+    shared_coverage_mcr = WadField(default=_W(0))
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -41,10 +42,12 @@ class RiskModule(Contract):
         if total_mcr > self.mcr_limit:
             raise RevertError(f"MCR exceeds the allowed for this module")
         self.total_mcr = total_mcr
+        self.shared_coverage_mcr += policy.rm_mcr
 
     @external
     def remove_policy(self, policy):
         self.total_mcr -= policy.mcr
+        self.shared_coverage_mcr -= policy.rm_mcr
 
 
 class Policy(Model):
@@ -363,10 +366,15 @@ class Protocol(Contract):
     etokens = DictField(StringField(), ContractProxyField(), default={})
     policies = DictField(IntField(), CompositeField(Policy), default={})
     policy_count = IntField(default=0)
-    active_policy_premiums = WadField(default=Wad(0))
-    rm_mcr = WadField(default=Wad(0))
-    pure_premiums = WadField(default=Wad(0))
+    active_premiums = WadField(default=Wad(0))
+    active_pure_premiums = WadField(default=Wad(0))
+    borrowed_active_pp = WadField(default=Wad(0))
+    won_pure_premiums = WadField(default=Wad(0))
     treasury = AddressField(default="ENS")
+
+    @property
+    def pure_premiums(self):
+        return self.active_pure_premiums + self.won_pure_premiums - self.borrowed_active_pp
 
     def add_risk_module(self, risk_module):
         self.risk_modules[risk_module.name] = ContractProxy(risk_module.contract_id)
@@ -417,12 +425,11 @@ class Protocol(Contract):
         rm.add_policy(policy)
         if policy.rm_mcr:
             self.currency.transfer_from(self.contract_id, rm.wallet, self.contract_id, policy.rm_mcr)
-            self.rm_mcr += policy.rm_mcr
 
         assert policy.interest_rate >= 0
 
-        self.pure_premiums += policy.pure_premium
-        self.active_policy_premiums += policy.premium
+        self.active_pure_premiums += policy.pure_premium
+        self.active_premiums += policy.premium
 
         self._lock_mcr(policy)
 
@@ -460,41 +467,84 @@ class Protocol(Contract):
             return
         return self.currency.transfer(self.contract_id, target, amount)
 
+    def _pay_from_protocol(self, policy):
+        to_pay = policy.payout
+        to_pay -= policy.rm_mcr
+        pure_premium, for_ensuro, for_rm, _ = policy.premium_split()
+        to_pay -= for_ensuro + for_rm + pure_premium
+        # 1. take from won_pure_premiums
+        if to_pay <= self.won_pure_premiums:
+            self.won_pure_premiums -= to_pay
+            return Wad(0)
+        elif self.won_pure_premiums > 0:
+            to_pay -= self.won_pure_premiums
+            self.won_pure_premiums = Wad(0)
+        # 2. borrow from active pure premiums
+        if to_pay <= (self.active_pure_premiums - self.borrowed_active_pp):
+            self.borrowed_active_pp += to_pay
+            return Wad(0)
+        elif (self.active_pure_premiums - self.borrowed_active_pp) > 0:
+            # Borrow some
+            to_pay -= self.active_pure_premiums - self.borrowed_active_pp
+            self.borrowed_active_pp = self.active_pure_premiums
+        return to_pay
+
+    def _store_pure_premium_won(self, pure_premium_won):
+        if not pure_premium_won:
+            return
+        if self.borrowed_active_pp >= pure_premium_won:
+            self.borrowed_active_pp -= pure_premium_won
+            return
+        elif self.borrowed_active_pp > 0:
+            pure_premium_won -= self.borrowed_active_pp
+            self.borrowed_active_pp = Wad(0)
+        self.won_pure_premiums += pure_premium_won
+
     @external
     def resolve_policy(self, risk_module_name, policy_id, customer_won):
         policy = self.policies[policy_id]
 
+        self.active_premiums -= policy.premium
+        self.active_pure_premiums -= policy.pure_premium
+
+        pure_premium, for_ensuro, for_rm, for_lps = policy.premium_split()
+        adjustment = for_lps - policy.accrued_interest()
+
         if customer_won:
-            from_premiums = min(self.pure_premiums, policy.payout)
-            self.pure_premiums -= from_premiums
-            borrow_from_mcr = policy.payout - from_premiums
+            borrow_from_mcr = self._pay_from_protocol(policy)
             self._transfer_to(policy.customer, policy.payout)
+            pure_premium_won = Wad(0)
         else:
-            pure_premium, for_ensuro, for_rm, for_lps = policy.premium_split()
-            pure_premium = min(pure_premium, self.pure_premiums)
-            adjustment = for_lps - policy.accrued_interest()
+            # Pay Ensuro and RM
             self._transfer_to(policy.risk_module.wallet, for_rm + policy.rm_mcr)
             self._transfer_to(self.treasury, for_ensuro)
+            pure_premium_won = pure_premium
+            # Cover first borrowed_active_pp
+            if self.borrowed_active_pp > self.active_pure_premiums:
+                to_cover = min(self.borrowed_active_pp - self.active_pure_premiums, pure_premium_won)
+                self.borrowed_active_pp -= to_cover
+                pure_premium_won -= to_cover
 
         for (etoken_name, mcr_amount) in policy.locked_funds.items():
             etk = self.etokens[etoken_name]
             etk.unlock_mcr(policy, mcr_amount)
+            # etk_adjustment always done because policy may last more or less than initially calculated
+            etk_adjustment = adjustment * mcr_amount // policy.mcr
+            etk.discrete_earning(etk_adjustment)
             if not customer_won:
-                etk_adjustment = adjustment * mcr_amount // policy.mcr
-                etk.discrete_earning(etk_adjustment)
                 borrowed_from_etk = etk.get_protocol_loan()
-                if borrowed_from_etk and pure_premium:  # if debt with token, repay from pure_premium
+                if borrowed_from_etk and pure_premium_won:  # if debt with token, repay from pure_premium
                     repay_amount = min(borrowed_from_etk, pure_premium * mcr_amount // policy.mcr)
                     etk.repay_protocol_loan(repay_amount)
-                    self.pure_premiums -= repay_amount
+                    pure_premium_won -= repay_amount
                 self.process_withdrawers(etoken_name)
             elif borrow_from_mcr:
                 etk_borrow = borrow_from_mcr * mcr_amount // policy.mcr
                 etk.lend_to_protocol(etk_borrow)
 
-        self.active_policy_premiums -= policy.premium
+        self._store_pure_premium_won(pure_premium_won)
+
         policy.risk_module.remove_policy(policy)
-        self.rm_mcr -= policy.rm_mcr
         del self.policies[policy_id]
 
     @external

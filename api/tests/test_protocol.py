@@ -166,6 +166,7 @@ class TestProtocol(TestCase):
         assert accrued_interest.equal(policy_1.accrued_interest())
 
         borrow_from_mcr = policy_1.payout - protocol.pure_premiums
+        adjustment = policy_1.premium_split()[-1] - accrued_interest
         protocol.resolve_policy("Roulette", policy_1.id, customer_won=True)
 
         assert USD.balance_of("CUST1") == _W(36)
@@ -176,8 +177,8 @@ class TestProtocol(TestCase):
 
         for lp in ("LP1", "LP2", "LP3"):
             balance = eUSD1YEAR.balance_of(lp)
-            assert balance.equal(
-                balances_1y[lp] - borrow_from_mcr * shares_1y[lp]
+            balance.assert_equal(
+                balances_1y[lp] + (adjustment - borrow_from_mcr) * shares_1y[lp]
             )
             balances_1y[lp] = balance
         shares_1y = self._calculate_shares(balances_1y, eUSD1YEAR.total_supply())
@@ -205,7 +206,7 @@ class TestProtocol(TestCase):
         for lp in ("LP1", "LP2", "LP3"):
             balance = eUSD1YEAR.balance_of(lp)
 
-            assert (balance - balances_1y[lp]).equal(
+            (balance - balances_1y[lp]).assert_equal(
                 adjustment * (eUSD1YEAR_ocean // total_ocean) * shares_1y[lp]
             )
             balances_1y[lp] = balance
@@ -218,9 +219,9 @@ class TestProtocol(TestCase):
         assert eUSD1YEAR.get_protocol_loan().equal((
             borrow_from_mcr.to_ray() * (_R(1) + daily_protocol_loan_interest * _R(2))
         ).to_wad())  # protocol_loan is the same but with 2 days interest
-        assert eUSD1YEAR.total_supply().equal(_W("2966.96639675928"))  # from Jupyter
+        eUSD1YEAR.total_supply().assert_equal(_W("2966.9818"))  # from Jupyter
 
-        assert protocol.withdraw("eUSD1YEAR", "LP2", None) == _W("1977.97505218308246292")
+        protocol.withdraw("eUSD1YEAR", "LP2", None).assert_equal(_W("1977.98534"))
 
         policies = []
 
@@ -283,22 +284,22 @@ class TestProtocol(TestCase):
             protocol_loan = eUSD1YEAR.get_protocol_loan()
 
         assert eUSD1YEAR.get_protocol_loan() == _W(0)
-        assert protocol.pure_premiums.equal(_W("21.2194318750412539"))  # from jypiter prints
+        assert protocol.pure_premiums.equal(_W("21.21943222506249692"))  # from jypiter prints
 
         assert USD.balance_of(protocol.contract_id).equal(
             _W(1000 + 2000 + 2 - 35 + 2 * 65 - 72 * won_count) +
-            _W(2000) - _W("1977.975052183")
+            _W(2000) - _W("1977.98534")
         )
 
-        assert protocol.withdraw("eUSD1YEAR", "LP1", None) == _W("1023.422734019840732922")
-        assert protocol.withdraw("eUSD1WEEK", "LP3", None) == _W("500.587289337969297047")
-        assert protocol.withdraw("eUSD1MONTH", "LP3", None) == _W("1501.780048568622237637")
+        assert protocol.withdraw("eUSD1YEAR", "LP1", None) == _W("1023.42788568762743449")
+        assert protocol.withdraw("eUSD1WEEK", "LP3", None) == _W("500.587288338126130735")
+        assert protocol.withdraw("eUSD1MONTH", "LP3", None) == _W("1501.780045569056425935")
         USD.balance_of(protocol.contract_id).assert_equal(
-            _W("21.23487")  # TODO: understand the difference with 21.21943... of pure premiums
+            _W("21.219432")
         )
 
-        assert USD.balance_of("LP1") == _W("1023.422734019840732922")
-        assert USD.balance_of("LP3") == (_W("500.587289337969297047") + _W("1501.780048568622237637"))
+        assert USD.balance_of("LP1") == _W("1023.42788568762743449")
+        assert USD.balance_of("LP3") == (_W("500.587288338126130735") + _W("1501.780045569056425935"))
         assert USD.balance_of("CUST3") == _W(72)
 
     def test_transfers(self):

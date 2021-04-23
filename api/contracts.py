@@ -1,3 +1,4 @@
+import os
 import time
 from decimal import Decimal
 from functools import wraps
@@ -145,6 +146,9 @@ class ROTransaction:
 
 
 def external(method):
+    if os.environ.get("DISABLE_EXTERNAL", None) == "T":
+        return method
+
     @wraps(method)
     def rollback_on_error(self, *args, **kwargs):
         global _current_transaction
@@ -160,6 +164,9 @@ def external(method):
 
 
 def view(method):
+    if os.environ.get("DISABLE_EXTERNAL", None) == "T":
+        return method
+
     @wraps(method)
     def verify_unchanged(self, *args, **kwargs):
         global _current_transaction
