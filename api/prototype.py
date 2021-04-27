@@ -211,6 +211,10 @@ class EToken(ERC20Token):
         self.current_index = new_total_supply.to_ray() // self._base_supply().to_ray()
         self._update_token_interest_rate()
 
+    def asset_earnings(self, amount):
+        self._update_current_index()
+        self.discrete_earning(amount)
+
     def deposit(self, provider, amount):
         self._update_current_index()
         scaled_amount = (amount.to_ray() // self.current_index).to_wad()
@@ -255,6 +259,7 @@ class EToken(ERC20Token):
         if provider in self.withdrawers and (balance - amount) < self.withdrawers[provider]:
             self.to_withdraw_amount -= self.withdrawers[provider]
             del self.withdrawers[provider]
+
         return amount
 
     def _withdraw(self, provider, amount):
@@ -359,6 +364,9 @@ class EToken(ERC20Token):
             return self.protocol_loan
         return (self.protocol_loan.to_ray() * self._get_protocol_loan_index()).to_wad()
 
+    def get_investable(self):
+        return self.mcr + self.ocean + self.get_protocol_loan()
+
 
 class Protocol(Contract):
     currency = ContractProxyField()
@@ -371,6 +379,7 @@ class Protocol(Contract):
     borrowed_active_pp = WadField(default=Wad(0))
     won_pure_premiums = WadField(default=Wad(0))
     treasury = AddressField(default="ENS")
+    asset_manager = ContractProxyField(default=None, allow_none=True)
 
     @property
     def pure_premiums(self):
@@ -381,6 +390,10 @@ class Protocol(Contract):
 
     def add_etoken(self, etoken):
         self.etokens[etoken.name] = ContractProxy(etoken.contract_id)
+
+    def set_asset_manager(self, asset_manager):
+        # TODO: if current asset_manager, first deinvest all
+        self.asset_manager = ContractProxy(asset_manager.contract_id)
 
     @external
     def deposit(self, etoken, provider, amount):
@@ -462,9 +475,11 @@ class Protocol(Contract):
             mcr_not_locked -= mcr_for_token
 
     def _transfer_to(self, target, amount):
-        # TODO: here we need to verify we have balance or call the asset manager
         if amount == _W(0):
             return
+        balance = self.currency.balance_of(self.contract_id)
+        if balance < amount:
+            self.asset_manager.refill_wallet(amount)
         return self.currency.transfer(self.contract_id, target, amount)
 
     def _pay_from_protocol(self, policy):
@@ -564,3 +579,139 @@ class Protocol(Contract):
 
         for etoken_name in modified_etokens:
             self.process_withdrawers(etoken_name)
+
+    def get_investable(self):
+        borrowed_from_etk = sum((etk.get_protocol_loan() for etk in self.etokens.values()), Wad(0))
+        return max(
+            self.active_premiums + self.won_pure_premiums - self.borrowed_active_pp - borrowed_from_etk,
+            Wad(0)
+        )
+
+    def asset_earnings(self, amount):
+        if amount > 0:
+            # earnings - first repay borrowed_active_pp then increase won_pure_premiums
+            if self.borrowed_active_pp >= amount:
+                self.borrowed_active_pp -= amount
+                return
+            elif self.borrowed_active_pp > 0:
+                amount -= self.borrowed_active_pp
+                self.borrowed_active_pp = Wad(0)
+            self.won_pure_premiums += amount
+        elif amount < 0:
+            # losses - first consume won_pure_premiums then borrowed_active_pp
+            amount = -amount
+            if self.won_pure_premiums >= amount:
+                self.won_pure_premiums -= amount
+                return
+            elif self.won_pure_premiums > 0:
+                amount -= self.won_pure_premiums
+                self.won_pure_premiums = Wad(0)
+            self.borrowed_active_pp += amount
+            # borrowed_active_pp should be < active_pure_premiums
+            # TODO: validation and handling, but shouldn't happen
+
+
+class AssetManager(Contract):
+    protocol = ContractProxyField()
+
+    cash_balance = WadField(default=Wad(0))
+    liquidity_min = WadField()
+    liquidity_middle = WadField()
+    liquidity_max = WadField()
+    # Any time balance_of(Protocol) < liquidity_min we refill up to liquidity_middle
+    # Any time balance_of(Protocol) > liquidity_max take liquidity up liquidity_middle
+    last_investment_value = WadField(default=Wad(0))
+
+    def total_investable(self):
+        "Estimation of all total assets available reinvest"
+        protocol_investable = self.protocol.get_investable()
+        token_investable = sum((etk.get_investable() for etk in self.protocol.etokens.values()), Wad(0))
+
+        return protocol_investable + token_investable
+
+    def distribute_earnings(self):
+        investment_value = self.get_investment_value()
+        total_investable = self.total_investable()
+        earnings = investment_value - self.last_investment_value
+        protocol_share = self.protocol.get_investable() // total_investable
+        self.protocol.asset_earnings(earnings * protocol_share)
+
+        for etk in self.protocol.etokens.values():
+            etk_share = etk.get_investable() // total_investable
+            etk.asset_earnings(earnings * etk_share)
+
+        self.last_investment_value = investment_value
+
+    def get_investment_value(self):
+        raise NotImplementedError()
+
+    def rebalance(self):
+        protocol_cash = self.protocol.currency.balance_of(self.protocol.contract_id)
+
+        if protocol_cash > self.liquidity_max:
+            self._invest(protocol_cash - self.liquidity_middle)
+        elif protocol_cash < self.liquidity_min:
+            self._deinvest(self.liquidity_middle - protocol_cash)
+        # else:
+            # protocol_cash between [self.liquidity_min, self.liquidity_max]
+            # No need to transfer
+
+    def checkpoint(self):
+        self.distribute_earnings()
+        self.rebalance()
+
+    def refill_wallet(self, payment_amount):
+        protocol_cash = self.protocol.currency.balance_of(self.protocol.contract_id)
+        investment_value = self.get_investment_value()
+        # try to leave the protocol balance at liquidity_middle after the payment
+        deinvest = payment_amount + self.liquidity_middle - protocol_cash
+        if deinvest > investment_value:
+            deinvest = investment_value
+
+        self._deinvest(deinvest)
+
+    def _invest(self, amount):
+        self.cash_balance += amount
+        self.last_investment_value += amount
+        # Must be reimplemented and do the actual cash movement
+
+    def _deinvest(self, amount):
+        self.cash_balance -= amount
+        self.last_investment_value -= amount
+        # Must be reimplemented and do the actual cash movement
+
+
+class FixedRateAssetManager(AssetManager):
+    """Test asset manager that accrues interest at fixed rate"""
+
+    interest_rate = RayField(default=_R("0.05"))
+    last_mint_burn = IntField(default=now)
+
+    def get_investment_value(self):
+        balance = self.protocol.currency.balance_of(self.contract_id)
+        secs = now() - self.last_mint_burn
+        if secs <= 0:
+            return balance
+        interest_rate = self.interest_rate * _R(secs) // _R(SECONDS_IN_YEAR)
+        return (balance.to_ray() * (_R(1) + interest_rate)).to_wad()
+
+    def _mint_burn(self):
+        if self.last_mint_burn == now():
+            return
+        balance = self.protocol.currency.balance_of(self.contract_id)
+        current_value = self.get_investment_value()
+        if current_value > balance:
+            self.protocol.currency.mint(self.contract_id, current_value - balance)
+        elif current_value < balance:
+            self.protocol.currency.burn(self.contract_id, balance - current_value)
+        self.last_mint_burn = now()
+
+    def _invest(self, amount):
+        self._mint_burn()
+        super()._invest(amount)
+        self.protocol.currency.transfer(self.protocol.contract_id, self.contract_id, amount)
+
+    def _deinvest(self, amount):
+        self._mint_burn()
+        super()._deinvest(amount)
+        self.protocol.currency.transfer(self.contract_id, self.protocol.contract_id, amount)

@@ -52,10 +52,12 @@ class ContractProxyField(AddressField):
     def adapt(self, value):
         if type(value) == str:
             return ContractProxy(value)
+        elif value is None:
+            return None
         elif isinstance(value, ContractProxy):
             return value
         elif isinstance(value, Contract):
-            return value.contract_id
+            return ContractProxy(value.contract_id)
         raise ValueError("Invalid value")
 
 

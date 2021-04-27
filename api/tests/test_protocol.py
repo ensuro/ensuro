@@ -592,3 +592,83 @@ class TestProtocol(TestCase):
 
         USD.balance_of("RM").assert_equal(_W(5000) + for_rm)  # received back the MCR + part of premium
         USD.balance_of("ENS").assert_equal(for_ensuro)
+
+    def test_asset_manager(self):
+        YAML_SETUP = """
+        module: app.prototype
+        risk_modules:
+          - name: Roulette
+            mcr_percentage: 1
+        currency:
+            name: USD
+            symbol: $
+            initial_supply: 20000
+            initial_balances:
+            - user: LP1
+              amount: 10000
+            - user: CUST1
+              amount: 200
+        etokens:
+          - name: eUSD1YEAR
+            expiration_period: 31536000
+        asset_manager:
+            class: FixedRateAssetManager
+            liquidity_min: 1000
+            liquidity_middle: 1500
+            liquidity_max: 2000
+        """
+
+        protocol = load_config(StringIO(YAML_SETUP))
+        USD = protocol.currency
+        etk = protocol.etokens["eUSD1YEAR"]
+        asset_manager = protocol.asset_manager
+
+        USD.approve("LP1", protocol.contract_id, _W(10000))
+        assert protocol.deposit("eUSD1YEAR", "LP1", _W(10000)) == _W(10000)
+        asset_manager.checkpoint()  # Rebalance cash
+        assert USD.balance_of(protocol.contract_id) == _W(1500)
+        assert USD.balance_of(asset_manager.contract_id) == _W(8500)
+
+        protocol.fast_forward_time(365 * DAY)
+        assert etk.balance_of("LP1") == _W(10000)
+        asset_manager.checkpoint()
+        assert USD.balance_of(protocol.contract_id) == _W(1500)  # unchanged
+        etk.balance_of("LP1").assert_equal(_W(10000) + _W(8500) * _W("0.05"))  # All earnings for the LP
+        lp1_balance = etk.balance_of("LP1")
+
+        USD.approve("CUST1", protocol.contract_id, _W(200))
+        policy = protocol.new_policy(
+            "Roulette", payout=_W(9200), premium=_W(200), customer="CUST1",
+            loss_prob=_R("0.01"), expiration=protocol.now() + 365 * DAY // 2
+        )
+        pure_premium, _, _, for_lps = policy.premium_split()
+
+        asset_manager.checkpoint()
+        assert USD.balance_of(protocol.contract_id) == _W(1700)  # +200 but not sent to asset_manager
+        etk.balance_of("LP1").assert_equal(lp1_balance)
+        protocol.get_investable().assert_equal(_W(200))
+        etk.get_investable().assert_equal(lp1_balance)
+
+        protocol.fast_forward_time(365 * DAY // 2)
+        protocol.get_investable().assert_equal(_W(200))
+        etk.get_investable().assert_equal(lp1_balance + for_lps)
+
+        protocol_share = _W(200) // asset_manager.total_investable()
+        etk_share = etk.get_investable() // asset_manager.total_investable()
+        asset_manager.checkpoint()
+
+        protocol.won_pure_premiums.assert_equal(_W(8500) * _W("0.025") * protocol_share)
+        etk.balance_of("LP1").assert_equal(lp1_balance + for_lps + _W(8500) * _W("0.025") * etk_share)
+
+        protocol.resolve_policy("Roulette", policy.id, customer_won=True)
+        assert USD.balance_of(protocol.contract_id) == _W(1500)  # balance back to middle
+        USD.balance_of(asset_manager.contract_id).assert_equal(
+            _W(8500) +                # initial investment
+            _W(8500) * _W("0.075") -  # earned interest
+            _W(9200 - 1700 + 1500)    # 9200 (payout) - 1700 (wallet) + 1500 (liquidity_middle)
+        )
+
+        assert protocol.get_investable() == _W(0)
+        assert etk.get_investable() == (
+            etk.ocean + etk.get_protocol_loan()  # not really the money available but used for etk_share
+        )

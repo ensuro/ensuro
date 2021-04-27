@@ -86,6 +86,13 @@ def load_config(yaml_config=None):
         etk = module.EToken(**etoken_dict)
         protocol.add_etoken(etk)
 
+    asset_manager = config.get("asset_manager", {})
+    if asset_manager:
+        asset_manager_class = asset_manager.pop("class")
+        asset_manager["protocol"] = protocol
+        asset_manager = getattr(module, asset_manager_class)(**asset_manager)
+        protocol.set_asset_manager(asset_manager)
+
     return protocol
 
 
