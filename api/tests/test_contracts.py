@@ -2,7 +2,7 @@ from unittest import TestCase
 import pytest
 from m9g.fields import IntField
 from ..wadray import _W
-from ..contracts import Contract, WadField, external, ERC20Token, RevertError, view
+from ..contracts import Contract, WadField, external, ERC20Token, RevertError, view, ERC721Token
 
 
 class MyTestContract(Contract):
@@ -133,3 +133,74 @@ class TestERC20Token(TestCase):
         assert token.balance_of("Owner") == _W(1500)
         assert token.balance_of("Giacomo") == _W(300)
         assert token.balance_of("Luca") == _W(0)
+
+
+class TestERC721Token(TestCase):
+
+    def test_mint_burn(self):
+        nft = ERC721Token(owner="Owner", name="TEST", symbol="TEST")
+
+        nft.mint("CUST1", 1234)
+        assert nft.balance_of("CUST1") == 1
+        nft.mint("CUST1", 1235)
+        assert nft.balance_of("CUST1") == 2
+        assert nft.owner_of(1234) == "CUST1"
+        assert nft.owner_of(1235) == "CUST1"
+        nft.burn("CUST1", 1235)
+        assert nft.balance_of("CUST1") == 1
+        assert nft.owner_of(1235) is None
+        nft.burn("CUST1", 1234)
+        assert nft.balance_of("CUST1") == 0
+
+    def test_transfer(self):
+        nft = ERC721Token(owner="Owner", name="TEST", symbol="TEST")
+
+        nft.mint("CUST1", 1234)
+        assert nft.balance_of("CUST1") == 1
+        assert nft.owner_of(1234) == "CUST1"
+        nft.transfer_from("CUST1", "CUST1", "CUST2", 1234)
+        assert nft.balance_of("CUST1") == 0
+        assert nft.balance_of("CUST2") == 1
+        assert nft.owner_of(1234) == "CUST2"
+
+    def test_approve_transfer(self):
+        nft = ERC721Token(owner="Owner", name="TEST", symbol="TEST")
+
+        nft.mint("CUST1", 1234)
+        assert nft.balance_of("CUST1") == 1
+        assert nft.owner_of(1234) == "CUST1"
+        nft.approve("CUST1", "SPEND", 1234)
+        assert nft.get_approved(1234) == "SPEND"
+
+        nft.transfer_from("SPEND", "CUST1", "CUST2", 1234)
+        assert nft.balance_of("CUST1") == 0
+        assert nft.balance_of("CUST2") == 1
+        assert nft.owner_of(1234) == "CUST2"
+
+    def test_approve_for_all(self):
+        nft = ERC721Token(owner="Owner", name="TEST", symbol="TEST")
+
+        nft.mint("CUST1", 1234)
+        nft.mint("CUST1", 1235)
+        nft.mint("CUST1", 1236)
+        assert nft.balance_of("CUST1") == 3
+        assert not nft.is_approved_for_all("CUST1", "SPEND")
+        nft.set_approval_for_all("CUST1", "SPEND", True)
+        assert nft.is_approved_for_all("CUST1", "SPEND")
+
+        nft.transfer_from("SPEND", "CUST1", "CUST2", 1234)
+        assert nft.balance_of("CUST1") == 2
+        assert nft.balance_of("CUST2") == 1
+
+        with pytest.raises(RevertError):
+            nft.transfer_from("SPEND", "CUST2", "CUST3", 1236)
+        nft.transfer_from("SPEND", "CUST1", "CUST2", 1236)
+        assert nft.owner_of(1234) == "CUST2"
+        assert nft.owner_of(1236) == "CUST2"
+        assert nft.owner_of(1235) == "CUST1"
+        assert nft.balance_of("CUST1") == 1
+        assert nft.balance_of("CUST2") == 2
+        nft.set_approval_for_all("CUST1", "SPEND", False)
+
+        with pytest.raises(RevertError, match="ERC721: transfer caller is not owner nor approved"):
+            nft.transfer_from("SPEND", "CUST1", "CUST2", 1235)

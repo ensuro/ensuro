@@ -73,8 +73,15 @@ def load_config(yaml_config=None):
     for balance in initial_balances:
         currency.transfer(currency.owner, balance["user"], _W(balance["amount"]))
 
+    nft_params = config.get("nft", {})
+    nft_params.setdefault("owner", "owner")
+    nft_params.setdefault("name", "Ensuro Policy")
+    nft_params.setdefault("symbol", "EPOLI")
+    nft = module.ERC721Token(**nft_params)
+
     protocol_params = config.get("protocol", {})
     protocol_params["currency"] = currency.contract_id
+    protocol_params["policies_nft"] = nft.contract_id
     protocol = module.Protocol(**protocol_params)
 
     for risk_module_dict in config.get("risk_modules", []):

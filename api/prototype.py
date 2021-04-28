@@ -2,6 +2,7 @@ from m9g import Model
 from m9g.fields import StringField, IntField, DictField, CompositeField, ListField
 from .contracts import Contract, ERC20Token, external, view, RayField, WadField, AddressField, \
     ContractProxyField, ContractProxy, RevertError
+from .contracts import ERC721Token  # noqa
 from .wadray import RAY, Ray, Wad, _W, _R
 import time
 
@@ -60,7 +61,6 @@ class Policy(Model):
     loss_prob = RayField()
     start = IntField()
     expiration = IntField()
-    customer = AddressField()
     locked_funds = DictField(StringField(), WadField(), default={})
 
     def __init__(self, **kwargs):
@@ -380,6 +380,7 @@ class Protocol(Contract):
     won_pure_premiums = WadField(default=Wad(0))
     treasury = AddressField(default="ENS")
     asset_manager = ContractProxyField(default=None, allow_none=True)
+    policies_nft = ContractProxyField()
 
     @property
     def pure_premiums(self):
@@ -433,7 +434,8 @@ class Protocol(Contract):
         self.policy_count += 1
         self.currency.transfer_from(self.contract_id, customer, self.contract_id, premium)
         policy = Policy(id=self.policy_count, risk_module=rm, payout=payout, premium=premium,
-                        loss_prob=loss_prob, start=start, expiration=expiration, customer=customer)
+                        loss_prob=loss_prob, start=start, expiration=expiration)
+        self.policies_nft.mint(customer, policy.id)
 
         rm.add_policy(policy)
         if policy.rm_mcr:
@@ -527,7 +529,8 @@ class Protocol(Contract):
 
         if customer_won:
             borrow_from_mcr = self._pay_from_protocol(policy)
-            self._transfer_to(policy.customer, policy.payout)
+            policy_owner = self.policies_nft.owner_of(policy.id)
+            self._transfer_to(policy_owner, policy.payout)
             pure_premium_won = Wad(0)
         else:
             # Pay Ensuro and RM

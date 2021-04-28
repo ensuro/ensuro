@@ -672,3 +672,57 @@ class TestProtocol(TestCase):
         assert etk.get_investable() == (
             etk.ocean + etk.get_protocol_loan()  # not really the money available but used for etk_share
         )
+
+    def test_nfts(self):
+
+        YAML_SETUP = """
+        module: app.prototype
+        risk_modules:
+          - name: Roulette
+            mcr_percentage: 1
+            premium_share: 0
+            ensuro_share: 0
+        nft:
+            name: Ensuro Policy NFT
+            symbol: EPOL
+        currency:
+            name: USD
+            symbol: $
+            initial_supply: 6000
+            initial_balances:
+            - user: LP1
+              amount: 3500
+            - user: CUST1
+              amount: 100
+        etokens:
+          - name: eUSD1WEEK
+            expiration_period: 604800
+          - name: eUSD1MONTH
+            expiration_period: 2592000
+          - name: eUSD1YEAR
+            expiration_period: 31536000
+        """
+
+        protocol = load_config(StringIO(YAML_SETUP))
+        usd = protocol.currency
+
+        usd.approve("LP1", protocol.contract_id, _W(3500))
+        nft = protocol.policies_nft
+
+        assert protocol.deposit("eUSD1YEAR", "LP1", _W(3500)) == _W(3500)
+
+        usd.approve("CUST1", protocol.contract_id, _W(100))
+        policy = protocol.new_policy(
+            "Roulette", payout=_W(3600), premium=_W(100), customer="CUST1",
+            loss_prob=_R(1/37), expiration=protocol.now() + WEEK
+        )
+
+        assert nft.balance_of("CUST1") == 1
+        assert nft.owner_of(policy.id) == "CUST1"
+
+        nft.transfer_from("CUST1", "CUST1", "CUST2", policy.id)
+
+        protocol.fast_forward_time(WEEK)
+        protocol.resolve_policy("Roulette", policy.id, customer_won=True)
+        assert usd.balance_of("CUST1") == _W(0)
+        assert usd.balance_of("CUST2") == _W(3600)

@@ -4,7 +4,7 @@ from decimal import Decimal
 from functools import wraps
 from contextlib import contextmanager
 from m9g import Model
-from m9g.fields import IntField, DictField, StringField, TupleField
+from m9g.fields import IntField, DictField, StringField, TupleField, ListField
 from .wadray import Wad, Ray
 
 
@@ -315,3 +315,89 @@ class ERC20Token(Contract):
 
     def total_supply(self):
         return self._total_supply
+
+
+class ERC721Token(Contract):   # NFT
+    ZERO = Wad(0)
+
+    owner = AddressField()
+    name = StringField()
+    symbol = StringField(default="")
+    owners = DictField(IntField(), AddressField(), default={})
+    balances = DictField(AddressField(), IntField(), default={})
+    token_approvals = DictField(IntField(), AddressField(), default={})
+    # operator_approvals[A] = [OP1, OP2]
+    operator_approvals = DictField(AddressField(), ListField(AddressField()), default={})
+
+    _token_count = IntField(default=0)
+
+    @external
+    def mint(self, to, token_id):
+        if token_id is None:
+            self._token_count += 1
+            token_id = self._token_count
+        if token_id in self.owners:
+            raise RevertError("Already exists")
+        self.balances[to] = self.balances.get(to, 0) + 1
+        self.owners[token_id] = to
+
+    @external
+    def burn(self, owner, token_id):
+        if self.owners.get(token_id, None) != owner:
+            raise RevertError("Not the owner")
+        del self.owners[token_id]
+        self.balances[owner] -= 1
+        if token_id in self.token_approvals:
+            del self.token_approvals[token_id]
+
+    @view
+    def balance_of(self, address):
+        return self.balances.get(address, 0)
+
+    @view
+    def owner_of(self, token_id):
+        return self.owners.get(token_id, None)
+
+    # def token_uri
+
+    @external
+    def approve(self, sender, spender, token_id):
+        assert token_id in self.owners
+        assert self.owners[token_id] == sender or sender in self.operator_approvals[self.owners[token_id]]
+        self.token_approvals[token_id] = spender
+
+    @view
+    def get_approved(self, token_id):
+        return self.token_approvals.get(token_id, None)
+
+    @external
+    def set_approval_for_all(self, sender, operator, approved):
+        if approved:
+            self.operator_approvals[sender] = self.operator_approvals.get(sender, []) + [operator]
+        elif sender in self.operator_approvals and operator in self.operator_approvals[sender]:
+            approvals = self.operator_approvals[sender]
+            approvals.remove(operator)
+            if not approvals:
+                del self.operator_approvals[sender]
+            else:
+                self.operator_approvals[sender] = approvals
+
+    def is_approved_for_all(self, owner, operator):
+        return owner in self.operator_approvals and operator in self.operator_approvals[owner]
+
+    @external
+    def transfer_from(self, sender, from_, to, token_id):
+        owner = self.owners[token_id]
+        if sender != owner and self.token_approvals.get(token_id, None) != sender and \
+                sender not in self.operator_approvals.get(owner, []):
+            raise RevertError("ERC721: transfer caller is not owner nor approved")
+        return self._transfer(from_, to, token_id)
+
+    def _transfer(self, from_, to, token_id):
+        if self.owners[token_id] != from_:
+            raise RevertError("ERC721: transfer of token that is not own:")
+        if token_id in self.token_approvals:
+            del self.token_approvals[token_id]
+        self.balances[from_] -= 1
+        self.balances[to] = self.balances.get(to, 0) + 1
+        self.owners[token_id] = to
