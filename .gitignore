@@ -10,3 +10,9 @@ __pycache__/
 *.pyc
 api/.env
 .ipynb_checkpoints/
+
+__pycache__
+.history
+.hypothesis/
+build/
+reports/

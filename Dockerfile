@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir Flask \
                                gunicorn[gevent] \
                                m9g \
                                pyyaml \
+                               eth-brownie \
                                environs
 
 # Installs some utils for debugging
@@ -21,12 +22,16 @@ ENV DEV_ENV $DEV_ENV
 
 ENV SETUP_FILE "/home/jovyan/app/setup.yaml"
 
-ADD gunicorn.py server.py prototype.py cli.py wadray.py utils.py setup.yaml /home/jovyan/app/
+RUN brownie networks add Development dev cmd=ganache-cli host=http://ganache-cli:8545
+RUN brownie pm install OpenZeppelin/openzeppelin-contracts@4.0.0
+
+# ADD gunicorn.py server.py prototype.py cli.py wadray.py utils.py setup.yaml /home/jovyan/app/
+# ADD prototype /home/jovyan/ensuro/prototype/
 
 ENV PYTHONPATH /home/jovyan
 # ADD tests/ /usr/local/app/tests
 
-# WORKDIR /usr/local
+WORKDIR /home/jovyan/app
 
 EXPOSE 8000
 

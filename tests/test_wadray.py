@@ -1,7 +1,7 @@
 from unittest import TestCase
 import pytest
 from decimal import Decimal
-from ..wadray import _W, _R
+from prototype.wadray import _W, _R
 
 
 class TestWad(TestCase):

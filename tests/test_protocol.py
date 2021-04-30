@@ -1,9 +1,9 @@
 from io import StringIO
 from unittest import TestCase
 import pytest
-from ..contracts import RevertError, Contract
-from ..wadray import _W, _R
-from ..utils import load_config, WEEK, DAY
+from prototype.contracts import RevertError, Contract
+from prototype.wadray import _W, _R
+from prototype.utils import load_config, WEEK, DAY
 
 
 class TestProtocol(TestCase):
@@ -16,7 +16,7 @@ class TestProtocol(TestCase):
     def test_walkthrough(self):
 
         YAML_SETUP = """
-        module: app.prototype
+        module: prototype.ensuro
         risk_modules:
           - name: Roulette
             mcr_percentage: 1
@@ -305,7 +305,7 @@ class TestProtocol(TestCase):
     def test_transfers(self):
 
         YAML_SETUP = """
-        module: app.prototype
+        module: prototype.ensuro
         risk_modules:
           - name: Roulette
             mcr_percentage: 1
@@ -374,7 +374,7 @@ class TestProtocol(TestCase):
     def test_withdraw_queue(self):
 
         YAML_SETUP = """
-        module: app.prototype
+        module: prototype.ensuro
         risk_modules:
           - name: Roulette
             mcr_percentage: 1
@@ -440,7 +440,7 @@ class TestProtocol(TestCase):
 
     def test_rebalance_policy(self):
         YAML_SETUP = """
-        module: app.prototype
+        module: prototype.ensuro
         risk_modules:
           - name: Roulette
             mcr_percentage: 1
@@ -523,7 +523,7 @@ class TestProtocol(TestCase):
 
     def test_risk_module_shared_coverage(self):
         YAML_SETUP = """
-        module: app.prototype
+        module: prototype.ensuro
         risk_modules:
           - name: Roulette
             mcr_percentage: 1
@@ -595,7 +595,7 @@ class TestProtocol(TestCase):
 
     def test_asset_manager(self):
         YAML_SETUP = """
-        module: app.prototype
+        module: prototype.ensuro
         risk_modules:
           - name: Roulette
             mcr_percentage: 1
@@ -676,7 +676,7 @@ class TestProtocol(TestCase):
     def test_nfts(self):
 
         YAML_SETUP = """
-        module: app.prototype
+        module: prototype.ensuro
         risk_modules:
           - name: Roulette
             mcr_percentage: 1

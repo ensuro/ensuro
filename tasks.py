@@ -26,7 +26,7 @@ def flask(c, port=8000):
 @ns.add_task
 @task
 def jupyter(c):
-    docker_exec(c, "tini -g -- start-notebook.sh")
+    docker_exec(c, "tini -g -- start-notebook.sh", workdir="/home/jovyan")
 
 
 @ns.add_task
@@ -38,6 +38,6 @@ def kill_flask(c):
 @ns.add_task
 @task
 def test(c, coverage=False, longrun=False):
-    coverage = "--cov=app --cov-config=app/.coveragerc" if coverage else ""
-    longrun = "--longrun" if longrun else ""
-    docker_exec(c, f"pytest -v {coverage} {longrun} --pyargs app")
+    # coverage = "--cov=app --cov-config=app/.coveragerc" if coverage else ""
+    # longrun = "--longrun" if longrun else ""
+    docker_exec(c, f"brownie test")

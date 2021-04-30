@@ -1,8 +1,8 @@
 from unittest import TestCase
 import pytest
 from m9g.fields import IntField
-from ..wadray import _W
-from ..contracts import Contract, WadField, external, ERC20Token, RevertError, view, ERC721Token
+from prototype.wadray import _W
+from prototype.contracts import Contract, WadField, external, ERC20Token, RevertError, view, ERC721Token
 
 
 class MyTestContract(Contract):
