@@ -3,6 +3,7 @@ import pytest
 from m9g.fields import IntField
 from prototype.wadray import _W
 from prototype.contracts import Contract, WadField, external, ERC20Token, RevertError, view, ERC721Token
+from .wrappers import TestCurrency, TestNFT
 
 
 class MyTestContract(Contract):
@@ -68,16 +69,17 @@ class TestReversion(TestCase):
             tcontract.bad_view_two()
 
 
-class TestERC20Token(TestCase):
+@pytest.mark.parametrize("token_class", [ERC20Token, TestCurrency])
+class TestERC20Token:
 
     def _validate_total_supply(self, token):
-        "Validates total_supply equals to the sum of al users balances"
+        "Validates total_supply equals to the sum of all users balances"
         total_supply = token.total_supply()
         total_supply_calculated = sum(token.balances.values(), _W(0))
         assert total_supply == total_supply_calculated
 
-    def test_total_supply(self):
-        token = ERC20Token(owner="Owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
+    def test_total_supply(self, token_class):
+        token = token_class(owner="Owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
         assert token.total_supply() == _W(1000)
         assert token.balance_of("Owner") == _W(1000)
         self._validate_total_supply(token)
@@ -93,8 +95,8 @@ class TestERC20Token(TestCase):
         with pytest.raises(RevertError):
             token.burn("Owner", _W(1000))
 
-    def test_transfer(self):
-        token = ERC20Token(owner="Owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
+    def test_transfer(self, token_class):
+        token = token_class(owner="Owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
         token.transfer("Owner", "Guillo", _W(400))
         assert token.balance_of("Owner") == _W(600)
         assert token.balance_of("Guillo") == _W(400)
@@ -110,8 +112,8 @@ class TestERC20Token(TestCase):
         assert token.total_supply() == _W(1000)
         self._validate_total_supply(token)
 
-    def test_approve_flow(self):
-        token = ERC20Token(owner="Owner", name="TEST", symbol="TEST", initial_supply=_W(2000))
+    def test_approve_flow(self, token_class):
+        token = token_class(owner="Owner", name="TEST", symbol="TEST", initial_supply=_W(2000))
         token.approve("Owner", "Spender", _W(500))
         assert token.allowance("Owner", "Spender") == _W(500)
 
@@ -135,10 +137,11 @@ class TestERC20Token(TestCase):
         assert token.balance_of("Luca") == _W(0)
 
 
-class TestERC721Token(TestCase):
+@pytest.mark.parametrize("token_class", [ERC721Token, TestNFT])
+class TestERC721Token:
 
-    def test_mint_burn(self):
-        nft = ERC721Token(owner="Owner", name="TEST", symbol="TEST")
+    def test_mint_burn(self, token_class):
+        nft = token_class(owner="Owner", name="TEST", symbol="TEST")
 
         nft.mint("CUST1", 1234)
         assert nft.balance_of("CUST1") == 1
@@ -148,12 +151,13 @@ class TestERC721Token(TestCase):
         assert nft.owner_of(1235) == "CUST1"
         nft.burn("CUST1", 1235)
         assert nft.balance_of("CUST1") == 1
-        assert nft.owner_of(1235) is None
+        with pytest.raises(RevertError, match="query for nonexistent token"):
+            nft.owner_of(1235)
         nft.burn("CUST1", 1234)
         assert nft.balance_of("CUST1") == 0
 
-    def test_transfer(self):
-        nft = ERC721Token(owner="Owner", name="TEST", symbol="TEST")
+    def test_transfer(self, token_class):
+        nft = token_class(owner="Owner", name="TEST", symbol="TEST")
 
         nft.mint("CUST1", 1234)
         assert nft.balance_of("CUST1") == 1
@@ -163,8 +167,8 @@ class TestERC721Token(TestCase):
         assert nft.balance_of("CUST2") == 1
         assert nft.owner_of(1234) == "CUST2"
 
-    def test_approve_transfer(self):
-        nft = ERC721Token(owner="Owner", name="TEST", symbol="TEST")
+    def test_approve_transfer(self, token_class):
+        nft = token_class(owner="Owner", name="TEST", symbol="TEST")
 
         nft.mint("CUST1", 1234)
         assert nft.balance_of("CUST1") == 1
@@ -177,8 +181,8 @@ class TestERC721Token(TestCase):
         assert nft.balance_of("CUST2") == 1
         assert nft.owner_of(1234) == "CUST2"
 
-    def test_approve_for_all(self):
-        nft = ERC721Token(owner="Owner", name="TEST", symbol="TEST")
+    def test_approve_for_all(self, token_class):
+        nft = token_class(owner="Owner", name="TEST", symbol="TEST")
 
         nft.mint("CUST1", 1234)
         nft.mint("CUST1", 1235)

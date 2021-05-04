@@ -356,7 +356,9 @@ class ERC721Token(Contract):   # NFT
 
     @view
     def owner_of(self, token_id):
-        return self.owners.get(token_id, None)
+        if token_id not in self.owners:
+            raise RevertError("ERC721: owner query for nonexistent token")
+        return self.owners[token_id]
 
     # def token_uri
 
