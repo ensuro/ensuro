@@ -35,11 +35,20 @@ AddressBook.instance = AddressBook(accounts)
 
 
 class MethodAdapter:
-    def __init__(self, eth_method, return_type, args=(), method_name=None):
+    def __init__(self, args=(), return_type="", eth_method=None):
         self.eth_method = eth_method
         self.return_type = return_type
         self.args = args
-        self._method_name = method_name
+
+    def __set_name__(self, owner, name):
+        self._method_name = name
+        if self.eth_method is None:
+            self.eth_method = self.snake_to_camel(name)
+
+    @staticmethod
+    def snake_to_camel(name):
+        components = name.split('_')
+        return components[0] + ''.join(x.title() for x in components[1:])
 
     @property
     def method_name(self):
@@ -96,21 +105,21 @@ class TestCurrency:
         self.owner = AddressBook.instance.get_account(owner)
         self.contract = brownie.TestCurrency.deploy(initial_supply, {"from": self.owner})
 
-    total_supply = MethodAdapter("totalSupply", "amount")
-    mint = MethodAdapter("mint", "", (("recipient", "address"), ("amount", "amount")))
-    burn = MethodAdapter("burn", "", (("recipient", "address"), ("amount", "amount")))
-    balance_of = MethodAdapter("balanceOf", "amount", (("account", "address"), ))
-    transfer = MethodAdapter("transfer", "bool", (
+    total_supply = MethodAdapter((), "amount")
+    mint = MethodAdapter((("recipient", "address"), ("amount", "amount")))
+    burn = MethodAdapter((("recipient", "address"), ("amount", "amount")))
+    balance_of = MethodAdapter((("account", "address"), ), "amount")
+    transfer = MethodAdapter((
         ("sender", "msg.sender"), ("recipient", "address"), ("amount", "amount")
-    ))
+    ), "bool")
 
-    allowance = MethodAdapter("allowance", "amount", (("owner", "address"), ("spender", "address")))
-    approve = MethodAdapter("approve", "bool", (("owner", "msg.sender"), ("spender", "address"),
-                                                ("amount", "amount")))
+    allowance = MethodAdapter((("owner", "address"), ("spender", "address")), "amount")
+    approve = MethodAdapter((("owner", "msg.sender"), ("spender", "address"), ("amount", "amount")),
+                            "bool")
 
-    transfer_from = MethodAdapter("transferFrom", "bool", (
+    transfer_from = MethodAdapter((
         ("spender", "msg.sender"), ("sender", "address"), ("recipient", "address"), ("amount", "amount")
-    ))
+    ), "bool")
 
     @property
     def balances(self):
@@ -127,24 +136,22 @@ class TestNFT:
         self.owner = AddressBook.instance.get_account(owner)
         self.contract = brownie.TestNFT.deploy({"from": self.owner})
 
-    mint = MethodAdapter("mint", "", (("to", "address"), ("token_id", "int")))
-    burn = MethodAdapter("burn", "", (("owner", "msg.sender"), ("token_id", "int")))
-    balance_of = MethodAdapter("balanceOf", "int", (("account", "address"), ))
-    owner_of = MethodAdapter("ownerOf", "address", (("token_id", "int"), ))
-    approve = MethodAdapter("approve", "bool", (
+    mint = MethodAdapter((("to", "address"), ("token_id", "int")))
+    burn = MethodAdapter((("owner", "msg.sender"), ("token_id", "int")))
+    balance_of = MethodAdapter((("account", "address"), ), "int")
+    owner_of = MethodAdapter((("token_id", "int"), ), "address")
+    approve = MethodAdapter((
         ("sender", "msg.sender"), ("spender", "address"), ("token_id", "int")
-    ))
-    get_approved = MethodAdapter("getApproved", "address", (("token_id", "int"), ))
-    set_approval_for_all = MethodAdapter("setApprovalForAll", "", (
+    ), "bool")
+    get_approved = MethodAdapter((("token_id", "int"), ), "address")
+    set_approval_for_all = MethodAdapter((
         ("sender", "msg.sender"), ("operator", "address"), ("approved", "bool")
     ))
-    is_approved_for_all = MethodAdapter("isApprovedForAll", "bool", (
-        ("owner", "address"), ("operator", "address")
-    ))
-    transfer_from = MethodAdapter("transferFrom", "bool", (
+    is_approved_for_all = MethodAdapter((("owner", "address"), ("operator", "address")), "bool")
+    transfer_from = MethodAdapter((
         ("spender", "msg.sender"), ("from", "address"), ("to", "address"), ("token_id", "int")
-    ))
-    transfer = MethodAdapter("transfer", "bool", (
+    ), "bool")
+    transfer = MethodAdapter((
         ("sender", "msg.sender"), ("recipient", "address"), ("amount", "amount")
-    ))
-    total_supply = MethodAdapter("totalSupply", "int")
+    ), "bool")
+    total_supply = MethodAdapter((), "int")

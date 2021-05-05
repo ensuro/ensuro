@@ -6,14 +6,26 @@ from .contracts import ERC721Token  # noqa
 from .wadray import RAY, Ray, Wad, _W, _R
 import time
 
-_now = int(time.time())
-
 SECONDS_IN_YEAR = 365 * 24 * 3600
 
 
-def now():
-    global _now
-    return _now
+class TimeControl:
+    def __init__(self, start_time=None):
+        if start_time is None:
+            self._now = int(time.time())
+        else:
+            self._now = start_time
+
+    @property
+    def now(self):
+        return self._now
+
+    def fast_forward(self, seconds):
+        self._now += seconds
+        return self._now
+
+
+time_control = TimeControl()
 
 
 class RiskModule(Contract):
@@ -105,7 +117,7 @@ class Policy(Model):
         ).to_ray()
 
     def accrued_interest(self):
-        seconds = Ray.from_value(now() - self.start)
+        seconds = Ray.from_value(time_control.now - self.start)
         return (
             self.mcr.to_ray() * seconds * self.interest_rate //
             Ray.from_value(SECONDS_IN_YEAR)
@@ -120,7 +132,7 @@ class Policy(Model):
 class EToken(ERC20Token):
     expiration_period = IntField()
     current_index = RayField(default=_R(1))
-    last_index_update = IntField(default=now)
+    last_index_update = IntField(default=time_control.now)
 
     mcr = WadField(default=_W(0))
     mcr_interest_rate = RayField(default=_R(0))
@@ -139,7 +151,7 @@ class EToken(ERC20Token):
 
     def _update_current_index(self):
         self.current_index = self._calculate_current_index()
-        self.last_index_update = now()
+        self.last_index_update = time_control.now
 
     def _update_token_interest_rate(self):
         """Should be called each time total_supply changes or mcr changes"""
@@ -150,7 +162,7 @@ class EToken(ERC20Token):
             self.token_interest_rate = Ray(0)
 
     def _calculate_current_index(self):
-        seconds = now() - self.last_index_update
+        seconds = time_control.now - self.last_index_update
         if seconds <= 0:
             return self.current_index
         increment = (
@@ -176,7 +188,8 @@ class EToken(ERC20Token):
     def lock_mcr(self, policy, mcr_amount):
         total_supply = self.total_supply()
         ocean = total_supply - self.mcr
-        assert mcr_amount <= ocean
+        if mcr_amount > ocean:
+            raise RevertError("Not enought OCEAN to cover the MCR")
         self._update_current_index()
 
         if self.mcr == 0:
@@ -206,7 +219,7 @@ class EToken(ERC20Token):
         self._update_token_interest_rate()
 
     def discrete_earning(self, amount):
-        assert now() == self.last_index_update
+        assert time_control.now == self.last_index_update
         new_total_supply = amount + self.total_supply()
         self.current_index = new_total_supply.to_ray() // self._base_supply().to_ray()
         self._update_token_interest_rate()
@@ -328,29 +341,29 @@ class EToken(ERC20Token):
         return total_transfer, transfer_amounts
 
     def accepts(self, policy):
-        return policy.expiration <= (now() + self.expiration_period)
+        return policy.expiration <= (time_control.now + self.expiration_period)
 
     def lend_to_protocol(self, amount):
         if self.protocol_loan == 0:
             self.protocol_loan = amount
             self.protocol_loan_index = Ray(RAY)
-            self.protocol_loan_last_index_update = now()
+            self.protocol_loan_last_index_update = time_control.now
         else:
             self.protocol_loan_index = self._get_protocol_loan_index()
-            self.protocol_loan_last_index_update = now()
+            self.protocol_loan_last_index_update = time_control.now
             self.protocol_loan += (amount.to_ray() // self.protocol_loan_index).to_wad()
         self.discrete_earning(-amount)
 
     def repay_protocol_loan(self, amount):
         self.protocol_loan_index = self._get_protocol_loan_index()
-        self.protocol_loan_last_index_update = now()
+        self.protocol_loan_last_index_update = time_control.now
         self.protocol_loan = (
             (self.get_protocol_loan() - amount).to_ray() // self.protocol_loan_index
         ).to_wad()
         self.discrete_earning(amount)
 
     def _get_protocol_loan_index(self):
-        seconds = now() - self.protocol_loan_last_index_update
+        seconds = time_control.now - self.protocol_loan_last_index_update
         if seconds <= 0:
             return self.protocol_loan_index
         increment = (
@@ -420,17 +433,17 @@ class Protocol(Contract):
         return total_transfer
 
     def fast_forward_time(self, secs):
-        global _now
-        _now += secs
-        return _now
+        global time_control
+        return time_control.fast_forward(secs)
 
     def now(self):
-        return now()
+        global time_control
+        return time_control.now
 
     @external
     def new_policy(self, risk_module_name, payout, premium, loss_prob, expiration, customer):
         rm = self.risk_modules[risk_module_name]
-        start = now()
+        start = time_control.now
         self.policy_count += 1
         self.currency.transfer_from(self.contract_id, customer, self.contract_id, premium)
         policy = Policy(id=self.policy_count, risk_module=rm, payout=payout, premium=premium,
@@ -688,18 +701,18 @@ class FixedRateAssetManager(AssetManager):
     """Test asset manager that accrues interest at fixed rate"""
 
     interest_rate = RayField(default=_R("0.05"))
-    last_mint_burn = IntField(default=now)
+    last_mint_burn = IntField(default=time_control.now)
 
     def get_investment_value(self):
         balance = self.protocol.currency.balance_of(self.contract_id)
-        secs = now() - self.last_mint_burn
+        secs = time_control.now - self.last_mint_burn
         if secs <= 0:
             return balance
         interest_rate = self.interest_rate * _R(secs) // _R(SECONDS_IN_YEAR)
         return (balance.to_ray() * (_R(1) + interest_rate)).to_wad()
 
     def _mint_burn(self):
-        if self.last_mint_burn == now():
+        if self.last_mint_burn == time_control.now:
             return
         balance = self.protocol.currency.balance_of(self.contract_id)
         current_value = self.get_investment_value()
@@ -707,7 +720,7 @@ class FixedRateAssetManager(AssetManager):
             self.protocol.currency.mint(self.contract_id, current_value - balance)
         elif current_value < balance:
             self.protocol.currency.burn(self.contract_id, balance - current_value)
-        self.last_mint_burn = now()
+        self.last_mint_burn = time_control.now
 
     def _invest(self, amount):
         self._mint_burn()

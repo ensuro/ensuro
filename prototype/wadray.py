@@ -86,6 +86,11 @@ class Ray(int):
     def equal(self, other, decimals=8):
         return abs(other - self) < (10**(27-decimals))
 
+    def assert_equal(self, other, decimals=4):
+        diff = abs(other - self)
+        max_diff = (10**(27-decimals))
+        assert diff < max_diff, f"{self} != {other} diff {self - other}"
+
     @classmethod
     def from_value(cls, value):
         if type(value) == str:
