@@ -1,10 +1,26 @@
 from functools import partial
 from prototype.contracts import RevertError
-from prototype.wadray import Wad
+from prototype.wadray import Wad, _R, _W, Ray
 from brownie import accounts
 import brownie
 from brownie.network.account import Account
 from brownie.exceptions import VirtualMachineError
+from brownie.network.state import Chain
+
+chain = Chain()
+
+
+class TimeControl:
+    def fast_forward(self, secs):
+        chain.sleep(secs)
+        chain.mine()
+
+    @property
+    def now(self):
+        return chain.time()
+
+
+time_control = TimeControl()
 
 
 class AddressBook:
@@ -33,12 +49,16 @@ class AddressBook:
 
 AddressBook.instance = AddressBook(accounts)
 
+MAXUINT256 = 2**256 - 1
+
 
 class MethodAdapter:
-    def __init__(self, args=(), return_type="", eth_method=None):
+    def __init__(self, args=(), return_type="", eth_method=None, adapt_args=None, is_property=False):
         self.eth_method = eth_method
         self.return_type = return_type
         self.args = args
+        self.adapt_args = adapt_args
+        self.is_property = is_property
 
     def __set_name__(self, owner, name):
         self._method_name = name
@@ -55,11 +75,16 @@ class MethodAdapter:
         return self._method_name or self.eth_method
 
     def __get__(self, instance, owner=None):
+        if self.is_property:
+            return self.call(instance)
         return partial(self.call, instance)
 
     def call(self, wrapper, *args, **kwargs):
         call_args = []
         msg_args = {}
+
+        if self.adapt_args:
+            args, kwargs = self.adapt_args(args, kwargs)
 
         for i, (arg_name, arg_type) in enumerate(self.args):
             if i < len(args):
@@ -75,6 +100,8 @@ class MethodAdapter:
             else:
                 call_args.append(self.parse(arg_type, arg_value))
 
+        if "from" not in msg_args and hasattr(wrapper, "_auto_from"):
+            msg_args["from"] = wrapper._auto_from
         call_args.append(msg_args)
 
         try:
@@ -88,26 +115,22 @@ class MethodAdapter:
     def parse(self, value_type, value):
         if value_type == "address":
             return AddressBook.instance.get_account(value)
+        if value_type == "amount" and value is None:
+            return MAXUINT256
         return value
 
     def unparse(self, value_type, value):
         if value_type == "amount":
             return Wad(value)
+        if value_type == "ray":
+            return Ray(value)
         if value_type == "address":
             return AddressBook.instance.get_name(value)
         return value
 
 
-class TestCurrency:
-    __test__ = False
-
-    def __init__(self, owner="Owner", name="Test Currency", symbol="TEST", initial_supply=Wad(0)):
-        self.owner = AddressBook.instance.get_account(owner)
-        self.contract = brownie.TestCurrency.deploy(initial_supply, {"from": self.owner})
-
+class IERC20:
     total_supply = MethodAdapter((), "amount")
-    mint = MethodAdapter((("recipient", "address"), ("amount", "amount")))
-    burn = MethodAdapter((("recipient", "address"), ("amount", "amount")))
     balance_of = MethodAdapter((("account", "address"), ), "amount")
     transfer = MethodAdapter((
         ("sender", "msg.sender"), ("recipient", "address"), ("amount", "amount")
@@ -120,6 +143,17 @@ class TestCurrency:
     transfer_from = MethodAdapter((
         ("spender", "msg.sender"), ("sender", "address"), ("recipient", "address"), ("amount", "amount")
     ), "bool")
+
+
+class TestCurrency(IERC20):
+    __test__ = False
+
+    def __init__(self, owner="Owner", name="Test Currency", symbol="TEST", initial_supply=Wad(0)):
+        self.owner = AddressBook.instance.get_account(owner)
+        self.contract = brownie.TestCurrency.deploy(initial_supply, {"from": self.owner})
+
+    mint = MethodAdapter((("recipient", "address"), ("amount", "amount")))
+    burn = MethodAdapter((("recipient", "address"), ("amount", "amount")))
 
     @property
     def balances(self):
@@ -155,3 +189,76 @@ class TestNFT:
         ("sender", "msg.sender"), ("recipient", "address"), ("amount", "amount")
     ), "bool")
     total_supply = MethodAdapter((), "int")
+
+
+def _adapt_signed_amount(args, kwargs):
+    amount = args[0] if args else kwargs["amount"]
+    if amount > 0:
+        return (amount, True), {}
+    else:
+        return (-amount, False), {}
+
+
+class ETokenETH(IERC20):
+    def __init__(self, owner, name, symbol, protocol, expiration_period, liquidity_requirement=_R(1),
+                 minQueuedWithdraw=_W(0), protocol_loan_interest_rate=_R("0.05")):
+        self.owner = AddressBook.instance.get_account(owner)
+        protocol = AddressBook.instance.get_account(protocol)
+        self._auto_from = protocol
+        self.contract = brownie.EToken.deploy(
+            name, symbol, protocol, expiration_period, liquidity_requirement,
+            minQueuedWithdraw, protocol_loan_interest_rate,
+            {"from": self.owner}
+        )
+
+    ocean = MethodAdapter((), "amount", is_property=True)
+    mcr = MethodAdapter((), "amount", is_property=True)
+    mcr_interest_rate = MethodAdapter((), "ray", is_property=True)
+    token_interest_rate = MethodAdapter((), "ray", is_property=True)
+
+    lock_mcr = MethodAdapter(
+        (("policy_interest_rate", "ray"), ("mcr_amount", "amount")),
+        adapt_args=lambda args, kwargs: ((), {
+            "policy_interest_rate": (args[0] if args else kwargs["policy"]).interest_rate,
+            "mcr_amount": args[1] if len(args) > 1 else kwargs["mcr_amount"],
+        })
+    )
+
+    unlock_mcr = MethodAdapter(
+        (("policy_interest_rate", "ray"), ("mcr_amount", "amount")),
+        adapt_args=lambda args, kwargs: ([], {
+            "policy_interest_rate": (args[0] if args else kwargs["policy"]).interest_rate,
+            "mcr_amount": args[1] if len(args) > 1 else kwargs["mcr_amount"],
+        })
+    )
+
+    discrete_earning = MethodAdapter(("amount", "amount"), ("positive", "bool"),
+                                     adapt_args=_adapt_signed_amount)
+
+    asset_earnings = MethodAdapter(("amount", "amount"), ("positive", "bool"),
+                                   adapt_args=_adapt_signed_amount)
+
+    deposit_ = MethodAdapter((("provider", "address"), ("amount", "amount")))
+
+    def deposit(self, provider, amount):
+        self.deposit_(provider, amount)
+        return self.balance_of(provider)
+
+    total_withdrawable = MethodAdapter((), "amount")
+    withdraw_ = MethodAdapter((("provider", "address"), ("amount", "amount")))
+
+    def withdraw(self, provider, amount):
+        receipt = self.withdraw_(provider, amount)
+        return Wad(receipt.events["Transfer"]["value"])
+
+    accepts = MethodAdapter(
+        (("policy_expiration", "int"), ), "bool",
+        adapt_args=lambda args, kwargs: ((args[0].expiration, ), {})
+    )
+
+    lend_to_protocol = MethodAdapter((("amount", "amount"), ))
+    repay_protocol_loan = MethodAdapter((("amount", "amount"), ))
+    get_protocol_loan = MethodAdapter((), "amount")
+    get_investable = MethodAdapter((), "amount")
+
+    current_index = MethodAdapter((("updated", "bool"), ), "ray")

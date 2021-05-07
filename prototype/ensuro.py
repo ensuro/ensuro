@@ -186,6 +186,7 @@ class EToken(ERC20Token):
         return max(self.total_supply() - self.mcr - self.to_withdraw_amount, _W(0))
 
     def lock_mcr(self, policy, mcr_amount):
+        self._update_current_index()
         total_supply = self.total_supply()
         ocean = total_supply - self.mcr
         if mcr_amount > ocean:

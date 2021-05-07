@@ -1,17 +1,18 @@
 """Unitary tests for eToken contract"""
 
+from functools import partial
 from collections import namedtuple
 import pytest
 from prototype.contracts import RevertError
 from prototype import ensuro
 from prototype.wadray import _W, _R
 from prototype.utils import WEEK, DAY
-
+from .wrappers import ETokenETH, time_control
 
 TEnv = namedtuple("TEnv", "time_control etoken_class policy_factory")
 
 
-@pytest.fixture(params=["prototype"])
+@pytest.fixture(params=["prototype", "ethereum"])
 def tenv(request):
     if request.param == "prototype":
         FakePolicy = namedtuple("FakePolicy", "mcr interest_rate expiration")
@@ -20,6 +21,14 @@ def tenv(request):
             time_control=ensuro.time_control,
             policy_factory=FakePolicy,
             etoken_class=ensuro.EToken
+        )
+    elif request.param == "ethereum":
+        FakePolicy = namedtuple("FakePolicy", "mcr interest_rate expiration")
+
+        return TEnv(
+            time_control=time_control,
+            policy_factory=FakePolicy,
+            etoken_class=partial(ETokenETH, protocol="ensuro", symbol="ETK")
         )
 
 
@@ -44,7 +53,8 @@ def test_lock_unlock_mcr(tenv):
                                  expiration=tenv.time_control.now + WEEK)
     etk.lock_mcr(policy, policy.mcr)
     assert etk.mcr == _W(600)
-    assert etk.ocean == _W(400)
+    assert etk.mcr_interest_rate == _R("0.0365")
+    etk.ocean.assert_equal(_W(400))
 
     tenv.time_control.fast_forward(2 * DAY)
     etk.balance_of("LP1").assert_equal(_W(1000) + _W("0.06") * _W(2))
@@ -56,7 +66,7 @@ def test_lock_unlock_mcr(tenv):
     expected_balance = _W(1000) + _W("0.06") * _W(5)
     etk.balance_of("LP1").assert_equal(expected_balance)
 
-    assert etk.withdraw("LP1", None) == expected_balance
+    etk.withdraw("LP1", None).assert_equal(expected_balance)
 
 
 def test_multiple_policies(tenv):
@@ -68,7 +78,7 @@ def test_multiple_policies(tenv):
     etk.lock_mcr(policy1, policy1.mcr)
     assert etk.mcr_interest_rate == _R("0.0365")
     assert etk.mcr == _W(300)
-    assert etk.ocean == _W(700)
+    etk.ocean.assert_equal(_W(700))
 
     tenv.time_control.fast_forward(2 * DAY)
     etk.balance_of("LP1").assert_equal(_W(1000) + _W("0.03") * _W(2))
