@@ -191,7 +191,6 @@ class EToken(ERC20Token):
         ocean = total_supply - self.mcr
         if mcr_amount > ocean:
             raise RevertError("Not enought OCEAN to cover the MCR")
-        self._update_current_index()
 
         if self.mcr == 0:
             self.mcr = mcr_amount
@@ -205,7 +204,8 @@ class EToken(ERC20Token):
         self._update_token_interest_rate()
 
     def unlock_mcr(self, policy, mcr_amount):
-        assert mcr_amount <= self.mcr
+        if mcr_amount > self.mcr:
+            raise RevertError("Want to unlock more MCR than locked")
         self._update_current_index()
 
         if self.mcr == mcr_amount:
@@ -344,23 +344,29 @@ class EToken(ERC20Token):
     def accepts(self, policy):
         return policy.expiration <= (time_control.now + self.expiration_period)
 
+    def _update_protocol_loan_index(self):
+        self.protocol_loan_index = self._get_protocol_loan_index()
+        self.protocol_loan_last_index_update = time_control.now
+
     def lend_to_protocol(self, amount):
+        if amount > self.ocean and not amount.equal(self.ocean):  # rounding error
+            raise RevertError("Not enought capital to lend")
         if self.protocol_loan == 0:
             self.protocol_loan = amount
             self.protocol_loan_index = Ray(RAY)
             self.protocol_loan_last_index_update = time_control.now
         else:
-            self.protocol_loan_index = self._get_protocol_loan_index()
-            self.protocol_loan_last_index_update = time_control.now
+            self._update_protocol_loan_index()
             self.protocol_loan += (amount.to_ray() // self.protocol_loan_index).to_wad()
+        self._update_current_index()
         self.discrete_earning(-amount)
 
     def repay_protocol_loan(self, amount):
-        self.protocol_loan_index = self._get_protocol_loan_index()
-        self.protocol_loan_last_index_update = time_control.now
+        self._update_protocol_loan_index()
         self.protocol_loan = (
             (self.get_protocol_loan() - amount).to_ray() // self.protocol_loan_index
         ).to_wad()
+        self._update_current_index()
         self.discrete_earning(amount)
 
     def _get_protocol_loan_index(self):
@@ -377,6 +383,10 @@ class EToken(ERC20Token):
         if self.protocol_loan == 0:
             return self.protocol_loan
         return (self.protocol_loan.to_ray() * self._get_protocol_loan_index()).to_wad()
+
+    def set_protocol_loan_interest_rate(self, new_rate):
+        self._update_protocol_loan_index()
+        self.protocol_loan_interest_rate = new_rate
 
     def get_investable(self):
         return self.mcr + self.ocean + self.get_protocol_loan()

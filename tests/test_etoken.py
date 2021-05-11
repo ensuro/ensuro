@@ -54,6 +54,7 @@ def test_lock_unlock_mcr(tenv):
     etk.lock_mcr(policy, policy.mcr)
     assert etk.mcr == _W(600)
     assert etk.mcr_interest_rate == _R("0.0365")
+    etk.token_interest_rate.assert_equal(_R("0.0365") * _R(600/1000))
     etk.ocean.assert_equal(_W(400))
 
     tenv.time_control.fast_forward(2 * DAY)
@@ -65,8 +66,42 @@ def test_lock_unlock_mcr(tenv):
     tenv.time_control.fast_forward(10 * DAY)
     expected_balance = _W(1000) + _W("0.06") * _W(5)
     etk.balance_of("LP1").assert_equal(expected_balance)
+    etk.transfer("LP1", "LP2", expected_balance)
 
-    etk.withdraw("LP1", None).assert_equal(expected_balance)
+    etk.withdraw("LP2", None).assert_equal(expected_balance)
+    etk.balance_of("LP1").assert_equal(_W(0))
+
+
+def test_etoken_erc20(tenv):
+    etk = tenv.etoken_class(owner="Me", name="eUSD1WEEK", expiration_period=WEEK)
+    assert etk.deposit("LP1", _W(1000)) == _W(1000)
+    policy = tenv.policy_factory(mcr=_W(600), interest_rate=_R("0.0365"),
+                                 expiration=tenv.time_control.now + WEEK)
+    etk.lock_mcr(policy, policy.mcr)
+    tenv.time_control.fast_forward(2 * DAY)
+    expected_balance = _W(1000) + _W("0.06") * _W(2)
+    etk.balance_of("LP1").assert_equal(expected_balance)
+    etk.approve("LP1", "SPEND", expected_balance // _W(2))
+
+    with pytest.raises(RevertError, match="allowance"):
+        etk.transfer_from("SPEND", "LP1", "LP2", expected_balance)
+    etk.transfer_from("SPEND", "LP1", "LP2", expected_balance // _W(2))
+    etk.allowance("LP1", "SPEND").assert_equal(_W(0))
+    etk.balance_of("LP1").assert_equal(expected_balance // _W(2))
+    etk.balance_of("LP2").assert_equal(expected_balance // _W(2))
+
+    etk.withdraw("LP2", _W(100)).assert_equal(_W(100))
+
+    total_withdrawable = _W(1000) + _W("0.06") * _W(2) - policy.mcr * _W("1.0365") - _W(100)
+    etk.total_withdrawable().assert_equal(total_withdrawable)
+
+    # Max to withdraw is total_withdrawable
+    etk.withdraw("LP1", _W(5000)).assert_equal(total_withdrawable)
+    etk.unlock_mcr(policy, policy.mcr)
+    # now max to withdraw is LP balance
+    etk.withdraw("LP1", _W(5000)).assert_equal(expected_balance // _W(2) - total_withdrawable)
+    etk.balance_of("LP2").assert_equal(expected_balance // _W(2) - _W(100))
+    etk.withdraw("LP2", None).assert_equal(expected_balance // _W(2) - _W(100))
 
 
 def test_multiple_policies(tenv):
@@ -101,8 +136,10 @@ def test_multiple_policies(tenv):
 
     etk.unlock_mcr(policy1, policy1.mcr)
     etk.mcr_interest_rate.assert_equal(_R("0.0730"))
-    assert etk.mcr == _W(600)
+    assert etk.mcr == policy2.mcr
     etk.balance_of("LP1").assert_equal(expected_balance)
+    with pytest.raises(RevertError):
+        etk.unlock_mcr(policy2, policy2.mcr + _W(1))  # Can't unlock more than MCR
     etk.unlock_mcr(policy2, policy2.mcr)
     assert etk.mcr == _W(0)
     etk.total_supply().assert_equal(expected_balance)
@@ -166,3 +203,41 @@ def test_accepts_policy(tenv):
     assert etk_year.accepts(policy_3_day)
     assert not etk_week.accepts(policy_10_day)
     assert etk_year.accepts(policy_10_day)
+
+
+def test_protocol_loan(tenv):
+    etk = tenv.etoken_class(owner="Me", name="eUSD1WEEK", expiration_period=WEEK,
+                            protocol_loan_interest_rate=_R("0.073"))
+    etk.deposit("LP1", _W(1000))
+    assert etk.protocol_loan_interest_rate == _R("0.073")
+
+    policy = tenv.policy_factory(mcr=_W(600), interest_rate=_R("0.04"),
+                                 expiration=tenv.time_control.now + WEEK)
+    etk.lock_mcr(policy, policy.mcr)
+    tenv.time_control.fast_forward(7 * DAY)
+    etk.ocean.assert_equal(_W(400) + _W(600 * 0.04 * 7 / 365))
+
+    with pytest.raises(RevertError):
+        etk.lend_to_protocol(_W(401))  # Can't lend more than ocean
+
+    etk.lend_to_protocol(_W(300))
+    etk.get_protocol_loan().assert_equal(_W(300))
+    tenv.time_control.fast_forward(7 * DAY)
+
+    # After 7 days increases at a rate of 7.3%/year (0.02% per day)
+    etk.get_protocol_loan().assert_equal(_W(300) * _W(1 + 0.0002 * 7))
+
+    tenv.time_control.fast_forward(1 * DAY)
+    etk.set_protocol_loan_interest_rate(_R("0.0365"))
+    assert etk.protocol_loan_interest_rate == _R("0.0365")
+    protocol_loan = _W(300) * _W(1 + 0.0002 * 8)
+    etk.get_protocol_loan().assert_equal(protocol_loan)
+
+    tenv.time_control.fast_forward(3 * DAY)
+    etk.get_protocol_loan().assert_equal(protocol_loan + protocol_loan * _W(0.0001 * 3))
+    protocol_loan = protocol_loan + protocol_loan * _W(0.0001 * 3)
+
+    etk.repay_protocol_loan(protocol_loan // _W(3))
+    etk.get_protocol_loan().assert_equal(protocol_loan * _W(2/3))
+    etk.repay_protocol_loan(protocol_loan * _W(2/3))
+    etk.get_protocol_loan().assert_equal(_W(0))

@@ -215,6 +215,8 @@ class ETokenETH(IERC20):
     mcr = MethodAdapter((), "amount", is_property=True)
     mcr_interest_rate = MethodAdapter((), "ray", is_property=True)
     token_interest_rate = MethodAdapter((), "ray", is_property=True)
+    protocol_loan_interest_rate = MethodAdapter((), "ray", is_property=True)
+    set_protocol_loan_interest_rate = MethodAdapter((("new_rate", "ray"), ))
 
     lock_mcr = MethodAdapter(
         (("policy_interest_rate", "ray"), ("mcr_amount", "amount")),

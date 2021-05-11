@@ -68,7 +68,7 @@ contract EToken is Context, IERC20, IEToken {
    * @param expirationPeriod Maximum expirationPeriod (from block.timestamp) of policies to be accepted
    * @param liquidityRequirement Liquidity requirement to allow withdrawal (in Ray - default=1 Ray)
    * @param minQueuedWithdraw Minimum amount to do queued withdraws
-   * @param protocolLoanInterestRate Rate of loans given to the protocol (in Ray)
+   * @param protocolLoanInterestRate_ Rate of loans given to the protocol (in Ray)
    * @param name_ Name of the eToken
    * @param symbol_ Symbol of the eToken
    */
@@ -79,7 +79,7 @@ contract EToken is Context, IERC20, IEToken {
     uint40 expirationPeriod,
     uint256 liquidityRequirement,
     uint256 minQueuedWithdraw,
-    uint256 protocolLoanInterestRate
+    uint256 protocolLoanInterestRate_
   ) {
     _name = name_;
     _symbol = symbol_;
@@ -97,7 +97,7 @@ contract EToken is Context, IERC20, IEToken {
     _toWithdrawAmount = 0;
 
     _protocolLoan = 0;
-    _protocolLoanInterestRate = protocolLoanInterestRate;
+    _protocolLoanInterestRate = protocolLoanInterestRate_;
     _protocolLoanIndex = WadRayMath.ray();
     _protocolLoanLastIndexUpdate = uint40(block.timestamp);
 
@@ -419,6 +419,7 @@ contract EToken is Context, IERC20, IEToken {
 
   function lockMcr(uint256 policy_interest_rate, uint256 mcr_amount) onlyEnsuro external {
     require(mcr_amount <= this.ocean(), "Not enought OCEAN to cover the MCR");
+    _updateCurrentIndex();
     if (_mcr == 0) {
       _mcr = mcr_amount;
       _mcrInterestRate = policy_interest_rate;
@@ -571,6 +572,10 @@ contract EToken is Context, IERC20, IEToken {
     return policy_expiration <= (uint40(block.timestamp) + _expirationPeriod);
   }
 
+  function _updateProtocolLoanIndex() internal {
+    _protocolLoanIndex = _getProtocolLoanIndex();
+    _protocolLoanLastIndexUpdate = uint40(block.timestamp);
+  }
 
   function lendToProtocol(uint256 amount) onlyEnsuro external {
     if (_protocolLoan == 0) {
@@ -578,19 +583,18 @@ contract EToken is Context, IERC20, IEToken {
       _protocolLoanIndex = WadRayMath.ray();
       _protocolLoanLastIndexUpdate = uint40(block.timestamp);
     } else {
-      _protocolLoanIndex = _getProtocolLoanIndex();
-      _protocolLoanLastIndexUpdate = uint40(block.timestamp);
+      _updateProtocolLoanIndex();
       _protocolLoan = _protocolLoan.add(amount.wadToRay().rayDiv(_protocolLoanIndex).wadToRay());
     }
     _updateCurrentIndex(); // shouldn't do anything because lendToProtocol is after unlock_mcr but doing
                            // anyway
+    require(amount < ocean(), "Not enought capital to lend");
     _discreteChange(amount, false);
   }
 
   function repayProtocolLoan(uint256 amount) onlyEnsuro external {
-    _protocolLoanIndex = _getProtocolLoanIndex();
-    _protocolLoanLastIndexUpdate = uint40(block.timestamp);
-    _protocolLoan = getProtocolLoan().sub(amount).wadToRay().rayDiv(_protocolLoanIndex).wadToRay();
+    _updateProtocolLoanIndex();
+    _protocolLoan = getProtocolLoan().sub(amount).wadToRay().rayDiv(_protocolLoanIndex).rayToWad();
     _updateCurrentIndex(); // shouldn't do anything because lendToProtocol is after unlock_mcr but doing
                            // anyway
     _discreteChange(amount, true);
@@ -609,6 +613,15 @@ contract EToken is Context, IERC20, IEToken {
     if (_protocolLoan == 0)
       return 0;
     return _protocolLoan.wadToRay().rayMul(_getProtocolLoanIndex()).rayToWad();
+  }
+
+  function protocolLoanInterestRate() public view returns (uint256) {
+    return _protocolLoanInterestRate;
+  }
+
+  function setProtocolLoanInterestRate(uint256 new_interest_rate) onlyEnsuro external {
+    _updateProtocolLoanIndex();
+    _protocolLoanInterestRate = new_interest_rate;
   }
 
   function getInvestable() public view returns (uint256) {
