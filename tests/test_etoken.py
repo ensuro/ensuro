@@ -210,6 +210,7 @@ def test_protocol_loan(tenv):
                             protocol_loan_interest_rate=_R("0.073"))
     etk.deposit("LP1", _W(1000))
     assert etk.protocol_loan_interest_rate == _R("0.073")
+    assert etk.get_protocol_loan() == _W(0)
 
     policy = tenv.policy_factory(mcr=_W(600), interest_rate=_R("0.04"),
                                  expiration=tenv.time_control.now + WEEK)
@@ -241,3 +242,43 @@ def test_protocol_loan(tenv):
     etk.get_protocol_loan().assert_equal(protocol_loan * _W(2/3))
     etk.repay_protocol_loan(protocol_loan * _W(2/3))
     etk.get_protocol_loan().assert_equal(_W(0))
+
+
+def test_asset_and_discrete_earnings(tenv):
+    etk = tenv.etoken_class(owner="Me", name="eUSD1WEEK", expiration_period=WEEK)
+
+    # Initial setup
+    etk.deposit("LP1", _W(1000))
+    etk.deposit("LP2", _W(2000))
+    assert etk.total_supply() == _W(3000)
+    assert etk.get_current_index(True) == _R(1)
+
+    # Possitive asset earning
+    etk.asset_earnings(_W(500))
+    etk.total_supply().assert_equal(_W(3500))
+    etk.get_current_index(False).assert_equal(_R(1) * _R(3500/3000))
+    etk.get_current_index(True).assert_equal(_R(1) * _R(3500/3000))
+
+    # Negative asset earning
+    etk.asset_earnings(-_W(300))
+    etk.total_supply().assert_equal(_W(3200))
+    etk.get_current_index(False).assert_equal(_R(1) * _R(3200/3000))
+    tenv.time_control.fast_forward(1 * DAY)
+    etk.balance_of("LP1").assert_equal(_W(1000) * _W(3200/3000))
+    etk.balance_of("LP2").assert_equal(_W(2000) * _W(3200/3000))
+
+    # Possitive discrete_earning
+    etk.discrete_earning(_W(400))
+    etk.balance_of("LP1").assert_equal(_W(1000) * _W(3600/3000))
+    etk.balance_of("LP2").assert_equal(_W(2000) * _W(3600/3000))
+    etk.total_supply().assert_equal(_W(3600))
+
+    # Negative discrete_earning
+    etk.discrete_earning(-_W(700))
+    etk.balance_of("LP1").assert_equal(_W(1000) * _W(2900/3000))
+    etk.balance_of("LP2").assert_equal(_W(2000) * _W(2900/3000))
+    etk.total_supply().assert_equal(_W(2900))
+
+    # Finally, down to zero adjustment
+    etk.discrete_earning(-etk.total_supply())
+    etk.total_supply().assert_equal(_W(0))

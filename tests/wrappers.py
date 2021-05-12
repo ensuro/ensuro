@@ -234,10 +234,10 @@ class ETokenETH(IERC20):
         })
     )
 
-    discrete_earning = MethodAdapter(("amount", "amount"), ("positive", "bool"),
+    discrete_earning = MethodAdapter((("amount", "amount"), ("positive", "bool")),
                                      adapt_args=_adapt_signed_amount)
 
-    asset_earnings = MethodAdapter(("amount", "amount"), ("positive", "bool"),
+    asset_earnings = MethodAdapter((("amount", "amount"), ("positive", "bool")),
                                    adapt_args=_adapt_signed_amount)
 
     deposit_ = MethodAdapter((("provider", "address"), ("amount", "amount")))
@@ -263,4 +263,4 @@ class ETokenETH(IERC20):
     get_protocol_loan = MethodAdapter((), "amount")
     get_investable = MethodAdapter((), "amount")
 
-    current_index = MethodAdapter((("updated", "bool"), ), "ray")
+    get_current_index = MethodAdapter((("updated", "bool"), ), "ray")

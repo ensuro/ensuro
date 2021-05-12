@@ -171,8 +171,12 @@ class EToken(ERC20Token):
         )
         return self.current_index * (Ray(RAY) + increment)
 
-    def get_interest_rates(self):
-        return self.token_interest_rate, self.mcr_interest_rate
+    @view
+    def get_current_index(self, updated):
+        if updated:
+            return self._calculate_current_index()
+        else:
+            return self.current_index
 
     def _base_supply(self):
         return super().total_supply()
@@ -220,7 +224,7 @@ class EToken(ERC20Token):
         self._update_token_interest_rate()
 
     def discrete_earning(self, amount):
-        assert time_control.now == self.last_index_update
+        self._update_current_index()
         new_total_supply = amount + self.total_supply()
         self.current_index = new_total_supply.to_ray() // self._base_supply().to_ray()
         self._update_token_interest_rate()

@@ -368,6 +368,8 @@ contract EToken is Context, IERC20, IEToken {
 
 
   function _updateCurrentIndex() internal {
+    if (uint40(block.timestamp) == _lastIndexUpdate)
+      return;
     _currentIndex = _calculateCurrentIndex();
     _lastIndexUpdate = uint40(block.timestamp);
   }
@@ -389,7 +391,7 @@ contract EToken is Context, IERC20, IEToken {
     ).add(WadRayMath.ray()));
   }
 
-  function currentIndex(bool updated) public view returns (uint256) {
+  function getCurrentIndex(bool updated) public view returns (uint256) {
     if (updated)
       return _calculateCurrentIndex();
     else
@@ -457,7 +459,7 @@ contract EToken is Context, IERC20, IEToken {
   }
 
   function discreteEarning(uint256 amount, bool positive) onlyEnsuro external {
-    assert(_lastIndexUpdate == uint40(block.timestamp));
+    _updateCurrentIndex();
     _discreteChange(amount, positive);
   }
 
@@ -573,6 +575,8 @@ contract EToken is Context, IERC20, IEToken {
   }
 
   function _updateProtocolLoanIndex() internal {
+    if (uint40(block.timestamp) == _protocolLoanLastIndexUpdate)
+      return;
     _protocolLoanIndex = _getProtocolLoanIndex();
     _protocolLoanLastIndexUpdate = uint40(block.timestamp);
   }
