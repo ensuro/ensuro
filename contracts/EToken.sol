@@ -29,21 +29,21 @@ contract EToken is Context, IERC20, IEToken {
   string private _name;
   string private _symbol;
 
-  address internal _ensuro;  // TODO: later define IEnsuroProtocol
+  address internal _ensuro;  // TODO: later define IPolicyPool
 
   uint40 internal _expirationPeriod;
   uint256 internal _currentIndex;  // in Ray
   uint40 internal _lastIndexUpdate;
 
-  uint256 internal _mcr;  // in Wad
-  uint256 internal _mcrInterestRate;  // in Ray
+  uint256 internal _scr;  // in Wad
+  uint256 internal _scrInterestRate;  // in Ray
   uint256 internal _tokenInterestRate;  // in Ray
   uint256 internal _liquidityRequirement;  // in Ray
 
-  uint256 internal _protocolLoan;  // in Wad
-  uint256 internal _protocolLoanInterestRate;  // in Ray
-  uint256 internal _protocolLoanIndex;  // in Ray
-  uint40 internal _protocolLoanLastIndexUpdate;
+  uint256 internal _poolLoan;  // in Wad
+  uint256 internal _poolLoanInterestRate;  // in Ray
+  uint256 internal _poolLoanIndex;  // in Ray
+  uint40 internal _poolLoanLastIndexUpdate;
 
   modifier onlyEnsuro {
     require(_msgSender() == address(_ensuro), Errors.CT_CALLER_MUST_BE_ENSURO);
@@ -59,20 +59,20 @@ contract EToken is Context, IERC20, IEToken {
 
   /**
    * @dev Initializes the aToken
-   * @param ensuro The address of the Ensuro Protocol where this eToken will be used
+   * @param ensuro The address of the Ensuro PolicyPool where this eToken will be used
    * @param expirationPeriod Maximum expirationPeriod (from block.timestamp) of policies to be accepted
    * @param liquidityRequirement Liquidity requirement to allow withdrawal (in Ray - default=1 Ray)
-   * @param protocolLoanInterestRate_ Rate of loans given to the protocol (in Ray)
+   * @param poolLoanInterestRate_ Rate of loans given to the policy pool (in Ray)
    * @param name_ Name of the eToken
    * @param symbol_ Symbol of the eToken
    */
   constructor(
     string memory name_,
     string memory symbol_,
-    address ensuro,  // TODO: IEnsuroProtocol
+    address ensuro,  // TODO: IPolicyPool
     uint40 expirationPeriod,
     uint256 liquidityRequirement,
-    uint256 protocolLoanInterestRate_
+    uint256 poolLoanInterestRate_
   ) {
     _name = name_;
     _symbol = symbol_;
@@ -80,15 +80,15 @@ contract EToken is Context, IERC20, IEToken {
     _expirationPeriod = expirationPeriod;
     _currentIndex = WadRayMath.ray();
     _lastIndexUpdate = uint40(block.timestamp);
-    _mcr = 0;
-    _mcrInterestRate = 0;
+    _scr = 0;
+    _scrInterestRate = 0;
     _tokenInterestRate = 0;
     _liquidityRequirement = liquidityRequirement;
 
-    _protocolLoan = 0;
-    _protocolLoanInterestRate = protocolLoanInterestRate_;
-    _protocolLoanIndex = WadRayMath.ray();
-    _protocolLoanLastIndexUpdate = uint40(block.timestamp);
+    _poolLoan = 0;
+    _poolLoanInterestRate = poolLoanInterestRate_;
+    _poolLoanIndex = WadRayMath.ray();
+    _poolLoanLastIndexUpdate = uint40(block.timestamp);
 
   }
 
@@ -368,7 +368,7 @@ contract EToken is Context, IERC20, IEToken {
     if (totalSupply_ == 0)
       _tokenInterestRate = 0;
     else
-      _tokenInterestRate = _mcrInterestRate.rayMul(_mcr.wadToRay()).rayDiv(totalSupply_);
+      _tokenInterestRate = _scrInterestRate.rayMul(_scr.wadToRay()).rayDiv(totalSupply_);
   }
 
   function _calculateCurrentIndex() internal view returns (uint256) {
@@ -389,59 +389,59 @@ contract EToken is Context, IERC20, IEToken {
 
   function ocean() public view returns (uint256) {
     uint256 totalSupply_ = this.totalSupply();
-    if (totalSupply_ > _mcr)
-      return totalSupply_.sub(_mcr);
+    if (totalSupply_ > _scr)
+      return totalSupply_.sub(_scr);
     else
       return 0;
   }
 
-  function mcr() public view returns (uint256) {
-    return _mcr;
+  function scr() public view returns (uint256) {
+    return _scr;
   }
 
-  function mcrInterestRate() public view returns (uint256) {
-    return _mcrInterestRate;
+  function scrInterestRate() public view returns (uint256) {
+    return _scrInterestRate;
   }
 
   function tokenInterestRate() public view returns (uint256) {
     return _tokenInterestRate;
   }
 
-  event MCRLocked(uint256 interest_rate, uint256 value);
-  event MCRUnlocked(uint256 interest_rate, uint256 value);
+  event SCRLocked(uint256 interest_rate, uint256 value);
+  event SCRUnlocked(uint256 interest_rate, uint256 value);
 
-  function lockMcr(uint256 policy_interest_rate, uint256 mcr_amount) onlyEnsuro external {
-    require(mcr_amount <= this.ocean(), "Not enought OCEAN to cover the MCR");
+  function lockScr(uint256 policy_interest_rate, uint256 scr_amount) onlyEnsuro external {
+    require(scr_amount <= this.ocean(), "Not enought OCEAN to cover the SCR");
     _updateCurrentIndex();
-    if (_mcr == 0) {
-      _mcr = mcr_amount;
-      _mcrInterestRate = policy_interest_rate;
+    if (_scr == 0) {
+      _scr = scr_amount;
+      _scrInterestRate = policy_interest_rate;
     } else {
-      uint256 orig_mcr = _mcr.wadToRay();
-      _mcr = _mcr.add(mcr_amount);
-      _mcrInterestRate = _mcrInterestRate.rayMul(orig_mcr).add(
-        policy_interest_rate.rayMul(mcr_amount.wadToRay())
-      ).rayDiv(_mcr.wadToRay());
+      uint256 orig_scr = _scr.wadToRay();
+      _scr = _scr.add(scr_amount);
+      _scrInterestRate = _scrInterestRate.rayMul(orig_scr).add(
+        policy_interest_rate.rayMul(scr_amount.wadToRay())
+      ).rayDiv(_scr.wadToRay());
     }
-    emit MCRLocked(policy_interest_rate, mcr_amount);
+    emit SCRLocked(policy_interest_rate, scr_amount);
     _updateTokenInterestRate();
   }
 
-  function unlockMcr(uint256 policy_interest_rate, uint256 mcr_amount) onlyEnsuro external {
-    require(mcr_amount <= _mcr);  // Can be removed? Will fail later anyway
+  function unlockScr(uint256 policy_interest_rate, uint256 scr_amount) onlyEnsuro external {
+    require(scr_amount <= _scr);  // Can be removed? Will fail later anyway
     _updateCurrentIndex();
 
-    if (_mcr == mcr_amount) {
-      _mcr = 0;
-      _mcrInterestRate = 0;
+    if (_scr == scr_amount) {
+      _scr = 0;
+      _scrInterestRate = 0;
     } else {
-      uint256 orig_mcr = _mcr.wadToRay();
-      _mcr = _mcr.sub(mcr_amount);
-      _mcrInterestRate = _mcrInterestRate.rayMul(orig_mcr).sub(
-        policy_interest_rate.rayMul(mcr_amount.wadToRay())
-      ).rayDiv(_mcr.wadToRay());
+      uint256 orig_scr = _scr.wadToRay();
+      _scr = _scr.sub(scr_amount);
+      _scrInterestRate = _scrInterestRate.rayMul(orig_scr).sub(
+        policy_interest_rate.rayMul(scr_amount.wadToRay())
+      ).rayDiv(_scr.wadToRay());
     }
-    emit MCRUnlocked(policy_interest_rate, mcr_amount);
+    emit SCRUnlocked(policy_interest_rate, scr_amount);
     _updateTokenInterestRate();
   }
 
@@ -469,8 +469,8 @@ contract EToken is Context, IERC20, IEToken {
   }
 
   function totalWithdrawable() public view returns (uint256) {
-      uint256 locked = _mcr.wadToRay().rayMul(
-        WadRayMath.ray().add(_mcrInterestRate)
+      uint256 locked = _scr.wadToRay().rayMul(
+        WadRayMath.ray().add(_scrInterestRate)
       ).rayMul(_liquidityRequirement).rayToWad();
       uint256 totalSupply_ = totalSupply();
       if (totalSupply_ >= locked)
@@ -500,61 +500,61 @@ contract EToken is Context, IERC20, IEToken {
     return policy_expiration <= (uint40(block.timestamp) + _expirationPeriod);
   }
 
-  function _updateProtocolLoanIndex() internal {
-    if (uint40(block.timestamp) == _protocolLoanLastIndexUpdate)
+  function _updatePoolLoanIndex() internal {
+    if (uint40(block.timestamp) == _poolLoanLastIndexUpdate)
       return;
-    _protocolLoanIndex = _getProtocolLoanIndex();
-    _protocolLoanLastIndexUpdate = uint40(block.timestamp);
+    _poolLoanIndex = _getPoolLoanIndex();
+    _poolLoanLastIndexUpdate = uint40(block.timestamp);
   }
 
-  function lendToProtocol(uint256 amount) onlyEnsuro external {
-    if (_protocolLoan == 0) {
-      _protocolLoan = amount;
-      _protocolLoanIndex = WadRayMath.ray();
-      _protocolLoanLastIndexUpdate = uint40(block.timestamp);
+  function lendToPool(uint256 amount) onlyEnsuro external {
+    if (_poolLoan == 0) {
+      _poolLoan = amount;
+      _poolLoanIndex = WadRayMath.ray();
+      _poolLoanLastIndexUpdate = uint40(block.timestamp);
     } else {
-      _updateProtocolLoanIndex();
-      _protocolLoan = _protocolLoan.add(amount.wadToRay().rayDiv(_protocolLoanIndex).rayToWad());
+      _updatePoolLoanIndex();
+      _poolLoan = _poolLoan.add(amount.wadToRay().rayDiv(_poolLoanIndex).rayToWad());
     }
-    _updateCurrentIndex(); // shouldn't do anything because lendToProtocol is after unlock_mcr but doing
+    _updateCurrentIndex(); // shouldn't do anything because lendToPool is after unlock_scr but doing
                            // anyway
     require(amount < ocean(), "Not enought capital to lend");
     _discreteChange(amount, false);
   }
 
-  function repayProtocolLoan(uint256 amount) onlyEnsuro external {
-    _updateProtocolLoanIndex();
-    _protocolLoan = getProtocolLoan().sub(amount).wadToRay().rayDiv(_protocolLoanIndex).rayToWad();
-    _updateCurrentIndex(); // shouldn't do anything because lendToProtocol is after unlock_mcr but doing
+  function repayPoolLoan(uint256 amount) onlyEnsuro external {
+    _updatePoolLoanIndex();
+    _poolLoan = getPoolLoan().sub(amount).wadToRay().rayDiv(_poolLoanIndex).rayToWad();
+    _updateCurrentIndex(); // shouldn't do anything because lendToPool is after unlock_scr but doing
                            // anyway
     _discreteChange(amount, true);
   }
 
-  function _getProtocolLoanIndex() internal view returns (uint256) {
-    if (uint40(block.timestamp) <= _protocolLoanLastIndexUpdate)
-      return _protocolLoanIndex;
-    uint256 timeDifference = block.timestamp - _protocolLoanLastIndexUpdate;
-    return _protocolLoanIndex.rayMul((
-      _protocolLoanInterestRate.mul(timeDifference) / SECONDS_PER_YEAR
+  function _getPoolLoanIndex() internal view returns (uint256) {
+    if (uint40(block.timestamp) <= _poolLoanLastIndexUpdate)
+      return _poolLoanIndex;
+    uint256 timeDifference = block.timestamp - _poolLoanLastIndexUpdate;
+    return _poolLoanIndex.rayMul((
+      _poolLoanInterestRate.mul(timeDifference) / SECONDS_PER_YEAR
     ).add(WadRayMath.ray()));
   }
 
-  function getProtocolLoan() public view returns (uint256) {
-    if (_protocolLoan == 0)
+  function getPoolLoan() public view returns (uint256) {
+    if (_poolLoan == 0)
       return 0;
-    return _protocolLoan.wadToRay().rayMul(_getProtocolLoanIndex()).rayToWad();
+    return _poolLoan.wadToRay().rayMul(_getPoolLoanIndex()).rayToWad();
   }
 
-  function protocolLoanInterestRate() public view returns (uint256) {
-    return _protocolLoanInterestRate;
+  function poolLoanInterestRate() public view returns (uint256) {
+    return _poolLoanInterestRate;
   }
 
-  function setProtocolLoanInterestRate(uint256 new_interest_rate) onlyEnsuro external {
-    _updateProtocolLoanIndex();
-    _protocolLoanInterestRate = new_interest_rate;
+  function setPoolLoanInterestRate(uint256 new_interest_rate) onlyEnsuro external {
+    _updatePoolLoanIndex();
+    _poolLoanInterestRate = new_interest_rate;
   }
 
   function getInvestable() public view returns (uint256) {
-    return _mcr.add(ocean()).add(getProtocolLoan());
+    return _scr.add(ocean()).add(getPoolLoan());
   }
 }

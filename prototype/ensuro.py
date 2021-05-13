@@ -1,5 +1,5 @@
 from m9g import Model
-from m9g.fields import StringField, IntField, DictField, CompositeField, ListField
+from m9g.fields import StringField, IntField, DictField, CompositeField
 from .contracts import Contract, ERC20Token, external, view, RayField, WadField, AddressField, \
     ContractProxyField, ContractProxy, RevertError
 from .contracts import ERC721Token  # noqa
@@ -30,17 +30,17 @@ time_control = TimeControl()
 
 class RiskModule(Contract):
     name = StringField()
-    mcr_percentage = RayField(default=Ray(0))
+    scr_percentage = RayField(default=Ray(0))
     premium_share = RayField(default=Ray(0))
     ensuro_share = RayField(default=Ray(0))
-    max_mcr_per_policy = WadField(default=_W(1000000))
-    mcr_limit = WadField(default=_W(10000000))
-    total_mcr = WadField(default=_W(0))
+    max_scr_per_policy = WadField(default=_W(1000000))
+    scr_limit = WadField(default=_W(10000000))
+    total_scr = WadField(default=_W(0))
 
     wallet = AddressField(default="RM")
     shared_coverage_percentage = RayField(default=Ray(0))
     shared_coverage_min_percentage = RayField(default=Ray(0))
-    shared_coverage_mcr = WadField(default=_W(0))
+    shared_coverage_scr = WadField(default=_W(0))
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -49,18 +49,18 @@ class RiskModule(Contract):
 
     @external
     def add_policy(self, policy):
-        if policy.mcr > self.max_mcr_per_policy:
-            raise RevertError(f"Policy MCR: {policy.mcr} > max for this module {self.max_mcr_per_policy}")
-        total_mcr = self.total_mcr + policy.mcr
-        if total_mcr > self.mcr_limit:
-            raise RevertError(f"MCR exceeds the allowed for this module")
-        self.total_mcr = total_mcr
-        self.shared_coverage_mcr += policy.rm_mcr
+        if policy.scr > self.max_scr_per_policy:
+            raise RevertError(f"Policy SCR: {policy.scr} > max for this module {self.max_scr_per_policy}")
+        total_scr = self.total_scr + policy.scr
+        if total_scr > self.scr_limit:
+            raise RevertError(f"SCR exceeds the allowed for this module")
+        self.total_scr = total_scr
+        self.shared_coverage_scr += policy.rm_scr
 
     @external
     def remove_policy(self, policy):
-        self.total_mcr -= policy.mcr
-        self.shared_coverage_mcr -= policy.rm_mcr
+        self.total_scr -= policy.scr
+        self.shared_coverage_scr -= policy.rm_scr
 
 
 class Policy(Model):
@@ -68,7 +68,7 @@ class Policy(Model):
     risk_module = ContractProxyField()
     payout = WadField()
     premium = WadField()
-    mcr = WadField(default=Wad(0))
+    scr = WadField(default=Wad(0))
     rm_coverage = WadField(default=Wad(0))
     loss_prob = RayField()
     start = IntField()
@@ -79,7 +79,7 @@ class Policy(Model):
         super().__init__(**kwargs)
         self.rm_coverage = self.risk_module.shared_coverage_percentage.to_wad() * self.payout
         ens_premium, rm_premium = self._coverage_premium_split()
-        self.mcr = (self.payout - ens_premium - self.rm_coverage) * self.risk_module.mcr_percentage.to_wad()
+        self.scr = (self.payout - ens_premium - self.rm_coverage) * self.risk_module.scr_percentage.to_wad()
 
     def _coverage_premium_split(self):
         ens_premium = self.premium * (self.payout - self.rm_coverage) // self.payout
@@ -92,7 +92,7 @@ class Policy(Model):
         return (payout.to_ray() * self.loss_prob).to_wad()
 
     @property
-    def rm_mcr(self):
+    def rm_scr(self):
         ens_premium, rm_premium = self._coverage_premium_split()
         return self.rm_coverage - rm_premium
 
@@ -112,21 +112,21 @@ class Policy(Model):
         _, for_ensuro, for_risk_module, for_lps = self.premium_split()
         return (
             for_lps * _W(SECONDS_IN_YEAR) // (
-                _W(self.expiration - self.start) * self.mcr
+                _W(self.expiration - self.start) * self.scr
             )
         ).to_ray()
 
     def accrued_interest(self):
         seconds = Ray.from_value(time_control.now - self.start)
         return (
-            self.mcr.to_ray() * seconds * self.interest_rate //
+            self.scr.to_ray() * seconds * self.interest_rate //
             Ray.from_value(SECONDS_IN_YEAR)
         ).to_wad()
 
-    def get_mcr_share(self, etoken_name):
+    def get_scr_share(self, etoken_name):
         if etoken_name not in self.locked_funds:
             return Ray(0)
-        return (self.locked_funds[etoken_name] // self.mcr).to_ray()
+        return (self.locked_funds[etoken_name] // self.scr).to_ray()
 
 
 class EToken(ERC20Token):
@@ -134,25 +134,25 @@ class EToken(ERC20Token):
     current_index = RayField(default=_R(1))
     last_index_update = IntField(default=time_control.now)
 
-    mcr = WadField(default=_W(0))
-    mcr_interest_rate = RayField(default=_R(0))
+    scr = WadField(default=_W(0))
+    scr_interest_rate = RayField(default=_R(0))
     token_interest_rate = RayField(default=_R(0))
     liquidity_requirement = RayField(default=_R(1))
 
-    protocol_loan = WadField(default=_W(0))
-    protocol_loan_interest_rate = RayField(default=_R("0.05"))
-    protocol_loan_index = RayField(default=_R(1))
-    protocol_loan_last_index_update = IntField(default=None, allow_none=True)
+    pool_loan = WadField(default=_W(0))
+    pool_loan_interest_rate = RayField(default=_R("0.05"))
+    pool_loan_index = RayField(default=_R(1))
+    pool_loan_last_index_update = IntField(default=None, allow_none=True)
 
     def _update_current_index(self):
         self.current_index = self._calculate_current_index()
         self.last_index_update = time_control.now
 
     def _update_token_interest_rate(self):
-        """Should be called each time total_supply changes or mcr changes"""
+        """Should be called each time total_supply changes or scr changes"""
         total_supply = self.total_supply().to_ray()
         if total_supply:
-            self.token_interest_rate = self.mcr_interest_rate * self.mcr.to_ray() // total_supply
+            self.token_interest_rate = self.scr_interest_rate * self.scr.to_ray() // total_supply
         else:
             self.token_interest_rate = Ray(0)
 
@@ -182,40 +182,40 @@ class EToken(ERC20Token):
 
     @property
     def ocean(self):
-        return max(self.total_supply() - self.mcr, _W(0))
+        return max(self.total_supply() - self.scr, _W(0))
 
-    def lock_mcr(self, policy, mcr_amount):
+    def lock_scr(self, policy, scr_amount):
         self._update_current_index()
         total_supply = self.total_supply()
-        ocean = total_supply - self.mcr
-        if mcr_amount > ocean:
-            raise RevertError("Not enought OCEAN to cover the MCR")
+        ocean = total_supply - self.scr
+        if scr_amount > ocean:
+            raise RevertError("Not enought OCEAN to cover the SCR")
 
-        if self.mcr == 0:
-            self.mcr = mcr_amount
-            self.mcr_interest_rate = policy.interest_rate
+        if self.scr == 0:
+            self.scr = scr_amount
+            self.scr_interest_rate = policy.interest_rate
         else:
-            orig_mcr = self.mcr
-            self.mcr += mcr_amount
-            self.mcr_interest_rate = (
-                self.mcr_interest_rate * orig_mcr.to_ray() + policy.interest_rate * mcr_amount.to_ray()
-            ) // self.mcr.to_ray()  # weighted average of previous and policy interest_rate
+            orig_scr = self.scr
+            self.scr += scr_amount
+            self.scr_interest_rate = (
+                self.scr_interest_rate * orig_scr.to_ray() + policy.interest_rate * scr_amount.to_ray()
+            ) // self.scr.to_ray()  # weighted average of previous and policy interest_rate
         self._update_token_interest_rate()
 
-    def unlock_mcr(self, policy, mcr_amount):
-        if mcr_amount > self.mcr:
-            raise RevertError("Want to unlock more MCR than locked")
+    def unlock_scr(self, policy, scr_amount):
+        if scr_amount > self.scr:
+            raise RevertError("Want to unlock more SCR than locked")
         self._update_current_index()
 
-        if self.mcr == mcr_amount:
-            self.mcr = Wad(0)
-            self.mcr_interest_rate = Ray(0)
+        if self.scr == scr_amount:
+            self.scr = Wad(0)
+            self.scr_interest_rate = Ray(0)
         else:
-            orig_mcr = self.mcr
-            self.mcr -= mcr_amount
-            self.mcr_interest_rate = (
-                self.mcr_interest_rate * orig_mcr.to_ray() - policy.interest_rate * mcr_amount.to_ray()
-            ) // self.mcr.to_ray()  # revert weighted average
+            orig_scr = self.scr
+            self.scr -= scr_amount
+            self.scr_interest_rate = (
+                self.scr_interest_rate * orig_scr.to_ray() - policy.interest_rate * scr_amount.to_ray()
+            ) // self.scr.to_ray()  # revert weighted average
         self._update_token_interest_rate()
 
     def discrete_earning(self, amount):
@@ -250,7 +250,7 @@ class EToken(ERC20Token):
     def total_withdrawable(self):
         """Returns the amount that's available to be withdrawed"""
         locked = (
-            self.mcr.to_ray() * (_R(1) + self.mcr_interest_rate) * self.liquidity_requirement
+            self.scr.to_ray() * (_R(1) + self.scr_interest_rate) * self.liquidity_requirement
         ).to_wad()
         return max(_W(0), self.total_supply() - locked)
 
@@ -274,55 +274,55 @@ class EToken(ERC20Token):
     def accepts(self, policy):
         return policy.expiration <= (time_control.now + self.expiration_period)
 
-    def _update_protocol_loan_index(self):
-        self.protocol_loan_index = self._get_protocol_loan_index()
-        self.protocol_loan_last_index_update = time_control.now
+    def _update_pool_loan_index(self):
+        self.pool_loan_index = self._get_pool_loan_index()
+        self.pool_loan_last_index_update = time_control.now
 
-    def lend_to_protocol(self, amount):
+    def lend_to_pool(self, amount):
         if amount > self.ocean and not amount.equal(self.ocean):  # rounding error
             raise RevertError("Not enought capital to lend")
-        if self.protocol_loan == 0:
-            self.protocol_loan = amount
-            self.protocol_loan_index = Ray(RAY)
-            self.protocol_loan_last_index_update = time_control.now
+        if self.pool_loan == 0:
+            self.pool_loan = amount
+            self.pool_loan_index = Ray(RAY)
+            self.pool_loan_last_index_update = time_control.now
         else:
-            self._update_protocol_loan_index()
-            self.protocol_loan += (amount.to_ray() // self.protocol_loan_index).to_wad()
+            self._update_pool_loan_index()
+            self.pool_loan += (amount.to_ray() // self.pool_loan_index).to_wad()
         self._update_current_index()
         self.discrete_earning(-amount)
 
-    def repay_protocol_loan(self, amount):
-        self._update_protocol_loan_index()
-        self.protocol_loan = (
-            (self.get_protocol_loan() - amount).to_ray() // self.protocol_loan_index
+    def repay_pool_loan(self, amount):
+        self._update_pool_loan_index()
+        self.pool_loan = (
+            (self.get_pool_loan() - amount).to_ray() // self.pool_loan_index
         ).to_wad()
         self._update_current_index()
         self.discrete_earning(amount)
 
-    def _get_protocol_loan_index(self):
-        seconds = time_control.now - self.protocol_loan_last_index_update
+    def _get_pool_loan_index(self):
+        seconds = time_control.now - self.pool_loan_last_index_update
         if seconds <= 0:
-            return self.protocol_loan_index
+            return self.pool_loan_index
         increment = (
-            Ray.from_value(seconds) * self.protocol_loan_interest_rate //
+            Ray.from_value(seconds) * self.pool_loan_interest_rate //
             Ray.from_value(SECONDS_IN_YEAR)
         )
-        return self.protocol_loan_index * (Ray(RAY) + increment)
+        return self.pool_loan_index * (Ray(RAY) + increment)
 
-    def get_protocol_loan(self):
-        if self.protocol_loan == 0:
-            return self.protocol_loan
-        return (self.protocol_loan.to_ray() * self._get_protocol_loan_index()).to_wad()
+    def get_pool_loan(self):
+        if self.pool_loan == 0:
+            return self.pool_loan
+        return (self.pool_loan.to_ray() * self._get_pool_loan_index()).to_wad()
 
-    def set_protocol_loan_interest_rate(self, new_rate):
-        self._update_protocol_loan_index()
-        self.protocol_loan_interest_rate = new_rate
+    def set_pool_loan_interest_rate(self, new_rate):
+        self._update_pool_loan_index()
+        self.pool_loan_interest_rate = new_rate
 
     def get_investable(self):
-        return self.mcr + self.ocean + self.get_protocol_loan()
+        return self.scr + self.ocean + self.get_pool_loan()
 
 
-class Protocol(Contract):
+class PolicyPool(Contract):
     currency = ContractProxyField()
     risk_modules = DictField(StringField(), ContractProxyField(), default={})
     etokens = DictField(StringField(), ContractProxyField(), default={})
@@ -383,20 +383,20 @@ class Protocol(Contract):
         self.policies_nft.mint(customer, policy.id)
 
         rm.add_policy(policy)
-        if policy.rm_mcr:
-            self.currency.transfer_from(self.contract_id, rm.wallet, self.contract_id, policy.rm_mcr)
+        if policy.rm_scr:
+            self.currency.transfer_from(self.contract_id, rm.wallet, self.contract_id, policy.rm_scr)
 
         assert policy.interest_rate >= 0
 
         self.active_pure_premiums += policy.pure_premium
         self.active_premiums += policy.premium
 
-        self._lock_mcr(policy)
+        self._lock_scr(policy)
 
         self.policies[policy.id] = policy
         return policy
 
-    def _lock_mcr(self, policy):
+    def _lock_scr(self, policy):
         ocean = Wad(0)
         ocean_per_token = {}
         for etk in self.etokens.values():
@@ -408,18 +408,18 @@ class Protocol(Contract):
             ocean += ocean_token
             ocean_per_token[etk.name] = ocean_token
 
-        assert ocean >= policy.mcr
+        assert ocean >= policy.scr
 
-        mcr_not_locked = policy.mcr
+        scr_not_locked = policy.scr
 
         for index, (token_name, ocean_token) in enumerate(ocean_per_token.items()):
             if index < (len(ocean_per_token) - 1):
-                mcr_for_token = policy.mcr * ocean_token // ocean
+                scr_for_token = policy.scr * ocean_token // ocean
             else:  # Last one gets the rest
-                mcr_for_token = mcr_not_locked
-            self.etokens[token_name].lock_mcr(policy, mcr_for_token)
-            policy.locked_funds[token_name] = mcr_for_token
-            mcr_not_locked -= mcr_for_token
+                scr_for_token = scr_not_locked
+            self.etokens[token_name].lock_scr(policy, scr_for_token)
+            policy.locked_funds[token_name] = scr_for_token
+            scr_not_locked -= scr_for_token
 
     def _transfer_to(self, target, amount):
         if amount == _W(0):
@@ -429,9 +429,9 @@ class Protocol(Contract):
             self.asset_manager.refill_wallet(amount)
         return self.currency.transfer(self.contract_id, target, amount)
 
-    def _pay_from_protocol(self, policy):
+    def _pay_from_pool(self, policy):
         to_pay = policy.payout
-        to_pay -= policy.rm_mcr
+        to_pay -= policy.rm_scr
         pure_premium, for_ensuro, for_rm, _ = policy.premium_split()
         to_pay -= for_ensuro + for_rm + pure_premium
         # 1. take from won_pure_premiums
@@ -473,13 +473,13 @@ class Protocol(Contract):
         adjustment = for_lps - policy.accrued_interest()
 
         if customer_won:
-            borrow_from_mcr = self._pay_from_protocol(policy)
+            borrow_from_scr = self._pay_from_pool(policy)
             policy_owner = self.policies_nft.owner_of(policy.id)
             self._transfer_to(policy_owner, policy.payout)
             pure_premium_won = Wad(0)
         else:
             # Pay Ensuro and RM
-            self._transfer_to(policy.risk_module.wallet, for_rm + policy.rm_mcr)
+            self._transfer_to(policy.risk_module.wallet, for_rm + policy.rm_scr)
             self._transfer_to(self.treasury, for_ensuro)
             pure_premium_won = pure_premium
             # Cover first borrowed_active_pp
@@ -488,21 +488,21 @@ class Protocol(Contract):
                 self.borrowed_active_pp -= to_cover
                 pure_premium_won -= to_cover
 
-        for (etoken_name, mcr_amount) in policy.locked_funds.items():
+        for (etoken_name, scr_amount) in policy.locked_funds.items():
             etk = self.etokens[etoken_name]
-            etk.unlock_mcr(policy, mcr_amount)
+            etk.unlock_scr(policy, scr_amount)
             # etk_adjustment always done because policy may last more or less than initially calculated
-            etk_adjustment = adjustment * mcr_amount // policy.mcr
+            etk_adjustment = adjustment * scr_amount // policy.scr
             etk.discrete_earning(etk_adjustment)
             if not customer_won:
-                borrowed_from_etk = etk.get_protocol_loan()
+                borrowed_from_etk = etk.get_pool_loan()
                 if borrowed_from_etk and pure_premium_won:  # if debt with token, repay from pure_premium
-                    repay_amount = min(borrowed_from_etk, pure_premium * mcr_amount // policy.mcr)
-                    etk.repay_protocol_loan(repay_amount)
+                    repay_amount = min(borrowed_from_etk, pure_premium * scr_amount // policy.scr)
+                    etk.repay_pool_loan(repay_amount)
                     pure_premium_won -= repay_amount
-            elif borrow_from_mcr:
-                etk_borrow = borrow_from_mcr * mcr_amount // policy.mcr
-                etk.lend_to_protocol(etk_borrow)
+            elif borrow_from_scr:
+                etk_borrow = borrow_from_scr * scr_amount // policy.scr
+                etk.lend_to_pool(etk_borrow)
 
         self._store_pure_premium_won(pure_premium_won)
 
@@ -515,17 +515,17 @@ class Protocol(Contract):
 
         modified_etokens = set()
 
-        # unlock previous MCR
-        for (etoken_name, mcr_amount) in policy.locked_funds.items():
+        # unlock previous SCR
+        for (etoken_name, scr_amount) in policy.locked_funds.items():
             etk = self.etokens[etoken_name]
-            etk.unlock_mcr(policy, mcr_amount)
+            etk.unlock_scr(policy, scr_amount)
             modified_etokens.add(etoken_name)
 
         policy.locked_funds = {}
-        self._lock_mcr(policy)
+        self._lock_scr(policy)
 
     def get_investable(self):
-        borrowed_from_etk = sum((etk.get_protocol_loan() for etk in self.etokens.values()), Wad(0))
+        borrowed_from_etk = sum((etk.get_pool_loan() for etk in self.etokens.values()), Wad(0))
         return max(
             self.active_premiums + self.won_pure_premiums - self.borrowed_active_pp - borrowed_from_etk,
             Wad(0)
@@ -556,31 +556,31 @@ class Protocol(Contract):
 
 
 class AssetManager(Contract):
-    protocol = ContractProxyField()
+    pool = ContractProxyField()
 
     cash_balance = WadField(default=Wad(0))
     liquidity_min = WadField()
     liquidity_middle = WadField()
     liquidity_max = WadField()
-    # Any time balance_of(Protocol) < liquidity_min we refill up to liquidity_middle
-    # Any time balance_of(Protocol) > liquidity_max take liquidity up liquidity_middle
+    # Any time balance_of(PolicyPool) < liquidity_min we refill up to liquidity_middle
+    # Any time balance_of(PolicyPool) > liquidity_max take liquidity up liquidity_middle
     last_investment_value = WadField(default=Wad(0))
 
     def total_investable(self):
         "Estimation of all total assets available reinvest"
-        protocol_investable = self.protocol.get_investable()
-        token_investable = sum((etk.get_investable() for etk in self.protocol.etokens.values()), Wad(0))
+        pool_investable = self.pool.get_investable()
+        token_investable = sum((etk.get_investable() for etk in self.pool.etokens.values()), Wad(0))
 
-        return protocol_investable + token_investable
+        return pool_investable + token_investable
 
     def distribute_earnings(self):
         investment_value = self.get_investment_value()
         total_investable = self.total_investable()
         earnings = investment_value - self.last_investment_value
-        protocol_share = self.protocol.get_investable() // total_investable
-        self.protocol.asset_earnings(earnings * protocol_share)
+        pool_share = self.pool.get_investable() // total_investable
+        self.pool.asset_earnings(earnings * pool_share)
 
-        for etk in self.protocol.etokens.values():
+        for etk in self.pool.etokens.values():
             etk_share = etk.get_investable() // total_investable
             etk.asset_earnings(earnings * etk_share)
 
@@ -590,14 +590,14 @@ class AssetManager(Contract):
         raise NotImplementedError()
 
     def rebalance(self):
-        protocol_cash = self.protocol.currency.balance_of(self.protocol.contract_id)
+        pool_cash = self.pool.currency.balance_of(self.pool.contract_id)
 
-        if protocol_cash > self.liquidity_max:
-            self._invest(protocol_cash - self.liquidity_middle)
-        elif protocol_cash < self.liquidity_min:
-            self._deinvest(self.liquidity_middle - protocol_cash)
+        if pool_cash > self.liquidity_max:
+            self._invest(pool_cash - self.liquidity_middle)
+        elif pool_cash < self.liquidity_min:
+            self._deinvest(self.liquidity_middle - pool_cash)
         # else:
-            # protocol_cash between [self.liquidity_min, self.liquidity_max]
+            # pool_cash between [self.liquidity_min, self.liquidity_max]
             # No need to transfer
 
     def checkpoint(self):
@@ -605,10 +605,10 @@ class AssetManager(Contract):
         self.rebalance()
 
     def refill_wallet(self, payment_amount):
-        protocol_cash = self.protocol.currency.balance_of(self.protocol.contract_id)
+        pool_cash = self.pool.currency.balance_of(self.pool.contract_id)
         investment_value = self.get_investment_value()
-        # try to leave the protocol balance at liquidity_middle after the payment
-        deinvest = payment_amount + self.liquidity_middle - protocol_cash
+        # try to leave the pool balance at liquidity_middle after the payment
+        deinvest = payment_amount + self.liquidity_middle - pool_cash
         if deinvest > investment_value:
             deinvest = investment_value
 
@@ -632,7 +632,7 @@ class FixedRateAssetManager(AssetManager):
     last_mint_burn = IntField(default=time_control.now)
 
     def get_investment_value(self):
-        balance = self.protocol.currency.balance_of(self.contract_id)
+        balance = self.pool.currency.balance_of(self.contract_id)
         secs = time_control.now - self.last_mint_burn
         if secs <= 0:
             return balance
@@ -642,20 +642,20 @@ class FixedRateAssetManager(AssetManager):
     def _mint_burn(self):
         if self.last_mint_burn == time_control.now:
             return
-        balance = self.protocol.currency.balance_of(self.contract_id)
+        balance = self.pool.currency.balance_of(self.contract_id)
         current_value = self.get_investment_value()
         if current_value > balance:
-            self.protocol.currency.mint(self.contract_id, current_value - balance)
+            self.pool.currency.mint(self.contract_id, current_value - balance)
         elif current_value < balance:
-            self.protocol.currency.burn(self.contract_id, balance - current_value)
+            self.pool.currency.burn(self.contract_id, balance - current_value)
         self.last_mint_burn = time_control.now
 
     def _invest(self, amount):
         self._mint_burn()
         super()._invest(amount)
-        self.protocol.currency.transfer(self.protocol.contract_id, self.contract_id, amount)
+        self.pool.currency.transfer(self.pool.contract_id, self.contract_id, amount)
 
     def _deinvest(self, amount):
         self._mint_burn()
         super()._deinvest(amount)
-        self.protocol.currency.transfer(self.contract_id, self.protocol.contract_id, amount)
+        self.pool.currency.transfer(self.contract_id, self.pool.contract_id, amount)

@@ -211,37 +211,37 @@ def _adapt_signed_amount(args, kwargs):
 
 
 class ETokenETH(IERC20):
-    def __init__(self, owner, name, symbol, protocol, expiration_period, liquidity_requirement=_R(1),
-                 protocol_loan_interest_rate=_R("0.05")):
+    def __init__(self, owner, name, symbol, policy_pool, expiration_period, liquidity_requirement=_R(1),
+                 pool_loan_interest_rate=_R("0.05")):
         self.owner = AddressBook.instance.get_account(owner)
-        protocol = AddressBook.instance.get_account(protocol)
-        self._auto_from = protocol
+        policy_pool = AddressBook.instance.get_account(policy_pool)
+        self._auto_from = policy_pool
         self.contract = brownie.EToken.deploy(
-            name, symbol, protocol, expiration_period, liquidity_requirement,
-            protocol_loan_interest_rate,
+            name, symbol, policy_pool, expiration_period, liquidity_requirement,
+            pool_loan_interest_rate,
             {"from": self.owner}
         )
 
     ocean = MethodAdapter((), "amount", is_property=True)
-    mcr = MethodAdapter((), "amount", is_property=True)
-    mcr_interest_rate = MethodAdapter((), "ray", is_property=True)
+    scr = MethodAdapter((), "amount", is_property=True)
+    scr_interest_rate = MethodAdapter((), "ray", is_property=True)
     token_interest_rate = MethodAdapter((), "ray", is_property=True)
-    protocol_loan_interest_rate = MethodAdapter((), "ray", is_property=True)
-    set_protocol_loan_interest_rate = MethodAdapter((("new_rate", "ray"), ))
+    pool_loan_interest_rate = MethodAdapter((), "ray", is_property=True)
+    set_pool_loan_interest_rate = MethodAdapter((("new_rate", "ray"), ))
 
-    lock_mcr = MethodAdapter(
-        (("policy_interest_rate", "ray"), ("mcr_amount", "amount")),
+    lock_scr = MethodAdapter(
+        (("policy_interest_rate", "ray"), ("scr_amount", "amount")),
         adapt_args=lambda args, kwargs: ((), {
             "policy_interest_rate": (args[0] if args else kwargs["policy"]).interest_rate,
-            "mcr_amount": args[1] if len(args) > 1 else kwargs["mcr_amount"],
+            "scr_amount": args[1] if len(args) > 1 else kwargs["scr_amount"],
         })
     )
 
-    unlock_mcr = MethodAdapter(
-        (("policy_interest_rate", "ray"), ("mcr_amount", "amount")),
+    unlock_scr = MethodAdapter(
+        (("policy_interest_rate", "ray"), ("scr_amount", "amount")),
         adapt_args=lambda args, kwargs: ([], {
             "policy_interest_rate": (args[0] if args else kwargs["policy"]).interest_rate,
-            "mcr_amount": args[1] if len(args) > 1 else kwargs["mcr_amount"],
+            "scr_amount": args[1] if len(args) > 1 else kwargs["scr_amount"],
         })
     )
 
@@ -272,9 +272,9 @@ class ETokenETH(IERC20):
         adapt_args=lambda args, kwargs: ((args[0].expiration, ), {})
     )
 
-    lend_to_protocol = MethodAdapter((("amount", "amount"), ))
-    repay_protocol_loan = MethodAdapter((("amount", "amount"), ))
-    get_protocol_loan = MethodAdapter((), "amount")
+    lend_to_pool = MethodAdapter((("amount", "amount"), ))
+    repay_pool_loan = MethodAdapter((("amount", "amount"), ))
+    get_pool_loan = MethodAdapter((), "amount")
     get_investable = MethodAdapter((), "amount")
 
     get_current_index = MethodAdapter((("updated", "bool"), ), "ray")

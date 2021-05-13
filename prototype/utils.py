@@ -79,28 +79,28 @@ def load_config(yaml_config=None):
     nft_params.setdefault("symbol", "EPOLI")
     nft = module.ERC721Token(**nft_params)
 
-    protocol_params = config.get("protocol", {})
-    protocol_params["currency"] = currency.contract_id
-    protocol_params["policies_nft"] = nft.contract_id
-    protocol = module.Protocol(**protocol_params)
+    pool_params = config.get("policy_pool", {})
+    pool_params["currency"] = currency.contract_id
+    pool_params["policies_nft"] = nft.contract_id
+    pool = module.PolicyPool(**pool_params)
 
     for risk_module_dict in config.get("risk_modules", []):
         rm = module.RiskModule(**risk_module_dict)
-        protocol.add_risk_module(rm)
+        pool.add_risk_module(rm)
 
     for etoken_dict in config.get("etokens", []):
-        etoken_dict["owner"] = protocol.contract_id
+        etoken_dict["owner"] = pool.contract_id
         etk = module.EToken(**etoken_dict)
-        protocol.add_etoken(etk)
+        pool.add_etoken(etk)
 
     asset_manager = config.get("asset_manager", {})
     if asset_manager:
         asset_manager_class = asset_manager.pop("class")
-        asset_manager["protocol"] = protocol
+        asset_manager["pool"] = pool
         asset_manager = getattr(module, asset_manager_class)(**asset_manager)
-        protocol.set_asset_manager(asset_manager)
+        pool.set_asset_manager(asset_manager)
 
-    return protocol
+    return pool
 
 
 def random_distribute(total_count, step_count):
@@ -123,7 +123,7 @@ def evenly_distribute(total_count, step_count):
     yield missing
 
 
-def run_simulation(protocol, period, policy_count_by_period, policy_factory, policy_resolver,
+def run_simulation(pool, period, policy_count_by_period, policy_factory, policy_resolver,
                    observer):
     observer("start", **locals())
 
@@ -134,12 +134,12 @@ def run_simulation(protocol, period, policy_count_by_period, policy_factory, pol
     won_count = 0
 
     for period_idx, policy_count in enumerate(policy_count_by_period):
-        today = protocol.now()
+        today = pool.now()
 
         # Create new policies
         if policy_count:
             for i in range(policy_count):
-                policy = policy_factory(protocol, period_idx, i)
+                policy = policy_factory(pool, period_idx, i)
                 new_policies.append(policy)
                 to_resolve.add((policy.id, policy.risk_module.name))
 
@@ -149,7 +149,7 @@ def run_simulation(protocol, period, policy_count_by_period, policy_factory, pol
             customer_won = policy_resolver(**locals())
             if customer_won is None:
                 continue
-            protocol.resolve_policy(rm_name, policy_id, customer_won)
+            pool.resolve_policy(rm_name, policy_id, customer_won)
             won_count += 1
             resolved_count += 1
             resolved.add((policy_id, rm_name))
@@ -158,7 +158,7 @@ def run_simulation(protocol, period, policy_count_by_period, policy_factory, pol
 
         observer("step", **locals())
 
-        protocol.fast_forward_time(period)
+        pool.fast_forward_time(period)
 
     observer("end", **locals())
 
