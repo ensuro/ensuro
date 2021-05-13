@@ -339,7 +339,7 @@ class EToken(ERC20Token):
                 transfer_amounts.append((provider, withdrawable))
                 total_transfer += withdrawable
                 self.withdrawers[provider] = provider_amount - withdrawable
-                self.withdraw_queue.append(provider)  # requeue at the end
+                self.withdraw_queue.insert(0, provider)  # requeue at the end
                 withdrawable = Wad(0)
                 self.to_withdraw_amount -= withdrawable
 

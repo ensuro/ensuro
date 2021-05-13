@@ -41,8 +41,8 @@ contract EToken is Context, IERC20, IEToken {
   uint256 internal _liquidityRequirement;  // in Ray
 
   uint256 internal _minQueuedWithdraw;  // in Wad
-  // TODO: withdrawQueue
-  // TODO: withdrawers
+  address [] _withdrawQueue;
+  mapping (address => uint256) private _withdrawers;
   uint256 internal _toWithdrawAmount;  // in Wad
 
   uint256 internal _protocolLoan;  // in Wad
@@ -507,26 +507,103 @@ contract EToken is Context, IERC20, IEToken {
     return amount;
   }
 
+  event QueuedWithdraw(address indexed provider, uint256 value);
+
+  function queue_withdraw(address provider, uint256 amount) external returns (uint256) {
+    uint256 balance = balanceOf(provider);
+    if (amount > balance)
+      amount = balance;
+    if (_withdrawers[provider] != 0) {
+      // Provider already in the queue
+      require(
+        _withdrawers[provider] < amount,
+        "Only amount reduction allowed Already in the queue with smaller amount, wait your turn and queue again"
+      );
+      if (amount < _minQueuedWithdraw) {
+        // Delete queued_withdraw
+        _toWithdrawAmount = _toWithdrawAmount.sub(_withdrawers[provider]);
+        delete _withdrawers[provider];
+        amount = 0;
+      } else {
+        // Update amount
+        _toWithdrawAmount = _toWithdrawAmount.sub(_withdrawers[provider] - amount);
+        _withdrawers[provider] = amount;
+      }
+    } else {
+      if (amount < _minQueuedWithdraw)
+        revert("Amount less than minimum");
+      _withdrawers[provider] = amount;
+      _toWithdrawAmount = _toWithdrawAmount.add(amount);
+      _withdrawQueue.push(provider);
+    }
+    emit QueuedWithdraw(provider, amount);
+    return amount;
+  }
+
+  struct ToTransfer {
+    address provider;
+    uint256 amount;
+  }
+
+  function process_withdrawers() external onlyEnsuro returns (uint256, ToTransfer[] memory) {
+    ToTransfer[] memory ret;
+    uint256 withdrawable = totalWithdrawable();
+    uint queue_length = _withdrawQueue.length;
+    if (withdrawable < _minQueuedWithdraw || queue_length == 0 || _toWithdrawAmount < _minQueuedWithdraw)
+      return (0, ret);
+    _updateCurrentIndex();
+
+    uint256 total_transfer;
+    uint last_index;
+
+    ret = new ToTransfer[] (queue_length);
+    for (uint i=0; i < queue_length; i++) {
+      address provider = _withdrawQueue[i];
+      last_index = i;
+      ret[i].provider = provider;
+      uint256 amount = _withdrawers[provider];
+      if (amount == 0)
+        continue; // skip - provider removed from queue
+      _toWithdrawAmount = _toWithdrawAmount.sub(amount);
+      uint256 provider_balance = balanceOf(provider);
+      if (amount > provider_balance)
+        amount = provider_balance;
+      if (amount < _minQueuedWithdraw) {
+        delete _withdrawers[provider];
+      } else {
+        bool full_withdraw = false;
+        if (amount > withdrawable)
+          full_withdraw = true;
+        else if ((amount - withdrawable) < _minQueuedWithdraw) {
+          full_withdraw = true;
+          amount = withdrawable;
+        }
+        if (full_withdraw) {
+          _burn(provider, amount);
+          ret[i].amount = amount;
+          total_transfer += amount;
+          withdrawable -= amount;
+          delete _withdrawers[provider];
+        } else { // partial
+          _burn(provider, withdrawable);
+          ret[i].amount = withdrawable;
+          total_transfer += withdrawable;
+          withdrawable = 0;
+          _withdrawers[provider] = amount - withdrawable;
+          // readd the missing amount
+          _toWithdrawAmount = _toWithdrawAmount.add(amount - withdrawable);
+        }
+      }
+      if (withdrawable < _minQueuedWithdraw || _toWithdrawAmount < _minQueuedWithdraw)
+        break;
+    }
+    // Before finishing, I need to shrink _withdrawQueue
+
+
+    return (total_transfer, ret);
+  }
 
   /*  @external
-    def queue_withdraw(self, provider, amount):
-        balance = self.balance_of(provider)
-        if amount is None or amount > balance:
-            amount = balance
-
-        if provider in self.withdrawers:
-            # clean first
-            self.to_withdraw_amount -= self.withdrawers[provider]
-            del self.withdrawers[provider]
-
-        if amount < self.min_queued_withdraw:
-            return _W(0)
-
-        self.withdrawers[provider] = amount
-        self.withdraw_queue.append(provider)
-        self.to_withdraw_amount += amount
-        return amount
-
     def process_withdrawers(self):
         self._update_current_index()
         withdrawable = self.total_withdrawable()
