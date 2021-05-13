@@ -407,6 +407,9 @@ contract EToken is Context, IERC20, IEToken {
     return _tokenInterestRate;
   }
 
+  event MCRLocked(uint256 interest_rate, uint256 value);
+  event MCRUnlocked(uint256 interest_rate, uint256 value);
+
   function lockMcr(uint256 policy_interest_rate, uint256 mcr_amount) onlyEnsuro external {
     require(mcr_amount <= this.ocean(), "Not enought OCEAN to cover the MCR");
     _updateCurrentIndex();
@@ -420,6 +423,7 @@ contract EToken is Context, IERC20, IEToken {
         policy_interest_rate.rayMul(mcr_amount.wadToRay())
       ).rayDiv(_mcr.wadToRay());
     }
+    emit MCRLocked(policy_interest_rate, mcr_amount);
     _updateTokenInterestRate();
   }
 
@@ -437,6 +441,7 @@ contract EToken is Context, IERC20, IEToken {
         policy_interest_rate.rayMul(mcr_amount.wadToRay())
       ).rayDiv(_mcr.wadToRay());
     }
+    emit MCRUnlocked(policy_interest_rate, mcr_amount);
     _updateTokenInterestRate();
   }
 
