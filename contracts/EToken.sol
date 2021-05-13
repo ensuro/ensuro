@@ -40,11 +40,6 @@ contract EToken is Context, IERC20, IEToken {
   uint256 internal _tokenInterestRate;  // in Ray
   uint256 internal _liquidityRequirement;  // in Ray
 
-  uint256 internal _minQueuedWithdraw;  // in Wad
-  address [] _withdrawQueue;
-  mapping (address => uint256) private _withdrawers;
-  uint256 internal _toWithdrawAmount;  // in Wad
-
   uint256 internal _protocolLoan;  // in Wad
   uint256 internal _protocolLoanInterestRate;  // in Ray
   uint256 internal _protocolLoanIndex;  // in Ray
@@ -67,7 +62,6 @@ contract EToken is Context, IERC20, IEToken {
    * @param ensuro The address of the Ensuro Protocol where this eToken will be used
    * @param expirationPeriod Maximum expirationPeriod (from block.timestamp) of policies to be accepted
    * @param liquidityRequirement Liquidity requirement to allow withdrawal (in Ray - default=1 Ray)
-   * @param minQueuedWithdraw Minimum amount to do queued withdraws
    * @param protocolLoanInterestRate_ Rate of loans given to the protocol (in Ray)
    * @param name_ Name of the eToken
    * @param symbol_ Symbol of the eToken
@@ -78,7 +72,6 @@ contract EToken is Context, IERC20, IEToken {
     address ensuro,  // TODO: IEnsuroProtocol
     uint40 expirationPeriod,
     uint256 liquidityRequirement,
-    uint256 minQueuedWithdraw,
     uint256 protocolLoanInterestRate_
   ) {
     _name = name_;
@@ -91,10 +84,6 @@ contract EToken is Context, IERC20, IEToken {
     _mcrInterestRate = 0;
     _tokenInterestRate = 0;
     _liquidityRequirement = liquidityRequirement;
-
-    _minQueuedWithdraw = minQueuedWithdraw;
-    // TODO: _withdrawers
-    _toWithdrawAmount = 0;
 
     _protocolLoan = 0;
     _protocolLoanInterestRate = protocolLoanInterestRate_;
@@ -400,9 +389,8 @@ contract EToken is Context, IERC20, IEToken {
 
   function ocean() public view returns (uint256) {
     uint256 totalSupply_ = this.totalSupply();
-    uint256 locked = _mcr + _toWithdrawAmount;
-    if (totalSupply_ > locked)
-      return totalSupply_.sub(locked);
+    if (totalSupply_ > _mcr)
+      return totalSupply_.sub(_mcr);
     else
       return 0;
   }
@@ -500,152 +488,8 @@ contract EToken is Context, IERC20, IEToken {
       return 0;
     _burn(provider, amount);
     _updateTokenInterestRate();
-        /*# If provider in withdraws and remaining balance < to_withdraw, remove from queue
-        if provider in self.withdrawers and (balance - amount) < self.withdrawers[provider]:
-            self.to_withdraw_amount -= self.withdrawers[provider]
-            del self.withdrawers[provider]*/
     return amount;
   }
-
-  event QueuedWithdraw(address indexed provider, uint256 value);
-
-  function queue_withdraw(address provider, uint256 amount) external returns (uint256) {
-    uint256 balance = balanceOf(provider);
-    if (amount > balance)
-      amount = balance;
-    if (_withdrawers[provider] != 0) {
-      // Provider already in the queue
-      require(
-        _withdrawers[provider] < amount,
-        "Only amount reduction allowed Already in the queue with smaller amount, wait your turn and queue again"
-      );
-      if (amount < _minQueuedWithdraw) {
-        // Delete queued_withdraw
-        _toWithdrawAmount = _toWithdrawAmount.sub(_withdrawers[provider]);
-        delete _withdrawers[provider];
-        amount = 0;
-      } else {
-        // Update amount
-        _toWithdrawAmount = _toWithdrawAmount.sub(_withdrawers[provider] - amount);
-        _withdrawers[provider] = amount;
-      }
-    } else {
-      if (amount < _minQueuedWithdraw)
-        revert("Amount less than minimum");
-      _withdrawers[provider] = amount;
-      _toWithdrawAmount = _toWithdrawAmount.add(amount);
-      _withdrawQueue.push(provider);
-    }
-    emit QueuedWithdraw(provider, amount);
-    return amount;
-  }
-
-  struct ToTransfer {
-    address provider;
-    uint256 amount;
-  }
-
-  function process_withdrawers() external onlyEnsuro returns (uint256, ToTransfer[] memory) {
-    ToTransfer[] memory ret;
-    uint256 withdrawable = totalWithdrawable();
-    uint queue_length = _withdrawQueue.length;
-    if (withdrawable < _minQueuedWithdraw || queue_length == 0 || _toWithdrawAmount < _minQueuedWithdraw)
-      return (0, ret);
-    _updateCurrentIndex();
-
-    uint256 total_transfer;
-    uint last_index;
-
-    ret = new ToTransfer[] (queue_length);
-    for (uint i=0; i < queue_length; i++) {
-      address provider = _withdrawQueue[i];
-      last_index = i;
-      ret[i].provider = provider;
-      uint256 amount = _withdrawers[provider];
-      if (amount == 0)
-        continue; // skip - provider removed from queue
-      _toWithdrawAmount = _toWithdrawAmount.sub(amount);
-      uint256 provider_balance = balanceOf(provider);
-      if (amount > provider_balance)
-        amount = provider_balance;
-      if (amount < _minQueuedWithdraw) {
-        delete _withdrawers[provider];
-      } else {
-        bool full_withdraw = false;
-        if (amount > withdrawable)
-          full_withdraw = true;
-        else if ((amount - withdrawable) < _minQueuedWithdraw) {
-          full_withdraw = true;
-          amount = withdrawable;
-        }
-        if (full_withdraw) {
-          _burn(provider, amount);
-          ret[i].amount = amount;
-          total_transfer += amount;
-          withdrawable -= amount;
-          delete _withdrawers[provider];
-        } else { // partial
-          _burn(provider, withdrawable);
-          ret[i].amount = withdrawable;
-          total_transfer += withdrawable;
-          withdrawable = 0;
-          _withdrawers[provider] = amount - withdrawable;
-          // readd the missing amount
-          _toWithdrawAmount = _toWithdrawAmount.add(amount - withdrawable);
-        }
-      }
-      if (withdrawable < _minQueuedWithdraw || _toWithdrawAmount < _minQueuedWithdraw)
-        break;
-    }
-    // Before finishing, I need to shrink _withdrawQueue
-
-
-    return (total_transfer, ret);
-  }
-
-  /*  @external
-    def process_withdrawers(self):
-        self._update_current_index()
-        withdrawable = self.total_withdrawable()
-        transfer_amounts = []
-        total_transfer = Wad(0)
-
-        while self.to_withdraw_amount and withdrawable >= self.min_queued_withdraw:
-            provider = self.withdraw_queue.pop(0)
-            provider_amount = self.withdrawers.get(provider, Wad(0))
-            if not provider_amount:
-                continue
-            if provider_amount < self.min_queued_withdraw:
-                # skip provider - amount < min_queued_withdraw must do manual withdraw
-                del self.withdrawers[provider]
-                self.to_withdraw_amount -= provider_amount
-                continue
-            provider_amount = min(provider_amount, self.balance_of(provider))
-            if provider_amount <= withdrawable:
-                full_withdraw = True
-            elif (provider_amount - withdrawable) < self.min_queued_withdraw:
-                full_withdraw = True
-                provider_amount = withdrawable
-            else:
-                full_withdraw = False
-            if full_withdraw:
-                self._withdraw(provider, provider_amount)
-                transfer_amounts.append((provider, provider_amount))
-                total_transfer += provider_amount
-                withdrawable -= provider_amount
-                del self.withdrawers[provider]
-                self.to_withdraw_amount -= provider_amount
-            else:  # partial withdraw
-                self._withdraw(provider, withdrawable)
-                transfer_amounts.append((provider, withdrawable))
-                total_transfer += withdrawable
-                self.withdrawers[provider] = provider_amount - withdrawable
-                self.withdraw_queue.append(provider)  # requeue at the end
-                withdrawable = Wad(0)
-                self.to_withdraw_amount -= withdrawable
-
-        return total_transfer, transfer_amounts
-    */
 
   function accepts(uint40 policy_expiration) public view returns (bool) {
     return policy_expiration <= (uint40(block.timestamp) + _expirationPeriod);
@@ -665,7 +509,7 @@ contract EToken is Context, IERC20, IEToken {
       _protocolLoanLastIndexUpdate = uint40(block.timestamp);
     } else {
       _updateProtocolLoanIndex();
-      _protocolLoan = _protocolLoan.add(amount.wadToRay().rayDiv(_protocolLoanIndex).wadToRay());
+      _protocolLoan = _protocolLoan.add(amount.wadToRay().rayDiv(_protocolLoanIndex).rayToWad());
     }
     _updateCurrentIndex(); // shouldn't do anything because lendToProtocol is after unlock_mcr but doing
                            // anyway

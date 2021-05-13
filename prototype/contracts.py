@@ -229,13 +229,18 @@ class Contract(Model):
         self.in_place_deserialize(serialized, format=self.version_format)
 
 
+def require(condition, message=None):
+    if not condition:
+        raise RevertError(message or "required condition not met")
+
+
 class ERC20Token(Contract):
     ZERO = Wad(0)
 
     owner = AddressField()
     name = StringField()
     symbol = StringField(default="")
-    digits = IntField(default=18)
+    decimals = IntField(default=18)
     balances = DictField(AddressField(), WadField(), default={})
     allowances = DictField(
         TupleField((AddressField(), AddressField())),
@@ -262,9 +267,8 @@ class ERC20Token(Contract):
         if amount == self.ZERO:
             return
         balance = self.balances.get(address, self.ZERO)
-        if amount > balance:
-            raise RevertError("Not enought balance to burn")
-        elif amount == balance:
+        require(amount <= balance, "Not enought balance to burn")
+        if amount == balance:
             del self.balances[address]
         else:
             self.balances[address] -= amount
@@ -291,8 +295,9 @@ class ERC20Token(Contract):
     def allowance(self, owner, spender):
         return self.allowances.get((owner, spender), self.ZERO)
 
-    @external
-    def approve(self, owner, spender, amount):
+    def _approve(self, owner, spender, amount):
+        require(owner is not None, "ERC20: approve from the zero address")
+        require(spender is not None, "ERC20: approve to the zero address")
         if amount == self.ZERO:
             try:
                 del self.allowances[(owner, spender)]
@@ -302,15 +307,26 @@ class ERC20Token(Contract):
             self.allowances[(owner, spender)] = amount
 
     @external
+    def approve(self, sender, spender, amount):
+        self._approve(sender, spender, amount)
+
+    @external
+    def increase_allowance(self, sender, spender, amount):
+        self._approve(sender, spender, amount + self.allowances.get((sender, spender), self.ZERO))
+
+    @external
+    def decrease_allowance(self, sender, spender, amount):
+        allowance = self.allowances.get((sender, spender), self.ZERO)
+        require(allowance >= amount, "ERC20: decreased allowance below zero")
+        self._approve(sender, spender, allowance - amount)
+
+    @external
     def transfer_from(self, spender, sender, recipient, amount):
         allowance = self.allowances.get((sender, spender), self.ZERO)
         if allowance < amount:
             raise RevertError("Not enought allowance")
         self._transfer(sender, recipient, amount)
-        if amount == allowance:
-            del self.allowances[(sender, spender)]
-        else:
-            self.allowances[(sender, spender)] -= amount
+        self._approve(sender, spender, allowance - amount)
         return True
 
     def total_supply(self):

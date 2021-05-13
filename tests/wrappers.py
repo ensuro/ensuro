@@ -1,6 +1,6 @@
 from functools import partial
 from prototype.contracts import RevertError
-from prototype.wadray import Wad, _R, _W, Ray
+from prototype.wadray import Wad, _R, Ray
 from brownie import accounts
 import brownie
 from brownie.network.account import Account
@@ -30,6 +30,8 @@ class AddressBook:
         self.last_account_used = -1
 
     def get_account(self, name):
+        if name is None:
+            return "0x0000000000000000000000000000000000000000"
         if name not in self.name_to_address:
             self.last_account_used += 1
             if (len(self.eth_accounts) - 1) > self.last_account_used:
@@ -130,6 +132,9 @@ class MethodAdapter:
 
 
 class IERC20:
+    name = MethodAdapter((), "string", is_property=True)
+    symbol = MethodAdapter((), "string", is_property=True)
+    decimals = MethodAdapter((), "int", is_property=True)
     total_supply = MethodAdapter((), "amount")
     balance_of = MethodAdapter((("account", "address"), ), "amount")
     transfer = MethodAdapter((
@@ -139,6 +144,12 @@ class IERC20:
     allowance = MethodAdapter((("owner", "address"), ("spender", "address")), "amount")
     approve = MethodAdapter((("owner", "msg.sender"), ("spender", "address"), ("amount", "amount")),
                             "bool")
+    increase_allowance = MethodAdapter(
+        (("owner", "msg.sender"), ("spender", "address"), ("amount", "amount"))
+    )
+    decrease_allowance = MethodAdapter(
+        (("owner", "msg.sender"), ("spender", "address"), ("amount", "amount"))
+    )
 
     transfer_from = MethodAdapter((
         ("spender", "msg.sender"), ("sender", "address"), ("recipient", "address"), ("amount", "amount")
@@ -201,13 +212,13 @@ def _adapt_signed_amount(args, kwargs):
 
 class ETokenETH(IERC20):
     def __init__(self, owner, name, symbol, protocol, expiration_period, liquidity_requirement=_R(1),
-                 minQueuedWithdraw=_W(0), protocol_loan_interest_rate=_R("0.05")):
+                 protocol_loan_interest_rate=_R("0.05")):
         self.owner = AddressBook.instance.get_account(owner)
         protocol = AddressBook.instance.get_account(protocol)
         self._auto_from = protocol
         self.contract = brownie.EToken.deploy(
             name, symbol, protocol, expiration_period, liquidity_requirement,
-            minQueuedWithdraw, protocol_loan_interest_rate,
+            protocol_loan_interest_rate,
             {"from": self.owner}
         )
 
@@ -251,7 +262,10 @@ class ETokenETH(IERC20):
 
     def withdraw(self, provider, amount):
         receipt = self.withdraw_(provider, amount)
-        return Wad(receipt.events["Transfer"]["value"])
+        if "Transfer" in receipt.events:
+            return Wad(receipt.events["Transfer"]["value"])
+        else:
+            return Wad(0)
 
     accepts = MethodAdapter(
         (("policy_expiration", "int"), ), "bool",

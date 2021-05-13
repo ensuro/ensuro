@@ -139,11 +139,6 @@ class EToken(ERC20Token):
     token_interest_rate = RayField(default=_R(0))
     liquidity_requirement = RayField(default=_R(1))
 
-    min_queued_withdraw = WadField(default=_W(0))
-    withdraw_queue = ListField(AddressField(), default=[])
-    withdrawers = DictField(AddressField(), WadField(), default={})
-    to_withdraw_amount = WadField(default=_W(0))
-
     protocol_loan = WadField(default=_W(0))
     protocol_loan_interest_rate = RayField(default=_R("0.05"))
     protocol_loan_index = RayField(default=_R(1))
@@ -187,7 +182,7 @@ class EToken(ERC20Token):
 
     @property
     def ocean(self):
-        return max(self.total_supply() - self.mcr - self.to_withdraw_amount, _W(0))
+        return max(self.total_supply() - self.mcr, _W(0))
 
     def lock_mcr(self, policy, mcr_amount):
         self._update_current_index()
@@ -270,80 +265,11 @@ class EToken(ERC20Token):
         if amount == 0:
             return Wad(0)
 
-        self._withdraw(provider, amount)
-        self._update_token_interest_rate()
-
-        # If provider in withdraws and remaining balance < to_withdraw, remove from queue
-        if provider in self.withdrawers and (balance - amount) < self.withdrawers[provider]:
-            self.to_withdraw_amount -= self.withdrawers[provider]
-            del self.withdrawers[provider]
-
-        return amount
-
-    def _withdraw(self, provider, amount):
         scaled_amount = (amount.to_ray() // self.current_index).to_wad()
         self.burn(provider, scaled_amount)
+        self._update_token_interest_rate()
 
-    @external
-    def queue_withdraw(self, provider, amount):
-        balance = self.balance_of(provider)
-        if amount is None or amount > balance:
-            amount = balance
-
-        if provider in self.withdrawers:
-            # clean first
-            self.to_withdraw_amount -= self.withdrawers[provider]
-            del self.withdrawers[provider]
-
-        if amount < self.min_queued_withdraw:
-            return _W(0)
-
-        self.withdrawers[provider] = amount
-        self.withdraw_queue.append(provider)
-        self.to_withdraw_amount += amount
         return amount
-
-    def process_withdrawers(self):
-        self._update_current_index()
-        withdrawable = self.total_withdrawable()
-        transfer_amounts = []
-        total_transfer = Wad(0)
-
-        while self.to_withdraw_amount and withdrawable >= self.min_queued_withdraw:
-            provider = self.withdraw_queue.pop(0)
-            provider_amount = self.withdrawers.get(provider, Wad(0))
-            if not provider_amount:
-                continue
-            if provider_amount < self.min_queued_withdraw:
-                # skip provider - amount < min_queued_withdraw must do manual withdraw
-                del self.withdrawers[provider]
-                self.to_withdraw_amount -= provider_amount
-                continue
-            provider_amount = min(provider_amount, self.balance_of(provider))
-            if provider_amount <= withdrawable:
-                full_withdraw = True
-            elif (provider_amount - withdrawable) < self.min_queued_withdraw:
-                full_withdraw = True
-                provider_amount = withdrawable
-            else:
-                full_withdraw = False
-            if full_withdraw:
-                self._withdraw(provider, provider_amount)
-                transfer_amounts.append((provider, provider_amount))
-                total_transfer += provider_amount
-                withdrawable -= provider_amount
-                del self.withdrawers[provider]
-                self.to_withdraw_amount -= provider_amount
-            else:  # partial withdraw
-                self._withdraw(provider, withdrawable)
-                transfer_amounts.append((provider, withdrawable))
-                total_transfer += withdrawable
-                self.withdrawers[provider] = provider_amount - withdrawable
-                self.withdraw_queue.insert(0, provider)  # requeue at the end
-                withdrawable = Wad(0)
-                self.to_withdraw_amount -= withdrawable
-
-        return total_transfer, transfer_amounts
 
     def accepts(self, policy):
         return policy.expiration <= (time_control.now + self.expiration_period)
@@ -437,15 +363,6 @@ class Protocol(Contract):
         if withdrawed:
             self._transfer_to(provider, withdrawed)
         return withdrawed
-
-    @external
-    def process_withdrawers(self, etoken):
-        token = self.etokens[etoken]
-        total_transfer, transfer_amounts = token.process_withdrawers()
-        if total_transfer:
-            for provider, amount in transfer_amounts:
-                self._transfer_to(provider, amount)
-        return total_transfer
 
     def fast_forward_time(self, secs):
         global time_control
@@ -583,7 +500,6 @@ class Protocol(Contract):
                     repay_amount = min(borrowed_from_etk, pure_premium * mcr_amount // policy.mcr)
                     etk.repay_protocol_loan(repay_amount)
                     pure_premium_won -= repay_amount
-                self.process_withdrawers(etoken_name)
             elif borrow_from_mcr:
                 etk_borrow = borrow_from_mcr * mcr_amount // policy.mcr
                 etk.lend_to_protocol(etk_borrow)
@@ -607,9 +523,6 @@ class Protocol(Contract):
 
         policy.locked_funds = {}
         self._lock_mcr(policy)
-
-        for etoken_name in modified_etokens:
-            self.process_withdrawers(etoken_name)
 
     def get_investable(self):
         borrowed_from_etk = sum((etk.get_protocol_loan() for etk in self.etokens.values()), Wad(0))
