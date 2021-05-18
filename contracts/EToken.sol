@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: agpl-3.0
 pragma solidity ^0.8.0;
 
-import {Context} from "@openzeppelin/contracts/utils/Context.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {Pausable} from "@openzeppelin/contracts/security/Pausable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from '@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol';
 import {IEToken} from '../interfaces/IEToken.sol';
@@ -14,7 +15,11 @@ import {SafeMath} from '@openzeppelin/contracts/utils/math/SafeMath.sol';
  * @dev Implementation of the interest/earnings bearing token for the Ensuro protocol
  * @author Ensuro
  */
-contract EToken is Context, IERC20, IEToken {
+contract EToken is AccessControl, Pausable, IERC20, IEToken {
+  bytes32 public constant SET_LOAN_RATE_ROLE = keccak256("SET_LOAN_RATE_ROLE");
+  bytes32 public constant SET_LIQ_REQ_ROLE = keccak256("SET_LIQ_REQ_ROLE");
+  bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+
   using SafeMath for uint256;
   using WadRayMath for uint256;
   using SafeERC20 for IERC20;
@@ -89,7 +94,7 @@ contract EToken is Context, IERC20, IEToken {
     _poolLoanInterestRate = poolLoanInterestRate_;
     _poolLoanIndex = WadRayMath.ray();
     _poolLoanLastIndexUpdate = uint40(block.timestamp);
-
+    _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
   }
 
   /*** BEGIN ERC20 methods - mainly copied from OpenZeppelin but changes in events and scaled_amount */
@@ -124,6 +129,34 @@ contract EToken is Context, IERC20, IEToken {
    */
   function decimals() public view virtual returns (uint8) {
       return 18;
+  }
+
+  /**
+   * @dev Pauses all token transfers.
+   *
+   * See {ERC20Pausable} and {Pausable-_pause}.
+   *
+   * Requirements:
+   *
+   * - the caller must have the `PAUSER_ROLE`.
+   */
+  function pause() public virtual {
+    require(hasRole(PAUSER_ROLE, _msgSender()), "EToken: must have pauser role to pause");
+    _pause();
+  }
+
+  /**
+   * @dev Unpauses all token transfers.
+   *
+   * See {ERC20Pausable} and {Pausable-_unpause}.
+   *
+   * Requirements:
+   *
+   * - the caller must have the `PAUSER_ROLE`.
+   */
+  function unpause() public virtual {
+    require(hasRole(PAUSER_ROLE, _msgSender()), "EToken: must have pauser role to unpause");
+    _unpause();
   }
 
   /**
@@ -194,7 +227,7 @@ contract EToken is Context, IERC20, IEToken {
     _transfer(sender, recipient, amount);
 
     uint256 currentAllowance = _allowances[sender][_msgSender()];
-    require(currentAllowance >= amount, "ERC20: transfer amount exceeds allowance");
+    require(currentAllowance >= amount, "EToken: transfer amount exceeds allowance");
     _approve(sender, _msgSender(), currentAllowance - amount);
 
     return true;
@@ -233,7 +266,7 @@ contract EToken is Context, IERC20, IEToken {
    */
   function decreaseAllowance(address spender, uint256 subtractedValue) public virtual returns (bool) {
     uint256 currentAllowance = _allowances[_msgSender()][spender];
-    require(currentAllowance >= subtractedValue, "ERC20: decreased allowance below zero");
+    require(currentAllowance >= subtractedValue, "EToken: decreased allowance below zero");
     _approve(_msgSender(), spender, currentAllowance - subtractedValue);
 
     return true;
@@ -258,14 +291,14 @@ contract EToken is Context, IERC20, IEToken {
    * - `sender` must have a balance of at least `amount`.
    */
   function _transfer(address sender, address recipient, uint256 amount) internal virtual {
-    require(sender != address(0), "ERC20: transfer from the zero address");
-    require(recipient != address(0), "ERC20: transfer to the zero address");
+    require(sender != address(0), "EToken: transfer from the zero address");
+    require(recipient != address(0), "EToken: transfer to the zero address");
 
     _beforeTokenTransfer(sender, recipient, amount);
     uint256 scaled_amount = _scale_amount(amount);
 
     uint256 senderBalance = _balances[sender];
-    require(senderBalance >= scaled_amount, "ERC20: transfer amount exceeds balance");
+    require(senderBalance >= scaled_amount, "EToken: transfer amount exceeds balance");
     _balances[sender] = senderBalance - scaled_amount;
     _balances[recipient] += scaled_amount;
 
@@ -282,7 +315,7 @@ contract EToken is Context, IERC20, IEToken {
    * - `to` cannot be the zero address.
    */
   function _mint(address account, uint256 amount) internal virtual {
-    require(account != address(0), "ERC20: mint to the zero address");
+    require(account != address(0), "EToken: mint to the zero address");
 
     _beforeTokenTransfer(address(0), account, amount);
     uint256 scaled_amount = _scale_amount(amount);
@@ -304,12 +337,12 @@ contract EToken is Context, IERC20, IEToken {
    * - `account` must have at least `amount` tokens.
    */
   function _burn(address account, uint256 amount) internal virtual {
-    require(account != address(0), "ERC20: burn from the zero address");
+    require(account != address(0), "EToken: burn from the zero address");
     _beforeTokenTransfer(account, address(0), amount);
 
     uint256 scaled_amount = _scale_amount(amount);
     uint256 accountBalance = _balances[account];
-    require(accountBalance >= scaled_amount, "ERC20: burn amount exceeds balance");
+    require(accountBalance >= scaled_amount, "EToken: burn amount exceeds balance");
     _balances[account] = accountBalance - scaled_amount;
     _totalSupply -= scaled_amount;
 
@@ -330,8 +363,8 @@ contract EToken is Context, IERC20, IEToken {
    * - `spender` cannot be the zero address.
    */
   function _approve(address owner, address spender, uint256 amount) internal virtual {
-    require(owner != address(0), "ERC20: approve from the zero address");
-    require(spender != address(0), "ERC20: approve to the zero address");
+    require(owner != address(0), "EToken: approve from the zero address");
+    require(spender != address(0), "EToken: approve to the zero address");
 
     _allowances[owner][spender] = amount;
     emit Approval(owner, spender, amount);
@@ -479,7 +512,7 @@ contract EToken is Context, IERC20, IEToken {
         return 0;
   }
 
-  function withdraw(address provider, uint256 amount) onlyEnsuro external returns (uint256) {
+  function withdraw(address provider, uint256 amount) onlyEnsuro whenNotPaused external returns (uint256) {
     _updateCurrentIndex();
     uint256 balance = balanceOf(provider);
     if (balance == 0)
@@ -497,6 +530,8 @@ contract EToken is Context, IERC20, IEToken {
   }
 
   function accepts(uint40 policy_expiration) public view returns (bool) {
+    if (paused())
+      return false;
     return policy_expiration <= (uint40(block.timestamp) + _expirationPeriod);
   }
 
@@ -549,9 +584,13 @@ contract EToken is Context, IERC20, IEToken {
     return _poolLoanInterestRate;
   }
 
-  function setPoolLoanInterestRate(uint256 new_interest_rate) onlyEnsuro external {
+  function setPoolLoanInterestRate(uint256 new_interest_rate) external onlyRole(SET_LOAN_RATE_ROLE) {
     _updatePoolLoanIndex();
     _poolLoanInterestRate = new_interest_rate;
+  }
+
+  function setLiquidityRequirement(uint256 new_liq_req) external onlyRole(SET_LIQ_REQ_ROLE) {
+    _liquidityRequirement = new_liq_req;
   }
 
   function getInvestable() public view returns (uint256) {

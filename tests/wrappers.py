@@ -222,12 +222,22 @@ class ETokenETH(IERC20):
             {"from": self.owner}
         )
 
+    SET_LOAN_RATE_ROLE = "0xe62d393ed571d580b9dadf5969acac0f8be619cc47180ce14b5292f9984ec0c2"
+
     ocean = MethodAdapter((), "amount", is_property=True)
     scr = MethodAdapter((), "amount", is_property=True)
     scr_interest_rate = MethodAdapter((), "ray", is_property=True)
     token_interest_rate = MethodAdapter((), "ray", is_property=True)
     pool_loan_interest_rate = MethodAdapter((), "ray", is_property=True)
-    set_pool_loan_interest_rate = MethodAdapter((("new_rate", "ray"), ))
+    set_pool_loan_interest_rate_ = MethodAdapter((("user", "msg.sender"), ("new_rate", "ray"), ))
+
+    def set_pool_loan_interest_rate(self, rate):
+        if not hasattr(self, "_role_set_rate"):
+            self._role_set_rate = AddressBook.instance.get_account("SETRATE")
+            self.contract.grantRole(
+                self.SET_LOAN_RATE_ROLE, self._role_set_rate, {"from": self.owner}
+            )
+        return self.set_pool_loan_interest_rate_("SETRATE", rate)
 
     lock_scr = MethodAdapter(
         (("policy_interest_rate", "ray"), ("scr_amount", "amount")),

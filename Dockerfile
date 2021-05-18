@@ -23,7 +23,7 @@ ENV DEV_ENV $DEV_ENV
 ENV SETUP_FILE "/home/jovyan/app/setup.yaml"
 
 RUN brownie networks add Development dev cmd=ganache-cli host=http://ganache-cli:8545
-RUN brownie pm install OpenZeppelin/openzeppelin-contracts@4.0.0
+RUN brownie pm install OpenZeppelin/openzeppelin-contracts@4.1.0
 
 # ADD gunicorn.py server.py prototype.py cli.py wadray.py utils.py setup.yaml /home/jovyan/app/
 # ADD prototype /home/jovyan/ensuro/prototype/
