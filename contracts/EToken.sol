@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: agpl-3.0
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
@@ -94,7 +94,7 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken {
     _poolLoanInterestRate = poolLoanInterestRate_;
     _poolLoanIndex = WadRayMath.ray();
     _poolLoanLastIndexUpdate = uint40(block.timestamp);
-    _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
+    _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
   }
 
   /*** BEGIN ERC20 methods - mainly copied from OpenZeppelin but changes in events and scaled_amount */
@@ -413,14 +413,14 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken {
     ).add(WadRayMath.ray()));
   }
 
-  function getCurrentIndex(bool updated) public view returns (uint256) {
+  function getCurrentIndex(bool updated) public view virtual override returns (uint256) {
     if (updated)
       return _calculateCurrentIndex();
     else
       return _currentIndex;
   }
 
-  function ocean() public view returns (uint256) {
+  function ocean() public view virtual override returns (uint256) {
     uint256 totalSupply_ = this.totalSupply();
     if (totalSupply_ > _scr)
       return totalSupply_.sub(_scr);
@@ -428,22 +428,19 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken {
       return 0;
   }
 
-  function scr() public view returns (uint256) {
+  function scr() public view virtual override returns (uint256) {
     return _scr;
   }
 
-  function scrInterestRate() public view returns (uint256) {
+  function scrInterestRate() public view virtual override returns (uint256) {
     return _scrInterestRate;
   }
 
-  function tokenInterestRate() public view returns (uint256) {
+  function tokenInterestRate() public view virtual override returns (uint256) {
     return _tokenInterestRate;
   }
 
-  event SCRLocked(uint256 interest_rate, uint256 value);
-  event SCRUnlocked(uint256 interest_rate, uint256 value);
-
-  function lockScr(uint256 policy_interest_rate, uint256 scr_amount) onlyEnsuro external {
+  function lockScr(uint256 policy_interest_rate, uint256 scr_amount) onlyEnsuro external override {
     require(scr_amount <= this.ocean(), "Not enought OCEAN to cover the SCR");
     _updateCurrentIndex();
     if (_scr == 0) {
@@ -460,7 +457,7 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken {
     _updateTokenInterestRate();
   }
 
-  function unlockScr(uint256 policy_interest_rate, uint256 scr_amount) onlyEnsuro external {
+  function unlockScr(uint256 policy_interest_rate, uint256 scr_amount) onlyEnsuro external override {
     require(scr_amount <= _scr);  // Can be removed? Will fail later anyway
     _updateCurrentIndex();
 
@@ -484,24 +481,24 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken {
     _updateTokenInterestRate();
   }
 
-  function discreteEarning(uint256 amount, bool positive) onlyEnsuro external {
+  function discreteEarning(uint256 amount, bool positive) onlyEnsuro external override {
     _updateCurrentIndex();
     _discreteChange(amount, positive);
   }
 
-  function assetEarnings(uint256 amount, bool positive) onlyAssetManager external {
+  function assetEarnings(uint256 amount, bool positive) onlyAssetManager external override {
     _updateCurrentIndex();
     _discreteChange(amount, positive);
   }
 
-  function deposit(address provider, uint256 amount) onlyEnsuro external returns (uint256) {
+  function deposit(address provider, uint256 amount) onlyEnsuro external override returns (uint256) {
     _updateCurrentIndex();
     _mint(provider, amount);
     _updateTokenInterestRate();
     return balanceOf(provider);
   }
 
-  function totalWithdrawable() public view returns (uint256) {
+  function totalWithdrawable() public view virtual override returns (uint256) {
       uint256 locked = _scr.wadToRay().rayMul(
         WadRayMath.ray().add(_scrInterestRate)
       ).rayMul(_liquidityRequirement).rayToWad();
@@ -512,7 +509,8 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken {
         return 0;
   }
 
-  function withdraw(address provider, uint256 amount) onlyEnsuro whenNotPaused external returns (uint256) {
+  function withdraw(address provider, uint256 amount)
+          onlyEnsuro whenNotPaused external override returns (uint256) {
     _updateCurrentIndex();
     uint256 balance = balanceOf(provider);
     if (balance == 0)
@@ -529,7 +527,7 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken {
     return amount;
   }
 
-  function accepts(uint40 policy_expiration) public view returns (bool) {
+  function accepts(uint40 policy_expiration) public view virtual override returns (bool) {
     if (paused())
       return false;
     return policy_expiration <= (uint40(block.timestamp) + _expirationPeriod);
@@ -542,7 +540,7 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken {
     _poolLoanLastIndexUpdate = uint40(block.timestamp);
   }
 
-  function lendToPool(uint256 amount) onlyEnsuro external {
+  function lendToPool(uint256 amount) onlyEnsuro external override {
     if (_poolLoan == 0) {
       _poolLoan = amount;
       _poolLoanIndex = WadRayMath.ray();
@@ -557,7 +555,7 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken {
     _discreteChange(amount, false);
   }
 
-  function repayPoolLoan(uint256 amount) onlyEnsuro external {
+  function repayPoolLoan(uint256 amount) onlyEnsuro external override {
     _updatePoolLoanIndex();
     _poolLoan = getPoolLoan().sub(amount).wadToRay().rayDiv(_poolLoanIndex).rayToWad();
     _updateCurrentIndex(); // shouldn't do anything because lendToPool is after unlock_scr but doing
@@ -574,26 +572,26 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken {
     ).add(WadRayMath.ray()));
   }
 
-  function getPoolLoan() public view returns (uint256) {
+  function getPoolLoan() public view virtual override returns (uint256) {
     if (_poolLoan == 0)
       return 0;
     return _poolLoan.wadToRay().rayMul(_getPoolLoanIndex()).rayToWad();
   }
 
-  function poolLoanInterestRate() public view returns (uint256) {
+  function poolLoanInterestRate() public view virtual override returns (uint256) {
     return _poolLoanInterestRate;
   }
 
-  function setPoolLoanInterestRate(uint256 new_interest_rate) external onlyRole(SET_LOAN_RATE_ROLE) {
+  function setPoolLoanInterestRate(uint256 new_interest_rate) external override onlyRole(SET_LOAN_RATE_ROLE) {
     _updatePoolLoanIndex();
     _poolLoanInterestRate = new_interest_rate;
   }
 
-  function setLiquidityRequirement(uint256 new_liq_req) external onlyRole(SET_LIQ_REQ_ROLE) {
+  function setLiquidityRequirement(uint256 new_liq_req) external override onlyRole(SET_LIQ_REQ_ROLE) {
     _liquidityRequirement = new_liq_req;
   }
 
-  function getInvestable() public view returns (uint256) {
+  function getInvestable() public view virtual override returns (uint256) {
     return _scr.add(ocean()).add(getPoolLoan());
   }
 }

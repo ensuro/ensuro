@@ -1,6 +1,6 @@
 from m9g import Model
 from m9g.fields import StringField, IntField, DictField, CompositeField
-from .contracts import Contract, ERC20Token, external, view, RayField, WadField, AddressField, \
+from .contracts import AccessControlContract, ERC20Token, external, view, RayField, WadField, AddressField, \
     ContractProxyField, ContractProxy, RevertError
 from .contracts import ERC721Token  # noqa
 from .wadray import RAY, Ray, Wad, _W, _R
@@ -28,7 +28,7 @@ class TimeControl:
 time_control = TimeControl()
 
 
-class RiskModule(Contract):
+class RiskModule(AccessControlContract):
     name = StringField()
     scr_percentage = RayField(default=Ray(0))
     premium_share = RayField(default=Ray(0))
@@ -42,10 +42,22 @@ class RiskModule(Contract):
     shared_coverage_min_percentage = RayField(default=Ray(0))
     shared_coverage_scr = WadField(default=_W(0))
 
+    set_attr_roles = {
+        "scr_percentage": "ENSURO_DAO_ROLE",
+        "premium_share": "ENSURO_DAO_ROLE",
+        "ensuro_share": "ENSURO_DAO_ROLE",
+        "max_scr_per_policy": "ENSURO_DAO_ROLE",
+        "scr_limit": "ENSURO_DAO_ROLE",
+        "wallet": "RM_PROVIDER_ROLE",
+        "shared_coverage_percentage": "RM_PROVIDER_ROLE",
+        "shared_coverage_min_percentage": "ENSURO_DAO_ROLE",
+    }
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         if self.shared_coverage_percentage < self.shared_coverage_min_percentage:
-            self.shared_coverage_percentage = self.shared_coverage_min_percentage
+            with self._disable_role_validation():
+                self.shared_coverage_percentage = self.shared_coverage_min_percentage
 
     @external
     def add_policy(self, policy):
@@ -143,6 +155,14 @@ class EToken(ERC20Token):
     pool_loan_interest_rate = RayField(default=_R("0.05"))
     pool_loan_index = RayField(default=_R(1))
     pool_loan_last_index_update = IntField(default=None, allow_none=True)
+
+    set_attr_roles = {
+        "pool_loan_interest_rate": "SET_LOAN_RATE_ROLE"
+    }
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._running_as = "ensuro"
 
     def _update_current_index(self):
         self.current_index = self._calculate_current_index()
@@ -322,7 +342,7 @@ class EToken(ERC20Token):
         return self.scr + self.ocean + self.get_pool_loan()
 
 
-class PolicyPool(Contract):
+class PolicyPool(AccessControlContract):
     currency = ContractProxyField()
     risk_modules = DictField(StringField(), ContractProxyField(), default={})
     etokens = DictField(StringField(), ContractProxyField(), default={})
@@ -555,7 +575,7 @@ class PolicyPool(Contract):
             # TODO: validation and handling, but shouldn't happen
 
 
-class AssetManager(Contract):
+class AssetManager(AccessControlContract):
     pool = ContractProxyField()
 
     cash_balance = WadField(default=Wad(0))

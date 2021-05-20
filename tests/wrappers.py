@@ -1,6 +1,8 @@
+from contextlib import contextmanager
 from functools import partial
 from prototype.contracts import RevertError
-from prototype.wadray import Wad, _R, Ray
+from prototype.wadray import Wad, _R, Ray, _W
+from Crypto.Hash import keccak
 from brownie import accounts
 import brownie
 from brownie.network.account import Account
@@ -54,41 +56,21 @@ AddressBook.instance = AddressBook(accounts)
 MAXUINT256 = 2**256 - 1
 
 
-class MethodAdapter:
-    def __init__(self, args=(), return_type="", eth_method=None, adapt_args=None, is_property=False):
+class ETHCall:
+    def __init__(self, eth_method, eth_args, eth_return_type="", adapt_args=None):
         self.eth_method = eth_method
-        self.return_type = return_type
-        self.args = args
+        self.eth_args = eth_args
+        self.eth_return_type = eth_return_type
         self.adapt_args = adapt_args
-        self.is_property = is_property
 
-    def __set_name__(self, owner, name):
-        self._method_name = name
-        if self.eth_method is None:
-            self.eth_method = self.snake_to_camel(name)
-
-    @staticmethod
-    def snake_to_camel(name):
-        components = name.split('_')
-        return components[0] + ''.join(x.title() for x in components[1:])
-
-    @property
-    def method_name(self):
-        return self._method_name or self.eth_method
-
-    def __get__(self, instance, owner=None):
-        if self.is_property:
-            return self.call(instance)
-        return partial(self.call, instance)
-
-    def call(self, wrapper, *args, **kwargs):
+    def __call__(self, wrapper, *args, **kwargs):
         call_args = []
         msg_args = {}
 
         if self.adapt_args:
             args, kwargs = self.adapt_args(args, kwargs)
 
-        for i, (arg_name, arg_type) in enumerate(self.args):
+        for i, (arg_name, arg_type) in enumerate(self.eth_args):
             if i < len(args):
                 arg_value = args[i]
             elif arg_name in kwargs:
@@ -112,16 +94,18 @@ class MethodAdapter:
             if err.revert_type == "revert":
                 raise RevertError(err.revert_msg)
             raise
-        return self.unparse(self.return_type, ret_value)
+        return self.unparse(self.eth_return_type, ret_value)
 
-    def parse(self, value_type, value):
+    @classmethod
+    def parse(cls, value_type, value):
         if value_type == "address":
             return AddressBook.instance.get_account(value)
         if value_type == "amount" and value is None:
             return MAXUINT256
         return value
 
-    def unparse(self, value_type, value):
+    @classmethod
+    def unparse(cls, value_type, value):
         if value_type == "amount":
             return Wad(value)
         if value_type == "ray":
@@ -131,7 +115,91 @@ class MethodAdapter:
         return value
 
 
-class IERC20:
+class MethodAdapter:
+    def __init__(self, args=(), return_type="", eth_method=None, adapt_args=None, is_property=False,
+                 set_eth_method=None):
+        self.eth_method = eth_method
+        self.set_eth_method = set_eth_method
+        self.return_type = return_type
+        self.args = args
+        self.adapt_args = adapt_args
+        self.is_property = is_property
+
+    def __set_name__(self, owner, name):
+        self._method_name = name
+        if self.eth_method is None:
+            self.eth_method = self.snake_to_camel(name)
+        if self.set_eth_method is None:
+            self.set_eth_method = "set" + self.eth_method[0].upper() + self.eth_method[1:]
+
+    @staticmethod
+    def snake_to_camel(name):
+        components = name.split('_')
+        return components[0] + ''.join(x.title() for x in components[1:])
+
+    @property
+    def method_name(self):
+        return self._method_name or self.eth_method
+
+    def __get__(self, instance, owner=None):
+        eth_call = ETHCall(self.eth_method, self.args, self.return_type, self.adapt_args)
+        if self.is_property:
+            return eth_call(instance)
+        return partial(eth_call, instance)
+
+    def __set__(self, instance, value):
+        if not self.is_property:
+            raise NotImplementedError()
+        eth_call = ETHCall(self.set_eth_method, (("new_value", self.return_type), ))
+        return eth_call(instance, value)
+
+
+class ETHWrapper:
+    libraries_required = []
+
+    def __init__(self, owner="owner", *init_params):
+        self.owner = AddressBook.instance.get_account(owner)
+        for library in self.libraries_required:
+            getattr(brownie, library).deploy({"from": self.owner})
+        self.contract = getattr(brownie, self.eth_contract).deploy(*init_params, {"from": self.owner})
+
+    def _get_account(self, name):
+        return AddressBook.instance.get_account(name)
+
+    def _get_name(self, account):
+        return AddressBook.instance.get_name(account)
+
+    def grant_role(self, role, user):
+        admin = self._auto_from
+
+        if not role.startswith("0x"):
+            role = self.keccak256(role)
+
+        if isinstance(user, str):
+            user = self._get_account(user)
+
+        self.contract.grantRole(role, user, {"from": admin})
+        return user
+
+    def keccak256(self, value):
+        k = keccak.new(digest_bits=256)
+        k.update(value.encode("utf-8"))
+        return k.hexdigest()
+
+    @contextmanager
+    def as_(self, user):
+        prev_auto_from = getattr(self, "_auto_from", "missing")
+        self._auto_from = self._get_account(user)
+        try:
+            yield self
+        finally:
+            if prev_auto_from == "missing":
+                del self._auto_from
+            else:
+                self._auto_from = prev_auto_from
+
+
+class IERC20(ETHWrapper):
     name = MethodAdapter((), "string", is_property=True)
     symbol = MethodAdapter((), "string", is_property=True)
     decimals = MethodAdapter((), "int", is_property=True)
@@ -157,11 +225,11 @@ class IERC20:
 
 
 class TestCurrency(IERC20):
+    eth_contract = "TestCurrency"
     __test__ = False
 
     def __init__(self, owner="Owner", name="Test Currency", symbol="TEST", initial_supply=Wad(0)):
-        self.owner = AddressBook.instance.get_account(owner)
-        self.contract = brownie.TestCurrency.deploy(initial_supply, {"from": self.owner})
+        super().__init__(owner, initial_supply)
 
     mint = MethodAdapter((("recipient", "address"), ("amount", "amount")))
     burn = MethodAdapter((("recipient", "address"), ("amount", "amount")))
@@ -174,12 +242,13 @@ class TestCurrency(IERC20):
         )
 
 
-class TestNFT:
+class TestNFT(ETHWrapper):
     __test__ = False
 
+    eth_contract = "TestNFT"
+
     def __init__(self, owner="Owner", name="Test NFT", symbol="NFTEST"):
-        self.owner = AddressBook.instance.get_account(owner)
-        self.contract = brownie.TestNFT.deploy({"from": self.owner})
+        super().__init__(owner)
 
     mint = MethodAdapter((("to", "address"), ("token_id", "int")))
     burn = MethodAdapter((("owner", "msg.sender"), ("token_id", "int")))
@@ -211,33 +280,23 @@ def _adapt_signed_amount(args, kwargs):
 
 
 class ETokenETH(IERC20):
-    def __init__(self, owner, name, symbol, policy_pool, expiration_period, liquidity_requirement=_R(1),
-                 pool_loan_interest_rate=_R("0.05")):
-        self.owner = AddressBook.instance.get_account(owner)
+    eth_contract = "EToken"
+
+    def __init__(self, name, symbol, policy_pool, expiration_period, liquidity_requirement=_R(1),
+                 pool_loan_interest_rate=_R("0.05"), owner="owner"):
         policy_pool = AddressBook.instance.get_account(policy_pool)
         self._auto_from = policy_pool
-        self.contract = brownie.EToken.deploy(
-            name, symbol, policy_pool, expiration_period, liquidity_requirement,
-            pool_loan_interest_rate,
-            {"from": self.owner}
+        super().__init__(
+            owner, name, symbol, policy_pool, expiration_period, liquidity_requirement,
+            pool_loan_interest_rate
         )
-
-    SET_LOAN_RATE_ROLE = "0xe62d393ed571d580b9dadf5969acac0f8be619cc47180ce14b5292f9984ec0c2"
 
     ocean = MethodAdapter((), "amount", is_property=True)
     scr = MethodAdapter((), "amount", is_property=True)
     scr_interest_rate = MethodAdapter((), "ray", is_property=True)
     token_interest_rate = MethodAdapter((), "ray", is_property=True)
     pool_loan_interest_rate = MethodAdapter((), "ray", is_property=True)
-    set_pool_loan_interest_rate_ = MethodAdapter((("user", "msg.sender"), ("new_rate", "ray"), ))
-
-    def set_pool_loan_interest_rate(self, rate):
-        if not hasattr(self, "_role_set_rate"):
-            self._role_set_rate = AddressBook.instance.get_account("SETRATE")
-            self.contract.grantRole(
-                self.SET_LOAN_RATE_ROLE, self._role_set_rate, {"from": self.owner}
-            )
-        return self.set_pool_loan_interest_rate_("SETRATE", rate)
+    set_pool_loan_interest_rate = MethodAdapter((("new_rate", "ray"), ))
 
     lock_scr = MethodAdapter(
         (("policy_interest_rate", "ray"), ("scr_amount", "amount")),
@@ -288,3 +347,31 @@ class ETokenETH(IERC20):
     get_investable = MethodAdapter((), "amount")
 
     get_current_index = MethodAdapter((("updated", "bool"), ), "ray")
+
+
+class RiskModuleETH(ETHWrapper):
+    libraries_required = ["Policy"]
+
+    def __init__(self, name, ensuro, scr_percentage=_R(1), premium_share=_R(0), ensuro_share=_R(0),
+                 max_scr_per_policy=_W(1000000), scr_limit=_W(1000000),
+                 wallet="RM", shared_coverage_min_percentage=_R(0), owner="owner"):
+        ensuro = self._get_account(ensuro)
+        wallet = self._get_account(wallet)
+        super().__init__(owner, name, ensuro, scr_percentage, premium_share, ensuro_share,
+                         max_scr_per_policy, scr_limit, wallet, shared_coverage_min_percentage)
+        self._auto_from = self.owner
+
+    name = MethodAdapter((), "string", is_property=True)
+    scr_percentage = MethodAdapter((), "ray", is_property=True)
+    premium_share = MethodAdapter((), "ray", is_property=True)
+    ensuro_share = MethodAdapter((), "ray", is_property=True)
+    max_scr_per_policy = MethodAdapter((), "amount", is_property=True)
+    scr_limit = MethodAdapter((), "amount", is_property=True)
+    total_scr = MethodAdapter((), "amount", is_property=True)
+    wallet = MethodAdapter((), "address", is_property=True)
+    shared_coverage_min_percentage = MethodAdapter((), "ray", is_property=True)
+    shared_coverage_percentage = MethodAdapter((), "ray", is_property=True)
+
+
+class TrustfulRiskModule(RiskModuleETH):
+    eth_contract = "TrustfulRiskModule"

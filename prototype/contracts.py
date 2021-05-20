@@ -209,6 +209,19 @@ class Contract(Model):
         self._versions = []
         self.manager.add_contract(self.contract_id, self)
 
+    @contextmanager
+    def as_(self, user):
+        "Dummy as method to do the same with the wrapper"
+        prev_running_as = getattr(self, "_running_as", "missing")
+        self._running_as = user
+        try:
+            yield self
+        finally:
+            if prev_running_as == "missing":
+                del self._running_as
+            else:
+                self._running_as = prev_running_as
+
     def push_version(self, version_name=None):
         if version_name is None:
             version_name = "v%.3f" % time.time()
@@ -229,15 +242,82 @@ class Contract(Model):
         self.in_place_deserialize(serialized, format=self.version_format)
 
 
+class AccessControlContract(Contract):
+    owner = AddressField(default="owner")
+    roles = DictField(
+        StringField(),
+        TupleField((ListField(AddressField()), StringField())),
+        default={}
+    )
+
+    set_attr_roles = {}
+
+    # struct RoleData {
+    #    mapping (address => bool) members;
+    #    bytes32 adminRole;
+    # }
+    # mapping (bytes32 => RoleData) private _roles;
+
+    # function hasRole(bytes32 role, address account) external view returns (bool);
+    # function getRoleAdmin(bytes32 role) external view returns (bytes32); - TODO
+    # function grantRole(bytes32 role, address account) external;
+    # function revokeRole(bytes32 role, address account) external; - TODO
+    # function renounceRole(bytes32 role, address account) external; - TODO
+
+    def __init__(self, **kwargs):
+        with self._disable_role_validation():
+            super().__init__(**kwargs)
+            self._running_as = self.owner
+            self.roles[""] = ([self.owner], "")  # Add owner as default_admin
+
+    @contextmanager
+    def _disable_role_validation(self):
+        self._role_validation_disabled = True
+        try:
+            yield self
+        finally:
+            del self._role_validation_disabled
+
+    def pop_version(self, *args, **kwargs):
+        with self._disable_role_validation():
+            super().pop_version(*args, **kwargs)
+
+    def has_role(self, role, account):
+        members = self.roles.get(role, ((), ""))[0]
+        return account in members
+
+    def grant_role(self, role, user):
+        "Dummy as method to do the same with the wrapper"
+        if role in self.roles:
+            members, admin_role = self.roles[role]
+        else:
+            members, admin_role = [], ""
+        require(self.has_role(admin_role, self._running_as),
+                f"AccessControl: AccessControl: account {self._running_as} is missing role '{admin_role}'")
+
+        if user not in members:
+            members.append(user)
+        self.roles[role] = (members, admin_role)
+
+    def __setattr__(self, attr_name, value):
+        if not getattr(self, "_role_validation_disabled", False) and attr_name in self.set_attr_roles:
+            require(
+                self.has_role(self.set_attr_roles[attr_name], self._running_as),
+                f"AccessControl: AccessControl: account {self._running_as} is missing role "
+                f"'{self.set_attr_roles[attr_name]}'"
+            )
+
+        return super().__setattr__(attr_name, value)
+
+
 def require(condition, message=None):
     if not condition:
         raise RevertError(message or "required condition not met")
 
 
-class ERC20Token(Contract):
+class ERC20Token(AccessControlContract):
     ZERO = Wad(0)
 
-    owner = AddressField()
     name = StringField()
     symbol = StringField(default="")
     decimals = IntField(default=18)
@@ -333,10 +413,9 @@ class ERC20Token(Contract):
         return self._total_supply
 
 
-class ERC721Token(Contract):   # NFT
+class ERC721Token(AccessControlContract):   # NFT
     ZERO = Wad(0)
 
-    owner = AddressField()
     name = StringField()
     symbol = StringField(default="")
     owners = DictField(IntField(), AddressField(), default={})

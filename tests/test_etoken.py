@@ -33,7 +33,7 @@ def tenv(request):
 
 
 def test_deposit_withdraw(tenv):
-    etk = tenv.etoken_class(owner="Me", name="eUSD1WEEK", expiration_period=WEEK)
+    etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
     assert etk.deposit("LP1", _W(1000)) == _W(1000)
     assert etk.balance_of("LP1") == _W(1000)
     assert etk.ocean == _W(1000)
@@ -47,7 +47,7 @@ def test_deposit_withdraw(tenv):
 
 
 def test_lock_unlock_scr(tenv):
-    etk = tenv.etoken_class(owner="Me", name="eUSD1WEEK", expiration_period=WEEK)
+    etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
     assert etk.deposit("LP1", _W(1000)) == _W(1000)
     assert etk.ocean == _W(1000)
     policy = tenv.policy_factory(scr=_W(600), interest_rate=_R("0.0365"),
@@ -74,7 +74,7 @@ def test_lock_unlock_scr(tenv):
 
 
 def test_etoken_erc20(tenv):
-    etk = tenv.etoken_class(owner="Me", name="eUSD1WEEK", expiration_period=WEEK)
+    etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
     assert etk.deposit("LP1", _W(1000)) == _W(1000)
     policy = tenv.policy_factory(scr=_W(600), interest_rate=_R("0.0365"),
                                  expiration=tenv.time_control.now + WEEK)
@@ -116,7 +116,7 @@ def test_etoken_erc20(tenv):
 
 
 def test_multiple_policies(tenv):
-    etk = tenv.etoken_class(owner="Me", name="eUSD1WEEK", expiration_period=WEEK)
+    etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
     assert etk.deposit("LP1", _W(1000)) == _W(1000)
 
     policy1 = tenv.policy_factory(scr=_W(300), interest_rate=_R("0.0365"),
@@ -164,7 +164,7 @@ def test_multiple_policies(tenv):
 
 
 def test_multiple_lps(tenv):
-    etk = tenv.etoken_class(owner="Me", name="eUSD1WEEK", expiration_period=WEEK)
+    etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
     assert etk.deposit("LP1", _W(1000)) == _W(1000)
     assert etk.ocean == _W(1000)
     policy = tenv.policy_factory(scr=_W(600), interest_rate=_R("0.0365"),
@@ -193,7 +193,7 @@ def test_multiple_lps(tenv):
 
 
 def test_lock_scr_validation(tenv):
-    etk = tenv.etoken_class(owner="Me", name="eUSD1WEEK", expiration_period=WEEK)
+    etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
     policy = tenv.policy_factory(scr=_W(600), interest_rate=_R("0.0365"),
                                  expiration=tenv.time_control.now + WEEK)
 
@@ -207,8 +207,8 @@ def test_lock_scr_validation(tenv):
 
 
 def test_accepts_policy(tenv):
-    etk_week = tenv.etoken_class(owner="Me", name="eUSD1WEEK", expiration_period=WEEK)
-    etk_year = tenv.etoken_class(owner="Me", name="eUSD1YEAR", expiration_period=365 * DAY)
+    etk_week = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
+    etk_year = tenv.etoken_class(name="eUSD1YEAR", expiration_period=365 * DAY)
     etk_week.deposit("LP1", _W(1000))
     etk_year.deposit("LP1", _W(2000))
 
@@ -224,7 +224,7 @@ def test_accepts_policy(tenv):
 
 
 def test_pool_loan(tenv):
-    etk = tenv.etoken_class(owner="Me", name="eUSD1WEEK", expiration_period=WEEK,
+    etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK,
                             pool_loan_interest_rate=_R("0.073"))
     etk.deposit("LP1", _W(1000))
     assert etk.pool_loan_interest_rate == _R("0.073")
@@ -249,7 +249,12 @@ def test_pool_loan(tenv):
     etk.get_investable().assert_equal(etk.ocean + etk.scr + etk.get_pool_loan())
 
     tenv.time_control.fast_forward(1 * DAY)
-    etk.set_pool_loan_interest_rate(_R("0.0365"))
+
+    with etk.as_("owner"):
+        etk.grant_role("SET_LOAN_RATE_ROLE", "SETRATE")
+    with etk.as_("SETRATE"):
+        etk.set_pool_loan_interest_rate(_R("0.0365"))
+
     assert etk.pool_loan_interest_rate == _R("0.0365")
     pool_loan = _W(400) + _W(300) * _W(0.0002 * 8) + _W(100) * _W(0.0002)
     etk.get_pool_loan().assert_equal(pool_loan)
@@ -265,7 +270,7 @@ def test_pool_loan(tenv):
 
 
 def test_asset_and_discrete_earnings(tenv):
-    etk = tenv.etoken_class(owner="Me", name="eUSD1WEEK", expiration_period=WEEK)
+    etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
 
     # Initial setup
     etk.deposit("LP1", _W(1000))
@@ -305,7 +310,7 @@ def test_asset_and_discrete_earnings(tenv):
 
 
 def test_name_and_others(tenv):
-    etk = tenv.etoken_class(owner="Me", name="eUSD One Week", symbol="eUSD1W", expiration_period=WEEK)
+    etk = tenv.etoken_class(name="eUSD One Week", symbol="eUSD1W", expiration_period=WEEK)
     assert etk.name == "eUSD One Week"
     assert etk.symbol == "eUSD1W"
     assert etk.decimals == 18
