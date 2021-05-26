@@ -1,7 +1,7 @@
 from m9g import Model
 from m9g.fields import StringField, IntField, DictField, CompositeField
 from .contracts import AccessControlContract, ERC20Token, external, view, RayField, WadField, AddressField, \
-    ContractProxyField, ContractProxy, RevertError
+    ContractProxyField, ContractProxy, require
 from .contracts import ERC721Token  # noqa
 from .wadray import RAY, Ray, Wad, _W, _R
 import time
@@ -29,6 +29,7 @@ time_control = TimeControl()
 
 
 class RiskModule(AccessControlContract):
+    policy_pool = ContractProxyField()
     name = StringField()
     scr_percentage = RayField(default=Ray(0))
     premium_share = RayField(default=Ray(0))
@@ -59,15 +60,31 @@ class RiskModule(AccessControlContract):
             with self._disable_role_validation():
                 self.shared_coverage_percentage = self.shared_coverage_min_percentage
 
+    def __setattr__(self, attr_name, value):
+        if not getattr(self, "_role_validation_disabled", False) and \
+                attr_name == "shared_coverage_percentage":
+            require(value >= self.shared_coverage_min_percentage,
+                    "RiskModule: shared_coverage_percentage can't be less than minimum")
+        return super().__setattr__(attr_name, value)
+
     @external
-    def add_policy(self, policy):
-        if policy.scr > self.max_scr_per_policy:
-            raise RevertError(f"Policy SCR: {policy.scr} > max for this module {self.max_scr_per_policy}")
+    def new_policy(self, payout, premium, loss_prob, expiration, customer):
+        start = time_control.now
+        require(self.policy_pool.currency.allowance(customer, self.policy_pool.contract_id) >= premium,
+                "You must allow ENSURO to transfer the premium")
+        policy = Policy(id=-1, risk_module=self, payout=payout, premium=premium,
+                        loss_prob=loss_prob, start=start, expiration=expiration)
+
+        require(policy.scr <= self.max_scr_per_policy,
+                f"Policy SCR: {policy.scr} > max for this module {self.max_scr_per_policy}")
         total_scr = self.total_scr + policy.scr
-        if total_scr > self.scr_limit:
-            raise RevertError(f"SCR exceeds the allowed for this module")
+        require(total_scr <= self.scr_limit, "SCR exceeds the allowed for this module")
         self.total_scr = total_scr
         self.shared_coverage_scr += policy.rm_scr
+
+        policy.id = self.policy_pool.new_policy(policy, customer)
+        assert policy.id > 0
+        return policy
 
     @external
     def remove_policy(self, policy):
@@ -86,12 +103,17 @@ class Policy(Model):
     start = IntField()
     expiration = IntField()
     locked_funds = DictField(StringField(), WadField(), default={})
+    pure_premium = WadField(default=Wad(0))
+    premium_for_ensuro = WadField(default=Wad(0))
+    premium_for_rm = WadField(default=Wad(0))
+    premium_for_lps = WadField(default=Wad(0))
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.rm_coverage = self.risk_module.shared_coverage_percentage.to_wad() * self.payout
         ens_premium, rm_premium = self._coverage_premium_split()
         self.scr = (self.payout - ens_premium - self.rm_coverage) * self.risk_module.scr_percentage.to_wad()
+        self._do_premium_split()
 
     def _coverage_premium_split(self):
         ens_premium = self.premium * (self.payout - self.rm_coverage) // self.payout
@@ -99,31 +121,28 @@ class Policy(Model):
         return ens_premium, rm_premium
 
     @property
-    def pure_premium(self):
-        payout = self.payout - self.rm_coverage
-        return (payout.to_ray() * self.loss_prob).to_wad()
-
-    @property
     def rm_scr(self):
         ens_premium, rm_premium = self._coverage_premium_split()
         return self.rm_coverage - rm_premium
 
-    def premium_split(self):
+    def _do_premium_split(self):
         ens_premium, rm_premium = self._coverage_premium_split()
+        payout = self.payout - self.rm_coverage
+        self.pure_premium = (payout.to_ray() * self.loss_prob).to_wad()
 
-        pure_premium = self.pure_premium
-        profit_premium = ens_premium - pure_premium
-        for_ensuro = (profit_premium.to_ray() * self.risk_module.ensuro_share).to_wad()
-        for_risk_module = (profit_premium.to_ray() * self.risk_module.premium_share).to_wad()
-        for_lps = profit_premium - for_ensuro - for_risk_module
-        for_risk_module += rm_premium  # after calculating for_lps...
-        return pure_premium, for_ensuro, for_risk_module, for_lps
+        profit_premium = ens_premium - self.pure_premium
+        self.premium_for_ensuro = (profit_premium.to_ray() * self.risk_module.ensuro_share).to_wad()
+        self.premium_for_rm = (profit_premium.to_ray() * self.risk_module.premium_share).to_wad()
+        self.premium_for_lps = profit_premium - self.premium_for_ensuro - self.premium_for_rm
+        self.premium_for_rm += rm_premium  # after calculating for_lps...
+
+    def premium_split(self):
+        return self.pure_premium, self.premium_for_ensuro, self.premium_for_rm, self.premium_for_lps
 
     @property
     def interest_rate(self):
-        _, for_ensuro, for_risk_module, for_lps = self.premium_split()
         return (
-            for_lps * _W(SECONDS_IN_YEAR) // (
+            self.premium_for_lps * _W(SECONDS_IN_YEAR) // (
                 _W(self.expiration - self.start) * self.scr
             )
         ).to_ray()
@@ -208,8 +227,7 @@ class EToken(ERC20Token):
         self._update_current_index()
         total_supply = self.total_supply()
         ocean = total_supply - self.scr
-        if scr_amount > ocean:
-            raise RevertError("Not enought OCEAN to cover the SCR")
+        require(scr_amount <= ocean, "Not enought OCEAN to cover the SCR")
 
         if self.scr == 0:
             self.scr = scr_amount
@@ -223,8 +241,7 @@ class EToken(ERC20Token):
         self._update_token_interest_rate()
 
     def unlock_scr(self, policy, scr_amount):
-        if scr_amount > self.scr:
-            raise RevertError("Want to unlock more SCR than locked")
+        require(scr_amount <= self.scr, "Want to unlock more SCR than locked")
         self._update_current_index()
 
         if self.scr == scr_amount:
@@ -299,8 +316,8 @@ class EToken(ERC20Token):
         self.pool_loan_last_index_update = time_control.now
 
     def lend_to_pool(self, amount):
-        if amount > self.ocean and not amount.equal(self.ocean):  # rounding error
-            raise RevertError("Not enought capital to lend")
+        require(amount <= self.ocean or amount.equal(self.ocean),  # rounding error
+                "Not enought capital to lend")
         if self.pool_loan == 0:
             self.pool_loan = amount
             self.pool_loan_index = Ray(RAY)
@@ -393,16 +410,13 @@ class PolicyPool(AccessControlContract):
         return time_control.now
 
     @external
-    def new_policy(self, risk_module_name, payout, premium, loss_prob, expiration, customer):
-        rm = self.risk_modules[risk_module_name]
-        start = time_control.now
+    def new_policy(self, policy, customer):
+        rm = policy.risk_module
         self.policy_count += 1
-        self.currency.transfer_from(self.contract_id, customer, self.contract_id, premium)
-        policy = Policy(id=self.policy_count, risk_module=rm, payout=payout, premium=premium,
-                        loss_prob=loss_prob, start=start, expiration=expiration)
+        self.currency.transfer_from(self.contract_id, customer, self.contract_id, policy.premium)
+        policy.id = self.policy_count
         self.policies_nft.mint(customer, policy.id)
 
-        rm.add_policy(policy)
         if policy.rm_scr:
             self.currency.transfer_from(self.contract_id, rm.wallet, self.contract_id, policy.rm_scr)
 
@@ -414,7 +428,7 @@ class PolicyPool(AccessControlContract):
         self._lock_scr(policy)
 
         self.policies[policy.id] = policy
-        return policy
+        return policy.id
 
     def _lock_scr(self, policy):
         ocean = Wad(0)

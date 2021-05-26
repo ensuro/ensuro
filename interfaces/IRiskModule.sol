@@ -2,9 +2,6 @@
 pragma solidity ^0.8.0;
 
 interface IRiskModule {
-  // event SCRLocked(uint256 interest_rate, uint256 value);
-  // event SCRUnlocked(uint256 interest_rate, uint256 value);
-
   function name() external view returns (string memory);
 
   function scrPercentage() external view returns (uint256);

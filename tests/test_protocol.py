@@ -57,6 +57,7 @@ class TestProtocol(TestCase):
         """
 
         pool = load_config(StringIO(YAML_SETUP))
+        rm = pool.risk_modules["Roulette"]
 
         with pytest.raises(RevertError, match="Not enought allowance"):
             pool.deposit("eUSD1YEAR", "LP1", _W(1000))
@@ -78,15 +79,15 @@ class TestProtocol(TestCase):
 
         assert eUSD1YEAR.balance_of("LP1") == _W(1000)  # Unchanged
 
-        with pytest.raises(RevertError, match="Not enought allowance"):
-            policy = policy_1 = policy = pool.new_policy(
-                "Roulette", payout=_W(36), premium=_W(1), customer="CUST1",
+        with pytest.raises(RevertError, match="You must allow ENSURO"):
+            policy = policy_1 = policy = rm.new_policy(
+                payout=_W(36), premium=_W(1), customer="CUST1",
                 loss_prob=_R(1/37), expiration=pool.now() + WEEK
             )
 
         pool.currency.approve("CUST1", pool.contract_id, _W(1))
-        policy_1 = policy = pool.new_policy(
-            "Roulette", payout=_W(36), premium=_W(1), customer="CUST1",
+        policy_1 = policy = rm.new_policy(
+            payout=_W(36), premium=_W(1), customer="CUST1",
             loss_prob=_R(1/37), expiration=pool.now() + WEEK
         )
 
@@ -125,8 +126,8 @@ class TestProtocol(TestCase):
         shares_1y = self._calculate_shares(balances_1y, eUSD1YEAR.total_supply())
 
         pool.currency.approve("CUST2", pool.contract_id, _W(2))
-        policy_2 = policy = pool.new_policy(
-            "Roulette", payout=_W(72), premium=_W(2), customer="CUST2",
+        policy_2 = policy = rm.new_policy(
+            payout=_W(72), premium=_W(2), customer="CUST2",
             loss_prob=_R(1/37), expiration=pool.now() + 10 * DAY
         )
 
@@ -231,8 +232,8 @@ class TestProtocol(TestCase):
 
         for day in range(65):
             pool_loan = eUSD1YEAR.get_pool_loan()
-            new_p = pool.new_policy(
-                "Roulette", payout=_W(72), premium=_W(2),
+            new_p = rm.new_policy(
+                payout=_W(72), premium=_W(2),
                 loss_prob=_R(1/37), expiration=pool.now() + 6 * DAY,
                 customer="CUST3",
             )
@@ -330,6 +331,7 @@ class TestProtocol(TestCase):
         """
 
         pool = load_config(StringIO(YAML_SETUP))
+        rm = pool.risk_modules["Roulette"]
 
         pool.currency.approve("LP1", pool.contract_id, _W(3500))
         etoken = pool.etokens["eUSD1YEAR"]
@@ -337,8 +339,8 @@ class TestProtocol(TestCase):
         assert pool.deposit("eUSD1YEAR", "LP1", _W(3500)) == _W(3500)
 
         pool.currency.approve("CUST1", pool.contract_id, _W(100))
-        policy = pool.new_policy(
-            "Roulette", payout=_W(3600), premium=_W(100), customer="CUST1",
+        policy = rm.new_policy(
+            payout=_W(3600), premium=_W(100), customer="CUST1",
             loss_prob=_R(1/37), expiration=pool.now() + WEEK
         )
 
@@ -402,6 +404,7 @@ class TestProtocol(TestCase):
         """
 
         pool = load_config(StringIO(YAML_SETUP))
+        rm = pool.risk_modules["Roulette"]
 
         pool.currency.approve("LP1", pool.contract_id, _W(1000))
         pool.currency.approve("LP2", pool.contract_id, _W(1000))
@@ -413,8 +416,8 @@ class TestProtocol(TestCase):
         assert pool.deposit("eUSD1WEEK", "LP3", _W(1000)) == _W(1000)
 
         pool.currency.approve("CUST1", pool.contract_id, _W(100))
-        policy = pool.new_policy(
-            "Roulette", payout=_W(2100), premium=_W(100), customer="CUST1",
+        policy = rm.new_policy(
+            payout=_W(2100), premium=_W(100), customer="CUST1",
             loss_prob=_R("0.03"), expiration=pool.now() + 10 * DAY
         )
         assert policy.scr == _W(2000)
@@ -482,6 +485,7 @@ class TestProtocol(TestCase):
         """
 
         pool = load_config(StringIO(YAML_SETUP))
+        rm = pool.risk_modules["Roulette"]
         USD = pool.currency
 
         USD.approve("LP1", pool.contract_id, _W(10000))
@@ -491,14 +495,14 @@ class TestProtocol(TestCase):
 
         # Should fail if more than max for policy
         with pytest.raises(RevertError, match="max for this module"):
-            policy = pool.new_policy(
-                "Roulette", payout=_W(2100), premium=_W(100), customer="CUST1",
+            policy = rm.new_policy(
+                payout=_W(2100), premium=_W(100), customer="CUST1",
                 loss_prob=_R("0.02"), expiration=pool.now() + 10 * DAY
             )
 
         USD.approve("RM", pool.contract_id, _W(1000))
-        policy = pool.new_policy(
-            "Roulette", payout=_W(1100), premium=_W(100), customer="CUST1",
+        policy = rm.new_policy(
+            payout=_W(1100), premium=_W(100), customer="CUST1",
             loss_prob=_R("0.02"), expiration=pool.now() + 10 * DAY
         )
         policy.rm_coverage.assert_equal(_W(1100) * _W("0.25"))
@@ -516,8 +520,8 @@ class TestProtocol(TestCase):
 
         # Another policy with the same parameters fails because of SCR limit
         with pytest.raises(RevertError, match="SCR exceeds the allowed for this module"):
-            policy = pool.new_policy(
-                "Roulette", payout=_W(1100), premium=_W(100), customer="CUST1",
+            policy = rm.new_policy(
+                payout=_W(1100), premium=_W(100), customer="CUST1",
                 loss_prob=_R("0.02"), expiration=pool.now() + 10 * DAY
             )
 
@@ -552,6 +556,7 @@ class TestProtocol(TestCase):
         """
 
         pool = load_config(StringIO(YAML_SETUP))
+        rm = pool.risk_modules["Roulette"]
         USD = pool.currency
         etk = pool.etokens["eUSD1YEAR"]
         asset_manager = pool.asset_manager
@@ -570,8 +575,8 @@ class TestProtocol(TestCase):
         lp1_balance = etk.balance_of("LP1")
 
         USD.approve("CUST1", pool.contract_id, _W(200))
-        policy = pool.new_policy(
-            "Roulette", payout=_W(9200), premium=_W(200), customer="CUST1",
+        policy = rm.new_policy(
+            payout=_W(9200), premium=_W(200), customer="CUST1",
             loss_prob=_R("0.01"), expiration=pool.now() + 365 * DAY // 2
         )
         pure_premium, _, _, for_lps = policy.premium_split()
@@ -637,6 +642,7 @@ class TestProtocol(TestCase):
         """
 
         pool = load_config(StringIO(YAML_SETUP))
+        rm = pool.risk_modules["Roulette"]
         usd = pool.currency
 
         usd.approve("LP1", pool.contract_id, _W(3500))
@@ -645,8 +651,8 @@ class TestProtocol(TestCase):
         assert pool.deposit("eUSD1YEAR", "LP1", _W(3500)) == _W(3500)
 
         usd.approve("CUST1", pool.contract_id, _W(100))
-        policy = pool.new_policy(
-            "Roulette", payout=_W(3600), premium=_W(100), customer="CUST1",
+        policy = rm.new_policy(
+            payout=_W(3600), premium=_W(100), customer="CUST1",
             loss_prob=_R(1/37), expiration=pool.now() + WEEK
         )
 

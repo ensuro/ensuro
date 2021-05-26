@@ -21,15 +21,21 @@ library Policy {
     uint256 premium;
     uint256 scr;
     uint256 rmCoverage;     // amount of the payout covered by risk_module
-    uint256 lossProb;     // amount of the payout covered by risk_module
+    uint256 lossProb;       // original loss probability (in ray)
     uint40 start;
     uint40 expiration;
+    uint256 purePremium;    // share of the premium that covers expected losses
+                            // equal to payout * lossProb * riskModule.moc
+    uint256 premiumForEnsuro; // share of the premium that goes for Ensuro (if policy won)
+    uint256 premiumForRm;     // share of the premium that goes for the RM (if policy won)
+    uint256 premiumForLps;    // share of the premium that goes to the liquidity providers (won or not)
     // LockedCapital[] lockedFunds;  // sum(lockedFunds.amount) == (scr - rmCoverage)
   }
 
-  function initialize(PolicyData memory policy, IRiskModule riskModule, uint256 premium, uint256 payout,
-                      uint256 lossProb, uint40 expiration) public {
+  function initialize(IRiskModule riskModule, uint256 premium, uint256 payout,
+                      uint256 lossProb, uint40 expiration) public returns (PolicyData memory) {
     require(premium <= payout);
+    PolicyData memory policy;
     policy.riskModule = riskModule;
     policy.premium = premium;
     policy.payout = payout;
@@ -38,15 +44,24 @@ library Policy {
     uint256 rm_premium;
     policy.lossProb = lossProb;
     (ens_premium, rm_premium) = _coveragePremiumSplit(policy);
-    policy.scr = payout.sub(ens_premium).sub(policy.rmCoverage).rayMul(
+    policy.scr = payout.sub(ens_premium).sub(policy.rmCoverage).wadMul(
       riskModule.scrPercentage().rayToWad()
     );
     policy.start = uint40(block.timestamp);
     policy.expiration = expiration;
+    policy.purePremium = payout.sub(policy.rmCoverage).wadToRay().rayMul(lossProb).rayToWad();  // TODO moc
+    uint256 profitPremium = ens_premium.sub(policy.purePremium);
+    policy.premiumForEnsuro = profitPremium.wadMul(riskModule.ensuroShare().rayToWad());
+    policy.premiumForRm = profitPremium.wadMul(riskModule.premiumShare().rayToWad());
+    policy.premiumForLps = profitPremium.sub(policy.premiumForEnsuro).sub(policy.premiumForRm);
+    policy.premiumForRm = policy.premiumForRm.add(rm_premium);
+    return policy;
   }
 
   function _coveragePremiumSplit(PolicyData memory policy) internal returns (uint256, uint256) {
-    uint256 ens_premium = policy.premium.wadMul(policy.payout.sub(policy.rmCoverage)).rayDiv(policy.payout);
+    uint256 ens_premium = policy.premium.wadMul(
+      policy.payout.sub(policy.rmCoverage)
+    ).wadDiv(policy.payout);
     return (ens_premium, policy.premium.sub(ens_premium));
   }
 

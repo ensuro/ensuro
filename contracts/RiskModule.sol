@@ -5,6 +5,7 @@ import {SafeMath} from '@openzeppelin/contracts/utils/math/SafeMath.sol';
 import {WadRayMath} from './WadRayMath.sol';
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {Pausable} from "@openzeppelin/contracts/security/Pausable.sol";
+import {IPolicyPool} from '../interfaces/IPolicyPool.sol';
 import {IRiskModule} from '../interfaces/IRiskModule.sol';
 import {Policy} from './Policy.sol';
 
@@ -27,7 +28,7 @@ abstract contract RiskModule is IRiskModule, AccessControl, Pausable {
   bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
 
   string private _name;
-  address internal _ensuro;  // TODO: later define IPolicyPool
+  IPolicyPool internal _policyPool;
   uint256 internal _scrPercentage;   // in ray - Solvency Capital Requirement percentage, to calculate
                                      // capital requirement as % of (payout - premium)
   uint256 internal _premiumShare;    // in ray - % of premium that will go for the risk module provider
@@ -48,7 +49,7 @@ abstract contract RiskModule is IRiskModule, AccessControl, Pausable {
   /**
    * @dev Initializes the RiskModule
    * @param name_ Name of the Risk Module
-   * @param ensuro_ The address of the Ensuro PolicyPool where this module is plugged
+   * @param policyPool_ The address of the Ensuro PolicyPool where this module is plugged
    * @param scrPercentage_ Solvency Capital Requirement percentage, to calculate
                           capital requirement as % of (payout - premium)  (in ray)
    * @param premiumShare_ % of premium that will go for the risk module provider (in ray)
@@ -60,7 +61,7 @@ abstract contract RiskModule is IRiskModule, AccessControl, Pausable {
    */
   constructor(
     string memory name_,
-    address ensuro_,  // TODO: IPolicyPool
+    IPolicyPool policyPool_,
     uint256 scrPercentage_,
     uint256 premiumShare_,
     uint256 ensuroShare_,
@@ -70,7 +71,7 @@ abstract contract RiskModule is IRiskModule, AccessControl, Pausable {
     uint256 sharedCoverageMinPercentage_
   ) {
     _name = name_;
-    _ensuro = ensuro_;
+    _policyPool = policyPool_;
     _scrPercentage = scrPercentage_;
     _premiumShare = premiumShare_;
     _ensuroShare = ensuroShare_;
@@ -168,43 +169,27 @@ abstract contract RiskModule is IRiskModule, AccessControl, Pausable {
     _sharedCoveragePercentage = newSCP;
   }
 
-  function setWallet(address wallet) external onlyRole(RM_PROVIDER_ROLE) {
+  function setWallet(address wallet_) external onlyRole(RM_PROVIDER_ROLE) {
     // TODO emit Event?
-    require(wallet != address(0), "Wallet can't be zero address");
-    _wallet = wallet;
+    require(wallet_ != address(0), "Wallet can't be zero address");
+    _wallet = wallet_;
   }
-/*    @external
-    def add_policy(self, policy):
-        if policy.scr > self.max_scr_per_policy:
-            raise RevertError(f"Policy SCR: {policy.scr} > max for this module {self.max_scr_per_policy}")
-        total_scr = self.total_scr + policy.scr
-        if total_scr > self.scr_limit:
-            raise RevertError(f"SCR exceeds the allowed for this module")
-        self.total_scr = total_scr
-        self.shared_coverage_scr += policy.rm_scr
-
-    @external
-    def remove_policy(self, policy):
-        self.total_scr -= policy.scr
-        self.shared_coverage_scr -= policy.rm_scr
-*/
 
   function _newPolicy(uint256 payout, uint256 premium, uint256 lossProb,
                       uint40 expiration, address customer) whenNotPaused internal returns (uint256) {
-    require(premium < payout);
-    // require(lossProb < WadRayMath.RAY);
-    require(expiration > block.timestamp);
+    require(premium < payout, "Premium must be less than payout");
+    require(expiration >= block.timestamp, "Expiration must be in the future");
     require(customer != address(0), "Customer can't be zero address");
-    // require(_ensuro.currency().allowance(_msgSender(), address(_ensuro)) >= premium,
-    //         "You must allow ENSURO to transfer the premium");
-    Policy.PolicyData memory policy;
-    policy.initialize(this, premium, payout, lossProb, expiration);
+    require(_policyPool.currency().allowance(customer, address(_policyPool)) >= premium,
+            "You must allow ENSURO to transfer the premium");
+    Policy.PolicyData memory policy = Policy.initialize(this, premium, payout, lossProb, expiration);
+    require(policy.premium == premium, "Not Easdaddsaads");
     require(policy.scr <= _maxScrPerPolicy, "RiskModule: SCR is more than maximum per policy");
     _totalScr = _totalScr.add(policy.scr);
     require(_totalScr <= _scrLimit, "RiskModule: SCR limit exceeded");
     _sharedCoverageScr = _sharedCoverageScr.add(policy.rmCoverage);
-    // uint256 policyId = _ensuro.newPolicy(policy);
-    return 2345;
+    uint256 policyId = _policyPool.newPolicy(policy, customer);
+    return policyId;
 
   }
 

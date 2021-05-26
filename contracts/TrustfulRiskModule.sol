@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import {IPolicyPool} from '../interfaces/IPolicyPool.sol';
 import {RiskModule} from './RiskModule.sol';
 
 /**
@@ -17,7 +18,7 @@ contract TrustfulRiskModule is RiskModule {
   /**
    * @dev Initializes the RiskModule
    * @param name_ Name of the Risk Module
-   * @param ensuro_ The address of the Ensuro PolicyPool where this module is plugged
+   * @param policyPool_ The address of the Ensuro PolicyPool where this module is plugged
    * @param scrPercentage_ Solvency Capital Requirement percentage, to calculate
                           capital requirement as % of (payout - premium)  (in ray)
    * @param premiumShare_ % of premium that will go for the risk module provider (in ray)
@@ -29,7 +30,7 @@ contract TrustfulRiskModule is RiskModule {
    */
   constructor(
     string memory name_,
-    address ensuro_,  // TODO: IPolicyPool
+    IPolicyPool policyPool_,
     uint256 scrPercentage_,
     uint256 premiumShare_,
     uint256 ensuroShare_,
@@ -37,9 +38,8 @@ contract TrustfulRiskModule is RiskModule {
     uint256 scrLimit_,
     address wallet_,
     uint256 sharedCoverageMinPercentage_
-  ) RiskModule(name_, ensuro_, scrPercentage_, premiumShare_, ensuroShare_,
+  ) RiskModule(name_, policyPool_, scrPercentage_, premiumShare_, ensuroShare_,
                maxScrPerPolicy_, scrLimit_, wallet_, sharedCoverageMinPercentage_) {
-    require(2==2);
   }
 
   function newPolicy(

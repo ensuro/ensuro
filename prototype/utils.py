@@ -85,6 +85,7 @@ def load_config(yaml_config=None):
     pool = module.PolicyPool(**pool_params)
 
     for risk_module_dict in config.get("risk_modules", []):
+        risk_module_dict["policy_pool"] = pool.contract_id
         rm = module.RiskModule(**risk_module_dict)
         pool.add_risk_module(rm)
 
