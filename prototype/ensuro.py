@@ -1,7 +1,7 @@
 from m9g import Model
 from m9g.fields import StringField, IntField, DictField, CompositeField
 from .contracts import AccessControlContract, ERC20Token, external, view, RayField, WadField, AddressField, \
-    ContractProxyField, ContractProxy, require
+    ContractProxyField, ContractProxy, require, only_role
 from .contracts import ERC721Token  # noqa
 from .wadray import RAY, Ray, Wad, _W, _R
 import time
@@ -90,6 +90,18 @@ class RiskModule(AccessControlContract):
     def remove_policy(self, policy):
         self.total_scr -= policy.scr
         self.shared_coverage_scr -= policy.rm_scr
+
+
+class TrustfulRiskModule(RiskModule):
+    @only_role("PRICER_ROLE")
+    def new_policy(self, *args, **kwargs):
+        return super().new_policy(*args, **kwargs)
+
+    @external
+    @only_role("RESOLVER_ROLE")
+    def resolve_policy(self, policy_id, customer_won):
+        with self.policy_pool.as_(self.contract_id):
+            return self.policy_pool.resolve_policy(policy_id, customer_won)
 
 
 class Policy(Model):
@@ -497,7 +509,7 @@ class PolicyPool(AccessControlContract):
         self.won_pure_premiums += pure_premium_won
 
     @external
-    def resolve_policy(self, risk_module_name, policy_id, customer_won):
+    def resolve_policy(self, policy_id, customer_won):
         policy = self.policies[policy_id]
 
         self.active_premiums -= policy.premium

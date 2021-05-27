@@ -439,6 +439,8 @@ class TrustfulRiskModule(RiskModuleETH):
         ("customer", "address")
     ), "int")
 
+    resolve_policy = MethodAdapter((("policy_id", "int"), ("customer_won", "bool")))
+
     def new_policy(self, *args, **kwargs):
         receipt = self.new_policy_(*args, **kwargs)
         if "NewPolicy" in receipt.events:

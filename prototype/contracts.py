@@ -181,6 +181,19 @@ def view(method):
     return verify_unchanged
 
 
+def only_role(role):
+    def decorator(method):
+        @wraps(method)
+        def inner(self, *args, **kwargs):
+            if self.has_role(role, self.running_as):
+                return method(self, *args, **kwargs)
+            else:
+                raise RevertError(f"AccessControl: account {self.running_as} is missing role {role}")
+
+        return inner
+    return decorator
+
+
 class ContractManager:
     def __init__(self):
         self._contracts = {}
@@ -221,6 +234,10 @@ class Contract(Model):
                 del self._running_as
             else:
                 self._running_as = prev_running_as
+
+    @property
+    def running_as(self):
+        return getattr(self, "_running_as", None)
 
     def push_version(self, version_name=None):
         if version_name is None:

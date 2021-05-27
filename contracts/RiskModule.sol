@@ -183,7 +183,6 @@ abstract contract RiskModule is IRiskModule, AccessControl, Pausable {
     require(_policyPool.currency().allowance(customer, address(_policyPool)) >= premium,
             "You must allow ENSURO to transfer the premium");
     Policy.PolicyData memory policy = Policy.initialize(this, premium, payout, lossProb, expiration);
-    require(policy.premium == premium, "Not Easdaddsaads");
     require(policy.scr <= _maxScrPerPolicy, "RiskModule: SCR is more than maximum per policy");
     _totalScr = _totalScr.add(policy.scr);
     require(_totalScr <= _scrLimit, "RiskModule: SCR limit exceeded");
@@ -192,5 +191,4 @@ abstract contract RiskModule is IRiskModule, AccessControl, Pausable {
     return policyId;
 
   }
-
 }

@@ -12,8 +12,8 @@ import {RiskModule} from './RiskModule.sol';
  */
 
 contract TrustfulRiskModule is RiskModule {
-  bytes32 public constant PRICER = keccak256("PRICER");
-  bytes32 public constant RESOLVER = keccak256("RESOLVER");
+  bytes32 public constant PRICER_ROLE = keccak256("PRICER_ROLE");
+  bytes32 public constant RESOLVER_ROLE = keccak256("RESOLVER_ROLE");
 
   /**
    * @dev Initializes the RiskModule
@@ -44,8 +44,12 @@ contract TrustfulRiskModule is RiskModule {
 
   function newPolicy(
     uint256 payout, uint256 premium, uint256 lossProb, uint40 expiration, address customer
-  ) external returns (uint256) {
+  )  onlyRole(PRICER_ROLE) external returns (uint256) {
     return _newPolicy(payout, premium, lossProb, expiration, customer);
+  }
+
+  function resolvePolicy(uint256 policyId, bool customerWon) onlyRole(RESOLVER_ROLE) external {
+    return _policyPool.resolvePolicy(policyId, customerWon);
   }
 
 }

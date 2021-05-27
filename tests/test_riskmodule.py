@@ -26,11 +26,14 @@ def tenv(request):
                 self.policy_count += 1
                 return self.policy_count
 
+            def resolve_policy(self, policy_id, customer_won):
+                pass
+
         return TEnv(
             currency=currency,
             time_control=ensuro.time_control,
             policy_factory=FakePolicy,
-            rm_class=partial(ensuro.RiskModule, policy_pool=PolicyPoolMock(currency=currency))
+            rm_class=partial(ensuro.TrustfulRiskModule, policy_pool=PolicyPoolMock(currency=currency))
         )
     elif request.param == "ethereum":
         FakePolicy = namedtuple("FakePolicy", "scr interest_rate expiration")
@@ -114,7 +117,13 @@ def test_new_policy(tenv):
     tenv.currency.approve("CUST1", rm.policy_pool, _W(1))
     assert tenv.currency.allowance("CUST1", rm.policy_pool) == _W(1)
     expiration = tenv.time_control.now + WEEK
-    policy = rm.new_policy(_W(36), _W(1), _R(1/37), expiration, "CUST1")
+
+    with rm.as_("JOHN_DOE"), pytest.raises(RevertError, match="is missing role"):
+        policy = rm.new_policy(_W(36), _W(1), _R(1/37), expiration, "CUST1")
+
+    rm.grant_role("PRICER_ROLE", "JOHN_SELLER")
+    with rm.as_("JOHN_SELLER"):
+        policy = rm.new_policy(_W(36), _W(1), _R(1/37), expiration, "CUST1")
 
     policy.premium.assert_equal(_W(1))
     policy.payout.assert_equal(_W(36))
@@ -129,3 +138,14 @@ def test_new_policy(tenv):
     policy.premium_for_rm.assert_equal(profit_premium * _W("0.10") + _W(1 * .6))
     policy.premium_for_lps.assert_equal(profit_premium * _W(1 - 0.13))
     policy.interest_rate.assert_equal(policy.premium_for_lps.to_ray() * _R(365/7) // policy.scr.to_ray())
+
+    with rm.as_("JOHN_DOE"), pytest.raises(RevertError, match="is missing role"):
+        rm.resolve_policy(policy.id, True)
+
+    rm.grant_role("RESOLVER_ROLE", "JOE_THE_ORACLE")
+
+    with rm.as_("JOE_THE_ORACLE"):
+        rm.resolve_policy(policy.id, True)
+
+
+# TODO: further tests on _newPolicy validations

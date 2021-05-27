@@ -168,7 +168,7 @@ class TestProtocol(TestCase):
 
         borrow_from_scr = policy_1.payout - pool.pure_premiums
         adjustment = policy_1.premium_split()[-1] - accrued_interest
-        pool.resolve_policy("Roulette", policy_1.id, customer_won=True)
+        pool.resolve_policy(policy_1.id, customer_won=True)
 
         assert USD.balance_of("CUST1") == _W(36)
         assert USD.balance_of(pool.contract_id) == _W(1000 + 2000 + 2000 + 2 - 35)
@@ -199,7 +199,7 @@ class TestProtocol(TestCase):
         assert p2_accrued_interest.equal(policy_2.accrued_interest())
         p2_for_lps = policy_2.premium_split()[-1]
         adjustment = p2_for_lps - p2_accrued_interest
-        pool.resolve_policy("Roulette", policy_2.id, customer_won=False)
+        pool.resolve_policy(policy_2.id, customer_won=False)
 
         assert USD.balance_of("CUST2") == _W(0)
         assert USD.balance_of(pool.contract_id) == _W(1000 + 2000 + 2000 + 2 - 35)  # unchanged
@@ -251,7 +251,7 @@ class TestProtocol(TestCase):
                     change = min(
                         pool_loan, (p.pure_premium.to_ray() * p.get_scr_share("eUSD1YEAR")).to_wad()
                     )
-                pool.resolve_policy("Roulette", p.id, customer_won=customer_won)
+                pool.resolve_policy(p.id, customer_won=customer_won)
                 policies.pop(0)
 
                 assert eUSD1YEAR.get_pool_loan().equal(pool_loan - change)
@@ -268,7 +268,7 @@ class TestProtocol(TestCase):
         for i, p in enumerate(policies):
             day = 65 + i
             customer_won = day % 37 == 36
-            pool.resolve_policy("Roulette", p.id, customer_won=customer_won)
+            pool.resolve_policy(p.id, customer_won=customer_won)
             if customer_won:
                 won_count += 1
                 repay = _W(0)
@@ -368,7 +368,7 @@ class TestProtocol(TestCase):
         etoken.balance_of("LP2").assert_equal(lp1_balance // _W(3) + interest * _W(4/7) // _W(3))
         etoken.balance_of("LP3").assert_equal(lp1_balance // _W(3) + interest * _W(4/7) // _W(3))
 
-        pool.resolve_policy("Roulette", policy.id, customer_won=True)
+        pool.resolve_policy(policy.id, customer_won=True)
         etoken.balance_of("LP1").assert_equal(_W(0))
         etoken.balance_of("LP2").assert_equal(_W(0))
         etoken.balance_of("LP3").assert_equal(_W(0))
@@ -525,7 +525,7 @@ class TestProtocol(TestCase):
                 loss_prob=_R("0.02"), expiration=pool.now() + 10 * DAY
             )
 
-        pool.resolve_policy("Roulette", policy.id, False)
+        pool.resolve_policy(policy.id, False)
 
         USD.balance_of("RM").assert_equal(_W(5000) + for_rm)  # received back the SCR + part of premium
         USD.balance_of("ENS").assert_equal(for_ensuro)
@@ -598,7 +598,7 @@ class TestProtocol(TestCase):
         pool.won_pure_premiums.assert_equal(_W(8500) * _W("0.025") * pool_share)
         etk.balance_of("LP1").assert_equal(lp1_balance + for_lps + _W(8500) * _W("0.025") * etk_share)
 
-        pool.resolve_policy("Roulette", policy.id, customer_won=True)
+        pool.resolve_policy(policy.id, customer_won=True)
         assert USD.balance_of(pool.contract_id) == _W(1500)  # balance back to middle
         USD.balance_of(asset_manager.contract_id).assert_equal(
             _W(8500) +                # initial investment
@@ -662,6 +662,6 @@ class TestProtocol(TestCase):
         nft.transfer_from("CUST1", "CUST1", "CUST2", policy.id)
 
         pool.fast_forward_time(WEEK)
-        pool.resolve_policy("Roulette", policy.id, customer_won=True)
+        pool.resolve_policy(policy.id, customer_won=True)
         assert usd.balance_of("CUST1") == _W(0)
         assert usd.balance_of("CUST2") == _W(3600)
