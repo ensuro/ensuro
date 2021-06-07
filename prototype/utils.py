@@ -77,11 +77,12 @@ def load_config(yaml_config=None):
     nft_params.setdefault("owner", "owner")
     nft_params.setdefault("name", "Ensuro Policy")
     nft_params.setdefault("symbol", "EPOLI")
-    nft = module.ERC721Token(**nft_params)
+    # nft = module.ERC721Token(**nft_params)
 
     pool_params = config.get("policy_pool", {})
+    nft_params.update(pool_params)
+    pool_params = nft_params
     pool_params["currency"] = currency.contract_id
-    pool_params["policies_nft"] = nft.contract_id
     pool = module.PolicyPool(**pool_params)
 
     for risk_module_dict in config.get("risk_modules", []):

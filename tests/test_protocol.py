@@ -646,7 +646,6 @@ class TestProtocol(TestCase):
         usd = pool.currency
 
         usd.approve("LP1", pool.contract_id, _W(3500))
-        nft = pool.policies_nft
 
         assert pool.deposit("eUSD1YEAR", "LP1", _W(3500)) == _W(3500)
 
@@ -656,10 +655,10 @@ class TestProtocol(TestCase):
             loss_prob=_R(1/37), expiration=pool.now() + WEEK
         )
 
-        assert nft.balance_of("CUST1") == 1
-        assert nft.owner_of(policy.id) == "CUST1"
+        assert pool.balance_of("CUST1") == 1
+        assert pool.owner_of(policy.id) == "CUST1"
 
-        nft.transfer_from("CUST1", "CUST1", "CUST2", policy.id)
+        pool.transfer_from("CUST1", "CUST1", "CUST2", policy.id)
 
         pool.fast_forward_time(WEEK)
         pool.resolve_policy(policy.id, customer_won=True)

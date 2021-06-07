@@ -5,6 +5,7 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {Pausable} from "@openzeppelin/contracts/security/Pausable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from '@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol';
+import {IPolicyPool} from '../interfaces/IPolicyPool.sol';
 import {IEToken} from '../interfaces/IEToken.sol';
 import {Errors} from './Errors.sol';
 import {WadRayMath} from './WadRayMath.sol';
@@ -34,7 +35,7 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken {
   string private _name;
   string private _symbol;
 
-  address internal _ensuro;  // TODO: later define IPolicyPool
+  IPolicyPool internal _policyPool;
 
   uint40 internal _expirationPeriod;
   uint256 internal _currentIndex;  // in Ray
@@ -51,20 +52,18 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken {
   uint40 internal _poolLoanLastIndexUpdate;
 
   modifier onlyEnsuro {
-    require(_msgSender() == address(_ensuro), Errors.CT_CALLER_MUST_BE_ENSURO);
+    require(_msgSender() == address(_policyPool), Errors.CT_CALLER_MUST_BE_ENSURO);
     _;
   }
 
   modifier onlyAssetManager {
-    // TODO
-    // require(_msgSender() == _ensuro.getAssetManager(), Errors.CT_CALLER_MUST_BE_ENSURO);
-    require(_msgSender() == address(_ensuro), Errors.CT_CALLER_MUST_BE_ENSURO);
+    require(_msgSender() == _policyPool.assetManager(), Errors.CT_CALLER_MUST_BE_ENSURO);
     _;
   }
 
   /**
    * @dev Initializes the aToken
-   * @param ensuro The address of the Ensuro PolicyPool where this eToken will be used
+   * @param policyPool_ The address of the Ensuro PolicyPool where this eToken will be used
    * @param expirationPeriod Maximum expirationPeriod (from block.timestamp) of policies to be accepted
    * @param liquidityRequirement Liquidity requirement to allow withdrawal (in Ray - default=1 Ray)
    * @param poolLoanInterestRate_ Rate of loans given to the policy pool (in Ray)
@@ -74,14 +73,14 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken {
   constructor(
     string memory name_,
     string memory symbol_,
-    address ensuro,  // TODO: IPolicyPool
+    IPolicyPool policyPool_,
     uint40 expirationPeriod,
     uint256 liquidityRequirement,
     uint256 poolLoanInterestRate_
   ) {
     _name = name_;
     _symbol = symbol_;
-    _ensuro = ensuro;
+    _policyPool = policyPool_;
     _expirationPeriod = expirationPeriod;
     _currentIndex = WadRayMath.ray();
     _lastIndexUpdate = uint40(block.timestamp);
@@ -411,6 +410,10 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken {
     return _currentIndex.rayMul((
       _tokenInterestRate.mul(timeDifference) / SECONDS_PER_YEAR
     ).add(WadRayMath.ray()));
+  }
+
+  function policyPool() public view override returns (IPolicyPool) {
+    return _policyPool;
   }
 
   function getCurrentIndex(bool updated) public view virtual override returns (uint256) {

@@ -8,10 +8,8 @@ library Policy {
   using SafeMath for uint256;
   using WadRayMath for uint256;
 
-  struct LockedCapital {
-    address eToken;
-    uint256 amount;
-  }
+  uint256 public constant SECONDS_IN_YEAR = 31536000000000000000000000; /* 365 * 24 * 3600 * 10e18 */
+  uint256 public constant SECONDS_IN_YEAR_RAY = 31536000000000000000000000000000000; /* 365 * 24 * 3600 * 10e27 */
 
   // Active Policies
   struct PolicyData {
@@ -29,7 +27,6 @@ library Policy {
     uint256 premiumForEnsuro; // share of the premium that goes for Ensuro (if policy won)
     uint256 premiumForRm;     // share of the premium that goes for the RM (if policy won)
     uint256 premiumForLps;    // share of the premium that goes to the liquidity providers (won or not)
-    // LockedCapital[] lockedFunds;  // sum(lockedFunds.amount) == (scr - rmCoverage)
   }
 
   function initialize(IRiskModule riskModule, uint256 premium, uint256 payout,
@@ -63,6 +60,26 @@ library Policy {
       policy.payout.sub(policy.rmCoverage)
     ).wadDiv(policy.payout);
     return (ens_premium, policy.premium.sub(ens_premium));
+  }
+
+  function rmScr(PolicyData memory policy) public returns (uint256) {
+    uint256 ens_premium;
+    uint256 rm_premium;
+    (ens_premium, rm_premium) = _coveragePremiumSplit(policy);
+    return policy.rmCoverage.sub(rm_premium);
+  }
+
+  function interestRate(PolicyData memory policy) public returns (uint256) {
+    return policy.premiumForLps.wadMul(SECONDS_IN_YEAR).wadDiv(
+      (policy.expiration - policy.start) * policy.scr
+    ).wadToRay();
+  }
+
+  function accruedInterest(PolicyData memory policy) public returns (uint256) {
+    uint256 secs = block.timestamp.sub(policy.start);
+    return policy.scr.wadToRay().rayMul(
+      secs * interestRate(policy)
+    ).rayDiv(SECONDS_IN_YEAR_RAY).wadToRay();
   }
 
   /*

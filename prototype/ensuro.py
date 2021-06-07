@@ -2,7 +2,7 @@ from m9g import Model
 from m9g.fields import StringField, IntField, DictField, CompositeField
 from .contracts import AccessControlContract, ERC20Token, external, view, RayField, WadField, AddressField, \
     ContractProxyField, ContractProxy, require, only_role
-from .contracts import ERC721Token  # noqa
+from .contracts import ERC721Token
 from .wadray import RAY, Ray, Wad, _W, _R
 import time
 
@@ -371,7 +371,7 @@ class EToken(ERC20Token):
         return self.scr + self.ocean + self.get_pool_loan()
 
 
-class PolicyPool(AccessControlContract):
+class PolicyPool(ERC721Token):
     currency = ContractProxyField()
     risk_modules = DictField(StringField(), ContractProxyField(), default={})
     etokens = DictField(StringField(), ContractProxyField(), default={})
@@ -383,7 +383,6 @@ class PolicyPool(AccessControlContract):
     won_pure_premiums = WadField(default=Wad(0))
     treasury = AddressField(default="ENS")
     asset_manager = ContractProxyField(default=None, allow_none=True)
-    policies_nft = ContractProxyField()
 
     @property
     def pure_premiums(self):
@@ -427,7 +426,7 @@ class PolicyPool(AccessControlContract):
         self.policy_count += 1
         self.currency.transfer_from(self.contract_id, customer, self.contract_id, policy.premium)
         policy.id = self.policy_count
-        self.policies_nft.mint(customer, policy.id)
+        self.mint(customer, policy.id)
 
         if policy.rm_scr:
             self.currency.transfer_from(self.contract_id, rm.wallet, self.contract_id, policy.rm_scr)
@@ -520,7 +519,7 @@ class PolicyPool(AccessControlContract):
 
         if customer_won:
             borrow_from_scr = self._pay_from_pool(policy)
-            policy_owner = self.policies_nft.owner_of(policy.id)
+            policy_owner = self.owner_of(policy.id)
             self._transfer_to(policy_owner, policy.payout)
             pure_premium_won = Wad(0)
         else:
@@ -559,13 +558,10 @@ class PolicyPool(AccessControlContract):
     def rebalance_policy(self, risk_module_name, policy_id):
         policy = self.policies[policy_id]
 
-        modified_etokens = set()
-
         # unlock previous SCR
         for (etoken_name, scr_amount) in policy.locked_funds.items():
             etk = self.etokens[etoken_name]
             etk.unlock_scr(policy, scr_amount)
-            modified_etokens.add(etoken_name)
 
         policy.locked_funds = {}
         self._lock_scr(policy)
