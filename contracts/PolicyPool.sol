@@ -152,6 +152,7 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
     uint256 withdrawed = eToken.withdraw(provider, amount);
     if (withdrawed > 0)
       _transferTo(provider, withdrawed);
+    emit Withdrawal(eToken, provider, withdrawed);
     return withdrawed;
   }
 
@@ -290,7 +291,7 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
       purePremiumWon = 0;
     } else {
       // Pay RM and Ensuro
-      _transferTo(policy.riskModule.wallet(), policy.premiumForLps + policy.rmScr());
+      _transferTo(policy.riskModule.wallet(), policy.premiumForRm + policy.rmScr());
       _transferTo(_treasury, policy.premiumForEnsuro);
       purePremiumWon = policy.purePremium;
       // cover first _borrowedActivePP
@@ -311,7 +312,7 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
       if (!customerWon && purePremiumWon > 0 && etk.getPoolLoan() > 0) {
         // if debt with token, repay from purePremium
         aux = policy.purePremium.wadMul(etkScr).wadDiv(policy.scr);
-        aux = Math.min(etk.getPoolLoan(), aux);
+        aux = Math.min(purePremiumWon, Math.min(etk.getPoolLoan(), aux));
         etk.repayPoolLoan(aux);
         purePremiumWon -= aux;
       } else {
@@ -383,6 +384,22 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
 
   function getPolicy(uint256 policyId) external override view returns (Policy.PolicyData memory) {
     return _policies[policyId];
+  }
+
+  function getPolicyFundCount(uint256 policyId) external view returns (uint256) {
+    return _policiesFunds[policyId].length();
+  }
+
+  function getPolicyFundAt(uint256 policyId, uint256 index) external view returns (IEToken, uint256) {
+     return _policiesFunds[policyId].at(index);
+  }
+
+  function getPolicyFund(uint256 policyId, IEToken etoken) external view returns (uint256) {
+     (bool success, uint256 amount) = _policiesFunds[policyId].tryGet(etoken);
+     if (success)
+       return amount;
+     else
+       return 0;
   }
 
 }

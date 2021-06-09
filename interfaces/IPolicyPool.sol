@@ -30,6 +30,8 @@ interface IPolicyPool {
   event ETokenStatusChanged(IEToken indexed eToken, ETokenStatus newStatus);
   event AssetManagerChanged(address indexed assetManager);
 
+  event Withdrawal(IEToken indexed eToken, address indexed provider, uint256 value);
+
   function currency() external view returns (IERC20);
   function assetManager() external view returns (address);   // TODO: IAssetManager
   function newPolicy(Policy.PolicyData memory policy, address customer) external returns (uint256);

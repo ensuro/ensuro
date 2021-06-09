@@ -425,7 +425,7 @@ class ERC20Token(AccessControlContract):
     def transfer_from(self, spender, sender, recipient, amount):
         allowance = self.allowances.get((sender, spender), self.ZERO)
         if allowance < amount:
-            raise RevertError("Not enought allowance")
+            raise RevertError("ERC20: transfer amount exceeds allowance")
         self._transfer(sender, recipient, amount)
         self._approve(sender, spender, allowance - amount)
         return True

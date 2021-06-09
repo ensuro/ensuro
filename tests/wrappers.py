@@ -448,6 +448,7 @@ class RiskModuleETH(ETHWrapper):
         max_scr_per_policy = _W(max_scr_per_policy)
         scr_limit = _W(scr_limit)
         wallet = self._get_account(wallet)
+        shared_coverage_min_percentage = _R(shared_coverage_min_percentage)
         self.policy_pool = policy_pool
         super().__init__(owner, name, policy_pool.contract, scr_percentage, premium_share, ensuro_share,
                          max_scr_per_policy, scr_limit, wallet, shared_coverage_min_percentage)
@@ -489,7 +490,7 @@ class PolicyPool(ETHWrapper):
     libraries_required = ["Policy"]
     eth_contract = "PolicyPool"
 
-    def __init__(self, owner, name, symbol, currency, treasury=None, asset_manager=None):
+    def __init__(self, owner, name, symbol, currency, treasury="ENS", asset_manager=None):
         treasury = self._get_account(treasury)
         asset_manager = self._get_account(asset_manager)
         self._currency = currency
@@ -513,6 +514,7 @@ class PolicyPool(ETHWrapper):
         obj._auto_from = obj.owner
         return obj
 
+    pure_premiums = MethodAdapter((), "amount", is_property=True)
     add_risk_module_ = MethodAdapter((("risk_module", "contract"), ))
     add_etoken_ = MethodAdapter((("etoken", "contract"), ), eth_method="addEToken")
 
@@ -531,6 +533,24 @@ class PolicyPool(ETHWrapper):
         self.deposit_(etoken, provider, amount)
         return etoken.balance_of(provider)
 
+    withdraw_ = MethodAdapter((("etoken", "contract"), ("provider", "msg.sender"), ("amount", "amount")))
+
+    def withdraw(self, etoken_name, provider, amount):
+        etoken = self.etokens[etoken_name]
+        receipt = self.withdraw_(etoken, provider, amount)
+        if "Withdrawal" in receipt.events:
+            return Wad(receipt.events["Withdrawal"]["value"])
+        else:
+            return Wad(0)
+
+    def get_policy(self, policy_id):
+        policy_data = self.contract.getPolicy(policy_id)
+        if policy_data:
+            return Policy(*policy_data)
+
+    get_policy_fund_count = MethodAdapter((("policy_id", "int"), ), "int")
+    get_policy_fund = MethodAdapter((("policy_id", "int"), ("etoken", "contract")), "amount")
+    rebalance_policy = MethodAdapter((("policy_id", "int"), ))
     # TODO other methods
 
 

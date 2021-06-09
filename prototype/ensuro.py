@@ -76,9 +76,9 @@ class RiskModule(AccessControlContract):
                         loss_prob=loss_prob, start=start, expiration=expiration)
 
         require(policy.scr <= self.max_scr_per_policy,
-                f"Policy SCR: {policy.scr} > max for this module {self.max_scr_per_policy}")
+                f"Policy SCR: {policy.scr} > maximum per policy {self.max_scr_per_policy}")
         total_scr = self.total_scr + policy.scr
-        require(total_scr <= self.scr_limit, "SCR exceeds the allowed for this module")
+        require(total_scr <= self.scr_limit, "RiskModule: SCR limit exceeded")
         self.total_scr = total_scr
         self.shared_coverage_scr += policy.rm_scr
 
@@ -556,7 +556,7 @@ class PolicyPool(ERC721Token):
         del self.policies[policy_id]
 
     @external
-    def rebalance_policy(self, risk_module_name, policy_id):
+    def rebalance_policy(self, policy_id):
         policy = self.policies[policy_id]
 
         # unlock previous SCR
@@ -596,6 +596,12 @@ class PolicyPool(ERC721Token):
             self.borrowed_active_pp += amount
             # borrowed_active_pp should be < active_pure_premiums
             # TODO: validation and handling, but shouldn't happen
+
+    def get_policy_fund_count(self, policy_id):
+        return len(self.policies[policy_id].locked_funds)
+
+    def get_policy_fund(self, policy_id, etoken):
+        return self.policies[policy_id].locked_funds.get(etoken.name, _W(0))
 
 
 class AssetManager(AccessControlContract):
