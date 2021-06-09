@@ -312,9 +312,9 @@ def test_rebalance_policy(tenv):
         pool.rebalance_policy(policy.id)
 
     # Now funds are locked in the three pools
-    pool.etokens["eUSD1YEAR"].scr.assert_equal(_W(2000 / 3) + _W("1.63637"))
-    pool.etokens["eUSD1MONTH"].scr.assert_equal(_W(2000 / 3) + _W("1.63637"))
-    pool.etokens["eUSD1WEEK"].scr.assert_equal(_W(2000 / 3) - _W("1.63637") * _W(2))
+    pool.etokens["eUSD1YEAR"].scr.assert_equal(_W(2000 / 3) + _W("1.63637"), decimals=3)
+    pool.etokens["eUSD1MONTH"].scr.assert_equal(_W(2000 / 3) + _W("1.63637"), decimals=3)
+    pool.etokens["eUSD1WEEK"].scr.assert_equal(_W(2000 / 3) - _W("1.63637") * _W(2), decimals=3)
     scr_week_share = pool.etokens["eUSD1WEEK"].scr // policy.scr
     scr_others_share = (_W(1) - scr_week_share) // _W(2)
 
