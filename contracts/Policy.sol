@@ -44,6 +44,7 @@ library Policy {
     policy.scr = payout.sub(ens_premium).sub(policy.rmCoverage).wadMul(
       riskModule.scrPercentage().rayToWad()
     );
+    require(policy.scr != 0, "SCR can't be zero");
     policy.start = uint40(block.timestamp);
     policy.expiration = expiration;
     policy.purePremium = payout.sub(policy.rmCoverage).wadToRay().rayMul(lossProb).rayToWad();  // TODO moc
@@ -79,64 +80,29 @@ library Policy {
     uint256 secs = block.timestamp.sub(policy.start);
     return policy.scr.wadToRay().rayMul(
       secs * interestRate(policy)
-    ).rayDiv(SECONDS_IN_YEAR_RAY).wadToRay();
+    ).rayDiv(SECONDS_IN_YEAR_RAY).rayToWad();
   }
 
-  /*
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.rm_coverage = self.risk_module.shared_coverage_percentage.to_wad() * self.payout
-        ens_premium, rm_premium = self._coverage_premium_split()
-        self.scr = (self.payout - ens_premium - self.rm_coverage) * self.risk_module.scr_percentage.to_wad()
-
-    def _coverage_premium_split(self):
-        ens_premium = self.premium * (self.payout - self.rm_coverage) // self.payout
-        rm_premium = self.premium - ens_premium
-        return ens_premium, rm_premium
-
-    @property
-    def pure_premium(self):
-        payout = self.payout - self.rm_coverage
-        return (payout.to_ray() * self.loss_prob).to_wad()
-
-    @property
-    def rm_scr(self):
-        ens_premium, rm_premium = self._coverage_premium_split()
-        return self.rm_coverage - rm_premium
-
-    def premium_split(self):
-        ens_premium, rm_premium = self._coverage_premium_split()
-
-        pure_premium = self.pure_premium
-        profit_premium = ens_premium - pure_premium
-        for_ensuro = (profit_premium.to_ray() * self.risk_module.ensuro_share).to_wad()
-        for_risk_module = (profit_premium.to_ray() * self.risk_module.premium_share).to_wad()
-        for_lps = profit_premium - for_ensuro - for_risk_module
-        for_risk_module += rm_premium  # after calculating for_lps...
-        return pure_premium, for_ensuro, for_risk_module, for_lps
-
-    @property
-    def interest_rate(self):
-        _, for_ensuro, for_risk_module, for_lps = self.premium_split()
-        return (
-            for_lps * _W(SECONDS_IN_YEAR) // (
-                _W(self.expiration - self.start) * self.scr
-            )
-        ).to_ray()
-
-    def accrued_interest(self):
-        seconds = Ray.from_value(time_control.now - self.start)
-        return (
-            self.scr.to_ray() * seconds * self.interest_rate //
-            Ray.from_value(SECONDS_IN_YEAR)
-        ).to_wad()
-
-    def get_scr_share(self, etoken_name):
-        if etoken_name not in self.locked_funds:
-            return Ray(0)
-        return (self.locked_funds[etoken_name] // self.scr).to_ray()
-
-    */
-
-
+  // For debugging
+  function uint2str(uint _i) public pure returns (string memory _uintAsString) {
+    if (_i == 0) {
+      return "0";
+    }
+    uint j = _i;
+    uint len;
+    while (j != 0) {
+      len++;
+      j /= 10;
+    }
+    bytes memory bstr = new bytes(len);
+    uint k = len;
+    while (_i != 0) {
+        k = k-1;
+        uint8 temp = (48 + uint8(_i - _i / 10 * 10));
+        bytes1 b1 = bytes1(temp);
+        bstr[k] = b1;
+        _i /= 10;
+    }
+    return string(bstr);
+   }
 }

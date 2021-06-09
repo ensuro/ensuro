@@ -178,7 +178,7 @@ abstract contract RiskModule is IRiskModule, AccessControl, Pausable {
   function _newPolicy(uint256 payout, uint256 premium, uint256 lossProb,
                       uint40 expiration, address customer) whenNotPaused internal returns (uint256) {
     require(premium < payout, "Premium must be less than payout");
-    require(expiration >= block.timestamp, "Expiration must be in the future");
+    require(expiration > uint40(block.timestamp), "Expiration must be in the future");
     require(customer != address(0), "Customer can't be zero address");
     require(_policyPool.currency().allowance(customer, address(_policyPool)) >= premium,
             "You must allow ENSURO to transfer the premium");

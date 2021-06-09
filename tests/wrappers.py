@@ -22,6 +22,8 @@ class TimeControl:
 
     @property
     def now(self):
+        if len(chain) > 0:
+            return chain[-1].timestamp
         return chain.time()
 
 
@@ -29,6 +31,8 @@ time_control = TimeControl()
 
 
 class AddressBook:
+    ZERO = "0x0000000000000000000000000000000000000000"
+
     def __init__(self, eth_accounts):
         self.eth_accounts = eth_accounts  # brownie.network.account.Accounts
         self.name_to_address = {}
@@ -38,7 +42,7 @@ class AddressBook:
         if isinstance(name, (Account, LocalAccount)):
             return name
         if name is None:
-            return "0x0000000000000000000000000000000000000000"
+            return self.ZERO
         if name not in self.name_to_address:
             self.last_account_used += 1
             if (len(self.eth_accounts) - 1) > self.last_account_used:
@@ -104,13 +108,21 @@ class ETHCall:
     @classmethod
     def parse(cls, value_type, value):
         if value_type == "address":
-            if isinstance(value, Account):
+            if isinstance(value, (LocalAccount, Account)):
                 return value
             elif isinstance(value, (Contract, ProjectContract)):
                 return value.address
             elif isinstance(value, ETHWrapper):
                 return value.contract.address
+            elif isinstance(value, str) and value.startswith("0x"):
+                return value
             return AddressBook.instance.get_account(value)
+        if value_type == "contract":
+            if isinstance(value, ETHWrapper):
+                return value.contract.address
+            elif value is None:
+                return AddressBook.ZERO
+            raise RuntimeError(f"Invalid contract: {value}")
         if value_type == "amount" and value is None:
             return MAXUINT256
         return value
@@ -173,6 +185,18 @@ class ETHWrapper:
         for library in self.libraries_required:
             getattr(brownie, library).deploy({"from": self.owner})
         self.contract = getattr(brownie, self.eth_contract).deploy(*init_params, {"from": self.owner})
+
+    @classmethod
+    def connect(cls, contract, owner=None):
+        """Connects a wrapper to an existing deployed object"""
+        obj = cls.__new__(cls)
+        obj.contract = contract
+        obj.owner = owner
+        return obj
+
+    @property
+    def contract_id(self):
+        return self.contract.address
 
     def _get_account(self, name):
         return AddressBook.instance.get_account(name)
@@ -295,8 +319,13 @@ class ETokenETH(IERC20):
 
     def __init__(self, name, symbol, policy_pool, expiration_period, liquidity_requirement=_R(1),
                  pool_loan_interest_rate=_R("0.05"), owner="owner"):
-        policy_pool = AddressBook.instance.get_account(policy_pool)
-        self._auto_from = policy_pool
+        if isinstance(policy_pool, ETHWrapper):
+            self._auto_from = policy_pool.contract.address
+            policy_pool = policy_pool.contract
+        else:  # is just an address - for tests
+            policy_pool = self._get_account(policy_pool)
+            self._auto_from = policy_pool
+
         super().__init__(
             owner, name, symbol, policy_pool, expiration_period, liquidity_requirement,
             pool_loan_interest_rate
@@ -413,9 +442,14 @@ class RiskModuleETH(ETHWrapper):
     def __init__(self, name, policy_pool, scr_percentage=_R(1), premium_share=_R(0), ensuro_share=_R(0),
                  max_scr_per_policy=_W(1000000), scr_limit=_W(1000000),
                  wallet="RM", shared_coverage_min_percentage=_R(0), owner="owner"):
+        scr_percentage = _R(scr_percentage)
+        premium_share = _R(premium_share)
+        ensuro_share = _R(ensuro_share)
+        max_scr_per_policy = _W(max_scr_per_policy)
+        scr_limit = _W(scr_limit)
         wallet = self._get_account(wallet)
         self.policy_pool = policy_pool
-        super().__init__(owner, name, policy_pool, scr_percentage, premium_share, ensuro_share,
+        super().__init__(owner, name, policy_pool.contract, scr_percentage, premium_share, ensuro_share,
                          max_scr_per_policy, scr_limit, wallet, shared_coverage_min_percentage)
         self._auto_from = self.owner
 
@@ -445,7 +479,60 @@ class TrustfulRiskModule(RiskModuleETH):
         receipt = self.new_policy_(*args, **kwargs)
         if "NewPolicy" in receipt.events:
             policy_id = receipt.events["NewPolicy"]["policyId"]
-            policy_data = self.policy_pool.getPolicy(policy_id)
+            policy_data = self.policy_pool.contract.getPolicy(policy_id)
             return Policy(*policy_data)
         else:
             return None
+
+
+class PolicyPool(ETHWrapper):
+    libraries_required = ["Policy"]
+    eth_contract = "PolicyPool"
+
+    def __init__(self, owner, name, symbol, currency, treasury=None, asset_manager=None):
+        treasury = self._get_account(treasury)
+        asset_manager = self._get_account(asset_manager)
+        self._currency = currency
+        super().__init__(owner, name, symbol, currency.contract, treasury, asset_manager)
+        self._auto_from = self.owner
+        self.etokens = {}
+        self.risk_modules = {}
+
+    @property
+    def currency(self):
+        if hasattr(self, "_currency"):
+            return self._currency
+        else:
+            return IERC20.connect(self.contract.currency())
+
+    @classmethod
+    def connect(cls, contract, owner=None):
+        obj = ETHWrapper.connect(contract, owner)
+        obj.etokens = {}  # TODO: load from object
+        obj.risk_modules = {}  # TODO: load from object
+        obj._auto_from = obj.owner
+        return obj
+
+    add_risk_module_ = MethodAdapter((("risk_module", "contract"), ))
+    add_etoken_ = MethodAdapter((("etoken", "contract"), ), eth_method="addEToken")
+
+    def add_etoken(self, etoken):
+        self.add_etoken_(etoken)
+        self.etokens[etoken.name] = etoken
+
+    def add_risk_module(self, risk_module):
+        self.add_risk_module_(risk_module)
+        self.risk_modules[risk_module.name] = risk_module
+
+    deposit_ = MethodAdapter((("etoken", "contract"), ("provider", "msg.sender"), ("amount", "amount")))
+
+    def deposit(self, etoken_name, provider, amount):
+        etoken = self.etokens[etoken_name]
+        self.deposit_(etoken, provider, amount)
+        return etoken.balance_of(provider)
+
+    # TODO other methods
+
+
+ERC20Token = TestCurrency
+EToken = ETokenETH

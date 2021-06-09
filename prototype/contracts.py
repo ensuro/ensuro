@@ -393,6 +393,10 @@ class ERC20Token(AccessControlContract):
         return self.allowances.get((owner, spender), self.ZERO)
 
     def _approve(self, owner, spender, amount):
+        if isinstance(owner, (Contract, ContractProxy)):
+            owner = owner.contract_id
+        if isinstance(spender, (Contract, ContractProxy)):
+            spender = spender.contract_id
         require(owner is not None, "ERC20: approve from the zero address")
         require(spender is not None, "ERC20: approve to the zero address")
         if amount == self.ZERO:

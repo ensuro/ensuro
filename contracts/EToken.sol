@@ -554,7 +554,7 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken {
     }
     _updateCurrentIndex(); // shouldn't do anything because lendToPool is after unlock_scr but doing
                            // anyway
-    require(amount < ocean(), "Not enought capital to lend");
+    require(amount <= ocean(), "Not enought capital to lend");
     _discreteChange(amount, false);
   }
 

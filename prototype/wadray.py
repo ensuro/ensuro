@@ -45,6 +45,8 @@ class Wad(int):
     def from_value(cls, value):
         if type(value) == str:
             value = Decimal(value)
+        elif type(value) == cls:
+            return value
         return cls(int(value * WAD))
 
     def to_float(self):
@@ -95,6 +97,8 @@ class Ray(int):
     def from_value(cls, value):
         if type(value) == str:
             value = Decimal(value)
+        elif type(value) == cls:
+            return value
         return cls(int(value * RAY))
 
     def to_float(self):

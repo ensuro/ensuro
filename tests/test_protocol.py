@@ -1,3 +1,4 @@
+from collections import namedtuple
 from io import StringIO
 from unittest import TestCase
 import pytest
@@ -58,6 +59,8 @@ class TestProtocol(TestCase):
 
         pool = load_config(StringIO(YAML_SETUP))
         rm = pool.risk_modules["Roulette"]
+        rm.grant_role("PRICER_ROLE", rm.owner)
+        rm.grant_role("RESOLVER_ROLE", rm.owner)
 
         with pytest.raises(RevertError, match="Not enought allowance"):
             pool.deposit("eUSD1YEAR", "LP1", _W(1000))
@@ -303,76 +306,6 @@ class TestProtocol(TestCase):
         assert USD.balance_of("LP3") == (_W("500.587288338126130735") + _W("1501.780045569056425935"))
         assert USD.balance_of("CUST3") == _W(72)
 
-    def test_transfers(self):
-
-        YAML_SETUP = """
-        module: prototype.ensuro
-        risk_modules:
-          - name: Roulette
-            scr_percentage: 1
-            premium_share: 0
-            ensuro_share: 0
-        currency:
-            name: USD
-            symbol: $
-            initial_supply: 6000
-            initial_balances:
-            - user: LP1
-              amount: 3500
-            - user: CUST1
-              amount: 100
-        etokens:
-          - name: eUSD1WEEK
-            expiration_period: 604800
-          - name: eUSD1MONTH
-            expiration_period: 2592000
-          - name: eUSD1YEAR
-            expiration_period: 31536000
-        """
-
-        pool = load_config(StringIO(YAML_SETUP))
-        rm = pool.risk_modules["Roulette"]
-
-        pool.currency.approve("LP1", pool.contract_id, _W(3500))
-        etoken = pool.etokens["eUSD1YEAR"]
-
-        assert pool.deposit("eUSD1YEAR", "LP1", _W(3500)) == _W(3500)
-
-        pool.currency.approve("CUST1", pool.contract_id, _W(100))
-        policy = rm.new_policy(
-            payout=_W(3600), premium=_W(100), customer="CUST1",
-            loss_prob=_R(1/37), expiration=pool.now() + WEEK
-        )
-
-        assert etoken.ocean == _W(0)
-        pool.fast_forward_time(3 * DAY)
-
-        pure_premium, _, _, interest = policy.premium_split()
-
-        etoken.balance_of("LP1").assert_equal(
-            _W(3500) + interest * _W(3/7)
-        )
-        lp1_balance = etoken.balance_of("LP1")
-
-        etoken.transfer("LP1", "LP2", lp1_balance // _W(3))
-        etoken.approve("LP1", "spender", lp1_balance // _W(3))
-        etoken.transfer_from("spender", "LP1", "LP3", lp1_balance // _W(3))
-
-        etoken.balance_of("LP1").assert_equal(lp1_balance // _W(3))
-        etoken.balance_of("LP2").assert_equal(lp1_balance // _W(3))
-        etoken.balance_of("LP3").assert_equal(lp1_balance // _W(3))
-
-        pool.fast_forward_time(4 * DAY)
-
-        etoken.balance_of("LP1").assert_equal(lp1_balance // _W(3) + interest * _W(4/7) // _W(3))
-        etoken.balance_of("LP2").assert_equal(lp1_balance // _W(3) + interest * _W(4/7) // _W(3))
-        etoken.balance_of("LP3").assert_equal(lp1_balance // _W(3) + interest * _W(4/7) // _W(3))
-
-        pool.resolve_policy(policy.id, customer_won=True)
-        etoken.balance_of("LP1").assert_equal(_W(0))
-        etoken.balance_of("LP2").assert_equal(_W(0))
-        etoken.balance_of("LP3").assert_equal(_W(0))
-
     def test_rebalance_policy(self):
         YAML_SETUP = """
         module: prototype.ensuro
@@ -405,6 +338,8 @@ class TestProtocol(TestCase):
 
         pool = load_config(StringIO(YAML_SETUP))
         rm = pool.risk_modules["Roulette"]
+        rm.grant_role("PRICER_ROLE", rm.owner)
+        rm.grant_role("RESOLVER_ROLE", rm.owner)
 
         pool.currency.approve("LP1", pool.contract_id, _W(1000))
         pool.currency.approve("LP2", pool.contract_id, _W(1000))
@@ -486,6 +421,9 @@ class TestProtocol(TestCase):
 
         pool = load_config(StringIO(YAML_SETUP))
         rm = pool.risk_modules["Roulette"]
+        rm.grant_role("PRICER_ROLE", rm.owner)
+        rm.grant_role("RESOLVER_ROLE", rm.owner)
+
         USD = pool.currency
 
         USD.approve("LP1", pool.contract_id, _W(10000))
@@ -557,6 +495,9 @@ class TestProtocol(TestCase):
 
         pool = load_config(StringIO(YAML_SETUP))
         rm = pool.risk_modules["Roulette"]
+        rm.grant_role("PRICER_ROLE", rm.owner)
+        rm.grant_role("RESOLVER_ROLE", rm.owner)
+
         USD = pool.currency
         etk = pool.etokens["eUSD1YEAR"]
         asset_manager = pool.asset_manager
@@ -643,6 +584,9 @@ class TestProtocol(TestCase):
 
         pool = load_config(StringIO(YAML_SETUP))
         rm = pool.risk_modules["Roulette"]
+        rm.grant_role("PRICER_ROLE", rm.owner)
+        rm.grant_role("RESOLVER_ROLE", rm.owner)
+
         usd = pool.currency
 
         usd.approve("LP1", pool.contract_id, _W(3500))
@@ -664,3 +608,95 @@ class TestProtocol(TestCase):
         pool.resolve_policy(policy.id, customer_won=True)
         assert usd.balance_of("CUST1") == _W(0)
         assert usd.balance_of("CUST2") == _W(3600)
+
+
+TEnv = namedtuple("TEnv", "time_control module")
+
+
+@pytest.fixture(params=["prototype", "ethereum"])
+def tenv(request):
+    if request.param == "prototype":
+        from prototype import ensuro
+        return TEnv(
+            time_control=ensuro.time_control,
+            module=ensuro,
+        )
+    elif request.param == "ethereum":
+        from . import wrappers
+        return TEnv(
+            time_control=wrappers.time_control,
+            module=wrappers,
+        )
+
+
+def test_transfers(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        scr_percentage: 1
+        premium_share: 0
+        ensuro_share: 0
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 6000
+        initial_balances:
+        - user: LP1
+          amount: 3500
+        - user: CUST1
+          amount: 100
+    etokens:
+      - name: eUSD1WEEK
+        expiration_period: 604800
+      - name: eUSD1MONTH
+        expiration_period: 2592000
+      - name: eUSD1YEAR
+        expiration_period: 31536000
+    """
+
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    rm = pool.risk_modules["Roulette"]
+
+    rm.grant_role("PRICER_ROLE", rm.owner)
+    rm.grant_role("RESOLVER_ROLE", rm.owner)
+
+    pool.currency.approve("LP1", pool.contract_id, _W(3500))
+    etoken = pool.etokens["eUSD1YEAR"]
+
+    assert pool.deposit("eUSD1YEAR", "LP1", _W(3500)) == _W(3500)
+
+    pool.currency.approve("CUST1", pool.contract_id, _W(100))
+    policy = rm.new_policy(
+        payout=_W(3600), premium=_W(100), customer="CUST1",
+        loss_prob=_R(1/37), expiration=timecontrol.now + WEEK
+    )
+
+    assert etoken.ocean == _W(0)
+    timecontrol.fast_forward(3 * DAY)
+
+    pure_premium, _, _, interest = policy.premium_split()
+
+    etoken.balance_of("LP1").assert_equal(
+        _W(3500) + interest * _W(3/7)
+    )
+    lp1_balance = etoken.balance_of("LP1")
+
+    etoken.transfer("LP1", "LP2", lp1_balance // _W(3))
+    etoken.approve("LP1", "spender", lp1_balance // _W(3))
+    etoken.transfer_from("spender", "LP1", "LP3", lp1_balance // _W(3))
+
+    etoken.balance_of("LP1").assert_equal(lp1_balance // _W(3))
+    etoken.balance_of("LP2").assert_equal(lp1_balance // _W(3))
+    etoken.balance_of("LP3").assert_equal(lp1_balance // _W(3))
+
+    timecontrol.fast_forward(4 * DAY)
+
+    etoken.balance_of("LP1").assert_equal(lp1_balance // _W(3) + interest * _W(4/7) // _W(3))
+    etoken.balance_of("LP2").assert_equal(lp1_balance // _W(3) + interest * _W(4/7) // _W(3))
+    etoken.balance_of("LP3").assert_equal(lp1_balance // _W(3) + interest * _W(4/7) // _W(3))
+
+    rm.resolve_policy(policy.id, customer_won=True)
+    etoken.balance_of("LP1").assert_equal(_W(0))
+    etoken.balance_of("LP2").assert_equal(_W(0))
+    etoken.balance_of("LP3").assert_equal(_W(0))

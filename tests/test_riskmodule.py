@@ -6,7 +6,7 @@ import pytest
 from prototype.contracts import RevertError, Contract, IntField, ERC20Token, ContractProxyField
 from prototype import ensuro
 from prototype.wadray import _W, _R
-from .wrappers import TrustfulRiskModule, time_control, TestCurrency
+from .wrappers import TrustfulRiskModule, time_control, TestCurrency, PolicyPool
 from prototype.utils import WEEK
 
 TEnv = namedtuple("TEnv", "time_control currency rm_class policy_factory")
@@ -47,7 +47,7 @@ def tenv(request):
             currency=currency,
             time_control=time_control,
             policy_factory=FakePolicy,
-            rm_class=partial(TrustfulRiskModule, policy_pool=pool)
+            rm_class=partial(TrustfulRiskModule, policy_pool=PolicyPool.connect(pool, currency.owner))
         )
 
 

@@ -20,7 +20,7 @@ def tenv(request):
         return TEnv(
             time_control=ensuro.time_control,
             policy_factory=FakePolicy,
-            etoken_class=ensuro.EToken
+            etoken_class=partial(ensuro.EToken, policy_pool="required-not-used")
         )
     elif request.param == "ethereum":
         FakePolicy = namedtuple("FakePolicy", "scr interest_rate expiration")
@@ -279,13 +279,13 @@ def test_asset_and_discrete_earnings(tenv):
     assert etk.get_current_index(True) == _R(1)
 
     # Possitive asset earning
-    etk.asset_earnings(_W(500))
+    etk.discrete_earning(_W(500))   # TODO: etk.asset_earnings(_W(500)) called from assetManager
     etk.total_supply().assert_equal(_W(3500))
     etk.get_current_index(False).assert_equal(_R(1) * _R(3500/3000))
     etk.get_current_index(True).assert_equal(_R(1) * _R(3500/3000))
 
     # Negative asset earning
-    etk.asset_earnings(-_W(300))
+    etk.discrete_earning(-_W(300))    # TODO: etk.asset_earnings(-_W(300)) called from assetManager
     etk.total_supply().assert_equal(_W(3200))
     etk.get_current_index(False).assert_equal(_R(1) * _R(3200/3000))
     tenv.time_control.fast_forward(1 * DAY)

@@ -221,7 +221,7 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
 
   function _transferTo(address destination, uint256 amount) internal {
     // TODO asset management
-    _currency.safeTransferFrom(address(this), destination, amount);
+    _currency.safeTransfer(destination, amount);
   }
 
   function _payFromPool(uint256 toPay) internal returns (uint256) {
@@ -264,8 +264,11 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
   function resolvePolicy(uint256 policyId, bool customerWon) external override {
     Policy.PolicyData storage policy = _policies[policyId];
     require(policy.id == policyId && policyId != 0, "Policy not found");
+    IRiskModule rm = policy.riskModule;
+    require(address(rm) == _msgSender(), "Only the RM can resolve policies");
+    // TODO: validate rm status
     _activePremiums = _activePremiums.sub(policy.premium);
-    _activePurePremiums = _activePremiums.sub(policy.purePremium);
+    _activePurePremiums = _activePurePremiums.sub(policy.purePremium);
 
     uint256 aux = policy.accruedInterest();
     bool positive = policy.premiumForLps >= aux;

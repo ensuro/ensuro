@@ -173,6 +173,7 @@ class Policy(Model):
 
 
 class EToken(ERC20Token):
+    policy_pool = ContractProxyField()
     expiration_period = IntField()
     current_index = RayField(default=_R(1))
     last_index_update = IntField(default=time_control.now)

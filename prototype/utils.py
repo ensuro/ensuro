@@ -49,7 +49,7 @@ def envvar_constructor(loader, node):
         return env.str(env_var) + value[match.end():]
 
 
-def load_config(yaml_config=None):
+def load_config(yaml_config=None, module=None):
     """Loads the configuration
 
     @params yaml_config must be a file-like object or None
@@ -62,7 +62,8 @@ def load_config(yaml_config=None):
     yaml.add_constructor('!envvar', envvar_constructor, Loader=yaml.FullLoader)
     config = yaml.load(yaml_config, Loader=yaml.FullLoader)
 
-    module = importlib.import_module(config["module"])
+    if module is None:
+        module = importlib.import_module(config["module"])
 
     currency_params = config.get("currency", {})
     currency_params["owner"] = currency_params.get("owner", "owner")
@@ -82,16 +83,20 @@ def load_config(yaml_config=None):
     pool_params = config.get("policy_pool", {})
     nft_params.update(pool_params)
     pool_params = nft_params
-    pool_params["currency"] = currency.contract_id
+    pool_params["currency"] = currency
     pool = module.PolicyPool(**pool_params)
+    pool.grant_role("ENSURO_DAO_ROLE", pool.owner)
 
     for risk_module_dict in config.get("risk_modules", []):
-        risk_module_dict["policy_pool"] = pool.contract_id
-        rm = module.RiskModule(**risk_module_dict)
+        risk_module_dict["policy_pool"] = pool
+        rm = module.TrustfulRiskModule(**risk_module_dict)
         pool.add_risk_module(rm)
 
     for etoken_dict in config.get("etokens", []):
-        etoken_dict["owner"] = pool.contract_id
+        if "symbol" not in etoken_dict:
+            etoken_dict["symbol"] = etoken_dict["name"]
+        etoken_dict["policy_pool"] = pool
+        etoken_dict["owner"] = pool.owner
         etk = module.EToken(**etoken_dict)
         pool.add_etoken(etk)
 
