@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {SafeMath} from '@openzeppelin/contracts/utils/math/SafeMath.sol';
 import {WadRayMath} from './WadRayMath.sol';
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {Pausable} from "@openzeppelin/contracts/security/Pausable.sol";
@@ -17,7 +16,6 @@ import {Policy} from './Policy.sol';
 
 abstract contract RiskModule is IRiskModule, AccessControl, Pausable {
   using Policy for Policy.PolicyData;
-  using SafeMath for uint256;
   using WadRayMath for uint256;
 
   // For parameters that can be changed by Ensuro
@@ -184,11 +182,10 @@ abstract contract RiskModule is IRiskModule, AccessControl, Pausable {
             "You must allow ENSURO to transfer the premium");
     Policy.PolicyData memory policy = Policy.initialize(this, premium, payout, lossProb, expiration);
     require(policy.scr <= _maxScrPerPolicy, "RiskModule: SCR is more than maximum per policy");
-    _totalScr = _totalScr.add(policy.scr);
+    _totalScr += policy.scr;
     require(_totalScr <= _scrLimit, "RiskModule: SCR limit exceeded");
-    _sharedCoverageScr = _sharedCoverageScr.add(policy.rmCoverage);
+    _sharedCoverageScr += policy.rmCoverage;
     uint256 policyId = _policyPool.newPolicy(policy, customer);
     return policyId;
-
   }
 }

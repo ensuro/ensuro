@@ -502,7 +502,7 @@ def test_walkthrough(tenv):
 
     assert policy.scr == _W(35)
     assert policy.pure_premium.equal(_W(36) * _W(1/37))
-    assert policy.interest_rate.equal(_R("0.0402647545"))
+    policy.interest_rate.assert_equal(_R("0.0402647545"), decimals=6)
 
     assert pool.get_policy_fund_count(policy.id) == 1
     assert pool.get_policy_fund(policy.id, eUSD1YEAR) == policy.scr

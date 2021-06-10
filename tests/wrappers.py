@@ -391,8 +391,9 @@ class ETokenETH(IERC20):
 
 class Policy:
 
-    def __init__(self, id, risk_module, payout, premium, scr, rm_coverage, loss_prob, start, expiration,
-                 pure_premium, premium_for_ensuro, premium_for_rm, premium_for_lps):
+    def __init__(self, id, payout, premium, scr, rm_coverage, loss_prob,
+                 pure_premium, premium_for_ensuro, premium_for_rm, premium_for_lps,
+                 risk_module, start, expiration):
         self.id = id
         self.risk_module = AddressBook.instance.get_name(risk_module)
         self.payout = Wad(payout)

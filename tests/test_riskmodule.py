@@ -6,7 +6,7 @@ import pytest
 from prototype.contracts import RevertError, Contract, IntField, ERC20Token, ContractProxyField
 from prototype import ensuro
 from prototype.wadray import _W, _R
-from .wrappers import TrustfulRiskModule, time_control, TestCurrency, PolicyPool
+from . import wrappers
 from prototype.utils import WEEK
 
 TEnv = namedtuple("TEnv", "time_control currency rm_class policy_factory")
@@ -39,15 +39,16 @@ def tenv(request):
         FakePolicy = namedtuple("FakePolicy", "scr interest_rate expiration")
         from brownie import PolicyPoolMock
 
-        currency = TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
+        currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
 
         pool = PolicyPoolMock.deploy(currency.contract, {"from": currency.owner})
 
         return TEnv(
             currency=currency,
-            time_control=time_control,
+            time_control=wrappers.time_control,
             policy_factory=FakePolicy,
-            rm_class=partial(TrustfulRiskModule, policy_pool=PolicyPool.connect(pool, currency.owner))
+            rm_class=partial(wrappers.TrustfulRiskModule,
+                             policy_pool=wrappers.PolicyPool.connect(pool, currency.owner))
         )
 
 
@@ -131,7 +132,7 @@ def test_new_policy(tenv):
     policy.rm_coverage.assert_equal(_W(36 * .6))
     policy.scr.assert_equal(_W(35 * .4))
     assert policy.expiration == expiration
-    assert (time_control.now - policy.start) < 60  # Must be now, giving 60 seconds tolerance
+    assert (tenv.time_control.now - policy.start) < 60  # Must be now, giving 60 seconds tolerance
     policy.pure_premium.assert_equal(_W(36 * .4 * 1/37))
     profit_premium = _W(1 * .4) - policy.pure_premium
     policy.premium_for_ensuro.assert_equal(profit_premium * _W("0.03"))

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {IPolicyPool} from "../../interfaces/IPolicyPool.sol";
+import {IRiskModule} from "../../interfaces/IRiskModule.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Policy} from '../Policy.sol';
 
@@ -21,11 +22,15 @@ contract PolicyPoolMock is IPolicyPool {
     return _currency;
   }
 
+  function assetManager() external override view returns (address) {
+    return address(0);
+  }
+
   function newPolicy(Policy.PolicyData memory policy, address customer) external override returns (uint256) {
     policyCount++;
     policies[policyCount] = policy;
     policies[policyCount].id = policyCount;
-    emit NewPolicy(msg.sender, policyCount);
+    emit NewPolicy(IRiskModule(msg.sender), policyCount);
     return policyCount;
   }
 

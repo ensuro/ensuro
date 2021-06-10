@@ -13,13 +13,11 @@ import {IRiskModule} from '../interfaces/IRiskModule.sol';
 import {IEToken} from '../interfaces/IEToken.sol';
 import {Policy} from './Policy.sol';
 import {WadRayMath} from './WadRayMath.sol';
-import {SafeMath} from '@openzeppelin/contracts/utils/math/SafeMath.sol';
 import {Math} from '@openzeppelin/contracts/utils/math/Math.sol';
 import {DataTypes} from './DataTypes.sol';
 
 contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessControl {
   using EnumerableSet for EnumerableSet.AddressSet;
-  using SafeMath for uint256;
   using WadRayMath for uint256;
   using SafeERC20 for IERC20;
   using Policy for Policy.PolicyData;
@@ -28,6 +26,8 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
   bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
   bytes32 public constant ENSURO_DAO_ROLE = keccak256("ENSURO_DAO_ROLE");
   bytes32 public constant REBALANCE_ROLE = keccak256("REBALANCE_ROLE");
+
+  uint256 public constant MAX_ETOKENS = 10;
 
   IERC20 internal _currency;
 
@@ -50,8 +50,6 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
   address internal _assetManager;        // asset manager (TBD)
 
   modifier onlyAssetManager {
-    // TODO
-    // require(_msgSender() == _policyPool.getAssetManager(), Errors.CT_CALLER_MUST_BE_ENSURO);
     require(_msgSender() == _assetManager, "Only assetManager can call this function");
     _;
   }
@@ -67,11 +65,13 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
     _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
     _setupRole(PAUSER_ROLE, msg.sender);
     _currency = curreny_;
+    /*
     _policyCount = 0;
     _activePurePremiums = 0;
     _activePremiums = 0;
     _borrowedActivePP = 0;
     _wonPurePremiums = 0;
+    */
     _treasury = treasury_;
     _assetManager = assetManager_;
   }
@@ -108,7 +108,7 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
   }
 
   function purePremiums() external view returns (uint256) {
-    return _activePurePremiums.add(_wonPurePremiums).sub(_borrowedActivePP);
+    return _activePurePremiums + _wonPurePremiums - _borrowedActivePP;
   }
 
   function addRiskModule(IRiskModule riskModule) external onlyRole(ENSURO_DAO_ROLE) {
@@ -119,7 +119,11 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
     emit RiskModuleStatusChanged(riskModule, RiskModuleStatus.active);
   }
 
+  // TODO: removeRiskModule
+  // TODO: changeRiskModuleStatus
+
   function addEToken(IEToken eToken) external onlyRole(ENSURO_DAO_ROLE) {
+    require(_eTokens.length() < MAX_ETOKENS, "Maximum number of ETokens reached");
     require(!_eTokens.contains(address(eToken)), "eToken already in the pool");
     require(address(eToken) != address(0), "eToken can't be zero");
     require(eToken.policyPool() == this, "EToken not linked to this pool");
@@ -128,6 +132,9 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
     _eTokenStatus[eToken] = ETokenStatus.active;
     emit ETokenStatusChanged(eToken, ETokenStatus.active);
   }
+
+  // TODO: removeEToken
+  // TODO: changeETokenStatus
 
   function setAssetManager(address assetManager_) external onlyRole(ENSURO_DAO_ROLE) {
     _assetManager = assetManager_;
@@ -216,7 +223,7 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
         etkScr = scr_not_locked;
       etk.lockScr(interestRate, etkScr);
       policyFunds.set(etk, etkScr);
-      scr_not_locked = scr_not_locked.sub(etkScr);
+      scr_not_locked -= etkScr;
     }
   }
 
@@ -268,8 +275,8 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
     IRiskModule rm = policy.riskModule;
     require(address(rm) == _msgSender(), "Only the RM can resolve policies");
     // TODO: validate rm status
-    _activePremiums = _activePremiums.sub(policy.premium);
-    _activePurePremiums = _activePurePremiums.sub(policy.purePremium);
+    _activePremiums -= policy.premium;
+    _activePurePremiums -= policy.purePremium;
 
     uint256 aux = policy.accruedInterest();
     bool positive = policy.premiumForLps >= aux;

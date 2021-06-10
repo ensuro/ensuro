@@ -611,6 +611,7 @@ class AssetManager(AccessControlContract):
     liquidity_min = WadField()
     liquidity_middle = WadField()
     liquidity_max = WadField()
+
     # Any time balance_of(PolicyPool) < liquidity_min we refill up to liquidity_middle
     # Any time balance_of(PolicyPool) > liquidity_max take liquidity up liquidity_middle
     last_investment_value = WadField(default=Wad(0))
