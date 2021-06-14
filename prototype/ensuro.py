@@ -175,8 +175,8 @@ class Policy(Model):
 class EToken(ERC20Token):
     policy_pool = ContractProxyField()
     expiration_period = IntField()
-    current_index = RayField(default=_R(1))
-    last_index_update = IntField(default=time_control.now)
+    scale_factor = RayField(default=_R(1))
+    last_scale_update = IntField(default=time_control.now)
 
     scr = WadField(default=_W(0))
     scr_interest_rate = RayField(default=_R(0))
@@ -185,8 +185,8 @@ class EToken(ERC20Token):
 
     pool_loan = WadField(default=_W(0))
     pool_loan_interest_rate = RayField(default=_R("0.05"))
-    pool_loan_index = RayField(default=_R(1))
-    pool_loan_last_index_update = IntField(default=None, allow_none=True)
+    pool_loan_scale = RayField(default=_R(1))
+    pool_loan_last_update = IntField(default=None, allow_none=True)
 
     set_attr_roles = {
         "pool_loan_interest_rate": "SET_LOAN_RATE_ROLE"
@@ -196,9 +196,9 @@ class EToken(ERC20Token):
         super().__init__(**kwargs)
         self._running_as = "ensuro"
 
-    def _update_current_index(self):
-        self.current_index = self._calculate_current_index()
-        self.last_index_update = time_control.now
+    def _update_current_scale(self):
+        self.scale_factor = self._calculate_current_scale()
+        self.last_scale_update = time_control.now
 
     def _update_token_interest_rate(self):
         """Should be called each time total_supply changes or scr changes"""
@@ -208,36 +208,36 @@ class EToken(ERC20Token):
         else:
             self.token_interest_rate = Ray(0)
 
-    def _calculate_current_index(self):
-        seconds = time_control.now - self.last_index_update
+    def _calculate_current_scale(self):
+        seconds = time_control.now - self.last_scale_update
         if seconds <= 0:
-            return self.current_index
+            return self.scale_factor
         increment = (
             Ray.from_value(seconds) * self.token_interest_rate //
             Ray.from_value(SECONDS_IN_YEAR)
         )
-        return self.current_index * (Ray(RAY) + increment)
+        return self.scale_factor * (Ray(RAY) + increment)
 
     @view
-    def get_current_index(self, updated):
+    def get_current_scale(self, updated):
         if updated:
-            return self._calculate_current_index()
+            return self._calculate_current_scale()
         else:
-            return self.current_index
+            return self.scale_factor
 
     def _base_supply(self):
         return super().total_supply()
 
     @view
     def total_supply(self):
-        return (super().total_supply().to_ray() * self._calculate_current_index()).to_wad()
+        return (super().total_supply().to_ray() * self._calculate_current_scale()).to_wad()
 
     @property
     def ocean(self):
         return max(self.total_supply() - self.scr, _W(0))
 
     def lock_scr(self, policy, scr_amount):
-        self._update_current_index()
+        self._update_current_scale()
         total_supply = self.total_supply()
         ocean = total_supply - self.scr
         require(scr_amount <= ocean, "Not enought OCEAN to cover the SCR")
@@ -255,7 +255,7 @@ class EToken(ERC20Token):
 
     def unlock_scr(self, policy, scr_amount):
         require(scr_amount <= self.scr, "Want to unlock more SCR than locked")
-        self._update_current_index()
+        self._update_current_scale()
 
         if self.scr == scr_amount:
             self.scr = Wad(0)
@@ -269,18 +269,18 @@ class EToken(ERC20Token):
         self._update_token_interest_rate()
 
     def discrete_earning(self, amount):
-        self._update_current_index()
+        self._update_current_scale()
         new_total_supply = amount + self.total_supply()
-        self.current_index = new_total_supply.to_ray() // self._base_supply().to_ray()
+        self.scale_factor = new_total_supply.to_ray() // self._base_supply().to_ray()
         self._update_token_interest_rate()
 
     def asset_earnings(self, amount):
-        self._update_current_index()
+        self._update_current_scale()
         self.discrete_earning(amount)
 
     def deposit(self, provider, amount):
-        self._update_current_index()
-        scaled_amount = (amount.to_ray() // self.current_index).to_wad()
+        self._update_current_scale()
+        scaled_amount = (amount.to_ray() // self.scale_factor).to_wad()
         self.mint(provider, scaled_amount)
         self._update_token_interest_rate()
         return self.balance_of(provider)
@@ -289,11 +289,11 @@ class EToken(ERC20Token):
         principal_balance = super().balance_of(provider)
         if not principal_balance:
             return Wad(0)
-        current_index = self._calculate_current_index()
-        return (principal_balance.to_ray() * current_index).to_wad()
+        scale_factor = self._calculate_current_scale()
+        return (principal_balance.to_ray() * scale_factor).to_wad()
 
     def _transfer(self, sender, recipient, amount):
-        scaled_amount = (amount.to_ray() // self._calculate_current_index()).to_wad()
+        scaled_amount = (amount.to_ray() // self._calculate_current_scale()).to_wad()
         super()._transfer(sender, recipient, scaled_amount)
 
     @view
@@ -305,7 +305,7 @@ class EToken(ERC20Token):
         return max(_W(0), self.total_supply() - locked)
 
     def withdraw(self, provider, amount):
-        self._update_current_index()
+        self._update_current_scale()
         balance = self.balance_of(provider)
         if balance == 0:
             return Wad(0)
@@ -315,7 +315,7 @@ class EToken(ERC20Token):
         if amount == 0:
             return Wad(0)
 
-        scaled_amount = (amount.to_ray() // self.current_index).to_wad()
+        scaled_amount = (amount.to_ray() // self.scale_factor).to_wad()
         self.burn(provider, scaled_amount)
         self._update_token_interest_rate()
 
@@ -324,48 +324,48 @@ class EToken(ERC20Token):
     def accepts(self, policy):
         return policy.expiration <= (time_control.now + self.expiration_period)
 
-    def _update_pool_loan_index(self):
-        self.pool_loan_index = self._get_pool_loan_index()
-        self.pool_loan_last_index_update = time_control.now
+    def _update_pool_loan_scale(self):
+        self.pool_loan_scale = self._get_pool_loan_scale()
+        self.pool_loan_last_update = time_control.now
 
     def lend_to_pool(self, amount):
         require(amount <= self.ocean or amount.equal(self.ocean),  # rounding error
                 "Not enought capital to lend")
         if self.pool_loan == 0:
             self.pool_loan = amount
-            self.pool_loan_index = Ray(RAY)
-            self.pool_loan_last_index_update = time_control.now
+            self.pool_loan_scale = Ray(RAY)
+            self.pool_loan_last_update = time_control.now
         else:
-            self._update_pool_loan_index()
-            self.pool_loan += (amount.to_ray() // self.pool_loan_index).to_wad()
-        self._update_current_index()
+            self._update_pool_loan_scale()
+            self.pool_loan += (amount.to_ray() // self.pool_loan_scale).to_wad()
+        self._update_current_scale()
         self.discrete_earning(-amount)
 
     def repay_pool_loan(self, amount):
-        self._update_pool_loan_index()
+        self._update_pool_loan_scale()
         self.pool_loan = (
-            (self.get_pool_loan() - amount).to_ray() // self.pool_loan_index
+            (self.get_pool_loan() - amount).to_ray() // self.pool_loan_scale
         ).to_wad()
-        self._update_current_index()
+        self._update_current_scale()
         self.discrete_earning(amount)
 
-    def _get_pool_loan_index(self):
-        seconds = time_control.now - self.pool_loan_last_index_update
+    def _get_pool_loan_scale(self):
+        seconds = time_control.now - self.pool_loan_last_update
         if seconds <= 0:
-            return self.pool_loan_index
+            return self.pool_loan_scale
         increment = (
             Ray.from_value(seconds) * self.pool_loan_interest_rate //
             Ray.from_value(SECONDS_IN_YEAR)
         )
-        return self.pool_loan_index * (Ray(RAY) + increment)
+        return self.pool_loan_scale * (Ray(RAY) + increment)
 
     def get_pool_loan(self):
         if self.pool_loan == 0:
             return self.pool_loan
-        return (self.pool_loan.to_ray() * self._get_pool_loan_index()).to_wad()
+        return (self.pool_loan.to_ray() * self._get_pool_loan_scale()).to_wad()
 
     def set_pool_loan_interest_rate(self, new_rate):
-        self._update_pool_loan_index()
+        self._update_pool_loan_scale()
         self.pool_loan_interest_rate = new_rate
 
     def get_investable(self):

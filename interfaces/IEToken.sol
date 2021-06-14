@@ -9,7 +9,7 @@ interface IEToken is IERC20 {
 
   function policyPool() external view returns (IPolicyPool);
 
-  function getCurrentIndex(bool updated) external view returns (uint256);
+  function getCurrentScale(bool updated) external view returns (uint256);
 
   function ocean() external view returns (uint256);
 

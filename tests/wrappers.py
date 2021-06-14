@@ -386,7 +386,7 @@ class ETokenETH(IERC20):
     get_pool_loan = MethodAdapter((), "amount")
     get_investable = MethodAdapter((), "amount")
 
-    get_current_index = MethodAdapter((("updated", "bool"), ), "ray")
+    get_current_scale = MethodAdapter((("updated", "bool"), ), "ray")
 
 
 class Policy:

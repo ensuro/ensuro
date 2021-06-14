@@ -276,18 +276,18 @@ def test_asset_and_discrete_earnings(tenv):
     etk.deposit("LP1", _W(1000))
     etk.deposit("LP2", _W(2000))
     assert etk.total_supply() == _W(3000)
-    assert etk.get_current_index(True) == _R(1)
+    assert etk.get_current_scale(True) == _R(1)
 
     # Possitive asset earning
     etk.discrete_earning(_W(500))   # TODO: etk.asset_earnings(_W(500)) called from assetManager
     etk.total_supply().assert_equal(_W(3500))
-    etk.get_current_index(False).assert_equal(_R(1) * _R(3500/3000))
-    etk.get_current_index(True).assert_equal(_R(1) * _R(3500/3000))
+    etk.get_current_scale(False).assert_equal(_R(1) * _R(3500/3000))
+    etk.get_current_scale(True).assert_equal(_R(1) * _R(3500/3000))
 
     # Negative asset earning
     etk.discrete_earning(-_W(300))    # TODO: etk.asset_earnings(-_W(300)) called from assetManager
     etk.total_supply().assert_equal(_W(3200))
-    etk.get_current_index(False).assert_equal(_R(1) * _R(3200/3000))
+    etk.get_current_scale(False).assert_equal(_R(1) * _R(3200/3000))
     tenv.time_control.fast_forward(1 * DAY)
     etk.balance_of("LP1").assert_equal(_W(1000) * _W(3200/3000))
     etk.balance_of("LP2").assert_equal(_W(2000) * _W(3200/3000))
