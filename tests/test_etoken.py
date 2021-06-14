@@ -314,3 +314,18 @@ def test_name_and_others(tenv):
     assert etk.name == "eUSD One Week"
     assert etk.symbol == "eUSD1W"
     assert etk.decimals == 18
+
+
+def test_max_utilization_rate(tenv):
+    etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK, max_utilization_rate=_R("0.9"))
+    assert etk.max_utilization_rate == _R("0.9")
+    etk.deposit("LP1", _W(1000))
+    assert etk.ocean == _W(1000)
+    assert etk.ocean_for_new_scr == _W(900)
+
+    with etk.as_("owner"):
+        etk.grant_role("SET_LIQ_PARAMS_ROLE", "SETRATE")
+    with etk.as_("SETRATE"):
+        etk.set_max_utilization_rate(_R("0.95"))
+
+    assert etk.ocean_for_new_scr == _W(950)

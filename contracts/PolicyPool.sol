@@ -193,7 +193,7 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
         continue;
       if (!etk.accepts(policy.expiration))
         continue;
-      uint256 etkOcean = etk.ocean();
+      uint256 etkOcean = etk.oceanForNewScr();
       if (etkOcean == 0)
         continue;
       ocean += etkOcean;
@@ -352,7 +352,7 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
         etk.unlockScr(policy.interestRate(), etkScr);
       }
       if (_eTokenStatus[etk] == ETokenStatus.active && etk.accepts(policy.expiration))
-        etkOcean = etk.ocean();
+        etkOcean = etk.oceanForNewScr();
       if (etkOcean == 0) {
         if (locked)
           policyFunds.remove(etk);

@@ -16,7 +16,7 @@ import {WadRayMath} from './WadRayMath.sol';
  */
 contract EToken is AccessControl, Pausable, IERC20, IEToken {
   bytes32 public constant SET_LOAN_RATE_ROLE = keccak256("SET_LOAN_RATE_ROLE");
-  bytes32 public constant SET_LIQ_REQ_ROLE = keccak256("SET_LIQ_REQ_ROLE");
+  bytes32 public constant SET_LIQ_PARAMS_ROLE = keccak256("SET_LIQ_PARAMS_ROLE");
   bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
 
   using WadRayMath for uint256;
@@ -41,7 +41,8 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken {
   uint256 internal _scr;  // in Wad
   uint256 internal _scrInterestRate;  // in Ray
   uint256 internal _tokenInterestRate;  // in Ray
-  uint256 internal _liquidityRequirement;  // in Ray
+  uint256 internal _liquidityRequirement;  // in Ray - Liquidity requirement to lock more than SCR
+  uint256 internal _maxUtilizationRate;  // in Ray - Maximum SCR/totalSupply rate for backup up new policies
 
   uint256 internal _poolLoan;  // in Wad
   uint256 internal _poolLoanInterestRate;  // in Ray
@@ -62,8 +63,9 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken {
    * @dev Initializes the eToken
    * @param policyPool_ The address of the Ensuro PolicyPool where this eToken will be used
    * @param expirationPeriod Maximum expirationPeriod (from block.timestamp) of policies to be accepted
-   * @param liquidityRequirement Liquidity requirement to allow withdrawal (in Ray - default=1 Ray)
-   * @param poolLoanInterestRate_ Rate of loans given to the policy pool (in Ray)
+   * @param liquidityRequirement_ Liquidity requirement to allow withdrawal (in Ray - default=1 Ray)
+   * @param maxUtilizationRate_ Max utilization rate (scr/totalSupply) (in Ray - default=1 Ray)
+   * @param poolLoanInterestRate_ Rate of loans givencrto the policy pool (in Ray)
    * @param name_ Name of the eToken
    * @param symbol_ Symbol of the eToken
    */
@@ -72,7 +74,8 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken {
     string memory symbol_,
     IPolicyPool policyPool_,
     uint40 expirationPeriod,
-    uint256 liquidityRequirement,
+    uint256 liquidityRequirement_,
+    uint256 maxUtilizationRate_,
     uint256 poolLoanInterestRate_
   ) {
     _name = name_;
@@ -84,7 +87,8 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken {
     _scr = 0;
     _scrInterestRate = 0;
     _tokenInterestRate = 0;
-    _liquidityRequirement = liquidityRequirement;
+    _liquidityRequirement = liquidityRequirement_;
+    _maxUtilizationRate = maxUtilizationRate_;
 
     _poolLoan = 0;
     _poolLoanInterestRate = poolLoanInterestRate_;
@@ -413,7 +417,7 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken {
     return _policyPool;
   }
 
-  function getCurrentScale(bool updated) public view virtual override returns (uint256) {
+  function getCurrentScale(bool updated) public view returns (uint256) {
     if (updated)
       return _calculateCurrentScale();
     else
@@ -428,16 +432,32 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken {
       return 0;
   }
 
+  function oceanForNewScr() public view virtual override returns (uint256) {
+    uint256 totalSupply_ = this.totalSupply();
+    if (totalSupply_ > _scr)
+      return (totalSupply_ - _scr).wadMul(_maxUtilizationRate.rayToWad());
+    else
+      return 0;
+  }
+
   function scr() public view virtual override returns (uint256) {
     return _scr;
   }
 
-  function scrInterestRate() public view virtual override returns (uint256) {
+  function scrInterestRate() public view returns (uint256) {
     return _scrInterestRate;
   }
 
-  function tokenInterestRate() public view virtual override returns (uint256) {
+  function tokenInterestRate() public view returns (uint256) {
     return _tokenInterestRate;
+  }
+
+  function liquidityRequirement() public view returns (uint256) {
+    return _liquidityRequirement;
+  }
+
+  function maxUtilizationRate() public view returns (uint256) {
+    return _maxUtilizationRate;
   }
 
   function lockScr(uint256 policy_interest_rate, uint256 scr_amount) onlyPolicyPool external override {
@@ -578,17 +598,21 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken {
     return _poolLoan.wadToRay().rayMul(_getPoolLoanScale()).rayToWad();
   }
 
-  function poolLoanInterestRate() public view virtual override returns (uint256) {
+  function poolLoanInterestRate() public view returns (uint256) {
     return _poolLoanInterestRate;
   }
 
-  function setPoolLoanInterestRate(uint256 new_interest_rate) external override onlyRole(SET_LOAN_RATE_ROLE) {
+  function setPoolLoanInterestRate(uint256 new_rate) external onlyRole(SET_LOAN_RATE_ROLE) {
     _updatePoolLoanScale();
-    _poolLoanInterestRate = new_interest_rate;
+    _poolLoanInterestRate = new_rate;
   }
 
-  function setLiquidityRequirement(uint256 new_liq_req) external override onlyRole(SET_LIQ_REQ_ROLE) {
-    _liquidityRequirement = new_liq_req;
+  function setLiquidityRequirement(uint256 new_rate) external onlyRole(SET_LIQ_PARAMS_ROLE) {
+    _liquidityRequirement = new_rate;
+  }
+
+  function setMaxUtilizationRate(uint256 new_rate) external onlyRole(SET_LIQ_PARAMS_ROLE) {
+    _maxUtilizationRate = new_rate;
   }
 
   function getInvestable() public view virtual override returns (uint256) {

@@ -182,6 +182,7 @@ class EToken(ERC20Token):
     scr_interest_rate = RayField(default=_R(0))
     token_interest_rate = RayField(default=_R(0))
     liquidity_requirement = RayField(default=_R(1))
+    max_utilization_rate = RayField(default=_R(1))
 
     pool_loan = WadField(default=_W(0))
     pool_loan_interest_rate = RayField(default=_R("0.05"))
@@ -235,6 +236,10 @@ class EToken(ERC20Token):
     @property
     def ocean(self):
         return max(self.total_supply() - self.scr, _W(0))
+
+    @property
+    def ocean_for_new_scr(self):
+        return max(self.total_supply() - self.scr, _W(0)) * self.max_utilization_rate.to_wad()
 
     def lock_scr(self, policy, scr_amount):
         self._update_current_scale()
@@ -368,6 +373,9 @@ class EToken(ERC20Token):
         self._update_pool_loan_scale()
         self.pool_loan_interest_rate = new_rate
 
+    def set_max_utilization_rate(self, new_rate):
+        self.max_utilization_rate = new_rate
+
     def get_investable(self):
         return self.scr + self.ocean + self.get_pool_loan()
 
@@ -448,7 +456,7 @@ class PolicyPool(ERC721Token):
         for etk in self.etokens.values():
             if not etk.accepts(policy):
                 continue
-            ocean_token = etk.ocean
+            ocean_token = etk.ocean_for_new_scr
             if ocean_token == 0:
                 continue
             ocean += ocean_token

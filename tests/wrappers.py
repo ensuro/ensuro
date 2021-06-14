@@ -318,6 +318,7 @@ class ETokenETH(IERC20):
     eth_contract = "EToken"
 
     def __init__(self, name, symbol, policy_pool, expiration_period, liquidity_requirement=_R(1),
+                 max_utilization_rate=_R(1),
                  pool_loan_interest_rate=_R("0.05"), owner="owner"):
         if isinstance(policy_pool, ETHWrapper):
             self._auto_from = policy_pool.contract.address
@@ -328,15 +329,19 @@ class ETokenETH(IERC20):
 
         super().__init__(
             owner, name, symbol, policy_pool, expiration_period, liquidity_requirement,
-            pool_loan_interest_rate
+            max_utilization_rate, pool_loan_interest_rate
         )
 
     ocean = MethodAdapter((), "amount", is_property=True)
+    ocean_for_new_scr = MethodAdapter((), "amount", is_property=True)
     scr = MethodAdapter((), "amount", is_property=True)
     scr_interest_rate = MethodAdapter((), "ray", is_property=True)
     token_interest_rate = MethodAdapter((), "ray", is_property=True)
     pool_loan_interest_rate = MethodAdapter((), "ray", is_property=True)
+    liquidity_requirement = MethodAdapter((), "ray", is_property=True)
+    max_utilization_rate = MethodAdapter((), "ray", is_property=True)
     set_pool_loan_interest_rate = MethodAdapter((("new_rate", "ray"), ))
+    set_max_utilization_rate = MethodAdapter((("new_rate", "ray"), ))
 
     lock_scr = MethodAdapter(
         (("policy_interest_rate", "ray"), ("scr_amount", "amount")),

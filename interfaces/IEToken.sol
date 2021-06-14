@@ -9,19 +9,16 @@ interface IEToken is IERC20 {
 
   function policyPool() external view returns (IPolicyPool);
 
-  function getCurrentScale(bool updated) external view returns (uint256);
-
   function ocean() external view returns (uint256);
 
+  function oceanForNewScr() external view returns (uint256);
+
   function scr() external view returns (uint256);
-
-  function scrInterestRate() external view returns (uint256);
-
-  function tokenInterestRate() external view returns (uint256);
 
   function lockScr(uint256 policy_interest_rate, uint256 scr_amount) external;
 
   function unlockScr(uint256 policy_interest_rate, uint256 scr_amount) external ;
+
   function discreteEarning(uint256 amount, bool positive) external;
 
   function assetEarnings(uint256 amount, bool positive) external;
@@ -39,12 +36,6 @@ interface IEToken is IERC20 {
   function repayPoolLoan(uint256 amount) external;
 
   function getPoolLoan() external view returns (uint256);
-
-  function poolLoanInterestRate() external view returns (uint256);
-
-  function setPoolLoanInterestRate(uint256 new_interest_rate) external;
-
-  function setLiquidityRequirement(uint256 new_liq_req) external;
 
   function getInvestable() external view returns (uint256);
 }
