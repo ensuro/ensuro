@@ -264,7 +264,7 @@ class TestCurrency(IERC20):
     __test__ = False
 
     def __init__(self, owner="owner", name="Test Currency", symbol="TEST", initial_supply=Wad(0)):
-        super().__init__(owner, initial_supply)
+        super().__init__(owner, name, symbol, initial_supply)
 
     mint = MethodAdapter((("recipient", "address"), ("amount", "amount")))
     burn = MethodAdapter((("recipient", "address"), ("amount", "amount")))
@@ -277,16 +277,10 @@ class TestCurrency(IERC20):
         )
 
 
-class TestNFT(ETHWrapper):
-    __test__ = False
-
-    eth_contract = "TestNFT"
-
-    def __init__(self, owner="Owner", name="Test NFT", symbol="NFTEST"):
-        super().__init__(owner)
-
-    mint = MethodAdapter((("to", "address"), ("token_id", "int")))
-    burn = MethodAdapter((("owner", "msg.sender"), ("token_id", "int")))
+class IERC721(ETHWrapper):
+    name = MethodAdapter((), "string", is_property=True)
+    symbol = MethodAdapter((), "string", is_property=True)
+    total_supply = MethodAdapter((), "int")
     balance_of = MethodAdapter((("account", "address"), ), "int")
     owner_of = MethodAdapter((("token_id", "int"), ), "address")
     approve = MethodAdapter((
@@ -303,7 +297,18 @@ class TestNFT(ETHWrapper):
     transfer = MethodAdapter((
         ("sender", "msg.sender"), ("recipient", "address"), ("amount", "amount")
     ), "bool")
-    total_supply = MethodAdapter((), "int")
+
+
+class TestNFT(IERC721):
+    __test__ = False
+
+    eth_contract = "TestNFT"
+
+    def __init__(self, owner="Owner", name="Test NFT", symbol="NFTEST"):
+        super().__init__(owner, name, symbol)
+
+    mint = MethodAdapter((("to", "address"), ("token_id", "int")))
+    burn = MethodAdapter((("owner", "msg.sender"), ("token_id", "int")))
 
 
 def _adapt_signed_amount(args, kwargs):
@@ -492,7 +497,7 @@ class TrustfulRiskModule(RiskModuleETH):
             return None
 
 
-class PolicyPool(ETHWrapper):
+class PolicyPool(IERC721):
     libraries_required = ["Policy"]
     eth_contract = "PolicyPool"
 

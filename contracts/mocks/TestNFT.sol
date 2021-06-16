@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 contract TestNFT is ERC721 {
   address private _owner;
 
-  constructor() ERC721("Test NFT", "NFTEST") {
+  constructor(string memory name_, string memory symbol_) ERC721(name_, symbol_) {
     _owner = msg.sender;
   }
 

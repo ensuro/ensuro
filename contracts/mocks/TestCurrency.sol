@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 contract TestCurrency is ERC20 {
   address private _owner;
 
-  constructor(uint256 initialSupply) ERC20("Test Currency", "TEST") {
+  constructor(string memory name_, string memory symbol_, uint256 initialSupply) ERC20(name_, symbol_) {
     _owner = msg.sender;
     _mint(msg.sender, initialSupply);
   }

@@ -95,63 +95,6 @@ class TestProtocol(TestCase):
             etk.ocean + etk.get_pool_loan()  # not really the money available but used for etk_share
         )
 
-    def test_nfts(self):
-
-        YAML_SETUP = """
-        module: prototype.ensuro
-        risk_modules:
-          - name: Roulette
-            scr_percentage: 1
-            premium_share: 0
-            ensuro_share: 0
-        nft:
-            name: Ensuro Policy NFT
-            symbol: EPOL
-        currency:
-            name: USD
-            symbol: $
-            initial_supply: 6000
-            initial_balances:
-            - user: LP1
-              amount: 3500
-            - user: CUST1
-              amount: 100
-        etokens:
-          - name: eUSD1WEEK
-            expiration_period: 604800
-          - name: eUSD1MONTH
-            expiration_period: 2592000
-          - name: eUSD1YEAR
-            expiration_period: 31536000
-        """
-
-        pool = load_config(StringIO(YAML_SETUP))
-        rm = pool.risk_modules["Roulette"]
-        rm.grant_role("PRICER_ROLE", rm.owner)
-        rm.grant_role("RESOLVER_ROLE", rm.owner)
-
-        usd = pool.currency
-
-        usd.approve("LP1", pool.contract_id, _W(3500))
-
-        assert pool.deposit("eUSD1YEAR", "LP1", _W(3500)) == _W(3500)
-
-        usd.approve("CUST1", pool.contract_id, _W(100))
-        policy = rm.new_policy(
-            payout=_W(3600), premium=_W(100), customer="CUST1",
-            loss_prob=_R(1/37), expiration=pool.now() + WEEK
-        )
-
-        assert pool.balance_of("CUST1") == 1
-        assert pool.owner_of(policy.id) == "CUST1"
-
-        pool.transfer_from("CUST1", "CUST1", "CUST2", policy.id)
-
-        pool.fast_forward_time(WEEK)
-        pool.resolve_policy(policy.id, customer_won=True)
-        assert usd.balance_of("CUST1") == _W(0)
-        assert usd.balance_of("CUST2") == _W(3600)
-
 
 TEnv = namedtuple("TEnv", "time_control module")
 
@@ -723,3 +666,60 @@ def test_walkthrough(tenv):
         _W("500.587288338126130735") + _W("1501.780045569056425935")
     )
     USD.balance_of("CUST3").assert_equal(_W(72))
+
+
+def test_nfts(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        scr_percentage: 1
+        premium_share: 0
+        ensuro_share: 0
+    nft:
+        name: Ensuro Policy NFT
+        symbol: EPOL
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 6000
+        initial_balances:
+        - user: LP1
+          amount: 3500
+        - user: CUST1
+          amount: 100
+    etokens:
+      - name: eUSD1WEEK
+        expiration_period: 604800
+      - name: eUSD1MONTH
+        expiration_period: 2592000
+      - name: eUSD1YEAR
+        expiration_period: 31536000
+    """
+
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    rm = pool.risk_modules["Roulette"]
+    rm.grant_role("PRICER_ROLE", rm.owner)
+    rm.grant_role("RESOLVER_ROLE", rm.owner)
+
+    usd = pool.currency
+
+    usd.approve("LP1", pool.contract_id, _W(3500))
+
+    assert pool.deposit("eUSD1YEAR", "LP1", _W(3500)) == _W(3500)
+
+    usd.approve("CUST1", pool.contract_id, _W(100))
+    policy = rm.new_policy(
+        payout=_W(3600), premium=_W(100), customer="CUST1",
+        loss_prob=_R(1/37), expiration=timecontrol.now + WEEK
+    )
+
+    assert pool.balance_of("CUST1") == 1
+    assert pool.owner_of(policy.id) == "CUST1"
+
+    pool.transfer_from("CUST1", "CUST1", "CUST2", policy.id)
+
+    timecontrol.fast_forward(WEEK)
+    rm.resolve_policy(policy.id, customer_won=True)
+    assert usd.balance_of("CUST1") == _W(0)
+    assert usd.balance_of("CUST2") == _W(3600)
