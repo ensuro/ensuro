@@ -149,4 +149,38 @@ def test_new_policy(tenv):
         rm.resolve_policy(policy.id, True)
 
 
+def test_moc(tenv):
+    rm = tenv.rm_class(
+        name="Roulette", scr_percentage=_R(1), premium_share=_R("0.10"), ensuro_share=_R("0.03"),
+        max_scr_per_policy=_W(1000), scr_limit=_W(1000000),
+        wallet="CASINO", shared_coverage_min_percentage=_R("0.6")
+    )
+    tenv.currency.transfer(tenv.currency.owner, "CUST1", _W(1))
+    tenv.currency.approve("CUST1", rm.policy_pool, _W(1))
+    expiration = tenv.time_control.now + WEEK
+
+    rm.grant_role("PRICER_ROLE", "JOHN_SELLER")
+    with rm.as_("JOHN_SELLER"):
+        policy = rm.new_policy(_W(36), _W(1), _R(1/37), expiration, "CUST1")
+
+    policy.premium.assert_equal(_W(1))
+    policy.loss_prob.assert_equal(_R(1/37))
+    policy.pure_premium.assert_equal(_W(36 * .4 * 1/37))
+
+    with pytest.raises(RevertError, match="missing role"):
+        rm.moc = _R("1.01")
+
+    rm.grant_role("ENSURO_DAO_ROLE", "DAO")
+    with rm.as_("DAO"):
+        rm.moc = _R("1.01")
+
+    assert rm.moc == _R("1.01")
+
+    with rm.as_("JOHN_SELLER"):
+        policy2 = rm.new_policy(_W(36), _W(1), _R(1/37), expiration, "CUST1")
+
+    policy2.premium.assert_equal(_W(1))
+    policy2.loss_prob.assert_equal(_R(1/37))
+    policy2.pure_premium.assert_equal(_W(36 * .4 * 1/37) * _W("1.01"))
+
 # TODO: further tests on _newPolicy validations

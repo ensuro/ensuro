@@ -31,6 +31,7 @@ time_control = TimeControl()
 class RiskModule(AccessControlContract):
     policy_pool = ContractProxyField()
     name = StringField()
+    moc = RayField(default=_R(1))
     scr_percentage = RayField(default=Ray(0))
     premium_share = RayField(default=Ray(0))
     ensuro_share = RayField(default=Ray(0))
@@ -44,6 +45,7 @@ class RiskModule(AccessControlContract):
     shared_coverage_scr = WadField(default=_W(0))
 
     set_attr_roles = {
+        "moc": "ENSURO_DAO_ROLE",
         "scr_percentage": "ENSURO_DAO_ROLE",
         "premium_share": "ENSURO_DAO_ROLE",
         "ensuro_share": "ENSURO_DAO_ROLE",
@@ -140,7 +142,7 @@ class Policy(Model):
     def _do_premium_split(self):
         ens_premium, rm_premium = self._coverage_premium_split()
         payout = self.payout - self.rm_coverage
-        self.pure_premium = (payout.to_ray() * self.loss_prob).to_wad()
+        self.pure_premium = (payout.to_ray() * self.loss_prob * self.risk_module.moc).to_wad()
 
         profit_premium = ens_premium - self.pure_premium
         self.premium_for_ensuro = (profit_premium.to_ray() * self.risk_module.ensuro_share).to_wad()

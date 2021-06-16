@@ -467,6 +467,7 @@ class RiskModuleETH(ETHWrapper):
 
     name = MethodAdapter((), "string", is_property=True)
     scr_percentage = MethodAdapter((), "ray", is_property=True)
+    moc = MethodAdapter((), "ray", is_property=True)
     premium_share = MethodAdapter((), "ray", is_property=True)
     ensuro_share = MethodAdapter((), "ray", is_property=True)
     max_scr_per_policy = MethodAdapter((), "amount", is_property=True)

@@ -6,6 +6,8 @@ interface IRiskModule {
 
   function scrPercentage() external view returns (uint256);
 
+  function moc() external view returns (uint256);
+
   function premiumShare() external view returns (uint256);
 
   function ensuroShare() external view returns (uint256);

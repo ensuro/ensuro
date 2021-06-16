@@ -44,7 +44,9 @@ library Policy {
     require(policy.scr != 0, "SCR can't be zero");
     policy.start = uint40(block.timestamp);
     policy.expiration = expiration;
-    policy.purePremium = (payout - policy.rmCoverage).wadToRay().rayMul(lossProb).rayToWad();  // TODO moc
+    policy.purePremium = (
+      payout - policy.rmCoverage
+    ).wadToRay().rayMul(lossProb.rayMul(riskModule.moc())).rayToWad();
     uint256 profitPremium = ens_premium - policy.purePremium;
     policy.premiumForEnsuro = profitPremium.wadMul(riskModule.ensuroShare().rayToWad());
     policy.premiumForRm = profitPremium.wadMul(riskModule.premiumShare().rayToWad());

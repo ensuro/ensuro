@@ -29,6 +29,8 @@ abstract contract RiskModule is IRiskModule, AccessControl, Pausable {
   IPolicyPool internal _policyPool;
   uint256 internal _scrPercentage;   // in ray - Solvency Capital Requirement percentage, to calculate
                                      // capital requirement as % of (payout - premium)
+  uint256 internal _moc;             // in ray - Margin Of Conservativism - factor that multiplies lossProb
+                                     // to calculate purePremium
   uint256 internal _premiumShare;    // in ray - % of premium that will go for the risk module provider
   uint256 internal _ensuroShare;     // in ray - % of premium that will go for Ensuro treasury
   uint256 internal _maxScrPerPolicy; // in wad - Max SCR per policy
@@ -71,6 +73,7 @@ abstract contract RiskModule is IRiskModule, AccessControl, Pausable {
     _name = name_;
     _policyPool = policyPool_;
     _scrPercentage = scrPercentage_;
+    _moc = WadRayMath.RAY;
     _premiumShare = premiumShare_;
     _ensuroShare = ensuroShare_;
     _maxScrPerPolicy = maxScrPerPolicy_;
@@ -90,6 +93,10 @@ abstract contract RiskModule is IRiskModule, AccessControl, Pausable {
 
   function scrPercentage() public view override returns (uint256) {
       return _scrPercentage;
+  }
+
+  function moc() public view override returns (uint256) {
+      return _moc;
   }
 
   function premiumShare() public view override returns (uint256) {
@@ -131,6 +138,11 @@ abstract contract RiskModule is IRiskModule, AccessControl, Pausable {
   function setScrPercentage(uint256 newScrPercentage) external onlyRole(ENSURO_DAO_ROLE) {
     // TODO emit Event?
     _scrPercentage = newScrPercentage;
+  }
+
+  function setMoc(uint256 newMoc) external onlyRole(ENSURO_DAO_ROLE) {
+    // TODO emit Event?
+    _moc = newMoc;
   }
 
   function setPremiumShare(uint256 newPremiumShare) external onlyRole(ENSURO_DAO_ROLE) {
