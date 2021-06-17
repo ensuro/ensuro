@@ -5,29 +5,16 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Policy} from '../contracts/Policy.sol';
 import {IEToken} from './IEToken.sol';
 import {IRiskModule} from './IRiskModule.sol';
+import {DataTypes} from '../contracts/DataTypes.sol';
 
 interface IPolicyPool {
-  enum RiskModuleStatus {
-    inactive,   // newPolicy and resolvePolicy rejected
-    active,     // newPolicy and resolvePolicy accepted
-    deprecated, // newPolicy rejected, resolvePolicy accepted
-    suspended   // newPolicy and resolvePolicy rejected (temporarily)
-  }
-
-  enum ETokenStatus {
-    inactive,   // doesn't exists - All operations rejected
-    active,     // deposit / withdraw / lockScr / unlockScr OK
-    deprecated, // withdraw OK, unlockScr OK, deposit rejected, no new policies
-    suspended   // all operations temporarily rejected
-  }
-
   event NewPolicy(IRiskModule indexed riskModule, uint256 policyId);
   event PolicyRebalanced(IRiskModule indexed riskModule, uint256 indexed policyId);
   event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, bool customerWon);
 
-  event RiskModuleStatusChanged(IRiskModule indexed riskModule, RiskModuleStatus newStatus);
+  event RiskModuleStatusChanged(IRiskModule indexed riskModule, DataTypes.RiskModuleStatus newStatus);
 
-  event ETokenStatusChanged(IEToken indexed eToken, ETokenStatus newStatus);
+  event ETokenStatusChanged(IEToken indexed eToken, DataTypes.ETokenStatus newStatus);
   event AssetManagerChanged(address indexed assetManager);
 
   event Withdrawal(IEToken indexed eToken, address indexed provider, uint256 value);

@@ -4,9 +4,24 @@ pragma solidity ^0.8.0;
 
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {IEToken} from '../interfaces/IEToken.sol';
+import {IRiskModule} from '../interfaces/IRiskModule.sol';
 
 library DataTypes {
   using EnumerableSet for EnumerableSet.AddressSet;
+
+  enum RiskModuleStatus {
+    inactive,   // newPolicy and resolvePolicy rejected
+    active,     // newPolicy and resolvePolicy accepted
+    deprecated, // newPolicy rejected, resolvePolicy accepted
+    suspended   // newPolicy and resolvePolicy rejected (temporarily)
+  }
+
+  enum ETokenStatus {
+    inactive,   // doesn't exists - All operations rejected
+    active,     // deposit / withdraw / lockScr / unlockScr OK
+    deprecated, // withdraw OK, unlockScr OK, deposit rejected, no new policies
+    suspended   // all operations temporarily rejected
+  }
 
   // Copied from OpenZeppelin's EnumerableMap but with address as keys
   // and reimplemented with interfaces as keys
@@ -101,18 +116,6 @@ library DataTypes {
     return value;
   }
 
-  /**
-   * @dev Same as {_get}, with a custom error message when `key` is not in the map.
-   *
-   * CAUTION: This function is deprecated because it requires allocating memory for the error
-   * message unnecessarily. For custom revert reasons use {_tryGet}.
-   */
-  function _get(Map storage map, address key, string memory errorMessage) private view returns (uint256) {
-    uint256 value = map._values[key];
-    require(value != 0 || _contains(map, key), errorMessage);
-    return value;
-  }
-
   // ETokenToWadMap
   struct ETokenToWadMap {
     Map _inner;
@@ -163,7 +166,7 @@ library DataTypes {
   */
   function at(ETokenToWadMap storage map, uint256 index) internal view returns (IEToken, uint256) {
     (address key, uint256 value) = _at(map._inner, index);
-    return (IEToken(key), uint256(value));
+    return (IEToken(key), value);
   }
 
   /**
@@ -174,7 +177,7 @@ library DataTypes {
    */
   function tryGet(ETokenToWadMap storage map, IEToken key) internal view returns (bool, uint256) {
     (bool success, uint256 value) = _tryGet(map._inner, address(key));
-    return (success, uint256(value));
+    return (success, value);
   }
 
   /**
@@ -188,15 +191,154 @@ library DataTypes {
     return uint256(_get(map._inner, address(key)));
   }
 
+  // ETokenStatusMap
+  struct ETokenStatusMap {
+    Map _inner;
+  }
+
   /**
-   * @dev Same as {get}, with a custom error message when `key` is not in the map.
+   * @dev Adds a key-value pair to a map, or updates the value for an existing
+   * key. O(1).
    *
-   * CAUTION: This function is deprecated because it requires allocating memory for the error
-   * message unnecessarily. For custom revert reasons use {tryGet}.
+   * Returns true if the key was added to the map, that is if it was not
+   * already present.
    */
-  function get(ETokenToWadMap storage map, IEToken key, string memory errorMessage)
-      internal view returns (uint256) {
-    return uint256(_get(map._inner, address(key), errorMessage));
+  function set(ETokenStatusMap storage map, IEToken key, ETokenStatus value) internal returns (bool) {
+    return _set(map._inner, address(key), uint256(value));
+  }
+
+  /**
+   * @dev Removes a value from a set. O(1).
+   *
+   * Returns true if the key was removed from the map, that is if it was present.
+   */
+  function remove(ETokenStatusMap storage map, IEToken key) internal returns (bool) {
+    return _remove(map._inner, address(key));
+  }
+
+  /**
+   * @dev Returns true if the key is in the map. O(1).
+   */
+  function contains(ETokenStatusMap storage map, IEToken key) internal view returns (bool) {
+    return _contains(map._inner, address(key));
+  }
+
+  /**
+   * @dev Returns the number of elements in the map. O(1).
+   */
+  function length(ETokenStatusMap storage map) internal view returns (uint256) {
+    return _length(map._inner);
+  }
+
+  /**
+  * @dev Returns the element stored at position `index` in the set. O(1).
+  * Note that there are no guarantees on the ordering of values inside the
+  * array, and it may change when more values are added or removed.
+  *
+  * Requirements:
+  *
+  * - `index` must be strictly less than {length}.
+  */
+  function at(ETokenStatusMap storage map, uint256 index) internal view returns (IEToken, ETokenStatus) {
+    (address key, uint256 value) = _at(map._inner, index);
+    return (IEToken(key), ETokenStatus(value));
+  }
+
+  /**
+   * @dev Tries to returns the value associated with `key`.  O(1).
+   * Does not revert if `key` is not in the map.
+   *
+   * _Available since v3.4._
+   */
+  function tryGet(ETokenStatusMap storage map, IEToken key) internal view returns (bool, ETokenStatus) {
+    (bool success, uint256 value) = _tryGet(map._inner, address(key));
+    return (success, ETokenStatus(value));
+  }
+
+  /**
+   * @dev Returns the value associated with `key`.  O(1).
+   *
+   * Requirements:
+   *
+   * - `key` must be in the map.
+   */
+  function get(ETokenStatusMap storage map, IEToken key) internal view returns (ETokenStatus) {
+    return ETokenStatus(_get(map._inner, address(key)));
+  }
+
+  // RiskModuleStatusMap
+  struct RiskModuleStatusMap {
+    Map _inner;
+  }
+
+  /**
+   * @dev Adds a key-value pair to a map, or updates the value for an existing
+   * key. O(1).
+   *
+   * Returns true if the key was added to the map, that is if it was not
+   * already present.
+   */
+  function set(RiskModuleStatusMap storage map, IRiskModule key, RiskModuleStatus value) internal returns (bool) {
+    return _set(map._inner, address(key), uint256(value));
+  }
+
+  /**
+   * @dev Removes a value from a set. O(1).
+   *
+   * Returns true if the key was removed from the map, that is if it was present.
+   */
+  function remove(RiskModuleStatusMap storage map, IRiskModule key) internal returns (bool) {
+    return _remove(map._inner, address(key));
+  }
+
+  /**
+   * @dev Returns true if the key is in the map. O(1).
+   */
+  function contains(RiskModuleStatusMap storage map, IRiskModule key) internal view returns (bool) {
+    return _contains(map._inner, address(key));
+  }
+
+  /**
+   * @dev Returns the number of elements in the map. O(1).
+   */
+  function length(RiskModuleStatusMap storage map) internal view returns (uint256) {
+    return _length(map._inner);
+  }
+
+  /**
+  * @dev Returns the element stored at position `index` in the set. O(1).
+  * Note that there are no guarantees on the ordering of values inside the
+  * array, and it may change when more values are added or removed.
+  *
+  * Requirements:
+  *
+  * - `index` must be strictly less than {length}.
+  */
+  function at(RiskModuleStatusMap storage map, uint256 index) internal view returns (IRiskModule, RiskModuleStatus) {
+    (address key, uint256 value) = _at(map._inner, index);
+    return (IRiskModule(key), RiskModuleStatus(value));
+  }
+
+  /**
+   * @dev Tries to returns the value associated with `key`.  O(1).
+   * Does not revert if `key` is not in the map.
+   *
+   * _Available since v3.4._
+   */
+  function tryGet(RiskModuleStatusMap storage map, IRiskModule key) internal view returns (bool, RiskModuleStatus) {
+    (bool success, uint256 value) = _tryGet(map._inner, address(key));
+    return (success, RiskModuleStatus(value));
+  }
+
+  /**
+   * @dev Returns the value associated with `key`.  O(1).
+   *
+   * Requirements:
+   *
+   * - `key` must be in the map.
+   */
+  function get(RiskModuleStatusMap storage map, IRiskModule key) internal view returns (RiskModuleStatus) {
+    return RiskModuleStatus(_get(map._inner, address(key)));
   }
 
 }

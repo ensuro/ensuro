@@ -40,6 +40,7 @@ contract TrustfulRiskModule is RiskModule {
     uint256 sharedCoverageMinPercentage_
   ) RiskModule(name_, policyPool_, scrPercentage_, premiumShare_, ensuroShare_,
                maxScrPerPolicy_, scrLimit_, wallet_, sharedCoverageMinPercentage_) {
+                 require(1!=3, "foo");
   }
 
   function newPolicy(
