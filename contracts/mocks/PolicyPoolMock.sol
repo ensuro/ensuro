@@ -11,6 +11,18 @@ contract PolicyPoolMock is IPolicyPool {
   uint256 public policyCount;
   mapping (uint256 => Policy.PolicyData) public policies;
 
+  enum PolicyResolution {
+    unresolved,
+    customerWon,
+    poolWon
+  }
+
+  mapping (uint256 => PolicyResolution) public resolutions;
+
+  event NewPolicy(IRiskModule indexed riskModule, uint256 policyId);
+  event ResolvePolicyDebug(IRiskModule indexed riskModule, uint256 policyId, bool customerWon);
+
+
   constructor(
     IERC20 currency_
   ) {
@@ -38,10 +50,16 @@ contract PolicyPoolMock is IPolicyPool {
     return policies[policyId];
   }
 
+  function getPolicyResolution(uint256 policyId) external view returns (PolicyResolution) {
+    return resolutions[policyId];
+  }
+
   function resolvePolicy(uint256 policyId, bool customerWon) external override {
     Policy.PolicyData storage policy = policies[policyId];
     require(policy.id != 0, "Policy not found");
     require(msg.sender == address(policy.riskModule), "Only riskModule is authorized to resolve the policy");
-    delete policies[policyId];
+    emit ResolvePolicyDebug(IRiskModule(msg.sender), policyId, customerWon);
+    resolutions[policyId] = customerWon ? PolicyResolution.customerWon : PolicyResolution.poolWon;
+    // delete policies[policyId];
   }
 }
