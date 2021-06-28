@@ -62,14 +62,14 @@ library Policy {
 
   function splitPayout(PolicyData storage policy, uint256 payout) public returns (uint256, uint256, uint256) {
     // returns (toBePaid_with_pool, premiumsWon, toReturnToRM)
-    uint256 profitPremiums = policy.purePremium + policy.premiumForRm + policy.premiumForEnsuro;
+    uint256 nonCapitalPremiums = policy.purePremium + policy.premiumForRm + policy.premiumForEnsuro;
     if (payout == policy.payout)
-      return (payout - profitPremiums, 0, 0);
-    if (profitPremiums >= payout) {
-       return (0, profitPremiums - payout, rmScr(policy));
+      return (payout - nonCapitalPremiums, 0, 0);
+    if (nonCapitalPremiums >= payout) {
+       return (0, nonCapitalPremiums - payout, rmScr(policy));
     }
-    payout -= profitPremiums;
-    uint rmPayout = policy.rmCoverage.wadMul(payout).wadDiv(policy.payout);
+    payout -= nonCapitalPremiums;
+    uint256 rmPayout = policy.rmCoverage.wadMul(payout).wadDiv(policy.payout);
     return (payout - rmPayout, 0, rmScr(policy) - rmPayout);
   }
 

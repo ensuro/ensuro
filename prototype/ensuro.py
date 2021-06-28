@@ -153,6 +153,17 @@ class Policy(Model):
     def premium_split(self):
         return self.pure_premium, self.premium_for_ensuro, self.premium_for_rm, self.premium_for_lps
 
+    def split_payout(self, payout):
+        # returns (toBePaid_with_pool, premiumsWon, toReturnToRM)
+        non_capital_premiums = self.pure_premium + self.premium_for_rm + self.premium_for_ensuro
+        if payout == self.payout:
+            return payout - non_capital_premiums, 0, 0
+        if non_capital_premiums >= payout:
+            return 0, non_capital_premiums - payout, self.rm_scr
+        payout -= non_capital_premiums
+        rm_payout = self.rm_coverage * payout // self.payout
+        return payout - rm_payout, 0, self.rm_scr - rm_payout
+
     @property
     def interest_rate(self):
         return (
@@ -485,11 +496,7 @@ class PolicyPool(ERC721Token):
             self.asset_manager.refill_wallet(amount)
         return self.currency.transfer(self.contract_id, target, amount)
 
-    def _pay_from_pool(self, policy):
-        to_pay = policy.payout
-        to_pay -= policy.rm_scr
-        pure_premium, for_ensuro, for_rm, _ = policy.premium_split()
-        to_pay -= for_ensuro + for_rm + pure_premium
+    def _pay_from_pool(self, to_pay):
         # 1. take from won_pure_premiums
         if to_pay <= self.won_pure_premiums:
             self.won_pure_premiums -= to_pay
@@ -519,8 +526,12 @@ class PolicyPool(ERC721Token):
         self.won_pure_premiums += pure_premium_won
 
     @external
-    def resolve_policy(self, policy_id, customer_won):
+    def resolve_policy(self, policy_id, payout):
         policy = self.policies[policy_id]
+        if type(payout) == bool:
+            payout = policy.payout if payout is True else Wad(0)
+
+        customer_won = payout > Wad(0)
 
         self.active_premiums -= policy.premium
         self.active_pure_premiums -= policy.pure_premium
@@ -529,10 +540,12 @@ class PolicyPool(ERC721Token):
         adjustment = for_lps - policy.accrued_interest()
 
         if customer_won:
-            borrow_from_scr = self._pay_from_pool(policy)
+            to_pay_from_pool, pure_premium_won, return_to_rm = policy.split_payout(payout)
+            borrow_from_scr = self._pay_from_pool(to_pay_from_pool)
             policy_owner = self.owner_of(policy.id)
-            self._transfer_to(policy_owner, policy.payout)
-            pure_premium_won = Wad(0)
+            self._transfer_to(policy_owner, payout)
+            if return_to_rm:
+                self._transfer_to(policy.risk_module.wallet, return_to_rm)
         else:
             # Pay Ensuro and RM
             self._transfer_to(policy.risk_module.wallet, for_rm + policy.rm_scr)
@@ -547,17 +560,18 @@ class PolicyPool(ERC721Token):
         for (etoken_name, scr_amount) in policy.locked_funds.items():
             etk = self.etokens[etoken_name]
             etk.unlock_scr(policy, scr_amount)
+            etk_share = scr_amount // policy.scr
             # etk_adjustment always done because policy may last more or less than initially calculated
-            etk_adjustment = adjustment * scr_amount // policy.scr
+            etk_adjustment = adjustment * etk_share
             etk.discrete_earning(etk_adjustment)
             if not customer_won:
                 borrowed_from_etk = etk.get_pool_loan()
                 if borrowed_from_etk and pure_premium_won:  # if debt with token, repay from pure_premium
-                    repay_amount = min(borrowed_from_etk, pure_premium * scr_amount // policy.scr)
+                    repay_amount = min(borrowed_from_etk, pure_premium * etk_share)
                     etk.repay_pool_loan(repay_amount)
                     pure_premium_won -= repay_amount
             elif borrow_from_scr:
-                etk_borrow = borrow_from_scr * scr_amount // policy.scr
+                etk_borrow = borrow_from_scr * etk_share
                 etk.lend_to_pool(etk_borrow)
 
         self._store_pure_premium_won(pure_premium_won)
