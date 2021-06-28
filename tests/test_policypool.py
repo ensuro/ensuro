@@ -778,3 +778,82 @@ def test_partial_payout(tenv):
     pool.etokens["eUSD1YEAR"].get_pool_loan().assert_equal(
         _W(1800) + _W(100/37)
     )  # The pool owes the loss + the capital gain
+
+
+def test_partial_payout_shared_coverage(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        scr_percentage: "0.8"
+        premium_share: "0.015"
+        ensuro_share: "0.01"
+        shared_coverage_min_percentage: ".25"
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 10000
+        initial_balances:
+        - user: LP1
+          amount: 3500
+        - user: RM
+          amount: 5000
+        - user: CUST1
+          amount: 100
+    etokens:
+      - name: eUSD1WEEK
+        expiration_period: 604800
+      - name: eUSD1MONTH
+        expiration_period: 2592000
+      - name: eUSD1YEAR
+        expiration_period: 31536000
+    """
+
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    rm = pool.risk_modules["Roulette"]
+    rm.grant_role("PRICER_ROLE", rm.owner)
+    rm.grant_role("RESOLVER_ROLE", rm.owner)
+
+    usd = pool.currency
+
+    usd.approve("LP1", pool.contract_id, _W(3500))
+
+    assert pool.deposit("eUSD1YEAR", "LP1", _W(3500)) == _W(3500)
+
+    usd.approve("CUST1", pool.contract_id, _W(100))
+    usd.approve("RM", pool.contract_id, _W(1250))
+    policy = rm.new_policy(
+        payout=_W(5100), premium=_W(100), customer="CUST1",
+        loss_prob=_R(1/60), expiration=timecontrol.now + WEEK
+    )
+    assert usd.balance_of("CUST1") == _W(0)
+    assert usd.balance_of("RM") == _W(5000 - 1250)
+    policy.pure_premium.assert_equal(_W(5100) * _W("0.75") * _W(1/60))
+    policy.rm_coverage.assert_equal(_W(5100) * _W("0.25"))
+    profit_premium = _W(100) * _W("0.75") - policy.pure_premium
+    policy.premium_for_rm.assert_equal(_W(25) + profit_premium * _W("0.015"))
+    policy.premium_for_ensuro.assert_equal(profit_premium * _W("0.01"))
+    policy.premium_for_lps.assert_equal(
+        profit_premium - (policy.premium_for_rm - _W(25)) - policy.premium_for_ensuro
+    )
+    policy.premium_for_lps.assert_equal(_W("10.96875"))
+
+    assert pool.etokens["eUSD1YEAR"].ocean == _W(500)
+    assert pool.etokens["eUSD1YEAR"].scr == _W(3000)
+    timecontrol.fast_forward(WEEK)
+
+    rm.resolve_policy(policy.id, _W(3000))
+    assert usd.balance_of("CUST1") == _W(3000)
+    usd.balance_of("RM").assert_equal(
+        _W(5000) - (_W(3000) - (_W(100) - policy.premium_for_lps)) * _W("0.25")
+    )
+    usd.balance_of("RM").assert_equal(_W(5000) - _W("727.7421875"))
+
+    pool.etokens["eUSD1YEAR"].scr.assert_equal(_W(0))
+    pool.etokens["eUSD1YEAR"].get_pool_loan().assert_equal(
+         (
+             _W(3000) - policy.pure_premium - policy.premium_for_ensuro - policy.premium_for_rm
+         ) * _W("0.75")
+    )  # The pool owes the loss + the capital gain
+    pool.etokens["eUSD1YEAR"].get_pool_loan().assert_equal(_W("2183.2265625"))
+    pool.etokens["eUSD1YEAR"].ocean.assert_equal(_W(3500) - _W("2183.2265625") + policy.premium_for_lps)
