@@ -269,33 +269,20 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
     }
   }
 
-  function resolvePolicy(uint256 policyId, bool customerWon) external override {
-    Policy.PolicyData storage policy = _policies[policyId];
-    require(policy.id == policyId && policyId != 0, "Policy not found");
-    IRiskModule rm = policy.riskModule;
-    require(address(rm) == _msgSender(), "Only the RM can resolve policies");
-    // TODO: validate rm status
-    _activePremiums -= policy.premium;
-    _activePurePremiums -= policy.purePremium;
-
-    uint256 aux = policy.accruedInterest();
-    bool positive = policy.premiumForLps >= aux;
-    uint256 adjustment;
-    if (positive)
-      adjustment = policy.premiumForLps - aux;
-    else
-      adjustment = aux - policy.premiumForLps;
-
+  function _processResolution(
+    Policy.PolicyData storage policy, bool customerWon, uint256 payout
+  ) internal returns (uint256, uint256) {
     uint256 borrowFromScr;
     uint256 purePremiumWon;
+    uint256 aux;
 
     if (customerWon) {
-      borrowFromScr = _payFromPool(
-        policy.payout - policy.rmScr() - policy.premiumForEnsuro -
-        policy.purePremium - policy.premiumForRm
-      );
-      _transferTo(ownerOf(policy.id), policy.payout);
-      purePremiumWon = 0;
+      uint256 returnToRm;
+      (aux, purePremiumWon, returnToRm) = policy.splitPayout(payout);
+      borrowFromScr = _payFromPool(aux);
+      _transferTo(ownerOf(policy.id), payout);
+      if (returnToRm > 0)
+        _transferTo(policy.riskModule.wallet(), returnToRm);
     } else {
       // Pay RM and Ensuro
       _transferTo(policy.riskModule.wallet(), policy.premiumForRm + policy.rmScr());
@@ -308,23 +295,62 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
         purePremiumWon -= aux;
       }
     }
+    return (borrowFromScr, purePremiumWon);
+  }
+
+  function resolvePolicy(uint256 policyId, uint256 payout) external override {
+    return _resolvePolicy(policyId, payout);
+  }
+
+  function resolvePolicy(uint256 policyId, bool customerWon) external override {
+    return _resolvePolicy(policyId, customerWon ? _policies[policyId].payout : 0);
+  }
+
+  function _resolvePolicy(uint256 policyId, uint256 payout) internal {
+    Policy.PolicyData storage policy = _policies[policyId];
+    require(policy.id == policyId && policyId != 0, "Policy not found");
+    IRiskModule rm = policy.riskModule;
+    require(address(rm) == _msgSender(), "Only the RM can resolve policies");
+    DataTypes.RiskModuleStatus rmStatus = _riskModules.get(rm);
+    require(
+      rmStatus == DataTypes.RiskModuleStatus.active || rmStatus == DataTypes.RiskModuleStatus.deprecated,
+      "Only the RM can resolve policies"
+    );
+    require(payout <= policy.payout, "Actual payout can't be more than policy payout");
+    require(payout == 0 || payout >= policy.premium, "Payout less than premium not supported");
+
+    bool customerWon = payout > 0;
+
+    _activePremiums -= policy.premium;
+    _activePurePremiums -= policy.purePremium;
+
+    uint256 aux = policy.accruedInterest();
+    bool positive = policy.premiumForLps >= aux;
+    uint256 adjustment;
+    if (positive)
+      adjustment = policy.premiumForLps - aux;
+    else
+      adjustment = aux - policy.premiumForLps;
+
+    (uint256 borrowFromScr, uint256 purePremiumWon) = _processResolution(policy, customerWon, payout);
 
     DataTypes.ETokenToWadMap storage policyFunds = _policiesFunds[policy.id];
 
     for (uint256 i = 0; i < policyFunds.length(); i++) {
-      uint256 scrToken;
       (IEToken etk, uint256 etkScr) = policyFunds.at(i);
       etk.unlockScr(policy.interestRate(), etkScr);
-      etk.discreteEarning(adjustment.wadMul(etkScr).wadDiv(policy.scr), positive);
+      etkScr = etkScr.wadDiv(policy.scr);  // Using the same variable, but now represents the share of SCR
+                                           // that's covered by this etk
+      etk.discreteEarning(adjustment.wadMul(etkScr), positive);
       if (!customerWon && purePremiumWon > 0 && etk.getPoolLoan() > 0) {
         // if debt with token, repay from purePremium
-        aux = policy.purePremium.wadMul(etkScr).wadDiv(policy.scr);
+        aux = policy.purePremium.wadMul(etkScr);
         aux = Math.min(purePremiumWon, Math.min(etk.getPoolLoan(), aux));
         etk.repayPoolLoan(aux);
         purePremiumWon -= aux;
       } else {
         if (borrowFromScr > 0) {
-          etk.lendToPool(borrowFromScr.wadMul(etkScr).wadDiv(policy.scr));
+          etk.lendToPool(borrowFromScr.wadMul(etkScr));
         }
       }
     }
