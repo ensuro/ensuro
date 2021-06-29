@@ -48,6 +48,17 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
   address internal _treasury;            // address of Ensuro treasury
   address internal _assetManager;        // asset manager (TBD)
 
+  event NewPolicy(IRiskModule indexed riskModule, uint256 policyId);
+  event PolicyRebalanced(IRiskModule indexed riskModule, uint256 indexed policyId);
+  event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, bool customerWon);
+
+  event RiskModuleStatusChanged(IRiskModule indexed riskModule, DataTypes.RiskModuleStatus newStatus);
+
+  event ETokenStatusChanged(IEToken indexed eToken, DataTypes.ETokenStatus newStatus);
+  event AssetManagerChanged(address indexed assetManager);
+
+  event Withdrawal(IEToken indexed eToken, address indexed provider, uint256 value);
+
   modifier onlyAssetManager {
     require(_msgSender() == _assetManager, "Only assetManager can call this function");
     _;
