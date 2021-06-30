@@ -330,7 +330,7 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
     DataTypes.RiskModuleStatus rmStatus = _riskModules.get(rm);
     require(
       rmStatus == DataTypes.RiskModuleStatus.active || rmStatus == DataTypes.RiskModuleStatus.deprecated,
-      "Only the RM can resolve policies"
+      "Module must be active or deprecated to process resolutions"
     );
     require(payout <= policy.payout, "Actual payout can't be more than policy payout");
 
