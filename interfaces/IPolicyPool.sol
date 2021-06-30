@@ -22,6 +22,7 @@ interface IPolicyPool {
   function currency() external view returns (IERC20);
   function assetManager() external view returns (address);   // TODO: IAssetManager
   function newPolicy(Policy.PolicyData memory policy, address customer) external returns (uint256);
+  function resolvePolicy(uint256 policyId, uint256 payout) external;
   function resolvePolicy(uint256 policyId, bool customerWon) external;
 
   function getPolicy(uint256 policyId) external view returns (Policy.PolicyData memory);

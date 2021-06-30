@@ -82,7 +82,7 @@ class TestProtocol(TestCase):
         pool.won_pure_premiums.assert_equal(_W(8500) * _W("0.025") * pool_share)
         etk.balance_of("LP1").assert_equal(lp1_balance + for_lps + _W(8500) * _W("0.025") * etk_share)
 
-        pool.resolve_policy(policy.id, customer_won=True)
+        pool.resolve_policy(policy.id, True)
         assert USD.balance_of(pool.contract_id) == _W(1500)  # balance back to middle
         USD.balance_of(asset_manager.contract_id).assert_equal(
             _W(8500) +                # initial investment
@@ -182,7 +182,7 @@ def test_transfers(tenv):
     etoken.balance_of("LP2").assert_equal(lp1_balance // _W(3) + interest * _W(4/7) // _W(3))
     etoken.balance_of("LP3").assert_equal(lp1_balance // _W(3) + interest * _W(4/7) // _W(3))
 
-    rm.resolve_policy(policy.id, customer_won=True)
+    rm.resolve_policy(policy.id, True)
     etoken.balance_of("LP1").assert_equal(_W(0))
     etoken.balance_of("LP2").assert_equal(_W(0))
     etoken.balance_of("LP3").assert_equal(_W(0))
@@ -520,7 +520,7 @@ def test_walkthrough(tenv):
 
     borrow_from_scr = policy_1.payout - pool.pure_premiums
     adjustment = policy_1.premium_split()[-1] - accrued_interest
-    rm.resolve_policy(policy_1.id, customer_won=True)
+    rm.resolve_policy(policy_1.id, True)
 
     assert USD.balance_of("CUST1") == _W(36)
     assert USD.balance_of(pool.contract_id) == _W(1000 + 2000 + 2000 + 2 - 35)
@@ -552,7 +552,7 @@ def test_walkthrough(tenv):
     p2_for_lps = policy_2.premium_split()[-1]
     adjustment = p2_for_lps - p2_accrued_interest
     p2_1MONTH_share = _get_scr_share(policy_2, pool, "eUSD1MONTH")
-    rm.resolve_policy(policy_2.id, customer_won=False)
+    rm.resolve_policy(policy_2.id, False)
 
     assert USD.balance_of("CUST2") == _W(0)
     assert USD.balance_of(pool.contract_id) == _W(1000 + 2000 + 2000 + 2 - 35)  # unchanged
@@ -604,7 +604,7 @@ def test_walkthrough(tenv):
                 change = min(
                     pool_loan, (p.pure_premium.to_ray() * _get_scr_share(p, pool, "eUSD1YEAR")).to_wad()
                 )
-            rm.resolve_policy(p.id, customer_won=customer_won)
+            rm.resolve_policy(p.id, customer_won)
             policies.pop(0)
 
             assert eUSD1YEAR.get_pool_loan().equal(pool_loan - change)
@@ -622,7 +622,7 @@ def test_walkthrough(tenv):
         day = 65 + i
         customer_won = day % 37 == 36
         p_1y_share = _get_scr_share(p, pool, "eUSD1YEAR")
-        rm.resolve_policy(p.id, customer_won=customer_won)
+        rm.resolve_policy(p.id, customer_won)
         if customer_won:
             won_count += 1
             repay = _W(0)
@@ -720,6 +720,158 @@ def test_nfts(tenv):
     pool.transfer_from("CUST1", "CUST1", "CUST2", policy.id)
 
     timecontrol.fast_forward(WEEK)
-    rm.resolve_policy(policy.id, customer_won=True)
+    rm.resolve_policy(policy.id, True)
     assert usd.balance_of("CUST1") == _W(0)
     assert usd.balance_of("CUST2") == _W(3600)
+
+
+def test_partial_payout(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        scr_percentage: "0.8"
+        premium_share: 0
+        ensuro_share: 0
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 6000
+        initial_balances:
+        - user: LP1
+          amount: 3500
+        - user: CUST1
+          amount: 100
+    etokens:
+      - name: eUSD1WEEK
+        expiration_period: 604800
+      - name: eUSD1MONTH
+        expiration_period: 2592000
+      - name: eUSD1YEAR
+        expiration_period: 31536000
+    """
+
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    rm = pool.risk_modules["Roulette"]
+    rm.grant_role("PRICER_ROLE", rm.owner)
+    rm.grant_role("RESOLVER_ROLE", rm.owner)
+
+    usd = pool.currency
+
+    usd.approve("LP1", pool.contract_id, _W(3500))
+
+    assert pool.deposit("eUSD1YEAR", "LP1", _W(3500)) == _W(3500)
+
+    usd.approve("CUST1", pool.contract_id, _W(100))
+    policy = rm.new_policy(
+        payout=_W(3600), premium=_W(100), customer="CUST1",
+        loss_prob=_R(1/37), expiration=timecontrol.now + WEEK
+    )
+
+    assert pool.etokens["eUSD1YEAR"].ocean == _W(700)
+    assert pool.etokens["eUSD1YEAR"].scr == _W(2800)
+    timecontrol.fast_forward(WEEK)
+    rm.resolve_policy(policy.id, _W(1900))
+    assert usd.balance_of("CUST1") == _W(1900)
+    pool.etokens["eUSD1YEAR"].ocean.assert_equal(_W(1700))
+    pool.etokens["eUSD1YEAR"].scr.assert_equal(_W(0))
+    pool.etokens["eUSD1YEAR"].get_pool_loan().assert_equal(
+        _W(1800) + _W(100/37)
+    )  # The pool owes the loss + the capital gain
+
+
+def test_partial_payout_shared_coverage(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        scr_percentage: "0.8"
+        premium_share: "0.015"
+        ensuro_share: "0.01"
+        shared_coverage_min_percentage: ".25"
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 10000
+        initial_balances:
+        - user: LP1
+          amount: 3500
+        - user: RM
+          amount: 5000
+        - user: CUST1
+          amount: 100
+    etokens:
+      - name: eUSD1WEEK
+        expiration_period: 604800
+      - name: eUSD1MONTH
+        expiration_period: 2592000
+      - name: eUSD1YEAR
+        expiration_period: 31536000
+    """
+
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    rm = pool.risk_modules["Roulette"]
+    rm.grant_role("PRICER_ROLE", rm.owner)
+    rm.grant_role("RESOLVER_ROLE", rm.owner)
+
+    usd = pool.currency
+
+    usd.approve("LP1", pool.contract_id, _W(3500))
+
+    assert pool.deposit("eUSD1YEAR", "LP1", _W(3500)) == _W(3500)
+
+    usd.approve("CUST1", pool.contract_id, _W(100))
+    usd.approve("RM", pool.contract_id, _W(1250))
+    policy = rm.new_policy(
+        payout=_W(5100), premium=_W(100), customer="CUST1",
+        loss_prob=_R(1/60), expiration=timecontrol.now + WEEK
+    )
+    assert usd.balance_of("CUST1") == _W(0)
+    assert usd.balance_of("RM") == _W(5000 - 1250)
+    policy.pure_premium.assert_equal(_W(5100) * _W("0.75") * _W(1/60))
+    policy.rm_coverage.assert_equal(_W(5100) * _W("0.25"))
+    profit_premium = _W(100) * _W("0.75") - policy.pure_premium
+    policy.premium_for_rm.assert_equal(_W(25) + profit_premium * _W("0.015"))
+    policy.premium_for_ensuro.assert_equal(profit_premium * _W("0.01"))
+    policy.premium_for_lps.assert_equal(
+        profit_premium - (policy.premium_for_rm - _W(25)) - policy.premium_for_ensuro
+    )
+    policy.premium_for_lps.assert_equal(_W("10.96875"))
+
+    assert pool.etokens["eUSD1YEAR"].ocean == _W(500)
+    assert pool.etokens["eUSD1YEAR"].scr == _W(3000)
+    timecontrol.fast_forward(WEEK)
+
+    rm.resolve_policy(policy.id, _W(3000))
+    assert usd.balance_of("CUST1") == _W(3000)
+    usd.balance_of("RM").assert_equal(
+        _W(5000) - (_W(3000) - (_W(100) - policy.premium_for_lps)) * _W("0.25")
+    )
+    usd.balance_of("RM").assert_equal(_W(5000) - _W("727.7421875"))
+
+    pool.etokens["eUSD1YEAR"].scr.assert_equal(_W(0))
+    pool.etokens["eUSD1YEAR"].get_pool_loan().assert_equal(
+         (
+             _W(3000) - policy.pure_premium - policy.premium_for_ensuro - policy.premium_for_rm
+         ) * _W("0.75")
+    )  # The pool owes the loss + the capital gain
+    pool.etokens["eUSD1YEAR"].get_pool_loan().assert_equal(_W("2183.2265625"))
+    pool.etokens["eUSD1YEAR"].ocean.assert_equal(_W(3500) - _W("2183.2265625") + policy.premium_for_lps)
+
+    # Test another policy with actual payout less than non-capital-premiums
+    usd.approve("CUST1", pool.contract_id, _W(100))
+    usd.approve("RM", pool.contract_id, _W(500))
+    policy = rm.new_policy(
+        payout=_W(2100), premium=_W(100), customer="CUST1",
+        loss_prob=_R(1/60), expiration=timecontrol.now + WEEK
+    )
+
+    assert pool.won_pure_premiums == _W(0)
+
+    usd.balance_of("RM").assert_equal(_W(5000) - _W("727.7421875") - _W(500))
+    assert usd.balance_of("CUST1") == _W(2900)
+    rm.resolve_policy(policy.id, _W(50))
+    timecontrol.fast_forward(WEEK)
+
+    pool.won_pure_premiums.assert_equal(_W(2.46875))  # non_capital_premiums == 52.46875
+    usd.balance_of("RM").assert_equal(_W(5000) - _W("727.7421875"))  # Same as before policy

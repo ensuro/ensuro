@@ -66,11 +66,12 @@ MAXUINT256 = 2**256 - 1
 
 
 class ETHCall:
-    def __init__(self, eth_method, eth_args, eth_return_type="", adapt_args=None):
+    def __init__(self, eth_method, eth_args, eth_return_type="", adapt_args=None, eth_variant=None):
         self.eth_method = eth_method
         self.eth_args = eth_args
         self.eth_return_type = eth_return_type
         self.adapt_args = adapt_args
+        self.eth_variant = eth_variant
 
     def __call__(self, wrapper, *args, **kwargs):
         call_args = []
@@ -97,8 +98,13 @@ class ETHCall:
             msg_args["from"] = wrapper._auto_from
         call_args.append(msg_args)
 
+        if self.eth_variant:
+            eth_function = getattr(wrapper.contract, self.eth_method)[self.eth_variant]
+        else:
+            eth_function = getattr(wrapper.contract, self.eth_method)
+
         try:
-            ret_value = getattr(wrapper.contract, self.eth_method)(*call_args)
+            ret_value = eth_function(*call_args)
         except VirtualMachineError as err:
             if err.revert_type == "revert":
                 raise RevertError(err.revert_msg)
@@ -140,13 +146,14 @@ class ETHCall:
 
 class MethodAdapter:
     def __init__(self, args=(), return_type="", eth_method=None, adapt_args=None, is_property=False,
-                 set_eth_method=None):
+                 set_eth_method=None, eth_variant=None):
         self.eth_method = eth_method
         self.set_eth_method = set_eth_method
         self.return_type = return_type
         self.args = args
         self.adapt_args = adapt_args
         self.is_property = is_property
+        self.eth_variant = eth_variant
 
     def __set_name__(self, owner, name):
         self._method_name = name
@@ -165,7 +172,8 @@ class MethodAdapter:
         return self._method_name or self.eth_method
 
     def __get__(self, instance, owner=None):
-        eth_call = ETHCall(self.eth_method, self.args, self.return_type, self.adapt_args)
+        eth_call = ETHCall(self.eth_method, self.args, self.return_type, self.adapt_args,
+                           eth_variant=self.eth_variant)
         if self.is_property:
             return eth_call(instance)
         return partial(eth_call, instance)
@@ -486,7 +494,16 @@ class TrustfulRiskModule(RiskModuleETH):
         ("customer", "address")
     ), "int")
 
-    resolve_policy = MethodAdapter((("policy_id", "int"), ("customer_won", "bool")))
+    resolve_policy_bool = MethodAdapter((("policy_id", "int"), ("customer_won", "bool")),
+                                        eth_variant="uint,bool", eth_method="resolvePolicy")
+    resolve_policy_amount = MethodAdapter((("policy_id", "int"), ("payout", "amount")),
+                                          eth_variant="uint,uint", eth_method="resolvePolicy")
+
+    def resolve_policy(self, policy_id, customer_won_or_amount):
+        if customer_won_or_amount is True or customer_won_or_amount is False:
+            return self.resolve_policy_bool(policy_id,  customer_won_or_amount)
+        else:
+            return self.resolve_policy_amount(policy_id,  customer_won_or_amount)
 
     def new_policy(self, *args, **kwargs):
         receipt = self.new_policy_(*args, **kwargs)
@@ -527,6 +544,10 @@ class PolicyPool(IERC721):
         return obj
 
     pure_premiums = MethodAdapter((), "amount", is_property=True)
+    won_pure_premiums = MethodAdapter((), "amount", is_property=True)
+    active_premiums = MethodAdapter((), "amount", is_property=True)
+    active_pure_premiums = MethodAdapter((), "amount", is_property=True)
+    borrowed_active_pp = MethodAdapter((), "amount", is_property=True)
     add_risk_module_ = MethodAdapter((("risk_module", "contract"), ))
     add_etoken_ = MethodAdapter((("etoken", "contract"), ), eth_method="addEToken")
 

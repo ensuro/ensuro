@@ -60,6 +60,19 @@ library Policy {
     return policy.rmCoverage - (policy.premium - ens_premium);
   }
 
+  function splitPayout(PolicyData storage policy, uint256 payout) public returns (uint256, uint256, uint256) {
+    // returns (toBePaid_with_pool, premiumsWon, toReturnToRM)
+    uint256 nonCapitalPremiums = policy.purePremium + policy.premiumForRm + policy.premiumForEnsuro;
+    if (payout == policy.payout)
+      return (payout - nonCapitalPremiums, 0, 0);
+    if (nonCapitalPremiums >= payout) {
+       return (0, nonCapitalPremiums - payout, rmScr(policy));
+    }
+    payout -= nonCapitalPremiums;
+    uint256 rmPayout = policy.rmCoverage.wadMul(payout).wadDiv(policy.payout);
+    return (payout - rmPayout, 0, rmScr(policy) - rmPayout);
+  }
+
   function interestRate(PolicyData storage policy) public returns (uint256) {
     return policy.premiumForLps.wadMul(SECONDS_IN_YEAR).wadDiv(
       (policy.expiration - policy.start) * policy.scr

@@ -38,10 +38,18 @@ contract PolicyPoolMock is IPolicyPool {
     return policies[policyId];
   }
 
-  function resolvePolicy(uint256 policyId, bool customerWon) external override {
+  function _resolvePolicy(uint256 policyId, uint256 payout) internal {
     Policy.PolicyData storage policy = policies[policyId];
     require(policy.id != 0, "Policy not found");
     require(msg.sender == address(policy.riskModule), "Only riskModule is authorized to resolve the policy");
     delete policies[policyId];
+  }
+
+  function resolvePolicy(uint256 policyId, uint256 payout) external override {
+    _resolvePolicy(policyId, payout);
+  }
+
+  function resolvePolicy(uint256 policyId, bool customerWon) external override {
+    return _resolvePolicy(policyId, customerWon ? policies[policyId].payout : 0);
   }
 }
