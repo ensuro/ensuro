@@ -544,6 +544,10 @@ class PolicyPool(IERC721):
         return obj
 
     pure_premiums = MethodAdapter((), "amount", is_property=True)
+    won_pure_premiums = MethodAdapter((), "amount", is_property=True)
+    active_premiums = MethodAdapter((), "amount", is_property=True)
+    active_pure_premiums = MethodAdapter((), "amount", is_property=True)
+    borrowed_active_pp = MethodAdapter((), "amount", is_property=True)
     add_risk_module_ = MethodAdapter((("risk_module", "contract"), ))
     add_etoken_ = MethodAdapter((("etoken", "contract"), ), eth_method="addEToken")
 

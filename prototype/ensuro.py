@@ -157,12 +157,12 @@ class Policy(Model):
         # returns (toBePaid_with_pool, premiumsWon, toReturnToRM)
         non_capital_premiums = self.pure_premium + self.premium_for_rm + self.premium_for_ensuro
         if payout == self.payout:
-            return payout - non_capital_premiums, 0, 0
+            return payout - non_capital_premiums, Wad(0), Wad(0)
         if non_capital_premiums >= payout:
-            return 0, non_capital_premiums - payout, self.rm_scr
+            return Wad(0), non_capital_premiums - payout, self.rm_scr
         payout -= non_capital_premiums
         rm_payout = self.rm_coverage * payout // self.payout
-        return payout - rm_payout, 0, self.rm_scr - rm_payout
+        return payout - rm_payout, Wad(0), self.rm_scr - rm_payout
 
     @property
     def interest_rate(self):
@@ -475,7 +475,7 @@ class PolicyPool(ERC721Token):
             ocean += ocean_token
             ocean_per_token[etk.name] = ocean_token
 
-        assert ocean >= policy.scr
+        require(ocean >= policy.scr, "Not enought ocean to cover the policy")
 
         scr_not_locked = policy.scr
 

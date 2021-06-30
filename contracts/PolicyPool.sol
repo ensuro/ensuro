@@ -110,6 +110,22 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
     return _activePurePremiums + _wonPurePremiums - _borrowedActivePP;
   }
 
+  function activePremiums() external view returns (uint256) {
+    return _activePremiums;
+  }
+
+  function activePurePremiums() external view returns (uint256) {
+    return _activePurePremiums;
+  }
+
+  function wonPurePremiums() external view returns (uint256) {
+    return _wonPurePremiums;
+  }
+
+  function borrowedActivePP() external view returns (uint256) {
+    return _borrowedActivePP;
+  }
+
   function addRiskModule(IRiskModule riskModule) external onlyRole(ENSURO_DAO_ROLE) {
     require(!_riskModules.contains(riskModule), "Risk Module already in the pool");
     require(address(riskModule) != address(0), "riskModule can't be zero");
@@ -317,7 +333,6 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
       "Only the RM can resolve policies"
     );
     require(payout <= policy.payout, "Actual payout can't be more than policy payout");
-    require(payout == 0 || payout >= policy.premium, "Payout less than premium not supported");
 
     bool customerWon = payout > 0;
 

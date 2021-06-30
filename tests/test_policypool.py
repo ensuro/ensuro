@@ -857,3 +857,21 @@ def test_partial_payout_shared_coverage(tenv):
     )  # The pool owes the loss + the capital gain
     pool.etokens["eUSD1YEAR"].get_pool_loan().assert_equal(_W("2183.2265625"))
     pool.etokens["eUSD1YEAR"].ocean.assert_equal(_W(3500) - _W("2183.2265625") + policy.premium_for_lps)
+
+    # Test another policy with actual payout less than non-capital-premiums
+    usd.approve("CUST1", pool.contract_id, _W(100))
+    usd.approve("RM", pool.contract_id, _W(500))
+    policy = rm.new_policy(
+        payout=_W(2100), premium=_W(100), customer="CUST1",
+        loss_prob=_R(1/60), expiration=timecontrol.now + WEEK
+    )
+
+    assert pool.won_pure_premiums == _W(0)
+
+    usd.balance_of("RM").assert_equal(_W(5000) - _W("727.7421875") - _W(500))
+    assert usd.balance_of("CUST1") == _W(2900)
+    rm.resolve_policy(policy.id, _W(50))
+    timecontrol.fast_forward(WEEK)
+
+    pool.won_pure_premiums.assert_equal(_W(2.46875))  # non_capital_premiums == 52.46875
+    usd.balance_of("RM").assert_equal(_W(5000) - _W("727.7421875"))  # Same as before policy
