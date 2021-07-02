@@ -6,6 +6,7 @@ import {Pausable} from "@openzeppelin/contracts/security/Pausable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from '@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol';
 import {IPolicyPool} from '../interfaces/IPolicyPool.sol';
+import {IPolicyPoolComponent} from '../interfaces/IPolicyPoolComponent.sol';
 import {IEToken} from '../interfaces/IEToken.sol';
 import {WadRayMath} from './WadRayMath.sol';
 
@@ -14,7 +15,7 @@ import {WadRayMath} from './WadRayMath.sol';
  * @dev Implementation of the interest/earnings bearing token for the Ensuro protocol
  * @author Ensuro
  */
-contract EToken is AccessControl, Pausable, IERC20, IEToken {
+contract EToken is AccessControl, Pausable, IERC20, IEToken, IPolicyPoolComponent {
   bytes32 public constant SET_LOAN_RATE_ROLE = keccak256("SET_LOAN_RATE_ROLE");
   bytes32 public constant SET_LIQ_PARAMS_ROLE = keccak256("SET_LIQ_PARAMS_ROLE");
   bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");

@@ -10,12 +10,15 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {IPolicyPool} from '../interfaces/IPolicyPool.sol';
 import {IRiskModule} from '../interfaces/IRiskModule.sol';
+import {IPolicyPoolComponent} from '../interfaces/IPolicyPoolComponent.sol';
 import {IEToken} from '../interfaces/IEToken.sol';
 import {Policy} from './Policy.sol';
 import {WadRayMath} from './WadRayMath.sol';
 import {Math} from '@openzeppelin/contracts/utils/math/Math.sol';
 import {DataTypes} from './DataTypes.sol';
 
+/// #invariant {:msg "Borrow up to activePurePremiums"} _borrowedActivePP <= _activePurePremiums;
+/// #invariant {:msg "Can't borrow if not exhausted before won"} (_borrowedActivePP > 0) ==> _wonPurePremiums == 0;
 contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessControl {
   using EnumerableSet for EnumerableSet.AddressSet;
   using WadRayMath for uint256;
@@ -31,6 +34,7 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
 
   uint256 public constant MAX_ETOKENS = 10;
 
+  /// #if_updated {:msg "Only set on creation"} msg.sig == bytes4(0);
   IERC20 internal _currency;
 
   DataTypes.RiskModuleStatusMap internal _riskModules;
@@ -38,6 +42,7 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
 
   mapping (uint256 => Policy.PolicyData) internal _policies;
   mapping (uint256 => DataTypes.ETokenToWadMap) internal _policiesFunds;
+  /// #if_updated {:msg "Id that only goes up by one"} _policyCount == old(_policyCount + 1);
   uint256 internal _policyCount;   // Growing id for policies
 
   uint256 internal _activePremiums;    // sum of premiums of active policies - In Wad
@@ -47,6 +52,17 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
 
   address internal _treasury;            // address of Ensuro treasury
   address internal _assetManager;        // asset manager (TBD)
+
+  event NewPolicy(IRiskModule indexed riskModule, uint256 policyId);
+  event PolicyRebalanced(IRiskModule indexed riskModule, uint256 indexed policyId);
+  event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, bool customerWon);
+
+  event RiskModuleStatusChanged(IRiskModule indexed riskModule, DataTypes.RiskModuleStatus newStatus);
+
+  event ETokenStatusChanged(IEToken indexed eToken, DataTypes.ETokenStatus newStatus);
+  event AssetManagerChanged(address indexed assetManager);
+
+  event Withdrawal(IEToken indexed eToken, address indexed provider, uint256 value);
 
   modifier onlyAssetManager {
     require(_msgSender() == _assetManager, "Only assetManager can call this function");
@@ -129,18 +145,33 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
   function addRiskModule(IRiskModule riskModule) external onlyRole(ENSURO_DAO_ROLE) {
     require(!_riskModules.contains(riskModule), "Risk Module already in the pool");
     require(address(riskModule) != address(0), "riskModule can't be zero");
+    require(IPolicyPoolComponent(address(riskModule)).policyPool() == this, "RiskModule not linked to this pool");
     _riskModules.set(riskModule, DataTypes.RiskModuleStatus.active);
     emit RiskModuleStatusChanged(riskModule, DataTypes.RiskModuleStatus.active);
   }
 
-  // TODO: removeRiskModule
-  // TODO: changeRiskModuleStatus
+  /// #if_success _riskModules[riskModule] == DataTypes.RiskModuleStatus.inactive;
+  function removeRiskModule(IRiskModule riskModule) external onlyRole(ENSURO_DAO_ROLE) {
+    require(_riskModules.contains(riskModule), "Risk Module not found");
+    require(riskModule.totalScr() == 0, "Can't remove a module with active policies");
+    _riskModules.remove(riskModule);
+    emit RiskModuleStatusChanged(riskModule, DataTypes.RiskModuleStatus.inactive);
+  }
 
+  /// #if_success _riskModules[riskModule] == newStatus;
+  function changeRiskModuleStatus(IRiskModule riskModule, DataTypes.RiskModuleStatus newStatus)
+        external onlyRole(ENSURO_DAO_ROLE) {
+    require(_riskModules.contains(riskModule), "Risk Module not found");
+    _riskModules.set(riskModule, newStatus);
+    emit RiskModuleStatusChanged(riskModule, newStatus);
+  }
+
+  /// #if_success {:msg "eToken added as active"} _eTokens[eToken] == DataTypes.ETokenStatus.active;
   function addEToken(IEToken eToken) external onlyRole(ENSURO_DAO_ROLE) {
     require(_eTokens.length() < MAX_ETOKENS, "Maximum number of ETokens reached");
     require(!_eTokens.contains(eToken), "eToken already in the pool");
     require(address(eToken) != address(0), "eToken can't be zero");
-    require(eToken.policyPool() == this, "EToken not linked to this pool");
+    require(IPolicyPoolComponent(address(eToken)).policyPool() == this, "EToken not linked to this pool");
 
     _eTokens.set(eToken, DataTypes.ETokenStatus.active);
     emit ETokenStatusChanged(eToken, DataTypes.ETokenStatus.active);
@@ -158,6 +189,9 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
     return _assetManager;
   }
 
+  /// #if_success
+  ///    {:msg "must take balance from sender"}
+  ///    _currency.balanceOf(_msgSender()) == old(_currency.balanceOf(_msgSender()) + amount)
   function deposit(IEToken eToken, uint256 amount) external {
     (bool found, DataTypes.ETokenStatus etkStatus) = _eTokens.tryGet(eToken);
     require(found && etkStatus == DataTypes.ETokenStatus.active, "eToken is not active");

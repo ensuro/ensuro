@@ -1,13 +1,15 @@
 pragma solidity ^0.8.0;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IPolicyPool} from "./IPolicyPool.sol";
 
+/**
+ * @title IEToken interface
+ * @dev Interface for EToken smart contracts, these are the capital pools.
+ * @author Ensuro
+ */
 interface IEToken is IERC20 {
   event SCRLocked(uint256 interest_rate, uint256 value);
   event SCRUnlocked(uint256 interest_rate, uint256 value);
-
-  function policyPool() external view returns (IPolicyPool);
 
   function ocean() external view returns (uint256);
 

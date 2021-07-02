@@ -5,6 +5,7 @@ import {WadRayMath} from './WadRayMath.sol';
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {Pausable} from "@openzeppelin/contracts/security/Pausable.sol";
 import {IPolicyPool} from '../interfaces/IPolicyPool.sol';
+import {IPolicyPoolComponent} from '../interfaces/IPolicyPoolComponent.sol';
 import {IRiskModule} from '../interfaces/IRiskModule.sol';
 import {Policy} from './Policy.sol';
 
@@ -14,7 +15,7 @@ import {Policy} from './Policy.sol';
  * @author Ensuro
  */
 
-abstract contract RiskModule is IRiskModule, AccessControl, Pausable {
+abstract contract RiskModule is IRiskModule, AccessControl, Pausable, IPolicyPoolComponent {
   using Policy for Policy.PolicyData;
   using WadRayMath for uint256;
 
@@ -85,6 +86,10 @@ abstract contract RiskModule is IRiskModule, AccessControl, Pausable {
     _sharedCoveragePercentage = sharedCoverageMinPercentage_;
     _sharedCoverageScr = 0;
     _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
+  }
+
+  function policyPool() public view override returns (IPolicyPool) {
+    return _policyPool;
   }
 
   function name() public view override returns (string memory) {

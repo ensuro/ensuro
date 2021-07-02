@@ -3,6 +3,12 @@ pragma solidity ^0.8.0;
 import {WadRayMath} from './WadRayMath.sol';
 import {IRiskModule} from '../interfaces/IRiskModule.sol';
 
+/**
+ * @title Policy library
+ * @dev Library for PolicyData struct. This struct represents an active policy, how the premium is
+ *      distributed, the probability of payout, duration and how the capital is locked.
+ * @author Ensuro
+ */
 library Policy {
   using WadRayMath for uint256;
 

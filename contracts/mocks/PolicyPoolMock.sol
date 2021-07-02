@@ -11,6 +11,8 @@ contract PolicyPoolMock is IPolicyPool {
   uint256 public policyCount;
   mapping (uint256 => Policy.PolicyData) public policies;
 
+  event NewPolicy(IRiskModule indexed riskModule, uint256 policyId);
+
   constructor(
     IERC20 currency_
   ) {
