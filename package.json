@@ -1,7 +1,7 @@
 {
-  "name": "ensuro-roulette",
-  "version": "1.0.0",
-  "description": "Roulette Risk Module for the Ensuro protocol",
+  "name": "ensuro",
+  "version": "0.1.0",
+  "description": "Ensuro - Decentralized underwriting protocol",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"

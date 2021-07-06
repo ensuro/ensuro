@@ -2,15 +2,9 @@ version: "3.4"
 
 services:
   devenv:
+    command: ["sh", "-c", "while [ 0 ]; do date; sleep 30 ; done"]
     build:
       context: .
       dockerfile: Dockerfile
     container_name: ensuro_devenv
     env_file: .env
-    expose:
-      - "8000"
-  ganache-cli:
-    container_name: ganache-cli
-    image: trufflesuite/ganache-cli
-    ports:
-      - 8545:8545
