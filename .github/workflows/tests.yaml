@@ -10,4 +10,4 @@ jobs:
       - name: checkout repo
         uses: actions/checkout@v2
       - run: docker build -t ensuro_devenv .
-      - run: docker run --rm ensuro_devenv brownie test -v
+      - run: docker run --rm ensuro_devenv npx hardhat compile && brownie test -v

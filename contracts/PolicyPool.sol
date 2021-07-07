@@ -55,7 +55,7 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
 
   event NewPolicy(IRiskModule indexed riskModule, uint256 policyId);
   event PolicyRebalanced(IRiskModule indexed riskModule, uint256 indexed policyId);
-  event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, bool customerWon);
+  event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, uint256 payout);
 
   event RiskModuleStatusChanged(IRiskModule indexed riskModule, DataTypes.RiskModuleStatus newStatus);
 
@@ -406,7 +406,7 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
 
     _storePurePremiumWon(purePremiumWon);
     // policy.rm.removePolicy...
-    emit PolicyResolved(policy.riskModule, policy.id, customerWon);
+    emit PolicyResolved(policy.riskModule, policy.id, payout);
     delete _policies[policy.id];
     delete _policiesFunds[policy.id];
   }
@@ -444,7 +444,7 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
   function getInvestable() external view returns (uint256) {
     uint256 borrowedFromEtk = 0;
     for (uint256 i = 0; i < _eTokens.length(); i++) {
-      (IEToken etk, DataTypes.ETokenStatus etkStatus) = _eTokens.at(i);
+      (IEToken etk, /* DataTypes.ETokenStatus etkStatus */) = _eTokens.at(i);
       // TODO: define if not active are investable or not
       borrowedFromEtk += etk.getPoolLoan();
     }

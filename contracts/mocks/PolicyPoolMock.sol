@@ -9,9 +9,10 @@ import {Policy} from '../Policy.sol';
 contract PolicyPoolMock is IPolicyPool {
   IERC20 _currency;
   uint256 public policyCount;
-  mapping (uint256 => Policy.PolicyData) public policies;
+  mapping (uint256 => Policy.PolicyData) internal policies;
 
   event NewPolicy(IRiskModule indexed riskModule, uint256 policyId);
+  event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, uint256 payout);
 
   constructor(
     IERC20 currency_
@@ -24,11 +25,11 @@ contract PolicyPoolMock is IPolicyPool {
     return _currency;
   }
 
-  function assetManager() external override view returns (address) {
+  function assetManager() external override pure returns (address) {
     return address(0);
   }
 
-  function newPolicy(Policy.PolicyData memory policy, address customer) external override returns (uint256) {
+  function newPolicy(Policy.PolicyData memory policy, address/* customer */) external override returns (uint256) {
     policyCount++;
     policies[policyCount] = policy;
     policies[policyCount].id = policyCount;
@@ -45,6 +46,7 @@ contract PolicyPoolMock is IPolicyPool {
     require(policy.id != 0, "Policy not found");
     require(msg.sender == address(policy.riskModule), "Only riskModule is authorized to resolve the policy");
     delete policies[policyId];
+    emit PolicyResolved(IRiskModule(msg.sender), policyId, payout);
   }
 
   function resolvePolicy(uint256 policyId, uint256 payout) external override {

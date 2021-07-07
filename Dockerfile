@@ -18,7 +18,7 @@ RUN curl -sL https://solc-bin.ethereum.org/linux-amd64/solc-linux-amd64-v0.8.6+c
 RUN python -c "import solcx; solcx.import_installed_solc()"
 RUN curl -sL https://deb.nodesource.com/setup_14.x | bash
 RUN apt-get install -y nodejs
-RUN npm install -g ganache-cli
+RUN npm install -g ganache-cli eth-scribble --unsafe-perm
 
 ENV SETUP_FILE "/usr/local/app/setup.yaml"
 

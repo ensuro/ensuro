@@ -34,7 +34,7 @@ library Policy {
   }
 
   function initialize(IRiskModule riskModule, uint256 premium, uint256 payout,
-                      uint256 lossProb, uint40 expiration) public returns (PolicyData memory) {
+                      uint256 lossProb, uint40 expiration) public view returns (PolicyData memory) {
     require(premium <= payout);
     PolicyData memory policy;
     policy.riskModule = riskModule;
@@ -61,12 +61,13 @@ library Policy {
     return policy;
   }
 
-  function rmScr(PolicyData storage policy) public returns (uint256) {
+  function rmScr(PolicyData storage policy) public view returns (uint256) {
     uint256 ens_premium = policy.premium.wadMul(policy.payout - policy.rmCoverage).wadDiv(policy.payout);
     return policy.rmCoverage - (policy.premium - ens_premium);
   }
 
-  function splitPayout(PolicyData storage policy, uint256 payout) public returns (uint256, uint256, uint256) {
+  function splitPayout(PolicyData storage policy, uint256 payout) public view
+        returns (uint256, uint256, uint256) {
     // returns (toBePaid_with_pool, premiumsWon, toReturnToRM)
     uint256 nonCapitalPremiums = policy.purePremium + policy.premiumForRm + policy.premiumForEnsuro;
     if (payout == policy.payout)
@@ -79,13 +80,13 @@ library Policy {
     return (payout - rmPayout, 0, rmScr(policy) - rmPayout);
   }
 
-  function interestRate(PolicyData storage policy) public returns (uint256) {
+  function interestRate(PolicyData storage policy) public view returns (uint256) {
     return policy.premiumForLps.wadMul(SECONDS_IN_YEAR).wadDiv(
       (policy.expiration - policy.start) * policy.scr
     ).wadToRay();
   }
 
-  function accruedInterest(PolicyData storage policy) public returns (uint256) {
+  function accruedInterest(PolicyData storage policy) public view returns (uint256) {
     uint256 secs = block.timestamp - policy.start;
     return policy.scr.wadToRay().rayMul(
       secs * interestRate(policy)
