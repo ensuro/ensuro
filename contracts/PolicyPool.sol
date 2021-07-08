@@ -17,8 +17,8 @@ import {WadRayMath} from './WadRayMath.sol';
 import {Math} from '@openzeppelin/contracts/utils/math/Math.sol';
 import {DataTypes} from './DataTypes.sol';
 
-/// #invariant {:msg "Borrow up to activePurePremiums"} _borrowedActivePP <= _activePurePremiums;
-/// #invariant {:msg "Can't borrow if not exhausted before won"} (_borrowedActivePP > 0) ==> _wonPurePremiums == 0;
+// #invariant_disabled {:msg "Borrow up to activePurePremiums"} _borrowedActivePP <= _activePurePremiums;
+// #invariant_disabled {:msg "Can't borrow if not exhausted before won"} (_borrowedActivePP > 0) ==> _wonPurePremiums == 0;
 contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessControl {
   using EnumerableSet for EnumerableSet.AddressSet;
   using WadRayMath for uint256;
@@ -34,7 +34,7 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
 
   uint256 public constant MAX_ETOKENS = 10;
 
-  /// #if_updated {:msg "Only set on creation"} msg.sig == bytes4(0);
+  // #if_updated_disabled {:msg "Only set on creation"} msg.sig == bytes4(0);
   IERC20 internal _currency;
 
   DataTypes.RiskModuleStatusMap internal _riskModules;
@@ -42,7 +42,7 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
 
   mapping (uint256 => Policy.PolicyData) internal _policies;
   mapping (uint256 => DataTypes.ETokenToWadMap) internal _policiesFunds;
-  /// #if_updated {:msg "Id that only goes up by one"} _policyCount == old(_policyCount + 1);
+  // #if_updated_disabled {:msg "Id that only goes up by one"} _policyCount == old(_policyCount + 1);
   uint256 internal _policyCount;   // Growing id for policies
 
   uint256 internal _activePremiums;    // sum of premiums of active policies - In Wad
@@ -150,7 +150,7 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
     emit RiskModuleStatusChanged(riskModule, DataTypes.RiskModuleStatus.active);
   }
 
-  /// #if_success _riskModules[riskModule] == DataTypes.RiskModuleStatus.inactive;
+  // #if_succeeds_disabled _riskModules.get(riskModule) == DataTypes.RiskModuleStatus.inactive;
   function removeRiskModule(IRiskModule riskModule) external onlyRole(ENSURO_DAO_ROLE) {
     require(_riskModules.contains(riskModule), "Risk Module not found");
     require(riskModule.totalScr() == 0, "Can't remove a module with active policies");
@@ -158,7 +158,7 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
     emit RiskModuleStatusChanged(riskModule, DataTypes.RiskModuleStatus.inactive);
   }
 
-  /// #if_success _riskModules[riskModule] == newStatus;
+  // #if_succeeds_disabled _riskModules.get(riskModule) == newStatus;
   function changeRiskModuleStatus(IRiskModule riskModule, DataTypes.RiskModuleStatus newStatus)
         external onlyRole(ENSURO_DAO_ROLE) {
     require(_riskModules.contains(riskModule), "Risk Module not found");
@@ -166,7 +166,7 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
     emit RiskModuleStatusChanged(riskModule, newStatus);
   }
 
-  /// #if_success {:msg "eToken added as active"} _eTokens[eToken] == DataTypes.ETokenStatus.active;
+  // #if_succeeds_disabled {:msg "eToken added as active"} _eTokens.get(eToken) == DataTypes.ETokenStatus.active;
   function addEToken(IEToken eToken) external onlyRole(ENSURO_DAO_ROLE) {
     require(_eTokens.length() < MAX_ETOKENS, "Maximum number of ETokens reached");
     require(!_eTokens.contains(eToken), "eToken already in the pool");
@@ -189,9 +189,9 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
     return _assetManager;
   }
 
-  /// #if_success
+  /// #if_succeeds
   ///    {:msg "must take balance from sender"}
-  ///    _currency.balanceOf(_msgSender()) == old(_currency.balanceOf(_msgSender()) + amount)
+  ///    _currency.balanceOf(_msgSender()) == old(_currency.balanceOf(_msgSender()) - amount);
   function deposit(IEToken eToken, uint256 amount) external {
     (bool found, DataTypes.ETokenStatus etkStatus) = _eTokens.tryGet(eToken);
     require(found && etkStatus == DataTypes.ETokenStatus.active, "eToken is not active");

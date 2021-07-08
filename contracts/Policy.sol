@@ -33,8 +33,14 @@ library Policy {
     uint40 expiration;
   }
 
+  /// #if_succeeds {:msg "premium preserved"} premium == (newPolicy.premium);
+  /// #if_succeeds
+  ///    {:msg "premium distributed"}
+  ///    premium == (newPolicy.purePremium + newPolicy.premiumForLps +
+  ///                newPolicy.premiumForRm + newPolicy.premiumForEnsuro);
   function initialize(IRiskModule riskModule, uint256 premium, uint256 payout,
-                      uint256 lossProb, uint40 expiration) public view returns (PolicyData memory) {
+                      uint256 lossProb, uint40 expiration) public view
+                      returns (PolicyData memory newPolicy) {
     require(premium <= payout);
     PolicyData memory policy;
     policy.riskModule = riskModule;
