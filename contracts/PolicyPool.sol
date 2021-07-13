@@ -2,20 +2,20 @@
 pragma solidity ^0.8.0;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from '@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol';
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {ERC721Enumerable} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import {Pausable} from "@openzeppelin/contracts/security/Pausable.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import {IPolicyPool} from '../interfaces/IPolicyPool.sol';
-import {IRiskModule} from '../interfaces/IRiskModule.sol';
-import {IPolicyPoolComponent} from '../interfaces/IPolicyPoolComponent.sol';
-import {IEToken} from '../interfaces/IEToken.sol';
-import {Policy} from './Policy.sol';
-import {WadRayMath} from './WadRayMath.sol';
-import {Math} from '@openzeppelin/contracts/utils/math/Math.sol';
-import {DataTypes} from './DataTypes.sol';
+import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
+import {IRiskModule} from "../interfaces/IRiskModule.sol";
+import {IPolicyPoolComponent} from "../interfaces/IPolicyPoolComponent.sol";
+import {IEToken} from "../interfaces/IEToken.sol";
+import {Policy} from "./Policy.sol";
+import {WadRayMath} from "./WadRayMath.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {DataTypes} from "./DataTypes.sol";
 
 // #invariant_disabled {:msg "Borrow up to activePurePremiums"} _borrowedActivePP <= _activePurePremiums;
 // #invariant_disabled {:msg "Can't borrow if not exhausted before won"} (_borrowedActivePP > 0) ==> _wonPurePremiums == 0;

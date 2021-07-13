@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import {WadRayMath} from './WadRayMath.sol';
+import {WadRayMath} from "./WadRayMath.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {Pausable} from "@openzeppelin/contracts/security/Pausable.sol";
-import {IPolicyPool} from '../interfaces/IPolicyPool.sol';
-import {IPolicyPoolComponent} from '../interfaces/IPolicyPoolComponent.sol';
-import {IRiskModule} from '../interfaces/IRiskModule.sol';
-import {Policy} from './Policy.sol';
+import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
+import {IPolicyPoolComponent} from "../interfaces/IPolicyPoolComponent.sol";
+import {IRiskModule} from "../interfaces/IRiskModule.sol";
+import {Policy} from "./Policy.sol";
 
 /**
  * @title Ensuro Risk Module base contract

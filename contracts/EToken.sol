@@ -4,11 +4,11 @@ pragma solidity ^0.8.0;
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {Pausable} from "@openzeppelin/contracts/security/Pausable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from '@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol';
-import {IPolicyPool} from '../interfaces/IPolicyPool.sol';
-import {IPolicyPoolComponent} from '../interfaces/IPolicyPoolComponent.sol';
-import {IEToken} from '../interfaces/IEToken.sol';
-import {WadRayMath} from './WadRayMath.sol';
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
+import {IPolicyPoolComponent} from "../interfaces/IPolicyPoolComponent.sol";
+import {IEToken} from "../interfaces/IEToken.sol";
+import {WadRayMath} from "./WadRayMath.sol";
 
 /**
  * @title Ensuro ERC20 EToken

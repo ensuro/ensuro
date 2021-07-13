@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 import {IPolicyPool} from "../../interfaces/IPolicyPool.sol";
 import {IRiskModule} from "../../interfaces/IRiskModule.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {Policy} from '../Policy.sol';
+import {Policy} from "../Policy.sol";
 
 contract PolicyPoolMock is IPolicyPool {
   IERC20 _currency;
