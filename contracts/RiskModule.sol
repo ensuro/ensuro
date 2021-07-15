@@ -28,24 +28,25 @@ abstract contract RiskModule is IRiskModule, AccessControl, Pausable, IPolicyPoo
 
   string private _name;
   IPolicyPool internal _policyPool;
-  uint256 internal _scrPercentage;   // in ray - Solvency Capital Requirement percentage, to calculate
-                                     // capital requirement as % of (payout - premium)
-  uint256 internal _moc;             // in ray - Margin Of Conservativism - factor that multiplies lossProb
-                                     // to calculate purePremium
-  uint256 internal _premiumShare;    // in ray - % of premium that will go for the risk module provider
-  uint256 internal _ensuroShare;     // in ray - % of premium that will go for Ensuro treasury
+  uint256 internal _scrPercentage; // in ray - Solvency Capital Requirement percentage, to calculate
+  // capital requirement as % of (payout - premium)
+  uint256 internal _moc; // in ray - Margin Of Conservativism - factor that multiplies lossProb
+  // to calculate purePremium
+  uint256 internal _premiumShare; // in ray - % of premium that will go for the risk module provider
+  uint256 internal _ensuroShare; // in ray - % of premium that will go for Ensuro treasury
   uint256 internal _maxScrPerPolicy; // in wad - Max SCR per policy
-  uint256 internal _scrLimit;        // in wad - Max SCR to be allocated to this module
-  uint256 internal _totalScr;        // in wad - Current SCR allocated to this module
+  uint256 internal _scrLimit; // in wad - Max SCR to be allocated to this module
+  uint256 internal _totalScr; // in wad - Current SCR allocated to this module
 
-  address internal _wallet;          // Address of the RiskModule provider
+  address internal _wallet; // Address of the RiskModule provider
   uint256 internal _sharedCoverageMinPercentage;
-                                     // in ray - minimal % of SCR that must be covered by the RM
+  // in ray - minimal % of SCR that must be covered by the RM
   uint256 internal _sharedCoveragePercentage;
-                                     // in ray - current % of SCR that will be covered by the RM.
-                                     // Always >= _sharedCoverageMinPercentage
+  // in ray - current % of SCR that will be covered by the RM.
+  // Always >= _sharedCoverageMinPercentage
   uint256 internal _sharedCoverageScr;
-                                     // in wad - Current SCR covered by the Risk Module
+
+  // in wad - Current SCR covered by the Risk Module
 
   /**
    * @dev Initializes the RiskModule
@@ -93,51 +94,51 @@ abstract contract RiskModule is IRiskModule, AccessControl, Pausable, IPolicyPoo
   }
 
   function name() public view override returns (string memory) {
-      return _name;
+    return _name;
   }
 
   function scrPercentage() public view override returns (uint256) {
-      return _scrPercentage;
+    return _scrPercentage;
   }
 
   function moc() public view override returns (uint256) {
-      return _moc;
+    return _moc;
   }
 
   function premiumShare() public view override returns (uint256) {
-      return _premiumShare;
+    return _premiumShare;
   }
 
   function ensuroShare() public view override returns (uint256) {
-      return _ensuroShare;
+    return _ensuroShare;
   }
 
   function maxScrPerPolicy() public view override returns (uint256) {
-      return _maxScrPerPolicy;
+    return _maxScrPerPolicy;
   }
 
   function scrLimit() public view override returns (uint256) {
-      return _scrLimit;
+    return _scrLimit;
   }
 
   function totalScr() public view override returns (uint256) {
-      return _totalScr;
+    return _totalScr;
   }
 
   function sharedCoverageMinPercentage() public view override returns (uint256) {
-      return _sharedCoverageMinPercentage;
+    return _sharedCoverageMinPercentage;
   }
 
   function sharedCoveragePercentage() public view override returns (uint256) {
-      return _sharedCoveragePercentage;
+    return _sharedCoveragePercentage;
   }
 
   function sharedCoverageScr() public view override returns (uint256) {
-      return _sharedCoverageScr;
+    return _sharedCoverageScr;
   }
 
   function wallet() public view override returns (address) {
-      return _wallet;
+    return _wallet;
   }
 
   function setScrPercentage(uint256 newScrPercentage) external onlyRole(ENSURO_DAO_ROLE) {
@@ -174,13 +175,15 @@ abstract contract RiskModule is IRiskModule, AccessControl, Pausable, IPolicyPoo
   function setSharedCoverageMinPercentage(uint256 newSCMP) external onlyRole(ENSURO_DAO_ROLE) {
     // TODO emit Event?
     _sharedCoverageMinPercentage = newSCMP;
-    if (newSCMP < _sharedCoveragePercentage)
-      _sharedCoveragePercentage = newSCMP;
+    if (newSCMP < _sharedCoveragePercentage) _sharedCoveragePercentage = newSCMP;
   }
 
   function setSharedCoveragePercentage(uint256 newSCP) external onlyRole(RM_PROVIDER_ROLE) {
     // TODO emit Event?
-    require(newSCP >= _sharedCoverageMinPercentage, "Can't set shared coverage perc. less than minimum");
+    require(
+      newSCP >= _sharedCoverageMinPercentage,
+      "Can't set shared coverage perc. less than minimum"
+    );
     _sharedCoveragePercentage = newSCP;
   }
 
@@ -190,14 +193,27 @@ abstract contract RiskModule is IRiskModule, AccessControl, Pausable, IPolicyPoo
     _wallet = wallet_;
   }
 
-  function _newPolicy(uint256 payout, uint256 premium, uint256 lossProb,
-                      uint40 expiration, address customer) whenNotPaused internal returns (uint256) {
+  function _newPolicy(
+    uint256 payout,
+    uint256 premium,
+    uint256 lossProb,
+    uint40 expiration,
+    address customer
+  ) internal whenNotPaused returns (uint256) {
     require(premium < payout, "Premium must be less than payout");
     require(expiration > uint40(block.timestamp), "Expiration must be in the future");
     require(customer != address(0), "Customer can't be zero address");
-    require(_policyPool.currency().allowance(customer, address(_policyPool)) >= premium,
-            "You must allow ENSURO to transfer the premium");
-    Policy.PolicyData memory policy = Policy.initialize(this, premium, payout, lossProb, expiration);
+    require(
+      _policyPool.currency().allowance(customer, address(_policyPool)) >= premium,
+      "You must allow ENSURO to transfer the premium"
+    );
+    Policy.PolicyData memory policy = Policy.initialize(
+      this,
+      premium,
+      payout,
+      lossProb,
+      expiration
+    );
     require(policy.scr <= _maxScrPerPolicy, "RiskModule: SCR is more than maximum per policy");
     _totalScr += policy.scr;
     require(_totalScr <= _scrLimit, "RiskModule: SCR limit exceeded");

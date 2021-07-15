@@ -11,14 +11,13 @@ contract TestNFT is ERC721 {
     _owner = msg.sender;
   }
 
-  function mint(address recipient, uint tokenId) public {
+  function mint(address recipient, uint256 tokenId) public {
     // require(msg.sender == _owner, "Only owner can mint");
     return _mint(recipient, tokenId);
   }
 
-  function burn(uint tokenId) public {
+  function burn(uint256 tokenId) public {
     require(ERC721.ownerOf(tokenId) == msg.sender, "ERC721: burn of token that is not own");
     return _burn(tokenId);
   }
-
 }

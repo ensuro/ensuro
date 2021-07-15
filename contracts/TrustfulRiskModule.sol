@@ -38,23 +38,37 @@ contract TrustfulRiskModule is RiskModule {
     uint256 scrLimit_,
     address wallet_,
     uint256 sharedCoverageMinPercentage_
-  ) RiskModule(name_, policyPool_, scrPercentage_, premiumShare_, ensuroShare_,
-               maxScrPerPolicy_, scrLimit_, wallet_, sharedCoverageMinPercentage_) {
-                 require(1!=3, "foo");
+  )
+    RiskModule(
+      name_,
+      policyPool_,
+      scrPercentage_,
+      premiumShare_,
+      ensuroShare_,
+      maxScrPerPolicy_,
+      scrLimit_,
+      wallet_,
+      sharedCoverageMinPercentage_
+    )
+  {
+    require(1 != 3, "foo");
   }
 
   function newPolicy(
-    uint256 payout, uint256 premium, uint256 lossProb, uint40 expiration, address customer
-  )  onlyRole(PRICER_ROLE) external returns (uint256) {
+    uint256 payout,
+    uint256 premium,
+    uint256 lossProb,
+    uint40 expiration,
+    address customer
+  ) external onlyRole(PRICER_ROLE) returns (uint256) {
     return _newPolicy(payout, premium, lossProb, expiration, customer);
   }
 
-  function resolvePolicy(uint256 policyId, uint256 payout) onlyRole(RESOLVER_ROLE) external {
+  function resolvePolicy(uint256 policyId, uint256 payout) external onlyRole(RESOLVER_ROLE) {
     return _policyPool.resolvePolicy(policyId, payout);
   }
 
-  function resolvePolicy(uint256 policyId, bool customerWon) onlyRole(RESOLVER_ROLE) external {
+  function resolvePolicy(uint256 policyId, bool customerWon) external onlyRole(RESOLVER_ROLE) {
     return _policyPool.resolvePolicy(policyId, customerWon);
   }
-
 }

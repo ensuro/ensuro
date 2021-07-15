@@ -7,29 +7,30 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Policy} from "../Policy.sol";
 
 contract PolicyPoolMock is IPolicyPool {
-  IERC20 _currency;
+  IERC20 internal _currency;
   uint256 public policyCount;
-  mapping (uint256 => Policy.PolicyData) internal policies;
+  mapping(uint256 => Policy.PolicyData) internal policies;
 
   event NewPolicy(IRiskModule indexed riskModule, uint256 policyId);
   event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, uint256 payout);
 
-  constructor(
-    IERC20 currency_
-  ) {
+  constructor(IERC20 currency_) {
     _currency = currency_;
     policyCount = 0;
   }
 
-  function currency() external override view returns (IERC20) {
+  function currency() external view override returns (IERC20) {
     return _currency;
   }
 
-  function assetManager() external override pure returns (address) {
+  function assetManager() external pure override returns (address) {
     return address(0);
   }
 
-  function newPolicy(Policy.PolicyData memory policy, address/* customer */) external override returns (uint256) {
+  function newPolicy(
+    Policy.PolicyData memory policy,
+    address /* customer */
+  ) external override returns (uint256) {
     policyCount++;
     policies[policyCount] = policy;
     policies[policyCount].id = policyCount;
@@ -37,14 +38,17 @@ contract PolicyPoolMock is IPolicyPool {
     return policyCount;
   }
 
-  function getPolicy(uint256 policyId) external override view returns (Policy.PolicyData memory) {
+  function getPolicy(uint256 policyId) external view override returns (Policy.PolicyData memory) {
     return policies[policyId];
   }
 
   function _resolvePolicy(uint256 policyId, uint256 payout) internal {
     Policy.PolicyData storage policy = policies[policyId];
     require(policy.id != 0, "Policy not found");
-    require(msg.sender == address(policy.riskModule), "Only riskModule is authorized to resolve the policy");
+    require(
+      msg.sender == address(policy.riskModule),
+      "Only riskModule is authorized to resolve the policy"
+    );
     delete policies[policyId];
     emit PolicyResolved(IRiskModule(msg.sender), policyId, payout);
   }

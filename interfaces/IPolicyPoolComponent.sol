@@ -9,6 +9,5 @@ import {IPolicyPool} from "./IPolicyPool.sol";
  * @author Ensuro
  */
 interface IPolicyPoolComponent {
-
   function policyPool() external view returns (IPolicyPool);
 }

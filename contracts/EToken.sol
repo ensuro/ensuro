@@ -26,8 +26,8 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken, IPolicyPoolComponen
   uint256 internal constant SECONDS_PER_YEAR = 365 days;
 
   // Attributes taken from ERC20
-  mapping (address => uint256) private _balances;
-  mapping (address => mapping (address => uint256)) private _allowances;
+  mapping(address => uint256) private _balances;
+  mapping(address => mapping(address => uint256)) private _allowances;
   uint256 private _totalSupply;
 
   string private _name;
@@ -36,18 +36,18 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken, IPolicyPoolComponen
   IPolicyPool internal _policyPool;
 
   uint40 internal _expirationPeriod;
-  uint256 internal _scaleFactor;  // in Ray
+  uint256 internal _scaleFactor; // in Ray
   uint40 internal _lastScaleUpdate;
 
-  uint256 internal _scr;  // in Wad
-  uint256 internal _scrInterestRate;  // in Ray
-  uint256 internal _tokenInterestRate;  // in Ray
-  uint256 internal _liquidityRequirement;  // in Ray - Liquidity requirement to lock more than SCR
-  uint256 internal _maxUtilizationRate;  // in Ray - Maximum SCR/totalSupply rate for backup up new policies
+  uint256 internal _scr; // in Wad
+  uint256 internal _scrInterestRate; // in Ray
+  uint256 internal _tokenInterestRate; // in Ray
+  uint256 internal _liquidityRequirement; // in Ray - Liquidity requirement to lock more than SCR
+  uint256 internal _maxUtilizationRate; // in Ray - Maximum SCR/totalSupply rate for backup up new policies
 
-  uint256 internal _poolLoan;  // in Wad
-  uint256 internal _poolLoanInterestRate;  // in Ray
-  uint256 internal _poolLoanScale;  // in Ray
+  uint256 internal _poolLoan; // in Wad
+  uint256 internal _poolLoanInterestRate; // in Ray
+  uint256 internal _poolLoanScale; // in Ray
   uint40 internal _poolLoanLastUpdate;
 
   modifier onlyPolicyPool {
@@ -56,7 +56,10 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken, IPolicyPoolComponen
   }
 
   modifier onlyAssetManager {
-    require(_msgSender() == _policyPool.assetManager(), "The caller must be the PolicyPool's AssetManager");
+    require(
+      _msgSender() == _policyPool.assetManager(),
+      "The caller must be the PolicyPool's AssetManager"
+    );
     _;
   }
 
@@ -98,13 +101,13 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken, IPolicyPoolComponen
     _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
   }
 
-  /*** BEGIN ERC20 methods - mainly copied from OpenZeppelin but changes in events and scaled_amount */
+  /*** BEGIN ERC20 methods - mainly copied from OpenZeppelin but changes in events and scaledAmount */
 
   /**
    * @dev Returns the name of the token.
    */
   function name() public view virtual returns (string memory) {
-      return _name;
+    return _name;
   }
 
   /**
@@ -112,7 +115,7 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken, IPolicyPoolComponen
    * name.
    */
   function symbol() public view virtual returns (string memory) {
-      return _symbol;
+    return _symbol;
   }
 
   /**
@@ -129,7 +132,7 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken, IPolicyPoolComponen
    * {IERC20-balanceOf} and {IERC20-transfer}.
    */
   function decimals() public view virtual returns (uint8) {
-      return 18;
+    return 18;
   }
 
   /**
@@ -167,17 +170,14 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken, IPolicyPoolComponen
     return _totalSupply.wadToRay().rayMul(_calculateCurrentScale()).rayToWad();
   }
 
-
   /**
    * @dev See {IERC20-balanceOf}.
    */
   function balanceOf(address account) public view virtual override returns (uint256) {
-    uint256 principal_balance = _balances[account];
-    if (principal_balance == 0)
-      return 0;
-    return principal_balance.wadToRay().rayMul(_calculateCurrentScale()).rayToWad();
+    uint256 principalBalance = _balances[account];
+    if (principalBalance == 0) return 0;
+    return principalBalance.wadToRay().rayMul(_calculateCurrentScale()).rayToWad();
   }
-
 
   /**
    * @dev See {IERC20-transfer}.
@@ -195,7 +195,13 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken, IPolicyPoolComponen
   /**
    * @dev See {IERC20-allowance}.
    */
-  function allowance(address owner, address spender) public view virtual override returns (uint256) {
+  function allowance(address owner, address spender)
+    public
+    view
+    virtual
+    override
+    returns (uint256)
+  {
     return _allowances[owner][spender];
   }
 
@@ -224,7 +230,11 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken, IPolicyPoolComponen
    * - the caller must have allowance for ``sender``'s tokens of at least
    * `amount`.
    */
-  function transferFrom(address sender, address recipient, uint256 amount) public virtual override returns (bool) {
+  function transferFrom(
+    address sender,
+    address recipient,
+    uint256 amount
+  ) public virtual override returns (bool) {
     _transfer(sender, recipient, amount);
 
     uint256 currentAllowance = _allowances[sender][_msgSender()];
@@ -265,7 +275,11 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken, IPolicyPoolComponen
    * - `spender` must have allowance for the caller of at least
    * `subtractedValue`.
    */
-  function decreaseAllowance(address spender, uint256 subtractedValue) public virtual returns (bool) {
+  function decreaseAllowance(address spender, uint256 subtractedValue)
+    public
+    virtual
+    returns (bool)
+  {
     uint256 currentAllowance = _allowances[_msgSender()][spender];
     require(currentAllowance >= subtractedValue, "EToken: decreased allowance below zero");
     _approve(_msgSender(), spender, currentAllowance - subtractedValue);
@@ -273,7 +287,7 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken, IPolicyPoolComponen
     return true;
   }
 
-  function _scale_amount(uint256 amount) internal view returns (uint256) {
+  function _scaleAmount(uint256 amount) internal view returns (uint256) {
     return amount.wadToRay().rayDiv(_calculateCurrentScale()).rayToWad();
   }
 
@@ -291,17 +305,21 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken, IPolicyPoolComponen
    * - `recipient` cannot be the zero address.
    * - `sender` must have a balance of at least `amount`.
    */
-  function _transfer(address sender, address recipient, uint256 amount) internal virtual {
+  function _transfer(
+    address sender,
+    address recipient,
+    uint256 amount
+  ) internal virtual {
     require(sender != address(0), "EToken: transfer from the zero address");
     require(recipient != address(0), "EToken: transfer to the zero address");
 
     _beforeTokenTransfer(sender, recipient, amount);
-    uint256 scaled_amount = _scale_amount(amount);
+    uint256 scaledAmount = _scaleAmount(amount);
 
     uint256 senderBalance = _balances[sender];
-    require(senderBalance >= scaled_amount, "EToken: transfer amount exceeds balance");
-    _balances[sender] = senderBalance - scaled_amount;
-    _balances[recipient] += scaled_amount;
+    require(senderBalance >= scaledAmount, "EToken: transfer amount exceeds balance");
+    _balances[sender] = senderBalance - scaledAmount;
+    _balances[recipient] += scaledAmount;
 
     emit Transfer(sender, recipient, amount);
   }
@@ -319,10 +337,10 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken, IPolicyPoolComponen
     require(account != address(0), "EToken: mint to the zero address");
 
     _beforeTokenTransfer(address(0), account, amount);
-    uint256 scaled_amount = _scale_amount(amount);
+    uint256 scaledAmount = _scaleAmount(amount);
 
-    _totalSupply += scaled_amount;
-    _balances[account] += scaled_amount;
+    _totalSupply += scaledAmount;
+    _balances[account] += scaledAmount;
     emit Transfer(address(0), account, amount);
   }
 
@@ -341,11 +359,11 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken, IPolicyPoolComponen
     require(account != address(0), "EToken: burn from the zero address");
     _beforeTokenTransfer(account, address(0), amount);
 
-    uint256 scaled_amount = _scale_amount(amount);
+    uint256 scaledAmount = _scaleAmount(amount);
     uint256 accountBalance = _balances[account];
-    require(accountBalance >= scaled_amount, "EToken: burn amount exceeds balance");
-    _balances[account] = accountBalance - scaled_amount;
-    _totalSupply -= scaled_amount;
+    require(accountBalance >= scaledAmount, "EToken: burn amount exceeds balance");
+    _balances[account] = accountBalance - scaledAmount;
+    _totalSupply -= scaledAmount;
 
     emit Transfer(account, address(0), amount);
   }
@@ -363,7 +381,11 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken, IPolicyPoolComponen
    * - `owner` cannot be the zero address.
    * - `spender` cannot be the zero address.
    */
-  function _approve(address owner, address spender, uint256 amount) internal virtual {
+  function _approve(
+    address owner,
+    address spender,
+    uint256 amount
+  ) internal virtual {
     require(owner != address(0), "EToken: approve from the zero address");
     require(spender != address(0), "EToken: approve to the zero address");
 
@@ -385,33 +407,33 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken, IPolicyPoolComponen
    *
    * To learn more about hooks, head to xref:ROOT:extending-contracts.adoc#using-hooks[Using Hooks].
    */
-  function _beforeTokenTransfer(address from, address to, uint256 amount) internal virtual { }
+  function _beforeTokenTransfer(
+    address from,
+    address to,
+    uint256 amount
+  ) internal virtual {} // solhint-disable-line no-empty-blocks
 
-  /*** END ERC20 methods - mainly copied from OpenZeppelin but changes in events and scaled_amount */
-
+  /*** END ERC20 methods - mainly copied from OpenZeppelin but changes in events and scaledAmount */
 
   function _updateCurrentScale() internal {
-    if (uint40(block.timestamp) == _lastScaleUpdate)
-      return;
+    if (uint40(block.timestamp) == _lastScaleUpdate) return;
     _scaleFactor = _calculateCurrentScale();
     _lastScaleUpdate = uint40(block.timestamp);
   }
 
   function _updateTokenInterestRate() internal {
     uint256 totalSupply_ = this.totalSupply().wadToRay();
-    if (totalSupply_ == 0)
-      _tokenInterestRate = 0;
-    else
-      _tokenInterestRate = _scrInterestRate.rayMul(_scr.wadToRay()).rayDiv(totalSupply_);
+    if (totalSupply_ == 0) _tokenInterestRate = 0;
+    else _tokenInterestRate = _scrInterestRate.rayMul(_scr.wadToRay()).rayDiv(totalSupply_);
   }
 
   function _calculateCurrentScale() internal view returns (uint256) {
-    if (uint40(block.timestamp) <= _lastScaleUpdate)
-      return _scaleFactor;
+    if (uint40(block.timestamp) <= _lastScaleUpdate) return _scaleFactor;
     uint256 timeDifference = block.timestamp - _lastScaleUpdate;
-    return _scaleFactor.rayMul((
-      _tokenInterestRate * timeDifference / SECONDS_PER_YEAR
-    ) + WadRayMath.ray());
+    return
+      _scaleFactor.rayMul(
+        ((_tokenInterestRate * timeDifference) / SECONDS_PER_YEAR) + WadRayMath.ray()
+      );
   }
 
   function policyPool() public view override returns (IPolicyPool) {
@@ -419,26 +441,20 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken, IPolicyPoolComponen
   }
 
   function getCurrentScale(bool updated) public view returns (uint256) {
-    if (updated)
-      return _calculateCurrentScale();
-    else
-      return _scaleFactor;
+    if (updated) return _calculateCurrentScale();
+    else return _scaleFactor;
   }
 
   function ocean() public view virtual override returns (uint256) {
     uint256 totalSupply_ = this.totalSupply();
-    if (totalSupply_ > _scr)
-      return totalSupply_ - _scr;
-    else
-      return 0;
+    if (totalSupply_ > _scr) return totalSupply_ - _scr;
+    else return 0;
   }
 
   function oceanForNewScr() public view virtual override returns (uint256) {
     uint256 totalSupply_ = this.totalSupply();
-    if (totalSupply_ > _scr)
-      return (totalSupply_ - _scr).wadMul(_maxUtilizationRate.rayToWad());
-    else
-      return 0;
+    if (totalSupply_ > _scr) return (totalSupply_ - _scr).wadMul(_maxUtilizationRate.rayToWad());
+    else return 0;
   }
 
   function scr() public view virtual override returns (uint256) {
@@ -461,58 +477,67 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken, IPolicyPoolComponen
     return _maxUtilizationRate;
   }
 
-  function lockScr(uint256 policy_interest_rate, uint256 scr_amount) onlyPolicyPool external override {
-    require(scr_amount <= this.ocean(), "Not enought OCEAN to cover the SCR");
+  function lockScr(uint256 policyInterestRate, uint256 scrAmount) external override onlyPolicyPool {
+    require(scrAmount <= this.ocean(), "Not enought OCEAN to cover the SCR");
     _updateCurrentScale();
     if (_scr == 0) {
-      _scr = scr_amount;
-      _scrInterestRate = policy_interest_rate;
+      _scr = scrAmount;
+      _scrInterestRate = policyInterestRate;
     } else {
-      uint256 orig_scr = _scr.wadToRay();
-      _scr += scr_amount;
-      _scrInterestRate = (
-        _scrInterestRate.rayMul(orig_scr) + policy_interest_rate.rayMul(scr_amount.wadToRay())
-      ).rayDiv(_scr.wadToRay());
+      uint256 origScr = _scr.wadToRay();
+      _scr += scrAmount;
+      _scrInterestRate = (_scrInterestRate.rayMul(origScr) +
+        policyInterestRate.rayMul(scrAmount.wadToRay()))
+      .rayDiv(_scr.wadToRay());
     }
-    emit SCRLocked(policy_interest_rate, scr_amount);
+    emit SCRLocked(policyInterestRate, scrAmount);
     _updateTokenInterestRate();
   }
 
-  function unlockScr(uint256 policy_interest_rate, uint256 scr_amount) onlyPolicyPool external override {
-    require(scr_amount <= _scr);  // Can be removed? Will fail later anyway
+  function unlockScr(uint256 policyInterestRate, uint256 scrAmount)
+    external
+    override
+    onlyPolicyPool
+  {
+    require(scrAmount <= _scr, "Current SCR less than the amount you want to unlock");
     _updateCurrentScale();
 
-    if (_scr == scr_amount) {
+    if (_scr == scrAmount) {
       _scr = 0;
       _scrInterestRate = 0;
     } else {
-      uint256 orig_scr = _scr.wadToRay();
-      _scr -= scr_amount;
-      _scrInterestRate = (
-        _scrInterestRate.rayMul(orig_scr) - policy_interest_rate.rayMul(scr_amount.wadToRay())
-      ).rayDiv(_scr.wadToRay());
+      uint256 origScr = _scr.wadToRay();
+      _scr -= scrAmount;
+      _scrInterestRate = (_scrInterestRate.rayMul(origScr) -
+        policyInterestRate.rayMul(scrAmount.wadToRay()))
+      .rayDiv(_scr.wadToRay());
     }
-    emit SCRUnlocked(policy_interest_rate, scr_amount);
+    emit SCRUnlocked(policyInterestRate, scrAmount);
     _updateTokenInterestRate();
   }
 
   function _discreteChange(uint256 amount, bool positive) internal {
-    uint256 new_total_supply = positive ? (totalSupply() + amount) : (totalSupply() - amount);
-    _scaleFactor = new_total_supply.wadToRay().rayDiv(_totalSupply.wadToRay());
+    uint256 newTotalSupply = positive ? (totalSupply() + amount) : (totalSupply() - amount);
+    _scaleFactor = newTotalSupply.wadToRay().rayDiv(_totalSupply.wadToRay());
     _updateTokenInterestRate();
   }
 
-  function discreteEarning(uint256 amount, bool positive) onlyPolicyPool external override {
+  function discreteEarning(uint256 amount, bool positive) external override onlyPolicyPool {
     _updateCurrentScale();
     _discreteChange(amount, positive);
   }
 
-  function assetEarnings(uint256 amount, bool positive) onlyAssetManager external override {
+  function assetEarnings(uint256 amount, bool positive) external override onlyAssetManager {
     _updateCurrentScale();
     _discreteChange(amount, positive);
   }
 
-  function deposit(address provider, uint256 amount) onlyPolicyPool external override returns (uint256) {
+  function deposit(address provider, uint256 amount)
+    external
+    override
+    onlyPolicyPool
+    returns (uint256)
+  {
     _updateCurrentScale();
     _mint(provider, amount);
     _updateTokenInterestRate();
@@ -520,48 +545,47 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken, IPolicyPoolComponen
   }
 
   function totalWithdrawable() public view virtual override returns (uint256) {
-      uint256 locked = _scr.wadToRay().rayMul(
-        WadRayMath.ray() + _scrInterestRate
-      ).rayMul(_liquidityRequirement).rayToWad();
-      uint256 totalSupply_ = totalSupply();
-      if (totalSupply_ >= locked)
-        return totalSupply_ - locked;
-      else
-        return 0;
+    uint256 locked = _scr
+    .wadToRay()
+    .rayMul(WadRayMath.ray() + _scrInterestRate)
+    .rayMul(_liquidityRequirement)
+    .rayToWad();
+    uint256 totalSupply_ = totalSupply();
+    if (totalSupply_ >= locked) return totalSupply_ - locked;
+    else return 0;
   }
 
   function withdraw(address provider, uint256 amount)
-          onlyPolicyPool whenNotPaused external override returns (uint256) {
+    external
+    override
+    onlyPolicyPool
+    whenNotPaused
+    returns (uint256)
+  {
     _updateCurrentScale();
     uint256 balance = balanceOf(provider);
-    if (balance == 0)
-      return 0;
-    if (amount > balance)
-      amount = balance;
+    if (balance == 0) return 0;
+    if (amount > balance) amount = balance;
     uint256 withdrawable = totalWithdrawable();
-    if (amount > withdrawable)
-      amount = withdrawable;
-    if (amount == 0)
-      return 0;
+    if (amount > withdrawable) amount = withdrawable;
+    if (amount == 0) return 0;
     _burn(provider, amount);
     _updateTokenInterestRate();
     return amount;
   }
 
-  function accepts(uint40 policy_expiration) public view virtual override returns (bool) {
-    if (paused())
-      return false;
-    return policy_expiration < (uint40(block.timestamp) + _expirationPeriod);
+  function accepts(uint40 policyExpiration) public view virtual override returns (bool) {
+    if (paused()) return false;
+    return policyExpiration < (uint40(block.timestamp) + _expirationPeriod);
   }
 
   function _updatePoolLoanScale() internal {
-    if (uint40(block.timestamp) == _poolLoanLastUpdate)
-      return;
+    if (uint40(block.timestamp) == _poolLoanLastUpdate) return;
     _poolLoanScale = _getPoolLoanScale();
     _poolLoanLastUpdate = uint40(block.timestamp);
   }
 
-  function lendToPool(uint256 amount) onlyPolicyPool external override {
+  function lendToPool(uint256 amount) external override onlyPolicyPool {
     require(amount <= ocean(), "Not enought capital to lend");
     if (_poolLoan == 0) {
       _poolLoan = amount;
@@ -572,30 +596,29 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken, IPolicyPoolComponen
       _poolLoan += amount.wadToRay().rayDiv(_poolLoanScale).rayToWad();
     }
     _updateCurrentScale(); // shouldn't do anything because lendToPool is after unlock_scr but doing
-                           // anyway
+    // anyway
     _discreteChange(amount, false);
   }
 
-  function repayPoolLoan(uint256 amount) onlyPolicyPool external override {
+  function repayPoolLoan(uint256 amount) external override onlyPolicyPool {
     _updatePoolLoanScale();
     _poolLoan = (getPoolLoan() - amount).wadToRay().rayDiv(_poolLoanScale).rayToWad();
     _updateCurrentScale(); // shouldn't do anything because lendToPool is after unlock_scr but doing
-                           // anyway
+    // anyway
     _discreteChange(amount, true);
   }
 
   function _getPoolLoanScale() internal view returns (uint256) {
-    if (uint40(block.timestamp) <= _poolLoanLastUpdate)
-      return _poolLoanScale;
+    if (uint40(block.timestamp) <= _poolLoanLastUpdate) return _poolLoanScale;
     uint256 timeDifference = block.timestamp - _poolLoanLastUpdate;
-    return _poolLoanScale.rayMul((
-      _poolLoanInterestRate * timeDifference / SECONDS_PER_YEAR
-    ) + WadRayMath.ray());
+    return
+      _poolLoanScale.rayMul(
+        ((_poolLoanInterestRate * timeDifference) / SECONDS_PER_YEAR) + WadRayMath.ray()
+      );
   }
 
   function getPoolLoan() public view virtual override returns (uint256) {
-    if (_poolLoan == 0)
-      return 0;
+    if (_poolLoan == 0) return 0;
     return _poolLoan.wadToRay().rayMul(_getPoolLoanScale()).rayToWad();
   }
 
@@ -603,17 +626,17 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken, IPolicyPoolComponen
     return _poolLoanInterestRate;
   }
 
-  function setPoolLoanInterestRate(uint256 new_rate) external onlyRole(SET_LOAN_RATE_ROLE) {
+  function setPoolLoanInterestRate(uint256 newRate) external onlyRole(SET_LOAN_RATE_ROLE) {
     _updatePoolLoanScale();
-    _poolLoanInterestRate = new_rate;
+    _poolLoanInterestRate = newRate;
   }
 
-  function setLiquidityRequirement(uint256 new_rate) external onlyRole(SET_LIQ_PARAMS_ROLE) {
-    _liquidityRequirement = new_rate;
+  function setLiquidityRequirement(uint256 newRate) external onlyRole(SET_LIQ_PARAMS_ROLE) {
+    _liquidityRequirement = newRate;
   }
 
-  function setMaxUtilizationRate(uint256 new_rate) external onlyRole(SET_LIQ_PARAMS_ROLE) {
-    _maxUtilizationRate = new_rate;
+  function setMaxUtilizationRate(uint256 newRate) external onlyRole(SET_LIQ_PARAMS_ROLE) {
+    _maxUtilizationRate = newRate;
   }
 
   function getInvestable() public view virtual override returns (uint256) {

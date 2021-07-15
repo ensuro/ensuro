@@ -21,13 +21,13 @@ library Policy {
     uint256 payout;
     uint256 premium;
     uint256 scr;
-    uint256 rmCoverage;     // amount of the payout covered by risk_module
-    uint256 lossProb;       // original loss probability (in ray)
-    uint256 purePremium;    // share of the premium that covers expected losses
-                            // equal to payout * lossProb * riskModule.moc
+    uint256 rmCoverage; // amount of the payout covered by risk_module
+    uint256 lossProb; // original loss probability (in ray)
+    uint256 purePremium; // share of the premium that covers expected losses
+    // equal to payout * lossProb * riskModule.moc
     uint256 premiumForEnsuro; // share of the premium that goes for Ensuro (if policy won)
-    uint256 premiumForRm;     // share of the premium that goes for the RM (if policy won)
-    uint256 premiumForLps;    // share of the premium that goes to the liquidity providers (won or not)
+    uint256 premiumForRm; // share of the premium that goes for the RM (if policy won)
+    uint256 premiumForLps; // share of the premium that goes to the liquidity providers (won or not)
     IRiskModule riskModule;
     uint40 start;
     uint40 expiration;
@@ -38,48 +38,63 @@ library Policy {
   ///    {:msg "premium distributed"}
   ///    premium == (newPolicy.purePremium + newPolicy.premiumForLps +
   ///                newPolicy.premiumForRm + newPolicy.premiumForEnsuro);
-  function initialize(IRiskModule riskModule, uint256 premium, uint256 payout,
-                      uint256 lossProb, uint40 expiration) public view
-                      returns (PolicyData memory newPolicy) {
-    require(premium <= payout);
+  function initialize(
+    IRiskModule riskModule,
+    uint256 premium,
+    uint256 payout,
+    uint256 lossProb,
+    uint40 expiration
+  ) public view returns (PolicyData memory newPolicy) {
+    require(premium <= payout, "Premium cannot be more than payout");
     PolicyData memory policy;
     policy.riskModule = riskModule;
     policy.premium = premium;
     policy.payout = payout;
     policy.rmCoverage = payout.wadToRay().rayMul(riskModule.sharedCoveragePercentage()).rayToWad();
     policy.lossProb = lossProb;
-    uint256 ens_premium = policy.premium.wadMul(policy.payout - policy.rmCoverage).wadDiv(policy.payout);
-    uint256 rm_premium = policy.premium - ens_premium;
-    policy.scr = (payout - ens_premium - policy.rmCoverage).wadMul(
+    uint256 ensPremium = policy.premium.wadMul(policy.payout - policy.rmCoverage).wadDiv(
+      policy.payout
+    );
+    uint256 rmPremium = policy.premium - ensPremium;
+    policy.scr = (payout - ensPremium - policy.rmCoverage).wadMul(
       riskModule.scrPercentage().rayToWad()
     );
     require(policy.scr != 0, "SCR can't be zero");
     policy.start = uint40(block.timestamp);
     policy.expiration = expiration;
-    policy.purePremium = (
-      payout - policy.rmCoverage
-    ).wadToRay().rayMul(lossProb.rayMul(riskModule.moc())).rayToWad();
-    uint256 profitPremium = ens_premium - policy.purePremium;
+    policy.purePremium = (payout - policy.rmCoverage)
+    .wadToRay()
+    .rayMul(lossProb.rayMul(riskModule.moc()))
+    .rayToWad();
+    uint256 profitPremium = ensPremium - policy.purePremium;
     policy.premiumForEnsuro = profitPremium.wadMul(riskModule.ensuroShare().rayToWad());
     policy.premiumForRm = profitPremium.wadMul(riskModule.premiumShare().rayToWad());
     policy.premiumForLps = profitPremium - policy.premiumForEnsuro - policy.premiumForRm;
-    policy.premiumForRm += rm_premium;
+    policy.premiumForRm += rmPremium;
     return policy;
   }
 
   function rmScr(PolicyData storage policy) public view returns (uint256) {
-    uint256 ens_premium = policy.premium.wadMul(policy.payout - policy.rmCoverage).wadDiv(policy.payout);
-    return policy.rmCoverage - (policy.premium - ens_premium);
+    uint256 ensPremium = policy.premium.wadMul(policy.payout - policy.rmCoverage).wadDiv(
+      policy.payout
+    );
+    return policy.rmCoverage - (policy.premium - ensPremium);
   }
 
-  function splitPayout(PolicyData storage policy, uint256 payout) public view
-        returns (uint256, uint256, uint256) {
+  function splitPayout(PolicyData storage policy, uint256 payout)
+    public
+    view
+    returns (
+      uint256,
+      uint256,
+      uint256
+    )
+  {
     // returns (toBePaid_with_pool, premiumsWon, toReturnToRM)
     uint256 nonCapitalPremiums = policy.purePremium + policy.premiumForRm + policy.premiumForEnsuro;
-    if (payout == policy.payout)
-      return (payout - nonCapitalPremiums, 0, 0);
+    if (payout == policy.payout) return (payout - nonCapitalPremiums, 0, 0);
     if (nonCapitalPremiums >= payout) {
-       return (0, nonCapitalPremiums - payout, rmScr(policy));
+      return (0, nonCapitalPremiums - payout, rmScr(policy));
     }
     payout -= nonCapitalPremiums;
     uint256 rmPayout = policy.rmCoverage.wadMul(payout).wadDiv(policy.payout);
@@ -87,38 +102,45 @@ library Policy {
   }
 
   function interestRate(PolicyData storage policy) public view returns (uint256) {
-    return policy.premiumForLps.wadMul(SECONDS_IN_YEAR).wadDiv(
-      (policy.expiration - policy.start) * policy.scr
-    ).wadToRay();
+    return
+      policy
+        .premiumForLps
+        .wadMul(SECONDS_IN_YEAR)
+        .wadDiv((policy.expiration - policy.start) * policy.scr)
+        .wadToRay();
   }
 
   function accruedInterest(PolicyData storage policy) public view returns (uint256) {
     uint256 secs = block.timestamp - policy.start;
-    return policy.scr.wadToRay().rayMul(
-      secs * interestRate(policy)
-    ).rayDiv(SECONDS_IN_YEAR_RAY).rayToWad();
+    return
+      policy
+        .scr
+        .wadToRay()
+        .rayMul(secs * interestRate(policy))
+        .rayDiv(SECONDS_IN_YEAR_RAY)
+        .rayToWad();
   }
 
   // For debugging
-  function uint2str(uint _i) public pure returns (string memory _uintAsString) {
+  function uint2str(uint256 _i) public pure returns (string memory _uintAsString) {
     if (_i == 0) {
       return "0";
     }
-    uint j = _i;
-    uint len;
+    uint256 j = _i;
+    uint256 len;
     while (j != 0) {
       len++;
       j /= 10;
     }
     bytes memory bstr = new bytes(len);
-    uint k = len;
+    uint256 k = len;
     while (_i != 0) {
-        k = k-1;
-        uint8 temp = (48 + uint8(_i - _i / 10 * 10));
-        bytes1 b1 = bytes1(temp);
-        bstr[k] = b1;
-        _i /= 10;
+      k = k - 1;
+      uint8 temp = (48 + uint8(_i - (_i / 10) * 10));
+      bytes1 b1 = bytes1(temp);
+      bstr[k] = b1;
+      _i /= 10;
     }
     return string(bstr);
-   }
+  }
 }

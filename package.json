@@ -4,8 +4,8 @@
   "description": "Ensuro - Decentralized underwriting protocol",
   "main": "index.js",
   "scripts": {
-    "prettier": "prettier --write 'contracts/**/*.sol'",
-    "solhint": "solhint 'contracts/**/*.sol'"
+    "prettier": "prettier --write 'contracts/**/*.sol' 'interfaces/**/*.sol'",
+    "solhint": "solhint 'contracts/**/*.sol' 'interfaces/**/*.sol'"
   },
   "author": "",
   "license": "Apache-2.0",
