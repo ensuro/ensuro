@@ -1,26 +1,26 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: Apache-2.0
 
 pragma solidity ^0.8.0;
 
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import {IEToken} from '../interfaces/IEToken.sol';
-import {IRiskModule} from '../interfaces/IRiskModule.sol';
+import {IEToken} from "../interfaces/IEToken.sol";
+import {IRiskModule} from "../interfaces/IRiskModule.sol";
 
 library DataTypes {
   using EnumerableSet for EnumerableSet.AddressSet;
 
   enum RiskModuleStatus {
-    inactive,   // newPolicy and resolvePolicy rejected
-    active,     // newPolicy and resolvePolicy accepted
+    inactive, // newPolicy and resolvePolicy rejected
+    active, // newPolicy and resolvePolicy accepted
     deprecated, // newPolicy rejected, resolvePolicy accepted
-    suspended   // newPolicy and resolvePolicy rejected (temporarily)
+    suspended // newPolicy and resolvePolicy rejected (temporarily)
   }
 
   enum ETokenStatus {
-    inactive,   // doesn't exists - All operations rejected
-    active,     // deposit / withdraw / lockScr / unlockScr OK
+    inactive, // doesn't exists - All operations rejected
+    active, // deposit / withdraw / lockScr / unlockScr OK
     deprecated, // withdraw OK, unlockScr OK, deposit rejected, no new policies
-    suspended   // all operations temporarily rejected
+    suspended // all operations temporarily rejected
   }
 
   // Copied from OpenZeppelin's EnumerableMap but with address as keys
@@ -35,8 +35,7 @@ library DataTypes {
   struct Map {
     // Storage of keys
     EnumerableSet.AddressSet _keys;
-
-    mapping (address => uint256) _values;
+    mapping(address => uint256) _values;
   }
 
   /**
@@ -46,7 +45,11 @@ library DataTypes {
    * Returns true if the key was added to the map, that is if it was not
    * already present.
    */
-  function _set(Map storage map, address key, uint256 value) private returns (bool) {
+  function _set(
+    Map storage map,
+    address key,
+    uint256 value
+  ) private returns (bool) {
     map._values[key] = value;
     return map._keys.add(key);
   }
@@ -76,15 +79,15 @@ library DataTypes {
   }
 
   /**
-  * @dev Returns the key-value pair stored at position `index` in the map. O(1).
-  *
-  * Note that there are no guarantees on the ordering of entries inside the
-  * array, and it may change when more entries are added or removed.
-  *
-  * Requirements:
-  *
-  * - `index` must be strictly less than {length}.
-  */
+   * @dev Returns the key-value pair stored at position `index` in the map. O(1).
+   *
+   * Note that there are no guarantees on the ordering of entries inside the
+   * array, and it may change when more entries are added or removed.
+   *
+   * Requirements:
+   *
+   * - `index` must be strictly less than {length}.
+   */
   function _at(Map storage map, uint256 index) private view returns (address, uint256) {
     address key = map._keys.at(index);
     return (key, map._values[key]);
@@ -128,7 +131,11 @@ library DataTypes {
    * Returns true if the key was added to the map, that is if it was not
    * already present.
    */
-  function set(ETokenToWadMap storage map, IEToken key, uint256 value) internal returns (bool) {
+  function set(
+    ETokenToWadMap storage map,
+    IEToken key,
+    uint256 value
+  ) internal returns (bool) {
     return _set(map._inner, address(key), value);
   }
 
@@ -156,14 +163,14 @@ library DataTypes {
   }
 
   /**
-  * @dev Returns the element stored at position `index` in the set. O(1).
-  * Note that there are no guarantees on the ordering of values inside the
-  * array, and it may change when more values are added or removed.
-  *
-  * Requirements:
-  *
-  * - `index` must be strictly less than {length}.
-  */
+   * @dev Returns the element stored at position `index` in the set. O(1).
+   * Note that there are no guarantees on the ordering of values inside the
+   * array, and it may change when more values are added or removed.
+   *
+   * Requirements:
+   *
+   * - `index` must be strictly less than {length}.
+   */
   function at(ETokenToWadMap storage map, uint256 index) internal view returns (IEToken, uint256) {
     (address key, uint256 value) = _at(map._inner, index);
     return (IEToken(key), value);
@@ -203,7 +210,11 @@ library DataTypes {
    * Returns true if the key was added to the map, that is if it was not
    * already present.
    */
-  function set(ETokenStatusMap storage map, IEToken key, ETokenStatus value) internal returns (bool) {
+  function set(
+    ETokenStatusMap storage map,
+    IEToken key,
+    ETokenStatus value
+  ) internal returns (bool) {
     return _set(map._inner, address(key), uint256(value));
   }
 
@@ -231,15 +242,19 @@ library DataTypes {
   }
 
   /**
-  * @dev Returns the element stored at position `index` in the set. O(1).
-  * Note that there are no guarantees on the ordering of values inside the
-  * array, and it may change when more values are added or removed.
-  *
-  * Requirements:
-  *
-  * - `index` must be strictly less than {length}.
-  */
-  function at(ETokenStatusMap storage map, uint256 index) internal view returns (IEToken, ETokenStatus) {
+   * @dev Returns the element stored at position `index` in the set. O(1).
+   * Note that there are no guarantees on the ordering of values inside the
+   * array, and it may change when more values are added or removed.
+   *
+   * Requirements:
+   *
+   * - `index` must be strictly less than {length}.
+   */
+  function at(ETokenStatusMap storage map, uint256 index)
+    internal
+    view
+    returns (IEToken, ETokenStatus)
+  {
     (address key, uint256 value) = _at(map._inner, index);
     return (IEToken(key), ETokenStatus(value));
   }
@@ -250,7 +265,11 @@ library DataTypes {
    *
    * _Available since v3.4._
    */
-  function tryGet(ETokenStatusMap storage map, IEToken key) internal view returns (bool, ETokenStatus) {
+  function tryGet(ETokenStatusMap storage map, IEToken key)
+    internal
+    view
+    returns (bool, ETokenStatus)
+  {
     (bool success, uint256 value) = _tryGet(map._inner, address(key));
     return (success, ETokenStatus(value));
   }
@@ -278,7 +297,11 @@ library DataTypes {
    * Returns true if the key was added to the map, that is if it was not
    * already present.
    */
-  function set(RiskModuleStatusMap storage map, IRiskModule key, RiskModuleStatus value) internal returns (bool) {
+  function set(
+    RiskModuleStatusMap storage map,
+    IRiskModule key,
+    RiskModuleStatus value
+  ) internal returns (bool) {
     return _set(map._inner, address(key), uint256(value));
   }
 
@@ -306,15 +329,19 @@ library DataTypes {
   }
 
   /**
-  * @dev Returns the element stored at position `index` in the set. O(1).
-  * Note that there are no guarantees on the ordering of values inside the
-  * array, and it may change when more values are added or removed.
-  *
-  * Requirements:
-  *
-  * - `index` must be strictly less than {length}.
-  */
-  function at(RiskModuleStatusMap storage map, uint256 index) internal view returns (IRiskModule, RiskModuleStatus) {
+   * @dev Returns the element stored at position `index` in the set. O(1).
+   * Note that there are no guarantees on the ordering of values inside the
+   * array, and it may change when more values are added or removed.
+   *
+   * Requirements:
+   *
+   * - `index` must be strictly less than {length}.
+   */
+  function at(RiskModuleStatusMap storage map, uint256 index)
+    internal
+    view
+    returns (IRiskModule, RiskModuleStatus)
+  {
     (address key, uint256 value) = _at(map._inner, index);
     return (IRiskModule(key), RiskModuleStatus(value));
   }
@@ -325,7 +352,11 @@ library DataTypes {
    *
    * _Available since v3.4._
    */
-  function tryGet(RiskModuleStatusMap storage map, IRiskModule key) internal view returns (bool, RiskModuleStatus) {
+  function tryGet(RiskModuleStatusMap storage map, IRiskModule key)
+    internal
+    view
+    returns (bool, RiskModuleStatus)
+  {
     (bool success, uint256 value) = _tryGet(map._inner, address(key));
     return (success, RiskModuleStatus(value));
   }
@@ -337,8 +368,11 @@ library DataTypes {
    *
    * - `key` must be in the map.
    */
-  function get(RiskModuleStatusMap storage map, IRiskModule key) internal view returns (RiskModuleStatus) {
+  function get(RiskModuleStatusMap storage map, IRiskModule key)
+    internal
+    view
+    returns (RiskModuleStatus)
+  {
     return RiskModuleStatus(_get(map._inner, address(key)));
   }
-
 }

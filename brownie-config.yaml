@@ -1,0 +1,5 @@
+compiler:
+  solc:
+    version: 0.8.6
+    remappings:
+    - "@openzeppelin=node_modules/@openzeppelin"

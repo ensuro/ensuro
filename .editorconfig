@@ -31,7 +31,7 @@ indent_size = 2
 [*.sol]
 indent_style = space
 indent_size = 2
-
+max_line_length = 120
 [*.sh]
 indent_size = 4
 

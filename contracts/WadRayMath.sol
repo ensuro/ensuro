@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: agpl-3.0
+// SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
 /**
@@ -9,10 +9,10 @@ pragma solidity ^0.8.0;
 
 library WadRayMath {
   uint256 internal constant WAD = 1e18;
-  uint256 internal constant halfWAD = WAD / 2;
+  uint256 internal constant HALF_WAD = WAD / 2;
 
   uint256 internal constant RAY = 1e27;
-  uint256 internal constant halfRAY = RAY / 2;
+  uint256 internal constant HALF_RAY = RAY / 2;
 
   uint256 internal constant WAD_RAY_RATIO = 1e9;
 
@@ -35,14 +35,14 @@ library WadRayMath {
    * @return Half ray, 1e27/2
    **/
   function halfRay() internal pure returns (uint256) {
-    return halfRAY;
+    return HALF_RAY;
   }
 
   /**
    * @return Half ray, 1e18/2
    **/
   function halfWad() internal pure returns (uint256) {
-    return halfWAD;
+    return HALF_WAD;
   }
 
   /**
@@ -56,9 +56,9 @@ library WadRayMath {
       return 0;
     }
 
-    require(a <= (type(uint256).max - halfWAD) / b, "wadMul: Math Multiplication Overflow");
+    require(a <= (type(uint256).max - HALF_WAD) / b, "wadMul: Math Multiplication Overflow");
 
-    return (a * b + halfWAD) / WAD;
+    return (a * b + HALF_WAD) / WAD;
   }
 
   /**
@@ -87,9 +87,9 @@ library WadRayMath {
       return 0;
     }
 
-    require(a <= (type(uint256).max - halfRAY) / b, "rayMul: Math Multiplication Overflow");
+    require(a <= (type(uint256).max - HALF_RAY) / b, "rayMul: Math Multiplication Overflow");
 
-    return (a * b + halfRAY) / RAY;
+    return (a * b + HALF_RAY) / RAY;
   }
 
   /**

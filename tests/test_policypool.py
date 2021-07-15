@@ -96,7 +96,7 @@ class TestProtocol(TestCase):
         )
 
 
-TEnv = namedtuple("TEnv", "time_control module")
+TEnv = namedtuple("TEnv", "time_control module kind")
 
 
 @pytest.fixture(params=["prototype", "ethereum"])
@@ -106,12 +106,14 @@ def tenv(request):
         return TEnv(
             time_control=ensuro.time_control,
             module=ensuro,
+            kind="prototype"
         )
     elif request.param == "ethereum":
         from . import wrappers
         return TEnv(
             time_control=wrappers.time_control,
             module=wrappers,
+            kind="ethereum"
         )
 
 
@@ -268,12 +270,15 @@ def test_rebalance_policy(tenv):
 
     pool.etokens["eUSD1YEAR"].total_supply().assert_equal(
         _W(1000) + for_lps * _W("0.4") * _W("0.5") + for_lps * _W("0.6") * scr_others_share,
+        decimals=3
     )
     pool.etokens["eUSD1MONTH"].total_supply().assert_equal(
         _W(1000) + for_lps * _W("0.4") * _W("0.5") + for_lps * _W("0.6") * scr_others_share,
+        decimals=3
     )
     pool.etokens["eUSD1WEEK"].total_supply().assert_equal(
         _W(1000) + for_lps * _W("0.6") * scr_week_share,
+        decimals=3
     )
 
 
@@ -580,6 +585,10 @@ def test_walkthrough(tenv):
     policies = []
 
     pool.currency.approve("CUST3", pool.contract_id, _W(130))
+
+    from brownie._config import CONFIG
+    if CONFIG.argv.get("coverage", False) and tenv.kind == "ethereum":
+        return  # This test never ends if coverage is activated
 
     won_count = 0
 

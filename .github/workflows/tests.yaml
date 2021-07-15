@@ -1,0 +1,13 @@
+name: Ensuro SmartContract Tests
+on: [push]
+
+jobs:
+  server_tests:
+    name: Ensuro Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: checkout repo
+        uses: actions/checkout@v2
+      - run: docker build -t ensuro_devenv .
+      - run: docker run --rm ensuro_devenv /usr/local/app/ci-tests.sh
