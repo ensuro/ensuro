@@ -6,22 +6,29 @@ It allows liquidity providers (LPs) to deposit capital (using stable coins) that
 
 On the policy side, the policies are injected into the protocol by *Risk Modules*. Each risk module represent an Ensuro partner and a specific insurance product and is implemented with a smart contract (inherited from `RiskModule`). Each risk module has two responsabilities: pricing and policy resolution. Also, the RiskModule smart contract stores several parameters of the risk module such as Ensuro and Risk Module fees, capital allocation limits, etc.
 
-![Architechture Diagram](Architechture.png "Architechture Diagram")
+![Architecture Diagram](Architecture.png "Architecture Diagram")
 
 
 ## Contracts
+<dl>
+<dt>PolicyPool</dt>
+<dd>This is the main contract that keeps track of active policies and manages the assets. It has the methods for LP to deposit/withdraw. The contract follow ERC721 standard to control the ownership of the policies (each policy is an NFT). The PolicyPool is connected to a set of eTokens and RiskModules.</dd>
+</dl>
 
-PolicyPool
-: This is the main contract that keeps track of active policies and manages the assets. It has the methods for LP to deposit/withdraw. The contract follow ERC721 standard to control the ownership of the policies (each policy is an NFT). The PolicyPool is connected to a set of eTokens and RiskModules.
+<dl>
+<dt>EToken</dt>
+<dd>This is a ERC20 compatible contract that represents the capital of each liquidity provider in a given pool. The valuation is one-to-one with the underlyng stablecoin. The view `scr()` returns the amount of capital that's locked backing up policies. For this capital locked, the pool receives an interest (`scrInterestRate()` / `tokenInterestRate()`) that is continously accrued in the balance of eToken holders.</dd>
+  </dl>
 
-EToken
-: This is a ERC20 compatible contract that represents the capital of each liquidity provider in a given pool. The valuation is one-to-one with the underlyng stablecoin. The view `scr()` returns the amount of capital that's locked backing up policies. For this capital locked, the pool receives an interest (`scrInterestRate()` / `tokenInterestRate()`) that is continously accrued in the balance of eToken holders.
+<dl>
+<dt>RiskModule</dt>
+<dd>This is a base contract that needs to be reimplemented with the specific logic related with custom policy parameters, validation of the received price and with different strategies for policy resolution (e.g. using oracles). This is the contract that must be called by a customer for creating a new policy that, after doing validations and storing parameters needed for resolution, will submit the new policy to the PolicyPool.</dd>
+  </dl>
 
-RiskModule
-: This is a base contract that needs to be reimplemented with the specific logic related with custom policy parameters, validation of the received price and with different strategies for policy resolution (e.g. using oracles). This is the contract that must be called by a customer for creating a new policy that, after doing validations and storing parameters needed for resolution, will submit the new policy to the PolicyPool.
-
-Policy
-: This is a library with the struct and the calculation of relevant attributes of a policy. It includes the logic around the distribution of the premium, calculation of SCR, shared coverage and other behaviour of the protocol.
+<dl>
+<dt>Policy</dt>
+<dd>This is a library with the struct and the calculation of relevant attributes of a policy. It includes the logic around the distribution of the premium, calculation of SCR, shared coverage and other behaviour of the protocol.</dd>
+  </dl>
 
 
 ## Development
