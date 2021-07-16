@@ -4,6 +4,7 @@ from prototype.contracts import RevertError
 from prototype.wadray import Wad, _R, Ray, _W
 from Crypto.Hash import keccak
 from brownie import accounts
+import eth_utils
 import brownie
 from brownie.network.account import Account, LocalAccount
 from brownie.exceptions import VirtualMachineError
@@ -185,14 +186,41 @@ class MethodAdapter:
         return eth_call(instance, value)
 
 
+def encode_function_data(initializer=None, *args):
+    """Encodes the function call so we can work with an initializer.
+    Args:
+        initializer ([brownie.network.contract.ContractTx], optional):
+        The initializer function we want to call. Example: `box.store`.
+        Defaults to None.
+        args (Any, optional):
+        The arguments to pass to the initializer function
+    Returns:
+        [bytes]: Return the encoded bytes.
+    """
+    if len(args) == 0 or not initializer:
+        return eth_utils.to_bytes(hexstr="0x")
+    else:
+        return initializer.encode_input(*args)
+
+
 class ETHWrapper:
     libraries_required = []
+    proxy_kind = None
 
     def __init__(self, owner="owner", *init_params):
         self.owner = AddressBook.instance.get_account(owner)
         for library in self.libraries_required:
             getattr(brownie, library).deploy({"from": self.owner})
-        self.contract = getattr(brownie, self.eth_contract).deploy(*init_params, {"from": self.owner})
+        if self.proxy_kind is None:
+            self.contract = getattr(brownie, self.eth_contract).deploy(*init_params, {"from": self.owner})
+        elif self.proxy_kind == "uups":
+            eth_contract = getattr(brownie, self.eth_contract)
+            real_contract = eth_contract.deploy({"from": self.owner})
+            proxy_contract = brownie.ERC1967Proxy.deploy(
+                real_contract, encode_function_data(real_contract.initialize, *init_params),
+                {"from": self.owner}
+            )
+            self.contract = Contract.from_abi(self.eth_contract, proxy_contract.address, eth_contract.abi)
 
     @classmethod
     def connect(cls, contract, owner=None):
@@ -488,6 +516,7 @@ class RiskModuleETH(ETHWrapper):
 
 class TrustfulRiskModule(RiskModuleETH):
     eth_contract = "TrustfulRiskModule"
+    proxy_kind = "uups"
 
     new_policy_ = MethodAdapter((
         ("payout", "amount"), ("premium", "amount"), ("loss_prob", "ray"), ("expiration", "int"),

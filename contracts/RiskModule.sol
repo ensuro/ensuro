@@ -2,8 +2,8 @@
 pragma solidity ^0.8.0;
 
 import {WadRayMath} from "./WadRayMath.sol";
-import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
-import {Pausable} from "@openzeppelin/contracts/security/Pausable.sol";
+import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {IPolicyPoolComponent} from "../interfaces/IPolicyPoolComponent.sol";
 import {IRiskModule} from "../interfaces/IRiskModule.sol";
@@ -15,7 +15,7 @@ import {Policy} from "./Policy.sol";
  * @author Ensuro
  */
 
-abstract contract RiskModule is IRiskModule, AccessControl, Pausable, IPolicyPoolComponent {
+abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PausableUpgradeable, IPolicyPoolComponent {
   using Policy for Policy.PolicyData;
   using WadRayMath for uint256;
 
@@ -61,7 +61,7 @@ abstract contract RiskModule is IRiskModule, AccessControl, Pausable, IPolicyPoo
    * @param wallet_ Address of the RiskModule provider
    * @param sharedCoverageMinPercentage_ minimal % of SCR that must be covered by the RM
    */
-  constructor(
+  function __RiskModule_init(
     string memory name_,
     IPolicyPool policyPool_,
     uint256 scrPercentage_,
@@ -71,7 +71,24 @@ abstract contract RiskModule is IRiskModule, AccessControl, Pausable, IPolicyPoo
     uint256 scrLimit_,
     address wallet_,
     uint256 sharedCoverageMinPercentage_
-  ) {
+  ) internal initializer {
+    __AccessControl_init();
+    __Pausable_init();
+    __RiskModule_init_unchained(name_, policyPool_, scrPercentage_, premiumShare_, ensuroShare_, maxScrPerPolicy_,
+                                scrLimit_, wallet_, sharedCoverageMinPercentage_);
+  }
+
+  function __RiskModule_init_unchained(
+    string memory name_,
+    IPolicyPool policyPool_,
+    uint256 scrPercentage_,
+    uint256 premiumShare_,
+    uint256 ensuroShare_,
+    uint256 maxScrPerPolicy_,
+    uint256 scrLimit_,
+    address wallet_,
+    uint256 sharedCoverageMinPercentage_
+  ) internal initializer {
     _name = name_;
     _policyPool = policyPool_;
     _scrPercentage = scrPercentage_;

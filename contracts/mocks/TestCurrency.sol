@@ -3,6 +3,8 @@ pragma solidity ^0.8.0;
 pragma experimental ABIEncoderV2;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+// Don't remove it - required to find the ERC1967Proxy in brownie
 
 contract TestCurrency is ERC20 {
   address private _owner;
