@@ -15,7 +15,12 @@ import {Policy} from "./Policy.sol";
  * @author Ensuro
  */
 
-abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PausableUpgradeable, IPolicyPoolComponent {
+abstract contract RiskModule is
+  IRiskModule,
+  AccessControlUpgradeable,
+  PausableUpgradeable,
+  IPolicyPoolComponent
+{
   using Policy for Policy.PolicyData;
   using WadRayMath for uint256;
 
@@ -61,6 +66,7 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PausableU
    * @param wallet_ Address of the RiskModule provider
    * @param sharedCoverageMinPercentage_ minimal % of SCR that must be covered by the RM
    */
+  // solhint-disable-next-line func-name-mixedcase
   function __RiskModule_init(
     string memory name_,
     IPolicyPool policyPool_,
@@ -74,10 +80,20 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PausableU
   ) internal initializer {
     __AccessControl_init();
     __Pausable_init();
-    __RiskModule_init_unchained(name_, policyPool_, scrPercentage_, premiumShare_, ensuroShare_, maxScrPerPolicy_,
-                                scrLimit_, wallet_, sharedCoverageMinPercentage_);
+    __RiskModule_init_unchained(
+      name_,
+      policyPool_,
+      scrPercentage_,
+      premiumShare_,
+      ensuroShare_,
+      maxScrPerPolicy_,
+      scrLimit_,
+      wallet_,
+      sharedCoverageMinPercentage_
+    );
   }
 
+  // solhint-disable-next-line func-name-mixedcase
   function __RiskModule_init_unchained(
     string memory name_,
     IPolicyPool policyPool_,

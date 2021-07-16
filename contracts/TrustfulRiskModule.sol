@@ -38,10 +38,18 @@ contract TrustfulRiskModule is RiskModule {
     uint256 scrLimit_,
     address wallet_,
     uint256 sharedCoverageMinPercentage_
-  ) initializer public
-  {
-    __RiskModule_init(name_, policyPool_, scrPercentage_, premiumShare_, ensuroShare_, maxScrPerPolicy_,
-                     scrLimit_, wallet_, sharedCoverageMinPercentage_);
+  ) public initializer {
+    __RiskModule_init(
+      name_,
+      policyPool_,
+      scrPercentage_,
+      premiumShare_,
+      ensuroShare_,
+      maxScrPerPolicy_,
+      scrLimit_,
+      wallet_,
+      sharedCoverageMinPercentage_
+    );
   }
 
   function newPolicy(
