@@ -357,6 +357,7 @@ def _adapt_signed_amount(args, kwargs):
 
 class ETokenETH(IERC20):
     eth_contract = "EToken"
+    proxy_kind = "uups"
 
     def __init__(self, name, symbol, policy_pool, expiration_period, liquidity_requirement=_R(1),
                  max_utilization_rate=_R(1),
@@ -547,6 +548,8 @@ class TrustfulRiskModule(RiskModuleETH):
 class PolicyPool(IERC721):
     libraries_required = ["Policy"]
     eth_contract = "PolicyPool"
+
+    proxy_kind = "uups"
 
     def __init__(self, owner, name, symbol, currency, treasury="ENS", asset_manager=None):
         treasury = self._get_account(treasury)

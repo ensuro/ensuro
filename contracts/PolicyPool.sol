@@ -3,10 +3,11 @@ pragma solidity ^0.8.0;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import {ERC721Enumerable} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
-import {Pausable} from "@openzeppelin/contracts/security/Pausable.sol";
-import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {ERC721Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
+import {ERC721EnumerableUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721EnumerableUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {IRiskModule} from "../interfaces/IRiskModule.sol";
@@ -19,7 +20,14 @@ import {DataTypes} from "./DataTypes.sol";
 
 // #invariant_disabled {:msg "Borrow up to activePurePremiums"} _borrowedActivePP <= _activePurePremiums;
 // #invariant_disabled {:msg "Can't borrow if not exhausted before won"} (_borrowedActivePP > 0) ==> _wonPurePremiums == 0;
-contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessControl {
+contract PolicyPool is
+  IPolicyPool,
+  ERC721Upgradeable,
+  ERC721EnumerableUpgradeable,
+  PausableUpgradeable,
+  AccessControlUpgradeable,
+  UUPSUpgradeable
+{
   using EnumerableSet for EnumerableSet.AddressSet;
   using WadRayMath for uint256;
   using SafeERC20 for IERC20;
@@ -31,6 +39,7 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
   bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
   bytes32 public constant ENSURO_DAO_ROLE = keccak256("ENSURO_DAO_ROLE");
   bytes32 public constant REBALANCE_ROLE = keccak256("REBALANCE_ROLE");
+  bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
 
   uint256 public constant MAX_ETOKENS = 10;
 
@@ -72,16 +81,33 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
     _;
   }
 
-  constructor(
+  function initialize(
     string memory name_,
     string memory symbol_,
-    IERC20 curreny_,
+    IERC20 currency_,
     address treasury_,
     address assetManager_
-  ) ERC721(name_, symbol_) {
+  ) public initializer {
+    __Context_init_unchained();
+    __ERC165_init_unchained();
+    __ERC721_init_unchained(name_, symbol_);
+    __ERC721Enumerable_init_unchained();
+    __ERC1967Upgrade_init_unchained();
+    __UUPSUpgradeable_init_unchained();
+    __Pausable_init_unchained();
+    __AccessControl_init_unchained();
+    __PolicyPool_init_unchained(currency_, treasury_, assetManager_);
+  }
+
+  // solhint-disable-next-line func-name-mixedcase
+  function __PolicyPool_init_unchained(
+    IERC20 currency_,
+    address treasury_,
+    address assetManager_
+  ) internal initializer {
     _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
     _setupRole(PAUSER_ROLE, msg.sender);
-    _currency = curreny_;
+    _currency = currency_;
     /*
     _policyCount = 0;
     _activePurePremiums = 0;
@@ -92,6 +118,9 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
     _treasury = treasury_;
     _assetManager = assetManager_;
   }
+
+  // solhint-disable-next-line no-empty-blocks
+  function _authorizeUpgrade(address) internal override onlyRole(UPGRADER_ROLE) {}
 
   function pause() public onlyRole(PAUSER_ROLE) {
     _pause();
@@ -105,17 +134,17 @@ contract PolicyPool is IPolicyPool, ERC721, ERC721Enumerable, Pausable, AccessCo
     address from,
     address to,
     uint256 tokenId
-  ) internal override(ERC721, ERC721Enumerable) whenNotPaused {
+  ) internal override(ERC721Upgradeable, ERC721EnumerableUpgradeable) whenNotPaused {
     super._beforeTokenTransfer(from, to, tokenId);
   }
 
   function supportsInterface(bytes4 interfaceId)
     public
     view
-    override(ERC721, ERC721Enumerable, AccessControl)
+    override(ERC721Upgradeable, ERC721EnumerableUpgradeable, AccessControlUpgradeable)
     returns (bool)
   {
-    return super.supportsInterface(interfaceId);
+    return interfaceId == type(IPolicyPool).interfaceId || super.supportsInterface(interfaceId);
   }
 
   function currency() external view virtual override returns (IERC20) {

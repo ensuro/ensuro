@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
-import {Pausable} from "@openzeppelin/contracts/security/Pausable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
@@ -15,10 +16,18 @@ import {WadRayMath} from "./WadRayMath.sol";
  * @dev Implementation of the interest/earnings bearing token for the Ensuro protocol
  * @author Ensuro
  */
-contract EToken is AccessControl, Pausable, IERC20, IEToken, IPolicyPoolComponent {
+contract EToken is
+  UUPSUpgradeable,
+  AccessControlUpgradeable,
+  PausableUpgradeable,
+  IERC20,
+  IEToken,
+  IPolicyPoolComponent
+{
   bytes32 public constant SET_LOAN_RATE_ROLE = keccak256("SET_LOAN_RATE_ROLE");
   bytes32 public constant SET_LIQ_PARAMS_ROLE = keccak256("SET_LIQ_PARAMS_ROLE");
   bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+  bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
 
   using WadRayMath for uint256;
   using SafeERC20 for IERC20;
@@ -73,7 +82,7 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken, IPolicyPoolComponen
    * @param name_ Name of the eToken
    * @param symbol_ Symbol of the eToken
    */
-  constructor(
+  function initialize(
     string memory name_,
     string memory symbol_,
     IPolicyPool policyPool_,
@@ -81,7 +90,30 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken, IPolicyPoolComponen
     uint256 liquidityRequirement_,
     uint256 maxUtilizationRate_,
     uint256 poolLoanInterestRate_
-  ) {
+  ) public initializer {
+    __AccessControl_init();
+    __Pausable_init();
+    __EToken_init_unchained(
+      name_,
+      symbol_,
+      policyPool_,
+      expirationPeriod,
+      liquidityRequirement_,
+      maxUtilizationRate_,
+      poolLoanInterestRate_
+    );
+  }
+
+  // solhint-disable-next-line func-name-mixedcase
+  function __EToken_init_unchained(
+    string memory name_,
+    string memory symbol_,
+    IPolicyPool policyPool_,
+    uint40 expirationPeriod,
+    uint256 liquidityRequirement_,
+    uint256 maxUtilizationRate_,
+    uint256 poolLoanInterestRate_
+  ) public initializer {
     _name = name_;
     _symbol = symbol_;
     _policyPool = policyPool_;
@@ -100,6 +132,9 @@ contract EToken is AccessControl, Pausable, IERC20, IEToken, IPolicyPoolComponen
     _poolLoanLastUpdate = uint40(block.timestamp);
     _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
   }
+
+  // solhint-disable-next-line no-empty-blocks
+  function _authorizeUpgrade(address) internal override onlyRole(UPGRADER_ROLE) {}
 
   /*** BEGIN ERC20 methods - mainly copied from OpenZeppelin but changes in events and scaledAmount */
 
