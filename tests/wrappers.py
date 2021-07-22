@@ -10,10 +10,14 @@ from brownie.network.account import Account, LocalAccount
 from brownie.exceptions import VirtualMachineError
 from brownie.network.state import Chain
 from brownie.network.contract import Contract, ProjectContract
+from environs import Env
 
+env = Env()
 chain = Chain()
 
 SECONDS_IN_YEAR = 365 * 24 * 3600
+
+SKIP_PROXY = env.bool("SKIP_PROXY", False)
 
 
 class TimeControl:
@@ -218,7 +222,7 @@ class ETHWrapper:
             getattr(brownie, library).deploy({"from": self.owner})
         if self.proxy_kind is None:
             self.contract = getattr(brownie, self.eth_contract).deploy(*init_params, {"from": self.owner})
-        elif self.proxy_kind == "uups":
+        elif self.proxy_kind == "uups" and not SKIP_PROXY:
             eth_contract = getattr(brownie, self.eth_contract)
             real_contract = eth_contract.deploy({"from": self.owner})
             proxy_contract = brownie.ERC1967Proxy.deploy(
@@ -226,6 +230,9 @@ class ETHWrapper:
                 {"from": self.owner}
             )
             self.contract = Contract.from_abi(self.eth_contract, proxy_contract.address, eth_contract.abi)
+        elif self.proxy_kind == "uups" and SKIP_PROXY:
+            self.contract = getattr(brownie, self.eth_contract).deploy({"from": self.owner})
+            self.contract.initialize(*init_params, {"from": self.owner})
 
     @classmethod
     def connect(cls, contract, owner=None):
