@@ -3,8 +3,7 @@ pragma solidity ^0.8.0;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {ERC721Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
-import {ERC721EnumerableUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721EnumerableUpgradeable.sol";
+import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
@@ -13,6 +12,7 @@ import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {IRiskModule} from "../interfaces/IRiskModule.sol";
 import {IPolicyPoolComponent} from "../interfaces/IPolicyPoolComponent.sol";
 import {IEToken} from "../interfaces/IEToken.sol";
+import {IMintable} from "../interfaces/IMintable.sol";
 import {Policy} from "./Policy.sol";
 import {WadRayMath} from "./WadRayMath.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
@@ -22,8 +22,6 @@ import {DataTypes} from "./DataTypes.sol";
 // #invariant_disabled {:msg "Can't borrow if not exhausted before won"} (_borrowedActivePP > 0) ==> _wonPurePremiums == 0;
 contract PolicyPool is
   IPolicyPool,
-  ERC721Upgradeable,
-  ERC721EnumerableUpgradeable,
   PausableUpgradeable,
   AccessControlUpgradeable,
   UUPSUpgradeable
@@ -46,13 +44,13 @@ contract PolicyPool is
   // #if_updated_disabled {:msg "Only set on creation"} msg.sig == bytes4(0);
   IERC20 internal _currency;
 
+  IERC721 internal _policyNFT;
+
   DataTypes.RiskModuleStatusMap internal _riskModules;
   DataTypes.ETokenStatusMap internal _eTokens;
 
   mapping(uint256 => Policy.PolicyData) internal _policies;
   mapping(uint256 => DataTypes.ETokenToWadMap) internal _policiesFunds;
-  // #if_updated_disabled {:msg "Id that only goes up by one"} _policyCount == old(_policyCount + 1);
-  uint256 internal _policyCount; // Growing id for policies
 
   uint256 internal _activePremiums; // sum of premiums of active policies - In Wad
   uint256 internal _activePurePremiums; // sum of pure-premiums of active policies - In Wad
@@ -82,25 +80,20 @@ contract PolicyPool is
   }
 
   function initialize(
-    string memory name_,
-    string memory symbol_,
+    IERC721 policyNFT_,
     IERC20 currency_,
     address treasury_,
     address assetManager_
   ) public initializer {
-    __Context_init_unchained();
-    __ERC165_init_unchained();
-    __ERC721_init_unchained(name_, symbol_);
-    __ERC721Enumerable_init_unchained();
-    __ERC1967Upgrade_init_unchained();
-    __UUPSUpgradeable_init_unchained();
-    __Pausable_init_unchained();
-    __AccessControl_init_unchained();
-    __PolicyPool_init_unchained(currency_, treasury_, assetManager_);
+    __UUPSUpgradeable_init();
+    __Pausable_init();
+    __AccessControl_init();
+    __PolicyPool_init_unchained(policyNFT_, currency_, treasury_, assetManager_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
   function __PolicyPool_init_unchained(
+    IERC721 policyNFT_,
     IERC20 currency_,
     address treasury_,
     address assetManager_
@@ -108,8 +101,8 @@ contract PolicyPool is
     _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
     _setupRole(PAUSER_ROLE, msg.sender);
     _currency = currency_;
+    _policyNFT = policyNFT_;
     /*
-    _policyCount = 0;
     _activePurePremiums = 0;
     _activePremiums = 0;
     _borrowedActivePP = 0;
@@ -130,25 +123,12 @@ contract PolicyPool is
     _unpause();
   }
 
-  function _beforeTokenTransfer(
-    address from,
-    address to,
-    uint256 tokenId
-  ) internal override(ERC721Upgradeable, ERC721EnumerableUpgradeable) whenNotPaused {
-    super._beforeTokenTransfer(from, to, tokenId);
-  }
-
-  function supportsInterface(bytes4 interfaceId)
-    public
-    view
-    override(ERC721Upgradeable, ERC721EnumerableUpgradeable, AccessControlUpgradeable)
-    returns (bool)
-  {
-    return interfaceId == type(IPolicyPool).interfaceId || super.supportsInterface(interfaceId);
-  }
-
   function currency() external view virtual override returns (IERC20) {
     return _currency;
+  }
+
+  function policyNFT() external view returns (IERC721) {
+    return _policyNFT;
   }
 
   function purePremiums() external view returns (uint256) {
@@ -265,11 +245,10 @@ contract PolicyPool is
       success && rmStatus == DataTypes.RiskModuleStatus.active,
       "RM module not found or not active"
     );
-    _policyCount += 1;
     _currency.safeTransferFrom(customer, address(this), policy_.premium);
-    Policy.PolicyData storage policy = _policies[_policyCount] = policy_;
-    policy.id = _policyCount;
-    _safeMint(customer, policy.id);
+    uint256 policyId = IMintable(address(_policyNFT)).safeMint(customer);
+    Policy.PolicyData storage policy = _policies[policyId] = policy_;
+    policy.id = policyId;
     if (policy.rmScr() > 0) _currency.safeTransferFrom(rm.wallet(), address(this), policy.rmScr());
     _activePurePremiums += policy.purePremium;
     _activePremiums += policy.premium;
@@ -377,7 +356,7 @@ contract PolicyPool is
       uint256 returnToRm;
       (aux, purePremiumWon, returnToRm) = policy.splitPayout(payout);
       borrowFromScr = _payFromPool(aux);
-      _transferTo(ownerOf(policy.id), payout);
+      _transferTo(_policyNFT.ownerOf(policy.id), payout);
       if (returnToRm > 0) _transferTo(policy.riskModule.wallet(), returnToRm);
     } else {
       // Pay RM and Ensuro

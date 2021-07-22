@@ -124,6 +124,11 @@ class ETHCall:
             elif isinstance(value, str) and value.startswith("0x"):
                 return value
             return AddressBook.instance.get_account(value)
+        if value_type == "keccak256":
+            if not value.startswith("0x"):
+                k = keccak.new(digest_bits=256)
+                k.update(value.encode("utf-8"))
+                return k.hexdigest()
         if value_type == "contract":
             if isinstance(value, ETHWrapper):
                 return value.contract.address
@@ -240,22 +245,7 @@ class ETHWrapper:
     def _get_name(self, account):
         return AddressBook.instance.get_name(account)
 
-    def grant_role(self, role, user):
-        admin = self._auto_from
-
-        if not role.startswith("0x"):
-            role = self.keccak256(role)
-
-        if isinstance(user, str):
-            user = self._get_account(user)
-
-        self.contract.grantRole(role, user, {"from": admin})
-        return user
-
-    def keccak256(self, value):
-        k = keccak.new(digest_bits=256)
-        k.update(value.encode("utf-8"))
-        return k.hexdigest()
+    grant_role = MethodAdapter((("role", "keccak256"), ("user", "address")))
 
     @contextmanager
     def as_(self, user):
@@ -345,6 +335,14 @@ class TestNFT(IERC721):
 
     mint = MethodAdapter((("to", "address"), ("token_id", "int")))
     burn = MethodAdapter((("owner", "msg.sender"), ("token_id", "int")))
+
+
+class PolicyNFT(IERC721):
+    eth_contract = "PolicyNFT"
+    proxy_kind = "uups"
+
+    def __init__(self, owner="Owner", name="Test NFT", symbol="NFTEST"):
+        super().__init__(owner, name, symbol)
 
 
 def _adapt_signed_amount(args, kwargs):
@@ -545,17 +543,19 @@ class TrustfulRiskModule(RiskModuleETH):
             return None
 
 
-class PolicyPool(IERC721):
+class PolicyPool(ETHWrapper):
     libraries_required = ["Policy"]
     eth_contract = "PolicyPool"
 
     proxy_kind = "uups"
 
-    def __init__(self, owner, name, symbol, currency, treasury="ENS", asset_manager=None):
+    def __init__(self, owner, policy_nft, currency, treasury="ENS", asset_manager=None):
         treasury = self._get_account(treasury)
         asset_manager = self._get_account(asset_manager)
         self._currency = currency
-        super().__init__(owner, name, symbol, currency.contract, treasury, asset_manager)
+        self._policy_nft = policy_nft
+        super().__init__(owner, policy_nft.contract, currency.contract,
+                         treasury, asset_manager)
         self._auto_from = self.owner
         self.etokens = {}
         self.risk_modules = {}
@@ -566,6 +566,13 @@ class PolicyPool(IERC721):
             return self._currency
         else:
             return IERC20.connect(self.contract.currency())
+
+    @property
+    def policy_nft(self):
+        if hasattr(self, "_policy_nft"):
+            return self._policy_nft
+        else:
+            return IERC721.connect(self.contract.policyNFT())
 
     @classmethod
     def connect(cls, contract, owner=None):

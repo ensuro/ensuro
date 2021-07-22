@@ -706,6 +706,7 @@ def test_nfts(tenv):
     """
 
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    nft = pool.policy_nft
     timecontrol = tenv.time_control
     rm = pool.risk_modules["Roulette"]
     rm.grant_role("PRICER_ROLE", rm.owner)
@@ -723,10 +724,10 @@ def test_nfts(tenv):
         loss_prob=_R(1/37), expiration=timecontrol.now + WEEK
     )
 
-    assert pool.balance_of("CUST1") == 1
-    assert pool.owner_of(policy.id) == "CUST1"
+    assert nft.balance_of("CUST1") == 1
+    assert nft.owner_of(policy.id) == "CUST1"
 
-    pool.transfer_from("CUST1", "CUST1", "CUST2", policy.id)
+    nft.transfer_from("CUST1", "CUST1", "CUST2", policy.id)
 
     timecontrol.fast_forward(WEEK)
     rm.resolve_policy(policy.id, True)

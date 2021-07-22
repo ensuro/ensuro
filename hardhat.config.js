@@ -1,6 +1,7 @@
 require("@nomiclabs/hardhat-waffle");
 require("hardhat-gas-reporter");
 require("solidity-coverage");
+require("hardhat-contract-sizer");
 
 // const { mnemonic } = require('./secrets.json');
 
@@ -29,6 +30,11 @@ module.exports = {
         runs: 200
       }
     }
+  },
+  contractSizer: {
+    alphaSort: true,
+    runOnCompile: true,
+    disambiguatePaths: false,
   },
   defaultNetwork: "hardhat",
   networks: {
