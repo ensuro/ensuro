@@ -20,12 +20,7 @@ import {DataTypes} from "./DataTypes.sol";
 
 // #invariant_disabled {:msg "Borrow up to activePurePremiums"} _borrowedActivePP <= _activePurePremiums;
 // #invariant_disabled {:msg "Can't borrow if not exhausted before won"} (_borrowedActivePP > 0) ==> _wonPurePremiums == 0;
-contract PolicyPool is
-  IPolicyPool,
-  PausableUpgradeable,
-  AccessControlUpgradeable,
-  UUPSUpgradeable
-{
+contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeable, UUPSUpgradeable {
   using EnumerableSet for EnumerableSet.AddressSet;
   using WadRayMath for uint256;
   using SafeERC20 for IERC20;

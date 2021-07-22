@@ -24,10 +24,7 @@ contract PolicyNFT is
   CountersUpgradeable.Counter private _tokenIdCounter;
   bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
 
-  function initialize(
-    string memory name_,
-    string memory symbol_
-  ) initializer public {
+  function initialize(string memory name_, string memory symbol_) public initializer {
     __ERC721_init(name_, symbol_);
     __Pausable_init();
     __AccessControl_init();
@@ -37,7 +34,7 @@ contract PolicyNFT is
     _setupRole(PAUSER_ROLE, msg.sender);
     _setupRole(MINTER_ROLE, msg.sender);
     _setupRole(UPGRADER_ROLE, msg.sender);
-    _tokenIdCounter.increment();  // I don't want _tokenId==0
+    _tokenIdCounter.increment(); // I don't want _tokenId==0
   }
 
   function safeMint(address to) external override onlyRole(MINTER_ROLE) returns (uint256) {
@@ -55,19 +52,16 @@ contract PolicyNFT is
     _unpause();
   }
 
-  function _beforeTokenTransfer(address from, address to, uint256 tokenId)
-    internal
-    whenNotPaused
-    override
-  {
+  function _beforeTokenTransfer(
+    address from,
+    address to,
+    uint256 tokenId
+  ) internal override whenNotPaused {
     super._beforeTokenTransfer(from, to, tokenId);
   }
 
-  function _authorizeUpgrade(address newImplementation)
-    internal
-    onlyRole(UPGRADER_ROLE)
-    override
-  {}
+  // solhint-disable-next-line no-empty-blocks
+  function _authorizeUpgrade(address newImplementation) internal override onlyRole(UPGRADER_ROLE) {}
 
   function supportsInterface(bytes4 interfaceId)
     public
