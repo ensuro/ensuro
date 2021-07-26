@@ -343,7 +343,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     bool customerWon,
     uint256 payout
   ) internal returns (uint256, uint256) {
-    uint256 borrowFromScr;
+    uint256 borrowFromScr = 0;
     uint256 purePremiumWon;
     uint256 aux;
 
