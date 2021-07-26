@@ -4,15 +4,20 @@ from prototype.contracts import RevertError
 from prototype.wadray import Wad, _R, Ray, _W
 from Crypto.Hash import keccak
 from brownie import accounts
+import eth_utils
 import brownie
 from brownie.network.account import Account, LocalAccount
 from brownie.exceptions import VirtualMachineError
 from brownie.network.state import Chain
 from brownie.network.contract import Contract, ProjectContract
+from environs import Env
 
+env = Env()
 chain = Chain()
 
 SECONDS_IN_YEAR = 365 * 24 * 3600
+
+SKIP_PROXY = env.bool("SKIP_PROXY", False)
 
 
 class TimeControl:
@@ -123,6 +128,11 @@ class ETHCall:
             elif isinstance(value, str) and value.startswith("0x"):
                 return value
             return AddressBook.instance.get_account(value)
+        if value_type == "keccak256":
+            if not value.startswith("0x"):
+                k = keccak.new(digest_bits=256)
+                k.update(value.encode("utf-8"))
+                return k.hexdigest()
         if value_type == "contract":
             if isinstance(value, ETHWrapper):
                 return value.contract.address
@@ -185,14 +195,44 @@ class MethodAdapter:
         return eth_call(instance, value)
 
 
+def encode_function_data(initializer=None, *args):
+    """Encodes the function call so we can work with an initializer.
+    Args:
+        initializer ([brownie.network.contract.ContractTx], optional):
+        The initializer function we want to call. Example: `box.store`.
+        Defaults to None.
+        args (Any, optional):
+        The arguments to pass to the initializer function
+    Returns:
+        [bytes]: Return the encoded bytes.
+    """
+    if len(args) == 0 or not initializer:
+        return eth_utils.to_bytes(hexstr="0x")
+    else:
+        return initializer.encode_input(*args)
+
+
 class ETHWrapper:
     libraries_required = []
+    proxy_kind = None
 
     def __init__(self, owner="owner", *init_params):
         self.owner = AddressBook.instance.get_account(owner)
         for library in self.libraries_required:
             getattr(brownie, library).deploy({"from": self.owner})
-        self.contract = getattr(brownie, self.eth_contract).deploy(*init_params, {"from": self.owner})
+        if self.proxy_kind is None:
+            self.contract = getattr(brownie, self.eth_contract).deploy(*init_params, {"from": self.owner})
+        elif self.proxy_kind == "uups" and not SKIP_PROXY:
+            eth_contract = getattr(brownie, self.eth_contract)
+            real_contract = eth_contract.deploy({"from": self.owner})
+            proxy_contract = brownie.ERC1967Proxy.deploy(
+                real_contract, encode_function_data(real_contract.initialize, *init_params),
+                {"from": self.owner}
+            )
+            self.contract = Contract.from_abi(self.eth_contract, proxy_contract.address, eth_contract.abi)
+        elif self.proxy_kind == "uups" and SKIP_PROXY:
+            self.contract = getattr(brownie, self.eth_contract).deploy({"from": self.owner})
+            self.contract.initialize(*init_params, {"from": self.owner})
 
     @classmethod
     def connect(cls, contract, owner=None):
@@ -212,22 +252,7 @@ class ETHWrapper:
     def _get_name(self, account):
         return AddressBook.instance.get_name(account)
 
-    def grant_role(self, role, user):
-        admin = self._auto_from
-
-        if not role.startswith("0x"):
-            role = self.keccak256(role)
-
-        if isinstance(user, str):
-            user = self._get_account(user)
-
-        self.contract.grantRole(role, user, {"from": admin})
-        return user
-
-    def keccak256(self, value):
-        k = keccak.new(digest_bits=256)
-        k.update(value.encode("utf-8"))
-        return k.hexdigest()
+    grant_role = MethodAdapter((("role", "keccak256"), ("user", "address")))
 
     @contextmanager
     def as_(self, user):
@@ -319,6 +344,14 @@ class TestNFT(IERC721):
     burn = MethodAdapter((("owner", "msg.sender"), ("token_id", "int")))
 
 
+class PolicyNFT(IERC721):
+    eth_contract = "PolicyNFT"
+    proxy_kind = "uups"
+
+    def __init__(self, owner="Owner", name="Test NFT", symbol="NFTEST"):
+        super().__init__(owner, name, symbol)
+
+
 def _adapt_signed_amount(args, kwargs):
     amount = args[0] if args else kwargs["amount"]
     if amount > 0:
@@ -329,6 +362,7 @@ def _adapt_signed_amount(args, kwargs):
 
 class ETokenETH(IERC20):
     eth_contract = "EToken"
+    proxy_kind = "uups"
 
     def __init__(self, name, symbol, policy_pool, expiration_period, liquidity_requirement=_R(1),
                  max_utilization_rate=_R(1),
@@ -488,6 +522,7 @@ class RiskModuleETH(ETHWrapper):
 
 class TrustfulRiskModule(RiskModuleETH):
     eth_contract = "TrustfulRiskModule"
+    proxy_kind = "uups"
 
     new_policy_ = MethodAdapter((
         ("payout", "amount"), ("premium", "amount"), ("loss_prob", "ray"), ("expiration", "int"),
@@ -515,15 +550,19 @@ class TrustfulRiskModule(RiskModuleETH):
             return None
 
 
-class PolicyPool(IERC721):
+class PolicyPool(ETHWrapper):
     libraries_required = ["Policy"]
     eth_contract = "PolicyPool"
 
-    def __init__(self, owner, name, symbol, currency, treasury="ENS", asset_manager=None):
+    proxy_kind = "uups"
+
+    def __init__(self, owner, policy_nft, currency, treasury="ENS", asset_manager=None):
         treasury = self._get_account(treasury)
         asset_manager = self._get_account(asset_manager)
         self._currency = currency
-        super().__init__(owner, name, symbol, currency.contract, treasury, asset_manager)
+        self._policy_nft = policy_nft
+        super().__init__(owner, policy_nft.contract, currency.contract,
+                         treasury, asset_manager)
         self._auto_from = self.owner
         self.etokens = {}
         self.risk_modules = {}
@@ -534,6 +573,13 @@ class PolicyPool(IERC721):
             return self._currency
         else:
             return IERC20.connect(self.contract.currency())
+
+    @property
+    def policy_nft(self):
+        if hasattr(self, "_policy_nft"):
+            return self._policy_nft
+        else:
+            return IERC721.connect(self.contract.policyNFT())
 
     @classmethod
     def connect(cls, contract, owner=None):

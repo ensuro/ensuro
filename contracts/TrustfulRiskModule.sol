@@ -28,7 +28,7 @@ contract TrustfulRiskModule is RiskModule {
    * @param wallet_ Address of the RiskModule provider
    * @param sharedCoverageMinPercentage_ minimal % of SCR that must be covered by the RM
    */
-  constructor(
+  function initialize(
     string memory name_,
     IPolicyPool policyPool_,
     uint256 scrPercentage_,
@@ -38,8 +38,8 @@ contract TrustfulRiskModule is RiskModule {
     uint256 scrLimit_,
     address wallet_,
     uint256 sharedCoverageMinPercentage_
-  )
-    RiskModule(
+  ) public initializer {
+    __RiskModule_init(
       name_,
       policyPool_,
       scrPercentage_,
@@ -49,9 +49,7 @@ contract TrustfulRiskModule is RiskModule {
       scrLimit_,
       wallet_,
       sharedCoverageMinPercentage_
-    )
-  {
-    require(1 != 3, "foo");
+    );
   }
 
   function newPolicy(

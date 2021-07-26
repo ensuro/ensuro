@@ -393,12 +393,21 @@ class EToken(ERC20Token):
         return self.scr + self.ocean + self.get_pool_loan()
 
 
-class PolicyPool(ERC721Token):
+class PolicyNFT(ERC721Token):
+    policy_count = IntField(default=0)
+
+    def safeMint(self, customer):
+        self.policy_count += 1
+        self.mint(customer, self.policy_count)
+        return self.policy_count
+
+
+class PolicyPool(AccessControlContract):
+    policy_nft = ContractProxyField()
     currency = ContractProxyField()
     risk_modules = DictField(StringField(), ContractProxyField(), default={})
     etokens = DictField(StringField(), ContractProxyField(), default={})
     policies = DictField(IntField(), CompositeField(Policy), default={})
-    policy_count = IntField(default=0)
     active_premiums = WadField(default=Wad(0))
     active_pure_premiums = WadField(default=Wad(0))
     borrowed_active_pp = WadField(default=Wad(0))
@@ -445,10 +454,8 @@ class PolicyPool(ERC721Token):
     @external
     def new_policy(self, policy, customer):
         rm = policy.risk_module
-        self.policy_count += 1
         self.currency.transfer_from(self.contract_id, customer, self.contract_id, policy.premium)
-        policy.id = self.policy_count
-        self.mint(customer, policy.id)
+        policy.id = self.policy_nft.safeMint(customer)
 
         if policy.rm_scr:
             self.currency.transfer_from(self.contract_id, rm.wallet, self.contract_id, policy.rm_scr)
@@ -542,7 +549,7 @@ class PolicyPool(ERC721Token):
         if customer_won:
             to_pay_from_pool, pure_premium_won, return_to_rm = policy.split_payout(payout)
             borrow_from_scr = self._pay_from_pool(to_pay_from_pool)
-            policy_owner = self.owner_of(policy.id)
+            policy_owner = self.policy_nft.owner_of(policy.id)
             self._transfer_to(policy_owner, payout)
             if return_to_rm:
                 self._transfer_to(policy.risk_module.wallet, return_to_rm)
