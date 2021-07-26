@@ -66,7 +66,7 @@ contract EToken is
 
   modifier onlyAssetManager {
     require(
-      _msgSender() == _policyPool.assetManager(),
+      _msgSender() == address(_policyPool.assetManager()),
       "The caller must be the PolicyPool's AssetManager"
     );
     _;

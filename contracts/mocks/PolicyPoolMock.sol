@@ -3,6 +3,8 @@ pragma solidity ^0.8.0;
 
 import {IPolicyPool} from "../../interfaces/IPolicyPool.sol";
 import {IRiskModule} from "../../interfaces/IRiskModule.sol";
+import {IEToken} from "../../interfaces/IEToken.sol";
+import {IAssetManager} from "../../interfaces/IAssetManager.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Policy} from "../Policy.sol";
 
@@ -23,9 +25,24 @@ contract PolicyPoolMock is IPolicyPool {
     return _currency;
   }
 
-  function assetManager() external pure override returns (address) {
-    return address(0);
+  function assetManager() external pure override returns (IAssetManager) {
+    return IAssetManager(address(0));
   }
+
+  function getInvestable() external view override returns (uint256) {
+    return 0;
+  }
+
+  function getETokenCount() external view override returns (uint256) {
+    return 0;
+  }
+
+  function getETokenAt(uint256) external view override returns (IEToken) {
+    return IEToken(address(0));
+  }
+
+  // solhint-disable-next-line no-empty-blocks
+  function assetEarnings(uint256 amount, bool positive) external override {}
 
   function newPolicy(
     Policy.PolicyData memory policy,
