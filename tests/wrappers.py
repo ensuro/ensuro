@@ -583,7 +583,7 @@ class PolicyPool(ETHWrapper):
 
     @classmethod
     def connect(cls, contract, owner=None):
-        obj = ETHWrapper.connect(contract, owner)
+        obj = super(PolicyPool, cls).connect(contract, owner)
         obj.etokens = {}  # TODO: load from object
         obj.risk_modules = {}  # TODO: load from object
         obj._auto_from = obj.owner
@@ -630,7 +630,50 @@ class PolicyPool(ETHWrapper):
     get_policy_fund_count = MethodAdapter((("policy_id", "int"), ), "int")
     get_policy_fund = MethodAdapter((("policy_id", "int"), ("etoken", "contract")), "amount")
     rebalance_policy = MethodAdapter((("policy_id", "int"), ))
-    # TODO other methods
+    get_investable = MethodAdapter((), "amount")
+    set_asset_manager_ = MethodAdapter((("asset_manager", "contract"), ))
+
+    def set_asset_manager(self, asset_manager):
+        self.set_asset_manager_(asset_manager)
+        self._asset_manager = asset_manager
+
+    @property
+    def asset_manager(self):
+        am = self.contract.assetManager()
+        if getattr(self, "_asset_manager") and self._asset_manager.contract.address == am:
+            return self._asset_manager
+        return BaseAssetManager.connect(am, self.owner)
+
+
+class BaseAssetManager(ETHWrapper):
+    eth_contract = "BaseAssetManager"
+    proxy_kind = "uups"
+
+    def __init__(self, owner, pool, liquidity_min, liquidity_middle, liquidity_max, *args):
+        liquidity_min = _W(liquidity_min)
+        liquidity_middle = _W(liquidity_middle)
+        liquidity_max = _W(liquidity_max)
+
+        super().__init__(
+            owner, pool.contract, liquidity_min, liquidity_middle, liquidity_max, *args
+        )
+        self._auto_from = self.owner
+
+    checkpoint = MethodAdapter()
+    rebalance = MethodAdapter()
+    distribute_earnings = MethodAdapter()
+    total_investable = MethodAdapter((), "amount")
+
+
+class FixedRateAssetManager(BaseAssetManager):
+    eth_contract = "FixedRateAssetManager"
+
+    def __init__(self, owner, pool, liquidity_min, liquidity_middle, liquidity_max,
+                 interest_rate=_R("0.05")):
+        interest_rate = _R(interest_rate)
+        super().__init__(
+            owner, pool, liquidity_min, liquidity_middle, liquidity_max, interest_rate
+        )
 
 
 ERC20Token = TestCurrency

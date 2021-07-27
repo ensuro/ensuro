@@ -5,6 +5,7 @@ import {WadRayMath} from "./WadRayMath.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {IPolicyPoolComponent} from "../interfaces/IPolicyPoolComponent.sol";
 import {IAssetManager} from "../interfaces/IAssetManager.sol";
@@ -38,6 +39,9 @@ abstract contract BaseAssetManager is
   uint256 internal _liquidityMax;
 
   uint256 internal _lastInvestmentValue;
+
+  event MoneyInvested(uint256 amount);
+  event MoneyDeinvested(uint256 amount);
 
   /**
    * @dev Initializes the asset manager
@@ -80,11 +84,23 @@ abstract contract BaseAssetManager is
     _liquidityMax = liquidityMax_;
   }
 
+  // solhint-disable-next-line no-empty-blocks
+  function _authorizeUpgrade(address) internal override onlyRole(UPGRADER_ROLE) {}
+
   function policyPool() public view override returns (IPolicyPool) {
     return _policyPool;
   }
 
-  function totalInvestable() public view returns (uint256, uint256) {
+  function _currency() internal view returns (IERC20) {
+    return _policyPool.currency();
+  }
+
+  function totalInvestable() external view returns (uint256) {
+    (uint256 poolInvestable, uint256 etksInvestable) = _totalInvestable();
+    return poolInvestable + etksInvestable;
+  }
+
+  function _totalInvestable() internal view returns (uint256, uint256) {
     uint256 poolInvestable = _policyPool.getInvestable();
     uint256 etksInvestable = 0;
     for (uint256 i = 0; i < _policyPool.getETokenCount(); i++) {
@@ -94,7 +110,7 @@ abstract contract BaseAssetManager is
     return (poolInvestable, etksInvestable);
   }
 
-  function distibuteEarnings() public {
+  function distibuteEarnings() public whenNotPaused {
     // TODO: if we keep it open for anyone, can be subject of flash loan attack??
     uint256 investmentValue = getInvestmentValue();
     bool positive;
@@ -109,7 +125,7 @@ abstract contract BaseAssetManager is
       return; // No earnings
     }
 
-    (uint256 poolInvestable, uint256 etksInvestable) = totalInvestable();
+    (uint256 poolInvestable, uint256 etksInvestable) = _totalInvestable();
     uint256 totalInv = poolInvestable + etksInvestable;
 
     _policyPool.assetEarnings(earnings.wadMul(poolInvestable).wadDiv(totalInv), positive);
@@ -123,8 +139,8 @@ abstract contract BaseAssetManager is
 
   function getInvestmentValue() public view virtual returns (uint256);
 
-  function rebalance() public {
-    uint256 poolCash = _policyPool.currency().balanceOf(address(_policyPool));
+  function rebalance() public whenNotPaused {
+    uint256 poolCash = _currency().balanceOf(address(_policyPool));
     if (poolCash > _liquidityMax) {
       _invest(poolCash - _liquidityMiddle);
       // TODO: emit Event?
@@ -140,7 +156,7 @@ abstract contract BaseAssetManager is
   }
 
   function refillWallet(uint256 paymentAmount) external override {
-    uint256 poolCash = _policyPool.currency().balanceOf(address(_policyPool));
+    uint256 poolCash = _currency().balanceOf(address(_policyPool));
     require(poolCash < paymentAmount, "No need to refill the wallet for this payment");
     uint256 investmentValue = getInvestmentValue();
     // try to leave the pool balance at liquidity_middle after the payment
@@ -152,12 +168,18 @@ abstract contract BaseAssetManager is
   function _invest(uint256 amount) internal virtual {
     _cashBalance += int256(amount);
     _lastInvestmentValue += amount;
+    emit MoneyInvested(amount);
     // must be reimplemented do the actual cash movement
   }
 
   function _deinvest(uint256 amount) internal virtual {
     _cashBalance -= int256(amount);
     _lastInvestmentValue -= Math.min(_lastInvestmentValue, amount);
+    emit MoneyDeinvested(amount);
     // must be reimplemented do the actual cash movement
+  }
+
+  function deinvestAll() external virtual override {
+    _deinvest(getInvestmentValue());
   }
 }

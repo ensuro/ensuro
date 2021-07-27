@@ -30,6 +30,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
   using DataTypes for DataTypes.RiskModuleStatusMap;
   using DataTypes for DataTypes.ETokenStatusMap;
 
+  uint256 public constant MAX_INT =
+    0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
+
   bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
   bytes32 public constant ENSURO_DAO_ROLE = keccak256("ENSURO_DAO_ROLE");
   bytes32 public constant REBALANCE_ROLE = keccak256("REBALANCE_ROLE");
@@ -194,7 +197,12 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
   // TODO: changeETokenStatus
 
   function setAssetManager(IAssetManager assetManager_) external onlyRole(ENSURO_DAO_ROLE) {
+    if (address(_assetManager) != address(0)) {
+      _assetManager.deinvestAll(); // deInvest all assets
+      _currency.approve(address(_assetManager), 0); // revoke currency management approval
+    }
     _assetManager = assetManager_;
+    _currency.approve(address(_assetManager), MAX_INT); // infinite approval should be enought for few years
     emit AssetManagerChanged(_assetManager);
   }
 
@@ -299,7 +307,12 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
   }
 
   function _transferTo(address destination, uint256 amount) internal {
-    // TODO asset management
+    if (amount == 0) return;
+    uint256 balance = _currency.balanceOf(address(this));
+    if (balance < amount) {
+      _assetManager.refillWallet(amount);
+    }
+    // TODO: check balance again and call InsolvencyHook if needed
     _currency.safeTransfer(destination, amount);
   }
 
