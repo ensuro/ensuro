@@ -3,7 +3,7 @@ from io import StringIO
 from unittest import TestCase
 import pytest
 from prototype.contracts import RevertError, Contract
-from prototype.wadray import _W, _R
+from prototype.wadray import _W, _R, set_precision, Wad
 from prototype.utils import load_config, WEEK, DAY
 
 
@@ -803,6 +803,7 @@ def test_partial_payout_shared_coverage(tenv):
     usd.balance_of("RM").assert_equal(_W(5000) - _W("727.7421875"))  # Same as before policy
 
 
+@set_precision(Wad, 3)
 def test_asset_manager(tenv):
     YAML_SETUP = """
     risk_modules:
@@ -847,7 +848,7 @@ def test_asset_manager(tenv):
     assert etk.balance_of("LP1") == _W(10000)
     asset_manager.checkpoint()
     assert USD.balance_of(pool.contract_id) == _W(1500)  # unchanged
-    etk.balance_of("LP1").assert_equal(_W(10000) + _W(8500) * _W("0.05"), decimals=3)  # All earnings for the LP
+    etk.balance_of("LP1").assert_equal(_W(10000) + _W(8500) * _W("0.05"))  # All earnings for the LP
     lp1_balance = etk.balance_of("LP1")
 
     USD.approve("CUST1", pool.contract_id, _W(200))
