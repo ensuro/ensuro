@@ -7,7 +7,7 @@ pragma solidity ^0.8.0;
  * @author Ensuro
  */
 interface IMintableERC20 {
-  function mint(address recipient, uint256 amount) external virtual;
+  function mint(address recipient, uint256 amount) external;
 
-  function burn(address recipient, uint256 amount) external virtual;
+  function burn(address recipient, uint256 amount) external;
 }

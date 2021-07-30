@@ -654,6 +654,7 @@ class AssetManager(AccessControlContract):
 
         return pool_investable + token_investable
 
+    @only_role("CHECKPOINT_ROLE")
     def distribute_earnings(self):
         investment_value = self.get_investment_value()
         total_investable = self.total_investable()
@@ -670,6 +671,7 @@ class AssetManager(AccessControlContract):
     def get_investment_value(self):
         raise NotImplementedError()
 
+    @only_role("CHECKPOINT_ROLE")
     def rebalance(self):
         pool_cash = self.pool.currency.balance_of(self.pool.contract_id)
 

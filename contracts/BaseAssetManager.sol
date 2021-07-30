@@ -31,6 +31,8 @@ abstract contract BaseAssetManager is
   bytes32 public constant ENSURO_DAO_ROLE = keccak256("ENSURO_DAO_ROLE");
   bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
   bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
+  // This user can trigger rebalance and distibuteEarnings
+  bytes32 public constant CHECKPOINT_ROLE = keccak256("CHECKPOINT_ROLE");
 
   IPolicyPool internal _policyPool;
   int256 internal _cashBalance;
@@ -42,6 +44,12 @@ abstract contract BaseAssetManager is
 
   event MoneyInvested(uint256 amount);
   event MoneyDeinvested(uint256 amount);
+  event EarningsDistributed(bool positive, uint256 amount);
+
+  modifier onlyPolicyPool {
+    require(_msgSender() == address(_policyPool), "The caller must be the PolicyPool");
+    _;
+  }
 
   /**
    * @dev Initializes the asset manager
@@ -70,6 +78,7 @@ abstract contract BaseAssetManager is
     uint256 liquidityMiddle_,
     uint256 liquidityMax_
   ) public initializer {
+    _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
     _policyPool = policyPool_;
     /*
     _cashBalance = 0;
@@ -95,6 +104,9 @@ abstract contract BaseAssetManager is
     return _policyPool.currency();
   }
 
+  /**
+   * @dev Returns the total amount that is available to invest by the asset manager
+   */
   function totalInvestable() external view returns (uint256) {
     (uint256 poolInvestable, uint256 etksInvestable) = _totalInvestable();
     return poolInvestable + etksInvestable;
@@ -110,8 +122,10 @@ abstract contract BaseAssetManager is
     return (poolInvestable, etksInvestable);
   }
 
-  function distibuteEarnings() public whenNotPaused {
-    // TODO: if we keep it open for anyone, can be subject of flash loan attack??
+  /**
+   * @dev Calculates asset earnings and distributes them updating accounting in PolicyPool and eTokens
+   */
+  function distibuteEarnings() public virtual whenNotPaused onlyRole(CHECKPOINT_ROLE) {
     uint256 investmentValue = getInvestmentValue();
     bool positive;
     uint256 earnings;
@@ -135,27 +149,41 @@ abstract contract BaseAssetManager is
       etk.assetEarnings(earnings.wadMul(etk.getInvestable()).wadDiv(totalInv), positive);
     }
     _lastInvestmentValue = investmentValue;
+    emit EarningsDistributed(positive, earnings);
   }
 
+  /**
+   * @dev Returns the current value of the investment portfolio
+   */
   function getInvestmentValue() public view virtual returns (uint256);
 
-  function rebalance() public whenNotPaused {
+  /**
+   * @dev Rebalances cash between PolicyPool wallet and
+   */
+  function rebalance() public virtual whenNotPaused onlyRole(CHECKPOINT_ROLE) {
     uint256 poolCash = _currency().balanceOf(address(_policyPool));
     if (poolCash > _liquidityMax) {
       _invest(poolCash - _liquidityMiddle);
-      // TODO: emit Event?
     } else if (poolCash < _liquidityMin) {
       _deinvest(_liquidityMiddle - poolCash);
-      // TODO: emit Event?
     }
   }
 
+  /**
+   * @dev Function to be called automatically by a crontask - Distributes and rebalances
+   */
   function checkpoint() external {
     distibuteEarnings();
     rebalance();
   }
 
-  function refillWallet(uint256 paymentAmount) external override {
+  /**
+   * @dev This is called from PolicyPool when doesn't have enought money for payment.
+   *      After the call, there should be enought money in PolicyPool.currency().balanceOf(this) to
+   *      do the payment
+   * @param paymentAmount The amount of the payment
+   */
+  function refillWallet(uint256 paymentAmount) external override onlyPolicyPool {
     uint256 poolCash = _currency().balanceOf(address(_policyPool));
     require(poolCash < paymentAmount, "No need to refill the wallet for this payment");
     uint256 investmentValue = getInvestmentValue();
@@ -179,7 +207,11 @@ abstract contract BaseAssetManager is
     // must be reimplemented do the actual cash movement
   }
 
-  function deinvestAll() external virtual override {
+  /**
+   * @dev Deinvest all the assets and return the cash back to the PolicyPool.
+   *      Called from PolicyPool when new asset manager is assigned
+   */
+  function deinvestAll() external virtual override onlyPolicyPool {
     _deinvest(getInvestmentValue());
   }
 }

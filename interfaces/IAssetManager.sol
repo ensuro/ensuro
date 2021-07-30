@@ -7,7 +7,17 @@ pragma solidity ^0.8.0;
  * @author Ensuro
  */
 interface IAssetManager {
-  function refillWallet(uint256 amount) external;
+  /**
+   * @dev This is called from PolicyPool when doesn't have enought money for payment.
+   *      After the call, there should be enought money in PolicyPool.currency().balanceOf(_policyPool) to
+   *      do the payment
+   * @param paymentAmount The amount of the payment
+   */
+  function refillWallet(uint256 paymentAmount) external;
 
+  /**
+   * @dev Deinvest all the assets and return the cash back to the PolicyPool.
+   *      Called from PolicyPool when new asset manager is assigned
+   */
   function deinvestAll() external;
 }

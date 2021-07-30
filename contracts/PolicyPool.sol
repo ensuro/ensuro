@@ -98,7 +98,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     IAssetManager assetManager_
   ) internal initializer {
     _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
-    _setupRole(PAUSER_ROLE, msg.sender);
     _currency = currency_;
     _policyNFT = policyNFT_;
     /*
