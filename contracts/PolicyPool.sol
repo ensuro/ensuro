@@ -13,6 +13,7 @@ import {IRiskModule} from "../interfaces/IRiskModule.sol";
 import {IPolicyPoolComponent} from "../interfaces/IPolicyPoolComponent.sol";
 import {IEToken} from "../interfaces/IEToken.sol";
 import {IMintable} from "../interfaces/IMintable.sol";
+import {IAssetManager} from "../interfaces/IAssetManager.sol";
 import {Policy} from "./Policy.sol";
 import {WadRayMath} from "./WadRayMath.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
@@ -28,6 +29,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
   using DataTypes for DataTypes.ETokenToWadMap;
   using DataTypes for DataTypes.RiskModuleStatusMap;
   using DataTypes for DataTypes.ETokenStatusMap;
+
+  uint256 public constant MAX_INT =
+    0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
 
   bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
   bytes32 public constant ENSURO_DAO_ROLE = keccak256("ENSURO_DAO_ROLE");
@@ -53,7 +57,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
   uint256 internal _wonPurePremiums; // amount of pure premiums won from non-defaulted policies
 
   address internal _treasury; // address of Ensuro treasury
-  address internal _assetManager; // asset manager (TBD)
+  IAssetManager internal _assetManager; // asset manager
 
   event NewPolicy(IRiskModule indexed riskModule, uint256 policyId);
   event PolicyRebalanced(IRiskModule indexed riskModule, uint256 indexed policyId);
@@ -65,12 +69,12 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
   );
 
   event ETokenStatusChanged(IEToken indexed eToken, DataTypes.ETokenStatus newStatus);
-  event AssetManagerChanged(address indexed assetManager);
+  event AssetManagerChanged(IAssetManager indexed assetManager);
 
   event Withdrawal(IEToken indexed eToken, address indexed provider, uint256 value);
 
   modifier onlyAssetManager {
-    require(_msgSender() == _assetManager, "Only assetManager can call this function");
+    require(_msgSender() == address(_assetManager), "Only assetManager can call this function");
     _;
   }
 
@@ -78,7 +82,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     IERC721 policyNFT_,
     IERC20 currency_,
     address treasury_,
-    address assetManager_
+    IAssetManager assetManager_
   ) public initializer {
     __UUPSUpgradeable_init();
     __Pausable_init();
@@ -91,10 +95,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     IERC721 policyNFT_,
     IERC20 currency_,
     address treasury_,
-    address assetManager_
+    IAssetManager assetManager_
   ) internal initializer {
     _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
-    _setupRole(PAUSER_ROLE, msg.sender);
     _currency = currency_;
     _policyNFT = policyNFT_;
     /*
@@ -192,12 +195,17 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
   // TODO: removeEToken
   // TODO: changeETokenStatus
 
-  function setAssetManager(address assetManager_) external onlyRole(ENSURO_DAO_ROLE) {
+  function setAssetManager(IAssetManager assetManager_) external onlyRole(ENSURO_DAO_ROLE) {
+    if (address(_assetManager) != address(0)) {
+      _assetManager.deinvestAll(); // deInvest all assets
+      _currency.approve(address(_assetManager), 0); // revoke currency management approval
+    }
     _assetManager = assetManager_;
+    _currency.approve(address(_assetManager), MAX_INT); // infinite approval should be enought for few years
     emit AssetManagerChanged(_assetManager);
   }
 
-  function assetManager() external view virtual override returns (address) {
+  function assetManager() external view virtual override returns (IAssetManager) {
     return _assetManager;
   }
 
@@ -298,7 +306,12 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
   }
 
   function _transferTo(address destination, uint256 amount) internal {
-    // TODO asset management
+    if (amount == 0) return;
+    uint256 balance = _currency.balanceOf(address(this));
+    if (balance < amount) {
+      _assetManager.refillWallet(amount);
+    }
+    // TODO: check balance again and call InsolvencyHook if needed
     _currency.safeTransfer(destination, amount);
   }
 
@@ -463,7 +476,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     emit PolicyRebalanced(policy.riskModule, policy.id);
   }
 
-  function getInvestable() external view returns (uint256) {
+  function getInvestable() external view override returns (uint256) {
     uint256 borrowedFromEtk = 0;
     for (uint256 i = 0; i < _eTokens.length(); i++) {
       (
@@ -478,7 +491,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     else return 0;
   }
 
-  function assetEarnings(uint256 amount, bool positive) external onlyAssetManager {
+  function assetEarnings(uint256 amount, bool positive) external override onlyAssetManager {
     if (positive) {
       // earnings
       _storePurePremiumWon(amount);
@@ -508,5 +521,15 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     (bool success, uint256 amount) = _policiesFunds[policyId].tryGet(etoken);
     if (success) return amount;
     else return 0;
+  }
+
+  function getETokenCount() external view override returns (uint256) {
+    return _eTokens.length();
+  }
+
+  function getETokenAt(uint256 index) external view override returns (IEToken) {
+    (IEToken etk, DataTypes.ETokenStatus etkStatus) = _eTokens.at(index);
+    if (etkStatus != DataTypes.ETokenStatus.inactive) return etk;
+    else return IEToken(address(0));
   }
 }

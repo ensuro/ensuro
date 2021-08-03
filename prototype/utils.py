@@ -106,6 +106,7 @@ def load_config(yaml_config=None, module=None):
     asset_manager = config.get("asset_manager", {})
     if asset_manager:
         asset_manager_class = asset_manager.pop("class")
+        asset_manager["owner"] = pool.owner
         asset_manager["pool"] = pool
         asset_manager = getattr(module, asset_manager_class)(**asset_manager)
         pool.set_asset_manager(asset_manager)

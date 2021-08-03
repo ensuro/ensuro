@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from decimal import Decimal
 
 WAD = 10**18
@@ -5,6 +6,8 @@ RAY = 10**27
 
 
 class Wad(int):
+    DEFAULT_EQ_PRECISION = 4
+
     def __mul__(self, other):
         assert isinstance(other, Wad)
         return Wad(int(self) * int(other) // WAD)
@@ -33,10 +36,14 @@ class Wad(int):
     def to_ray(self):
         return Ray(int(self) * 10**9)
 
-    def equal(self, other, decimals=4):
+    def equal(self, other, decimals=None):
+        if decimals is None:
+            decimals = self.DEFAULT_EQ_PRECISION
         return abs(other - self) < (10**(18-decimals))
 
-    def assert_equal(self, other, decimals=4):
+    def assert_equal(self, other, decimals=None):
+        if decimals is None:
+            decimals = self.DEFAULT_EQ_PRECISION
         diff = abs(other - self)
         max_diff = (10**(18-decimals))
         assert diff < max_diff, f"{self} != {other} diff {self - other}"
@@ -57,6 +64,8 @@ class Wad(int):
 
 
 class Ray(int):
+    DEFAULT_EQ_PRECISION = 4
+
     def __mul__(self, other):
         assert isinstance(other, Ray)
         return Ray(int(self) * int(other) // RAY)
@@ -85,10 +94,14 @@ class Ray(int):
     def to_wad(self):
         return Wad(int(self) // 10**9)
 
-    def equal(self, other, decimals=8):
+    def equal(self, other, decimals=None):
+        if decimals is None:
+            decimals = self.DEFAULT_EQ_PRECISION
         return abs(other - self) < (10**(27-decimals))
 
     def assert_equal(self, other, decimals=4):
+        if decimals is None:
+            decimals = self.DEFAULT_EQ_PRECISION
         diff = abs(other - self)
         max_diff = (10**(27-decimals))
         assert diff < max_diff, f"{self} != {other} diff {self - other}"
@@ -110,3 +123,13 @@ class Ray(int):
 
 _R = Ray.from_value
 _W = Wad.from_value
+
+
+@contextmanager
+def set_precision(cls, precision):
+    old_precision = cls.DEFAULT_EQ_PRECISION
+    cls.DEFAULT_EQ_PRECISION = precision
+    try:
+        yield
+    finally:
+        cls.DEFAULT_EQ_PRECISION = old_precision
