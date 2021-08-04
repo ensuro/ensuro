@@ -213,7 +213,6 @@ def encode_function_data(initializer=None, *args):
 
 
 class ETHWrapper:
-    libraries_required = []
     proxy_kind = None
 
     def __init__(self, owner="owner", *init_params):
@@ -490,7 +489,6 @@ class Policy:
 
 
 class RiskModuleETH(ETHWrapper):
-    libraries_required = ["Policy"]
 
     def __init__(self, name, policy_pool, scr_percentage=_R(1), premium_share=_R(0), ensuro_share=_R(0),
                  max_scr_per_policy=_W(1000000), scr_limit=_W(1000000),
@@ -551,7 +549,6 @@ class TrustfulRiskModule(RiskModuleETH):
 
 
 class PolicyPool(ETHWrapper):
-    libraries_required = ["Policy"]
     eth_contract = "PolicyPool"
 
     proxy_kind = "uups"

@@ -12,8 +12,8 @@ import {IRiskModule} from "../interfaces/IRiskModule.sol";
 library Policy {
   using WadRayMath for uint256;
 
-  uint256 public constant SECONDS_IN_YEAR = 31536000e18; /* 365 * 24 * 3600 * 10e18 */
-  uint256 public constant SECONDS_IN_YEAR_RAY = 31536000e27; /* 365 * 24 * 3600 * 10e27 */
+  uint256 internal constant SECONDS_IN_YEAR = 31536000e18; /* 365 * 24 * 3600 * 10e18 */
+  uint256 internal constant SECONDS_IN_YEAR_RAY = 31536000e27; /* 365 * 24 * 3600 * 10e27 */
 
   // Active Policies
   struct PolicyData {
@@ -44,7 +44,7 @@ library Policy {
     uint256 payout,
     uint256 lossProb,
     uint40 expiration
-  ) public view returns (PolicyData memory newPolicy) {
+  ) internal view returns (PolicyData memory newPolicy) {
     require(premium <= payout, "Premium cannot be more than payout");
     PolicyData memory policy;
     policy.riskModule = riskModule;
@@ -74,7 +74,7 @@ library Policy {
     return policy;
   }
 
-  function rmScr(PolicyData storage policy) public view returns (uint256) {
+  function rmScr(PolicyData storage policy) internal view returns (uint256) {
     uint256 ensPremium = policy.premium.wadMul(policy.payout - policy.rmCoverage).wadDiv(
       policy.payout
     );
@@ -82,7 +82,7 @@ library Policy {
   }
 
   function splitPayout(PolicyData storage policy, uint256 payout)
-    public
+    internal
     view
     returns (
       uint256,
@@ -101,7 +101,7 @@ library Policy {
     return (payout - rmPayout, 0, rmScr(policy) - rmPayout);
   }
 
-  function interestRate(PolicyData storage policy) public view returns (uint256) {
+  function interestRate(PolicyData storage policy) internal view returns (uint256) {
     return
       policy
         .premiumForLps
@@ -110,7 +110,7 @@ library Policy {
         .wadToRay();
   }
 
-  function accruedInterest(PolicyData storage policy) public view returns (uint256) {
+  function accruedInterest(PolicyData storage policy) internal view returns (uint256) {
     uint256 secs = block.timestamp - policy.start;
     return
       policy
@@ -122,7 +122,7 @@ library Policy {
   }
 
   // For debugging
-  function uint2str(uint256 _i) public pure returns (string memory _uintAsString) {
+  function uint2str(uint256 _i) internal pure returns (string memory _uintAsString) {
     if (_i == 0) {
       return "0";
     }
