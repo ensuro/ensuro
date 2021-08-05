@@ -28,3 +28,4 @@ ADD . /usr/local/app
 WORKDIR /usr/local/app/
 
 RUN npm install
+RUN echo 'alias hh="npx hardhat"' >> /root/.bashrc

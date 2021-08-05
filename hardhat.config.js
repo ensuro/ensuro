@@ -3,6 +3,7 @@ require("hardhat-gas-reporter");
 require("solidity-coverage");
 require("hardhat-contract-sizer");
 require('@openzeppelin/hardhat-upgrades');
+const deploy = require("./tasks/deploy");
 
 // const { mnemonic } = require('./secrets.json');
 
@@ -15,6 +16,9 @@ task("accounts", "Prints the list of accounts", async () => {
     console.log(account.address);
   }
 });
+
+
+deploy.add_task();
 
 // You need to export an object to set up your config
 // Go to https://hardhat.org/config/ to learn more
@@ -49,6 +53,14 @@ module.exports = {
       chainId: 97,
       gasPrice: 20000000000,
 //      accounts: {mnemonic: mnemonic}
+    },
+    polygon: {
+      url: "https://matic-mainnet.chainstacklabs.com",
+      chainId: 137,
+    },
+    polytest: {
+      url: "https://rpc-mumbai.matic.today",
+      chainId: 80001,
     },
     mainnet: {
       url: "https://bsc-dataseed.binance.org/",
