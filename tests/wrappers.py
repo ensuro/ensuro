@@ -214,6 +214,7 @@ def encode_function_data(initializer=None, *args):
 
 class ETHWrapper:
     proxy_kind = None
+    libraries_required = []
 
     def __init__(self, owner="owner", *init_params):
         self.owner = AddressBook.instance.get_account(owner)
