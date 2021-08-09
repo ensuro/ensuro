@@ -8,26 +8,22 @@ const RAY = WAD.mul(_BN(1e9));  // 1e18*1e9=1e27
 
 
 function _W(value) {
+  if (!Number.isInteger(value))
+    return _BN(value * 1e10).mul(_BN(1e8));
   return _BN(value).mul(WAD);
 }
 
 function _R(value) {
+  if (!Number.isInteger(value))
+    return _BN(value * 1e9).mul(WAD);
   return _BN(value).mul(RAY);
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
-async function verifyContract(hre, contract, isProxy, constructorArguments, sleepTime) {
+async function verifyContract(hre, contract, isProxy, constructorArguments) {
   if (isProxy === undefined)
     isProxy = false;
   if (constructorArguments === undefined)
     constructorArguments = [];
-  if (sleepTime === undefined)
-    sleepTime = 15000;
   let address = contract.address;
   if (isProxy)
     address = await upgrades_core.getImplementationAddress(hre.network.provider, address);
@@ -78,8 +74,60 @@ async function deployPolicyPool({verify, nftAddress, currencyAddress, treasuryAd
   return policyPool.address;
 }
 
+async function deployEToken({
+      verify, poolAddress, etkName, etkSymbol, expirationPeriod, liquidityRequirement,
+      maxUtilizationRate, poolLoanInterestRate
+  }, hre) {
+  const EToken = await hre.ethers.getContractFactory("EToken");
+  const etoken = await hre.upgrades.deployProxy(EToken, [
+    etkName,
+    etkSymbol,
+    poolAddress,
+    expirationPeriod * 24 * 3600,
+    _R(liquidityRequirement),
+    _R(maxUtilizationRate),
+    _R(poolLoanInterestRate),
+  ], {kind: 'uups'});
+
+  await etoken.deployed();
+  console.log("EToken ", etkName, " deployed to:", etoken.address);
+  if (verify)
+    await verifyContract(hre, etoken, true);
+  const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
+  const policyPool = PolicyPool.attach(poolAddress);
+  await policyPool.addEToken(etoken.address);
+  return etoken.address;
+}
+
+async function deployRiskModule({
+      verify, rmClass, rmName, poolAddress, scrPercentage, premiumShare, ensuroShare, maxScrPerPolicy,
+      scrLimit, wallet, sharedCoverageMinPercentage
+  }, hre) {
+  const RiskModule = await hre.ethers.getContractFactory(rmClass);
+  const rm = await hre.upgrades.deployProxy(RiskModule, [
+    rmName,
+    poolAddress,
+    _R(scrPercentage),
+    _R(premiumShare),
+    _R(ensuroShare),
+    _W(maxScrPerPolicy),
+    _W(scrLimit),
+    wallet,
+    _R(sharedCoverageMinPercentage),
+  ], {kind: 'uups'});
+
+  await rm.deployed();
+  console.log("RiskModule ", rmClass, rmName, " deployed to:", rm.address);
+  if (verify)
+    await verifyContract(hre, rm, true);
+  const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
+  const policyPool = PolicyPool.attach(poolAddress);
+  await policyPool.addRiskModule(rm.address);
+  return rm.address;
+}
+
 function add_task() {
-  task("deploy", "Deploys the contracts")
+  task("deploy", "Deploys the PolicyPool and other required contracts")
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addOptionalParam("currName", "Name of Test Currency", "Ensuro Test USD", types.str)
     .addOptionalParam("currSymbol", "Symbol of Test Currency", "EUSD", types.str)
@@ -119,6 +167,33 @@ function add_task() {
     .addParam("currencyAddress", "Currency Address", types.address)
     .addOptionalParam("treasuryAddress", "Treasury Address", ethers.constants.AddressZero, types.address)
     .setAction(deployPolicyPool);
+
+  task("deploy:eToken", "Deploy an EToken and adds it to the pool")
+    .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
+    .addParam("poolAddress", "PolicyPool Address", types.address)
+    .addOptionalParam("etkName", "Name of EToken", "eUSD1WEEK", types.str)
+    .addOptionalParam("etkSymbol", "Symbol of EToken", "eUSD1W", types.str)
+    .addOptionalParam("expirationPeriod", "Expiration period (in days)", 7, types.int)
+    .addOptionalParam("liquidityRequirement", "Liquidity Requirement (to allow withdraws)",
+                      1.0, types.float)
+    .addOptionalParam("maxUtilizationRate", "Max Utilization Rate", 1.0, types.float)
+    .addOptionalParam("poolLoanInterestRate", "Interest rate when pool takes money from eToken",
+                      .05, types.float)
+    .setAction(deployEToken);
+
+  task("deploy:riskModule", "Deploys a RiskModule and adds it to the pool")
+    .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
+    .addParam("poolAddress", "PolicyPool Address", types.address)
+    .addOptionalParam("rmClass", "RiskModule contract", "TrustfulRiskModule", types.str)
+    .addOptionalParam("rmName", "Name of the RM", "Test RM", types.str)
+    .addOptionalParam("scrPercentage", "SCR Percentage", 1.0, types.float)
+    .addOptionalParam("premiumShare", "Share of the premium for RM", 0, types.float)
+    .addOptionalParam("ensuroShare", "Ensuro Share", 0.02, types.float)
+    .addOptionalParam("maxScrPerPolicy", "Max SCR Per policy", 10000, types.float)
+    .addOptionalParam("scrLimit", "Total SCR for the RM", 1e6, types.float)
+    .addParam("wallet", "RM address", types.address)
+    .addOptionalParam("sharedCoverageMinPercentage", "Shared coverage minimum percentage", 0.0, types.float)
+    .setAction(deployRiskModule);
 }
 
 module.exports = {add_task};
