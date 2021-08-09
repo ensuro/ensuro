@@ -21,7 +21,16 @@ task("accounts", "Prints the list of accounts", async () => {
 
 deploy.add_task();
 
-const DEV_ACCOUNT_PK = process.env.DEV_ACCOUNT_PK;
+function readEnvAccounts(network) {
+  network = network.toUpperCase();
+  let accounts = [];
+  let index = 1;
+  while (process.env[network + "_ACCOUNTPK_" + index]) {
+    accounts.push(process.env[network + "_ACCOUNTPK_" + index]);
+    index++;
+  }
+  return accounts;
+}
 
 // You need to export an object to set up your config
 // Go to https://hardhat.org/config/ to learn more
@@ -58,17 +67,17 @@ module.exports = {
 //      accounts: {mnemonic: mnemonic}
     },
     rinkeby: {
-      url: "https://rinkeby.infura.io/v3/f6ee6adc6d4746d6ad002098d1649067",
-      accounts: [DEV_ACCOUNT_PK],
+      url: "https://rinkeby.infura.io/v3/" + process.env.WEB3_INFURA_PROJECT_ID,
+      accounts: readEnvAccounts("rinkeby"),
     },
     polygon: {
-      url: "https://polygon-mainnet.infura.io/v3/f6ee6adc6d4746d6ad002098d1649067",
+      url: "https://polygon-mainnet.infura.io/v3/" + process.env.WEB3_INFURA_PROJECT_ID,
       chainId: 137,
     },
     polytest: {
-      url: "https://polygon-mumbai.infura.io/v3/f6ee6adc6d4746d6ad002098d1649067",
+      url: "https://polygon-mumbai.infura.io/v3/" + process.env.WEB3_INFURA_PROJECT_ID,
       chainId: 80001,
-      accounts: [DEV_ACCOUNT_PK],
+      accounts: readEnvAccounts("polytest"),
     },
     mainnet: {
       url: "https://bsc-dataseed.binance.org/",
