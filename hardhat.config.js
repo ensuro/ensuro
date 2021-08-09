@@ -3,6 +3,7 @@ require("hardhat-gas-reporter");
 require("solidity-coverage");
 require("hardhat-contract-sizer");
 require('@openzeppelin/hardhat-upgrades');
+require("@nomiclabs/hardhat-etherscan");
 const deploy = require("./tasks/deploy");
 
 // const { mnemonic } = require('./secrets.json');
@@ -19,6 +20,8 @@ task("accounts", "Prints the list of accounts", async () => {
 
 
 deploy.add_task();
+
+const DEV_ACCOUNT_PK = process.env.DEV_ACCOUNT_PK;
 
 // You need to export an object to set up your config
 // Go to https://hardhat.org/config/ to learn more
@@ -38,7 +41,7 @@ module.exports = {
   },
   contractSizer: {
     alphaSort: true,
-    runOnCompile: true,
+    runOnCompile: false,
     disambiguatePaths: false,
   },
   defaultNetwork: "hardhat",
@@ -54,13 +57,18 @@ module.exports = {
       gasPrice: 20000000000,
 //      accounts: {mnemonic: mnemonic}
     },
+    rinkeby: {
+      url: "https://rinkeby.infura.io/v3/f6ee6adc6d4746d6ad002098d1649067",
+      accounts: [DEV_ACCOUNT_PK],
+    },
     polygon: {
-      url: "https://matic-mainnet.chainstacklabs.com",
+      url: "https://polygon-mainnet.infura.io/v3/f6ee6adc6d4746d6ad002098d1649067",
       chainId: 137,
     },
     polytest: {
-      url: "https://rpc-mumbai.matic.today",
+      url: "https://polygon-mumbai.infura.io/v3/f6ee6adc6d4746d6ad002098d1649067",
       chainId: 80001,
+      accounts: [DEV_ACCOUNT_PK],
     },
     mainnet: {
       url: "https://bsc-dataseed.binance.org/",
@@ -68,6 +76,9 @@ module.exports = {
       gasPrice: 20000000000,
 //      accounts: {mnemonic: mnemonic}
     }
+  },
+  etherscan: {
+    apiKey: process.env.ETHERSCAN_TOKEN,
   },
   gasReporter: {
     currency: 'USD',

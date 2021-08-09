@@ -1,3 +1,5 @@
+const upgrades_core = require('@openzeppelin/upgrades-core');
+
 const ethers = require("ethers");
 
 const _BN = ethers.BigNumber.from;
@@ -13,40 +15,72 @@ function _R(value) {
   return _BN(value).mul(RAY);
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
 
-async function deployTestCurrency({currName, currSymbol, initialSupply}, hre) {
+async function verifyContract(hre, contract, isProxy, constructorArguments, sleepTime) {
+  if (isProxy === undefined)
+    isProxy = false;
+  if (constructorArguments === undefined)
+    constructorArguments = [];
+  if (sleepTime === undefined)
+    sleepTime = 15000;
+  let address = contract.address;
+  if (isProxy)
+    address = await upgrades_core.getImplementationAddress(hre.network.provider, address);
+  try{
+    await hre.run("verify:verify", {
+      address: address,
+      constructorArguments: constructorArguments,
+    });
+  } catch (error) {
+    console.log("Error verifying contract", error);
+  }
+}
+
+async function deployTestCurrency({verify, currName, currSymbol, initialSupply}, hre) {
   // We get the contract to deploy
   const TestCurrency = await hre.ethers.getContractFactory("TestCurrency");
   const currency = await TestCurrency.deploy(currName, currSymbol, _W(initialSupply));
   await currency.deployed();
   console.log("TestCurrency deployed to:", currency.address);
+  if (verify)
+    await verifyContract(hre, currency, false, [currName, currSymbol, _W(initialSupply)]);
   return currency.address;
 }
 
-async function deployPolicyNFT({nftName, nftSymbol}, hre) {
+async function deployPolicyNFT({verify, nftName, nftSymbol}, hre) {
   const PolicyNFT = await hre.ethers.getContractFactory("PolicyNFT");
-  const policyNFT = await hre.upgrades.deployProxy(PolicyNFT, [nftName, nftSymbol]);
+  const policyNFT = await hre.upgrades.deployProxy(PolicyNFT, [nftName, nftSymbol], {kind: 'uups'});
   await policyNFT.deployed();
   console.log("PolicyNFT deployed to:", policyNFT.address);
+  if (verify)
+    await verifyContract(hre, policyNFT, true);
   return policyNFT.address;
 }
 
-async function deployPolicyPool({nftAddress, currencyAddress, treasuryAddress}, hre) {
+async function deployPolicyPool({verify, nftAddress, currencyAddress, treasuryAddress}, hre) {
   const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
   const policyPool = await hre.upgrades.deployProxy(PolicyPool, [
     nftAddress,
     currencyAddress,
     treasuryAddress,
     hre.ethers.constants.AddressZero,
-  ]);
+  ], {kind: 'uups'});
 
   await policyPool.deployed();
   console.log("PolicyPool deployed to:", policyPool.address);
+  if (verify)
+    await verifyContract(hre, policyPool, true);
   return policyPool.address;
 }
 
 function add_task() {
   task("deploy", "Deploys the contracts")
+    .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addOptionalParam("currName", "Name of Test Currency", "Ensuro Test USD", types.str)
     .addOptionalParam("currSymbol", "Symbol of Test Currency", "EUSD", types.str)
     .addOptionalParam("initialSupply", "Initial supply in the test currency", 2000, types.int)
@@ -67,17 +101,20 @@ function add_task() {
     });
 
   task("deploy:testCurrency", "Deploys the Test Currency")
+    .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addOptionalParam("currName", "Name of Test Currency", "Ensuro Test USD", types.str)
     .addOptionalParam("currSymbol", "Symbol of Test Currency", "EUSD", types.str)
     .addOptionalParam("initialSupply", "Initial supply in the test currency", 2000, types.int)
     .setAction(deployTestCurrency);
 
   task("deploy:policyNFT", "Deploys the Policies NFT")
+    .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addOptionalParam("nftName", "Name of Policies NFT Token", "Ensuro Policies NFT", types.str)
     .addOptionalParam("nftSymbol", "Symbol of Policies NFT Token", "EPOL", types.str)
     .setAction(deployPolicyNFT);
 
   task("deploy:pool", "Deploys the PolicyPool")
+    .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addParam("nftAddress", "NFT Address", types.address)
     .addParam("currencyAddress", "Currency Address", types.address)
     .addOptionalParam("treasuryAddress", "Treasury Address", ethers.constants.AddressZero, types.address)
