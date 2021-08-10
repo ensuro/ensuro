@@ -2,6 +2,9 @@ require("@nomiclabs/hardhat-waffle");
 require("hardhat-gas-reporter");
 require("solidity-coverage");
 require("hardhat-contract-sizer");
+require('@openzeppelin/hardhat-upgrades');
+require("@nomiclabs/hardhat-etherscan");
+const deploy = require("./tasks/deploy");
 
 // const { mnemonic } = require('./secrets.json');
 
@@ -14,6 +17,20 @@ task("accounts", "Prints the list of accounts", async () => {
     console.log(account.address);
   }
 });
+
+
+deploy.add_task();
+
+function readEnvAccounts(network) {
+  network = network.toUpperCase();
+  let accounts = [];
+  let index = 1;
+  while (process.env[network + "_ACCOUNTPK_" + index]) {
+    accounts.push(process.env[network + "_ACCOUNTPK_" + index]);
+    index++;
+  }
+  return accounts;
+}
 
 // You need to export an object to set up your config
 // Go to https://hardhat.org/config/ to learn more
@@ -33,7 +50,7 @@ module.exports = {
   },
   contractSizer: {
     alphaSort: true,
-    runOnCompile: true,
+    runOnCompile: false,
     disambiguatePaths: false,
   },
   defaultNetwork: "hardhat",
@@ -49,12 +66,28 @@ module.exports = {
       gasPrice: 20000000000,
 //      accounts: {mnemonic: mnemonic}
     },
+    rinkeby: {
+      url: "https://rinkeby.infura.io/v3/" + process.env.WEB3_INFURA_PROJECT_ID,
+      accounts: readEnvAccounts("rinkeby"),
+    },
+    polygon: {
+      url: "https://polygon-mainnet.infura.io/v3/" + process.env.WEB3_INFURA_PROJECT_ID,
+      chainId: 137,
+    },
+    polytest: {
+      url: "https://polygon-mumbai.infura.io/v3/" + process.env.WEB3_INFURA_PROJECT_ID,
+      chainId: 80001,
+      accounts: readEnvAccounts("polytest"),
+    },
     mainnet: {
       url: "https://bsc-dataseed.binance.org/",
       chainId: 56,
       gasPrice: 20000000000,
 //      accounts: {mnemonic: mnemonic}
     }
+  },
+  etherscan: {
+    apiKey: process.env.ETHERSCAN_TOKEN,
   },
   gasReporter: {
     currency: 'USD',

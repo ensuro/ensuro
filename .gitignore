@@ -8,7 +8,8 @@ coverage
 coverage.json
 __pycache__/
 *.pyc
-api/.env
+.env
+.openzeppelin
 .ipynb_checkpoints/
 
 __pycache__
