@@ -38,7 +38,6 @@ async function verifyContract(hre, contract, isProxy, constructorArguments) {
 }
 
 async function deployTestCurrency({verify, currName, currSymbol, initialSupply}, hre) {
-  // We get the contract to deploy
   const TestCurrency = await hre.ethers.getContractFactory("TestCurrency");
   const currency = await TestCurrency.deploy(currName, currSymbol, _W(initialSupply));
   await currency.deployed();
