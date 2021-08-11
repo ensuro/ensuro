@@ -298,6 +298,7 @@ def test_walkthrough(tenv):
       - name: Roulette
         scr_percentage: 1
         ensuro_fee: 0
+        scr_interest_rate: "0.040264754"  # interest rate to make premium_for_rm=0
       - name: Flight-Insurance
         scr_percentage: "0.9"
         ensuro_fee: "0.015"
@@ -335,6 +336,7 @@ def test_walkthrough(tenv):
     rm = pool.risk_modules["Roulette"]
     rm.grant_role("PRICER_ROLE", rm.owner)
     rm.grant_role("RESOLVER_ROLE", rm.owner)
+    rm.grant_role("ENSURO_DAO_ROLE", rm.owner)  # For setting scr_interest_rate
 
     with pytest.raises(RevertError, match="transfer amount exceeds allowance"):
         pool.deposit("eUSD1YEAR", "LP1", _W(1000))
@@ -402,6 +404,20 @@ def test_walkthrough(tenv):
     shares_1y = _calculate_shares(balances_1y, eUSD1YEAR.total_supply())
 
     pool.currency.approve("CUST2", pool.contract_id, _W(2))
+
+    # With 10 days, the same interest rate is not possible, need to reduce the interest to keep
+    # the same premium proportion
+    with pytest.raises(RevertError, match="Premium less than minimum"):
+        policy_2 = policy = rm.new_policy(
+            payout=_W(72), premium=_W(2), customer="CUST2",
+            loss_prob=_R(1/37), expiration=timecontrol.now + 10 * DAY
+        )
+
+    p2_for_lps = _W(2 - 72/37)
+    rm.scr_interest_rate = (
+        p2_for_lps.to_ray() * _R(365 / 10) // _R(70)
+    ).round(6)  # too much precision
+
     policy_2 = policy = rm.new_policy(
         payout=_W(72), premium=_W(2), customer="CUST2",
         loss_prob=_R(1/37), expiration=timecontrol.now + 10 * DAY
@@ -480,7 +496,7 @@ def test_walkthrough(tenv):
     rm.resolve_policy(policy_2.id, False)
 
     assert USD.balance_of("CUST2") == _W(0)
-    assert USD.balance_of(pool.contract_id) == _W(1000 + 2000 + 2000 + 2 - 35)  # unchanged
+    USD.balance_of(pool.contract_id).assert_equal(_W(1000 + 2000 + 2000 + 2 - 35))  # unchanged
 
     for lp in ("LP1", "LP2", "LP3"):
         balance = eUSD1YEAR.balance_of(lp)
@@ -511,6 +527,10 @@ def test_walkthrough(tenv):
         return  # This test never ends if coverage is activated
 
     won_count = 0
+
+    rm.scr_interest_rate = (
+        _R(2 - 72/37) * _R(365 / 6) // _R(70)
+    ).round(6)  # too much precision
 
     for day in range(65):
         pool_loan = eUSD1YEAR.get_pool_loan()

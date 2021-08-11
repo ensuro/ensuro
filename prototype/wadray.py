@@ -62,6 +62,11 @@ class Wad(int):
     def to_decimal(self):
         return Decimal(int(self)) / Decimal(WAD)
 
+    def round(self, decimals):
+        iself = int(self)
+        iself = iself - iself % 10 ** (18 - decimals)
+        return Wad(iself)
+
 
 class Ray(int):
     DEFAULT_EQ_PRECISION = 4
@@ -119,6 +124,11 @@ class Ray(int):
 
     def to_decimal(self):
         return Decimal(int(self)) / Decimal(RAY)
+
+    def round(self, decimals):
+        iself = int(self)
+        iself = iself - iself % 10 ** (27 - decimals)
+        return Ray(iself)
 
 
 _R = Ray.from_value
