@@ -66,11 +66,13 @@ library Policy {
     .wadToRay()
     .rayMul(lossProb.rayMul(riskModule.moc()))
     .rayToWad();
-    uint256 profitPremium = ensPremium - policy.purePremium;
-    policy.premiumForEnsuro = profitPremium.wadMul(riskModule.ensuroShare().rayToWad());
-    policy.premiumForRm = profitPremium.wadMul(riskModule.premiumShare().rayToWad());
-    policy.premiumForLps = profitPremium - policy.premiumForEnsuro - policy.premiumForRm;
-    policy.premiumForRm += rmPremium;
+    policy.premiumForEnsuro = policy.purePremium.wadMul(riskModule.ensuroFee().rayToWad());
+    policy.premiumForLps = policy.scr.wadMul(
+      ((riskModule.scrInterestRate() * (policy.expiration - policy.start)).rayDiv(SECONDS_IN_YEAR_RAY)).rayToWad()
+    );
+    require(policy.purePremium + policy.premiumForEnsuro + policy.premiumForLps <= ensPremium,
+            "Premium less than minimum");
+    policy.premiumForRm = rmPremium + ensPremium - policy.purePremium - policy.premiumForLps - policy.premiumForEnsuro;
     return policy;
   }
 

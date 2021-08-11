@@ -21,8 +21,8 @@ contract TrustfulRiskModule is RiskModule {
    * @param policyPool_ The address of the Ensuro PolicyPool where this module is plugged
    * @param scrPercentage_ Solvency Capital Requirement percentage, to calculate
                           capital requirement as % of (payout - premium)  (in ray)
-   * @param premiumShare_ % of premium that will go for the risk module provider (in ray)
-   * @param ensuroShare_ % of premium that will go for Ensuro treasury (in ray)
+   * @param ensuroFee_ % of premium that will go for Ensuro treasury (in ray)
+   * @param scrInterestRate_ cost of capital (in ray)
    * @param maxScrPerPolicy_ Max SCR to be allocated to this module (in wad)
    * @param scrLimit_ Max SCR to be allocated to this module (in wad)
    * @param wallet_ Address of the RiskModule provider
@@ -32,8 +32,8 @@ contract TrustfulRiskModule is RiskModule {
     string memory name_,
     IPolicyPool policyPool_,
     uint256 scrPercentage_,
-    uint256 premiumShare_,
-    uint256 ensuroShare_,
+    uint256 ensuroFee_,
+    uint256 scrInterestRate_,
     uint256 maxScrPerPolicy_,
     uint256 scrLimit_,
     address wallet_,
@@ -43,8 +43,8 @@ contract TrustfulRiskModule is RiskModule {
       name_,
       policyPool_,
       scrPercentage_,
-      premiumShare_,
-      ensuroShare_,
+      ensuroFee_,
+      scrInterestRate_,
       maxScrPerPolicy_,
       scrLimit_,
       wallet_,

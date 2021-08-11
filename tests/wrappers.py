@@ -491,26 +491,27 @@ class Policy:
 
 class RiskModuleETH(ETHWrapper):
 
-    def __init__(self, name, policy_pool, scr_percentage=_R(1), premium_share=_R(0), ensuro_share=_R(0),
-                 max_scr_per_policy=_W(1000000), scr_limit=_W(1000000),
+    def __init__(self, name, policy_pool, scr_percentage=_R(1), ensuro_fee=_R(0),
+                 scr_interest_rate=_R(0), max_scr_per_policy=_W(1000000), scr_limit=_W(1000000),
                  wallet="RM", shared_coverage_min_percentage=_R(0), owner="owner"):
         scr_percentage = _R(scr_percentage)
-        premium_share = _R(premium_share)
-        ensuro_share = _R(ensuro_share)
+        ensuro_fee = _R(ensuro_fee)
+        scr_interest_rate = _R(scr_interest_rate)
         max_scr_per_policy = _W(max_scr_per_policy)
         scr_limit = _W(scr_limit)
         wallet = self._get_account(wallet)
         shared_coverage_min_percentage = _R(shared_coverage_min_percentage)
         self.policy_pool = policy_pool
-        super().__init__(owner, name, policy_pool.contract, scr_percentage, premium_share, ensuro_share,
+        super().__init__(owner, name, policy_pool.contract, scr_percentage, ensuro_fee,
+                         scr_interest_rate,
                          max_scr_per_policy, scr_limit, wallet, shared_coverage_min_percentage)
         self._auto_from = self.owner
 
     name = MethodAdapter((), "string", is_property=True)
     scr_percentage = MethodAdapter((), "ray", is_property=True)
     moc = MethodAdapter((), "ray", is_property=True)
-    premium_share = MethodAdapter((), "ray", is_property=True)
-    ensuro_share = MethodAdapter((), "ray", is_property=True)
+    ensuro_fee = MethodAdapter((), "ray", is_property=True)
+    scr_interest_rate = MethodAdapter((), "ray", is_property=True)
     max_scr_per_policy = MethodAdapter((), "amount", is_property=True)
     scr_limit = MethodAdapter((), "amount", is_property=True)
     total_scr = MethodAdapter((), "amount", is_property=True)

@@ -33,8 +33,8 @@ class RiskModule(AccessControlContract):
     name = StringField()
     moc = RayField(default=_R(1))
     scr_percentage = RayField(default=Ray(0))
-    premium_share = RayField(default=Ray(0))
-    ensuro_share = RayField(default=Ray(0))
+    ensuro_fee = RayField(default=Ray(0))   # Ensuro fee as % of pure_premium
+    scr_interest_rate = RayField(default=Ray(0))
     max_scr_per_policy = WadField(default=_W(1000000))
     scr_limit = WadField(default=_W(10000000))
     total_scr = WadField(default=_W(0))
@@ -47,8 +47,8 @@ class RiskModule(AccessControlContract):
     set_attr_roles = {
         "moc": "ENSURO_DAO_ROLE",
         "scr_percentage": "ENSURO_DAO_ROLE",
-        "premium_share": "ENSURO_DAO_ROLE",
-        "ensuro_share": "ENSURO_DAO_ROLE",
+        "ensuro_fee": "ENSURO_DAO_ROLE",
+        "scr_interest_rate": "ENSURO_DAO_ROLE",
         "max_scr_per_policy": "ENSURO_DAO_ROLE",
         "scr_limit": "ENSURO_DAO_ROLE",
         "wallet": "RM_PROVIDER_ROLE",
@@ -143,12 +143,16 @@ class Policy(Model):
         ens_premium, rm_premium = self._coverage_premium_split()
         payout = self.payout - self.rm_coverage
         self.pure_premium = (payout.to_ray() * self.loss_prob * self.risk_module.moc).to_wad()
-
-        profit_premium = ens_premium - self.pure_premium
-        self.premium_for_ensuro = (profit_premium.to_ray() * self.risk_module.ensuro_share).to_wad()
-        self.premium_for_rm = (profit_premium.to_ray() * self.risk_module.premium_share).to_wad()
-        self.premium_for_lps = profit_premium - self.premium_for_ensuro - self.premium_for_rm
-        self.premium_for_rm += rm_premium  # after calculating for_lps...
+        self.premium_for_lps = self.scr * (
+            self.risk_module.scr_interest_rate * _R(self.expiration - self.start) // _R(SECONDS_IN_YEAR)
+        ).to_wad()
+        self.premium_for_ensuro = self.risk_module.ensuro_fee.to_wad() * self.pure_premium
+        require(ens_premium >= (self.pure_premium + self.premium_for_lps + self.premium_for_ensuro),
+                "Premium less than minimum")
+        self.premium_for_rm = (
+            rm_premium + ens_premium - self.pure_premium - self.premium_for_lps - self.premium_for_ensuro
+        )
+        self.interest_rate.assert_equal(self.risk_module.scr_interest_rate)
 
     def premium_split(self):
         return self.pure_premium, self.premium_for_ensuro, self.premium_for_rm, self.premium_for_lps

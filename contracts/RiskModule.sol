@@ -39,8 +39,8 @@ abstract contract RiskModule is
   // capital requirement as % of (payout - premium)
   uint256 internal _moc; // in ray - Margin Of Conservativism - factor that multiplies lossProb
   // to calculate purePremium
-  uint256 internal _premiumShare; // in ray - % of premium that will go for the risk module provider
-  uint256 internal _ensuroShare; // in ray - % of premium that will go for Ensuro treasury
+  uint256 internal _ensuroFee; // in ray - % of pure premium that will go for Ensuro treasury
+  uint256 internal _scrInterestRate; // in ray - % of interest to charge for the SCR
   uint256 internal _maxScrPerPolicy; // in wad - Max SCR per policy
   uint256 internal _scrLimit; // in wad - Max SCR to be allocated to this module
   uint256 internal _totalScr; // in wad - Current SCR allocated to this module
@@ -61,8 +61,8 @@ abstract contract RiskModule is
    * @param policyPool_ The address of the Ensuro PolicyPool where this module is plugged
    * @param scrPercentage_ Solvency Capital Requirement percentage, to calculate
                           capital requirement as % of (payout - premium)  (in ray)
-   * @param premiumShare_ % of premium that will go for the risk module provider (in ray)
-   * @param ensuroShare_ % of premium that will go for Ensuro treasury (in ray)
+   * @param ensuroFee_ % of pure premium that will go for Ensuro treasury (in ray)
+   * @param scrInterestRate_ % of interest to charge for the SCR (in ray)
    * @param maxScrPerPolicy_ Max SCR to be allocated to this module (in wad)
    * @param scrLimit_ Max SCR to be allocated to this module (in wad)
    * @param wallet_ Address of the RiskModule provider
@@ -73,8 +73,8 @@ abstract contract RiskModule is
     string memory name_,
     IPolicyPool policyPool_,
     uint256 scrPercentage_,
-    uint256 premiumShare_,
-    uint256 ensuroShare_,
+    uint256 ensuroFee_,
+    uint256 scrInterestRate_,
     uint256 maxScrPerPolicy_,
     uint256 scrLimit_,
     address wallet_,
@@ -87,8 +87,8 @@ abstract contract RiskModule is
       name_,
       policyPool_,
       scrPercentage_,
-      premiumShare_,
-      ensuroShare_,
+      ensuroFee_,
+      scrInterestRate_,
       maxScrPerPolicy_,
       scrLimit_,
       wallet_,
@@ -101,8 +101,8 @@ abstract contract RiskModule is
     string memory name_,
     IPolicyPool policyPool_,
     uint256 scrPercentage_,
-    uint256 premiumShare_,
-    uint256 ensuroShare_,
+    uint256 ensuroFee_,
+    uint256 scrInterestRate_,
     uint256 maxScrPerPolicy_,
     uint256 scrLimit_,
     address wallet_,
@@ -112,8 +112,8 @@ abstract contract RiskModule is
     _policyPool = policyPool_;
     _scrPercentage = scrPercentage_;
     _moc = WadRayMath.RAY;
-    _premiumShare = premiumShare_;
-    _ensuroShare = ensuroShare_;
+    _ensuroFee = ensuroFee_;
+    _scrInterestRate = scrInterestRate_;
     _maxScrPerPolicy = maxScrPerPolicy_;
     _scrLimit = scrLimit_;
     _totalScr = 0;
@@ -144,12 +144,12 @@ abstract contract RiskModule is
     return _moc;
   }
 
-  function premiumShare() public view override returns (uint256) {
-    return _premiumShare;
+  function ensuroFee() public view override returns (uint256) {
+    return _ensuroFee;
   }
 
-  function ensuroShare() public view override returns (uint256) {
-    return _ensuroShare;
+  function scrInterestRate() public view override returns (uint256) {
+    return _scrInterestRate;
   }
 
   function maxScrPerPolicy() public view override returns (uint256) {
@@ -190,14 +190,14 @@ abstract contract RiskModule is
     _moc = newMoc;
   }
 
-  function setPremiumShare(uint256 newPremiumShare) external onlyRole(ENSURO_DAO_ROLE) {
+  function setScrInterestRate(uint256 newScrInterestRate) external onlyRole(ENSURO_DAO_ROLE) {
     // TODO emit Event?
-    _premiumShare = newPremiumShare;
+    _scrInterestRate = newScrInterestRate;
   }
 
-  function setEnsuroShare(uint256 newEnsuroShare) external onlyRole(ENSURO_DAO_ROLE) {
+  function setEnsuroFee(uint256 newEnsuroFee) external onlyRole(ENSURO_DAO_ROLE) {
     // TODO emit Event?
-    _ensuroShare = newEnsuroShare;
+    _ensuroFee = newEnsuroFee;
   }
 
   function setMaxScrPerPolicy(uint256 newMaxScrPerPolicy) external onlyRole(ENSURO_DAO_ROLE) {
