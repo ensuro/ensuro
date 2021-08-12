@@ -68,11 +68,23 @@ library Policy {
     .rayToWad();
     policy.premiumForEnsuro = policy.purePremium.wadMul(riskModule.ensuroFee().rayToWad());
     policy.premiumForLps = policy.scr.wadMul(
-      ((riskModule.scrInterestRate() * (policy.expiration - policy.start)).rayDiv(SECONDS_IN_YEAR_RAY)).rayToWad()
+      (
+        (riskModule.scrInterestRate() * (policy.expiration - policy.start)).rayDiv(
+          SECONDS_IN_YEAR_RAY
+        )
+      )
+      .rayToWad()
     );
-    require(policy.purePremium + policy.premiumForEnsuro + policy.premiumForLps <= ensPremium,
-            "Premium less than minimum");
-    policy.premiumForRm = rmPremium + ensPremium - policy.purePremium - policy.premiumForLps - policy.premiumForEnsuro;
+    require(
+      policy.purePremium + policy.premiumForEnsuro + policy.premiumForLps <= ensPremium,
+      "Premium less than minimum"
+    );
+    policy.premiumForRm =
+      rmPremium +
+      ensPremium -
+      policy.purePremium -
+      policy.premiumForLps -
+      policy.premiumForEnsuro;
     return policy;
   }
 
