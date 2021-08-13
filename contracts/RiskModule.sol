@@ -6,7 +6,7 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
-import {IPolicyPoolComponent} from "../interfaces/IPolicyPoolComponent.sol";
+import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
 import {IRiskModule} from "../interfaces/IRiskModule.sol";
 import {Policy} from "./Policy.sol";
 
@@ -20,13 +20,14 @@ abstract contract RiskModule is
   UUPSUpgradeable,
   AccessControlUpgradeable,
   PausableUpgradeable,
-  IPolicyPoolComponent
+  PolicyPoolComponent
 {
   using Policy for Policy.PolicyData;
   using WadRayMath for uint256;
 
   // For parameters that can be changed by Ensuro
   bytes32 public constant ENSURO_DAO_ROLE = keccak256("ENSURO_DAO_ROLE");
+  bytes32 public constant LEVEL2_ROLE = keccak256("LEVEL2_ROLE");
   // For parameters that can be changed by the risk module provider
   bytes32 public constant RM_PROVIDER_ROLE = keccak256("RM_PROVIDER_ROLE");
 
@@ -34,7 +35,6 @@ abstract contract RiskModule is
   bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
 
   string private _name;
-  IPolicyPool internal _policyPool;
   uint256 internal _scrPercentage; // in ray - Solvency Capital Requirement percentage, to calculate
   // capital requirement as % of (payout - premium)
   uint256 internal _moc; // in ray - Margin Of Conservativism - factor that multiplies lossProb
@@ -83,9 +83,9 @@ abstract contract RiskModule is
     __AccessControl_init();
     __Pausable_init();
     __UUPSUpgradeable_init();
+    __PolicyPoolComponent_init(policyPool_);
     __RiskModule_init_unchained(
       name_,
-      policyPool_,
       scrPercentage_,
       ensuroFee_,
       scrInterestRate_,
@@ -99,7 +99,6 @@ abstract contract RiskModule is
   // solhint-disable-next-line func-name-mixedcase
   function __RiskModule_init_unchained(
     string memory name_,
-    IPolicyPool policyPool_,
     uint256 scrPercentage_,
     uint256 ensuroFee_,
     uint256 scrInterestRate_,
@@ -109,7 +108,6 @@ abstract contract RiskModule is
     uint256 sharedCoverageMinPercentage_
   ) internal initializer {
     _name = name_;
-    _policyPool = policyPool_;
     _scrPercentage = scrPercentage_;
     _moc = WadRayMath.RAY;
     _ensuroFee = ensuroFee_;
@@ -127,10 +125,6 @@ abstract contract RiskModule is
 
   // solhint-disable-next-line no-empty-blocks
   function _authorizeUpgrade(address) internal override onlyRole(UPGRADER_ROLE) {}
-
-  function policyPool() public view override returns (IPolicyPool) {
-    return _policyPool;
-  }
 
   function name() public view override returns (string memory) {
     return _name;
@@ -180,7 +174,7 @@ abstract contract RiskModule is
     return _wallet;
   }
 
-  function setScrPercentage(uint256 newScrPercentage) external onlyRole(ENSURO_DAO_ROLE) {
+  function setScrPercentage(uint256 newScrPercentage) external onlyPoolRole(LEVEL2_ROLE) {
     // TODO emit Event?
     _scrPercentage = newScrPercentage;
   }

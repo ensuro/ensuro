@@ -85,7 +85,7 @@ def load_config(yaml_config=None, module=None):
     pool_params["policy_nft"] = nft
     pool_params["currency"] = currency
     pool = module.PolicyPool(**pool_params)
-    pool.grant_role("ENSURO_DAO_ROLE", pool.owner)
+    pool.grant_role("LEVEL1_ROLE", pool.owner)
 
     with nft.as_(nft.owner):
         nft.grant_role("MINTER_ROLE", pool)

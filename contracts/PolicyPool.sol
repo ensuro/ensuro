@@ -33,10 +33,14 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
   uint256 public constant MAX_INT =
     0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
 
-  bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
-  bytes32 public constant ENSURO_DAO_ROLE = keccak256("ENSURO_DAO_ROLE");
   bytes32 public constant REBALANCE_ROLE = keccak256("REBALANCE_ROLE");
-  bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
+
+  bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
+  bytes32 public constant LEVEL1_ROLE = keccak256("LEVEL1_ROLE");
+  bytes32 public constant LEVEL2_ROLE = keccak256("LEVEL2_ROLE");
+  bytes32 public constant LEVEL3_ROLE = keccak256("LEVEL3_ROLE");
+
+  uint256 public constant L2_RM_LIMIT = 5e16; // 5% in WAD
 
   uint256 public constant MAX_ETOKENS = 10;
 
@@ -78,6 +82,12 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     _;
   }
 
+  modifier onlyRole2(bytes32 role1, bytes32 role2) {
+    if (!hasRole(role1, _msgSender()))
+      _checkRole(role2, _msgSender());
+    _;
+  }
+
   function initialize(
     IERC721 policyNFT_,
     IERC20 currency_,
@@ -111,13 +121,13 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
   }
 
   // solhint-disable-next-line no-empty-blocks
-  function _authorizeUpgrade(address) internal override onlyRole(UPGRADER_ROLE) {}
+  function _authorizeUpgrade(address) internal override onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {}
 
-  function pause() public onlyRole(PAUSER_ROLE) {
+  function pause() public onlyRole(GUARDIAN_ROLE) {
     _pause();
   }
 
-  function unpause() public onlyRole(PAUSER_ROLE) {
+  function unpause() public onlyRole(GUARDIAN_ROLE) {
     _unpause();
   }
 
@@ -149,19 +159,23 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     return _borrowedActivePP;
   }
 
-  function addRiskModule(IRiskModule riskModule) external onlyRole(ENSURO_DAO_ROLE) {
+  function addRiskModule(IRiskModule riskModule) external onlyRole2(LEVEL1_ROLE, LEVEL2_ROLE) {
     require(!_riskModules.contains(riskModule), "Risk Module already in the pool");
     require(address(riskModule) != address(0), "riskModule can't be zero");
     require(
       IPolicyPoolComponent(address(riskModule)).policyPool() == this,
       "RiskModule not linked to this pool"
     );
+    require(
+      hasRole(LEVEL1_ROLE, _msgSender()) || totalETokenSupply() > (riskModule.scrLimit().wadMul(L2_RM_LIMIT)),
+      "RiskModule SCR Limit exceeds the limit for LEVEL2 user"
+    );
     _riskModules.set(riskModule, DataTypes.RiskModuleStatus.active);
     emit RiskModuleStatusChanged(riskModule, DataTypes.RiskModuleStatus.active);
   }
 
   // #if_succeeds_disabled _riskModules.get(riskModule) == DataTypes.RiskModuleStatus.inactive;
-  function removeRiskModule(IRiskModule riskModule) external onlyRole(ENSURO_DAO_ROLE) {
+  function removeRiskModule(IRiskModule riskModule) external onlyRole(LEVEL2_ROLE) {
     require(_riskModules.contains(riskModule), "Risk Module not found");
     require(riskModule.totalScr() == 0, "Can't remove a module with active policies");
     _riskModules.remove(riskModule);
@@ -171,15 +185,19 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
   // #if_succeeds_disabled _riskModules.get(riskModule) == newStatus;
   function changeRiskModuleStatus(IRiskModule riskModule, DataTypes.RiskModuleStatus newStatus)
     external
-    onlyRole(ENSURO_DAO_ROLE)
+    onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
   {
     require(_riskModules.contains(riskModule), "Risk Module not found");
+    require(
+      newStatus != DataTypes.RiskModuleStatus.suspended || hasRole(GUARDIAN_ROLE, _msgSender()),
+      "Only GUARDIAN can suspend modules"
+    );
     _riskModules.set(riskModule, newStatus);
     emit RiskModuleStatusChanged(riskModule, newStatus);
   }
 
   // #if_succeeds_disabled {:msg "eToken added as active"} _eTokens.get(eToken) == DataTypes.ETokenStatus.active;
-  function addEToken(IEToken eToken) external onlyRole(ENSURO_DAO_ROLE) {
+  function addEToken(IEToken eToken) external onlyRole(LEVEL1_ROLE) {
     require(_eTokens.length() < MAX_ETOKENS, "Maximum number of ETokens reached");
     require(!_eTokens.contains(eToken), "eToken already in the pool");
     require(address(eToken) != address(0), "eToken can't be zero");
@@ -192,21 +210,46 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     emit ETokenStatusChanged(eToken, DataTypes.ETokenStatus.active);
   }
 
-  // TODO: removeEToken
-  // TODO: changeETokenStatus
+  function removeEToken(IEToken eToken) external onlyRole(LEVEL3_ROLE) {
+    require(_eTokens.get(eToken) == DataTypes.ETokenStatus.deprecated, "EToken not deprecated");
+    require(eToken.totalSupply() == 0, "EToken has liquidity, can't be removed");
+    emit ETokenStatusChanged(eToken, DataTypes.ETokenStatus.inactive);
+  }
 
-  function setAssetManager(IAssetManager assetManager_) external onlyRole(ENSURO_DAO_ROLE) {
+  function changeETokenStatus(IEToken eToken, DataTypes.ETokenStatus newStatus)
+    external
+    onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
+  {
+    require(_eTokens.contains(eToken), "Risk Module not found");
+    require(
+      newStatus != DataTypes.ETokenStatus.suspended || hasRole(GUARDIAN_ROLE, _msgSender()),
+      "Only GUARDIAN can suspend eTokens"
+    );
+    _eTokens.set(eToken, newStatus);
+    emit ETokenStatusChanged(eToken, newStatus);
+  }
+
+  function setAssetManager(IAssetManager assetManager_) external onlyRole(LEVEL1_ROLE) {
     if (address(_assetManager) != address(0)) {
       _assetManager.deinvestAll(); // deInvest all assets
       _currency.approve(address(_assetManager), 0); // revoke currency management approval
     }
     _assetManager = assetManager_;
     _currency.approve(address(_assetManager), MAX_INT); // infinite approval should be enought for few years
-    emit AssetManagerChanged(_assetManager);
+    emit AssetManagerChanged(_assetManager);  // TODO: review event
   }
 
   function assetManager() external view virtual override returns (IAssetManager) {
     return _assetManager;
+  }
+
+  function setTreasury(address treasury_) external onlyRole(LEVEL1_ROLE) {
+    _treasury = treasury_;
+    // TODO emit EVENT
+  }
+
+  function treasury() external view returns (address) {
+    return _treasury;
   }
 
   /// #if_succeeds
@@ -489,6 +532,19 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     uint256 premiums = _activePremiums + _wonPurePremiums - _borrowedActivePP;
     if (premiums > borrowedFromEtk) return premiums - borrowedFromEtk;
     else return 0;
+  }
+
+  function totalETokenSupply() public view returns (uint256) {
+    uint256 ret = 0;
+    for (uint256 i = 0; i < _eTokens.length(); i++) {
+      (
+        IEToken etk, /* DataTypes.ETokenStatus etkStatus */
+
+      ) = _eTokens.at(i);
+      // TODO: define if not active are investable or not
+      ret += etk.totalSupply();
+    }
+    return ret;
   }
 
   function assetEarnings(uint256 amount, bool positive) external override onlyAssetManager {

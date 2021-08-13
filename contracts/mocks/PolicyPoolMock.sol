@@ -5,10 +5,11 @@ import {IPolicyPool} from "../../interfaces/IPolicyPool.sol";
 import {IRiskModule} from "../../interfaces/IRiskModule.sol";
 import {IEToken} from "../../interfaces/IEToken.sol";
 import {IAssetManager} from "../../interfaces/IAssetManager.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Policy} from "../Policy.sol";
 
-contract PolicyPoolMock is IPolicyPool {
+contract PolicyPoolMock is IPolicyPool, AccessControl {
   IERC20 internal _currency;
   uint256 public policyCount;
   mapping(uint256 => Policy.PolicyData) internal policies;
