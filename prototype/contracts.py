@@ -45,6 +45,9 @@ class ContractProxy(str):
     def __getattr__(self, attr_name):
         return getattr(self._get_contract(), attr_name)
 
+    def __setattr__(self, attr_name, attr_value):
+        return setattr(self._get_contract(), attr_name, attr_value)
+
 
 class ContractProxyField(AddressField):
     FIELD_TYPE = ContractProxy

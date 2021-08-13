@@ -54,14 +54,15 @@ def tenv(request):
 
 def test_getset_rm_parameters(tenv):
     rm = tenv.rm_class(
-        name="Roulette", scr_percentage=_R(1), premium_share=_R("0.10"), ensuro_share=_R("0.03"),
+        name="Roulette", scr_percentage=_R(1), ensuro_fee=_R("0.03"),
+        scr_interest_rate=_R("0.02"),
         max_scr_per_policy=_W(1000), scr_limit=_W(1000000),
         wallet="CASINO", shared_coverage_min_percentage=_R("0.5")
     )
     assert rm.name == "Roulette"
     assert rm.scr_percentage == _R(1)
-    rm.premium_share.assert_equal(_R(1/10))
-    rm.ensuro_share.assert_equal(_R(3/100))
+    rm.ensuro_fee.assert_equal(_R(3/100))
+    rm.scr_interest_rate.assert_equal(_R(2/100))
     assert rm.max_scr_per_policy == _W(1000)
     assert rm.scr_limit == _W(1000000)
     assert rm.wallet == "CASINO"
@@ -75,8 +76,8 @@ def test_getset_rm_parameters(tenv):
 
     test_attributes = [
         ("scr_percentage", "ENSURO_DAO", _R(0.8)),
-        ("premium_share", "ENSURO_DAO", _R(15/100)),
-        ("ensuro_share", "ENSURO_DAO", _R(4/100)),
+        ("ensuro_fee", "ENSURO_DAO", _R(4/100)),
+        ("scr_interest_rate", "ENSURO_DAO", _R(3/100)),
         ("max_scr_per_policy", "ENSURO_DAO", _W(2000)),
         ("scr_limit", "ENSURO_DAO", _W(10000000)),
         ("wallet", "CASINO", "CASINO_POCKET"),
@@ -109,7 +110,8 @@ def test_getset_rm_parameters(tenv):
 
 def test_new_policy(tenv):
     rm = tenv.rm_class(
-        name="Roulette", scr_percentage=_R(1), premium_share=_R("0.10"), ensuro_share=_R("0.03"),
+        name="Roulette", scr_percentage=_R(1), ensuro_fee=_R("0.02"),
+        scr_interest_rate=_R("0.01"),
         max_scr_per_policy=_W(1000), scr_limit=_W(1000000),
         wallet="CASINO", shared_coverage_min_percentage=_R("0.6")
     )
@@ -134,11 +136,12 @@ def test_new_policy(tenv):
     assert policy.expiration == expiration
     assert (tenv.time_control.now - policy.start) < 60  # Must be now, giving 60 seconds tolerance
     policy.pure_premium.assert_equal(_W(36 * .4 * 1/37))
-    profit_premium = _W(1 * .4) - policy.pure_premium
-    policy.premium_for_ensuro.assert_equal(profit_premium * _W("0.03"))
-    policy.premium_for_rm.assert_equal(profit_premium * _W("0.10") + _W(1 * .6))
-    policy.premium_for_lps.assert_equal(profit_premium * _W(1 - 0.13))
-    policy.interest_rate.assert_equal(policy.premium_for_lps.to_ray() * _R(365/7) // policy.scr.to_ray())
+    policy.premium_for_ensuro.assert_equal(policy.pure_premium * _W("0.02"))
+    policy.premium_for_lps.assert_equal(policy.scr * _W("0.01") * _W(7/365))
+    policy.premium_for_rm.assert_equal(
+        _W(1) - policy.pure_premium - policy.premium_for_lps - policy.premium_for_ensuro
+    )
+    policy.interest_rate.assert_equal(_R("0.01"))
 
     with rm.as_("JOHN_DOE"), pytest.raises(RevertError, match="is missing role"):
         rm.resolve_policy(policy.id, True)
@@ -151,7 +154,8 @@ def test_new_policy(tenv):
 
 def test_moc(tenv):
     rm = tenv.rm_class(
-        name="Roulette", scr_percentage=_R(1), premium_share=_R("0.10"), ensuro_share=_R("0.03"),
+        name="Roulette", scr_percentage=_R(1), ensuro_fee=_R("0.01"),
+        scr_interest_rate=_R(0),
         max_scr_per_policy=_W(1000), scr_limit=_W(1000000),
         wallet="CASINO", shared_coverage_min_percentage=_R("0.6")
     )
@@ -166,6 +170,7 @@ def test_moc(tenv):
     policy.premium.assert_equal(_W(1))
     policy.loss_prob.assert_equal(_R(1/37))
     policy.pure_premium.assert_equal(_W(36 * .4 * 1/37))
+    policy.premium_for_ensuro.assert_equal(_W(36 * .4 * 1/37 * 0.01))
 
     with pytest.raises(RevertError, match="missing role"):
         rm.moc = _R("1.01")
@@ -182,5 +187,6 @@ def test_moc(tenv):
     policy2.premium.assert_equal(_W(1))
     policy2.loss_prob.assert_equal(_R(1/37))
     policy2.pure_premium.assert_equal(_W(36 * .4 * 1/37) * _W("1.01"))
+    policy2.premium_for_ensuro.assert_equal(_W(36 * .4 * 1/37 * 0.01) * _W("1.01"))
 
 # TODO: further tests on _newPolicy validations
