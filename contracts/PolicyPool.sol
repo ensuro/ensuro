@@ -308,7 +308,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
   function _transferTo(address destination, uint256 amount) internal {
     if (amount == 0) return;
     uint256 balance = _currency.balanceOf(address(this));
-    if (balance < amount) {
+    if (_assetManager != IAssetManager(address(0)) && balance < amount) {
       _assetManager.refillWallet(amount);
     }
     // TODO: check balance again and call InsolvencyHook if needed

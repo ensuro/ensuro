@@ -383,7 +383,7 @@ class ERC20Token(AccessControlContract):
 
     def _transfer(self, sender, recipient, amount):
         if self.balance_of(sender) < amount:
-            raise RevertError("Not enought balance")
+            raise RevertError("ERC20: transfer amount exceeds balance")
         elif self.balances[sender] == amount:
             del self.balances[sender]
         else:

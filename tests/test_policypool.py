@@ -923,3 +923,66 @@ def test_asset_manager(tenv):
     assert etk.get_investable() == (
         etk.ocean + etk.get_pool_loan()  # not really the money available but used for etk_share
     )
+
+
+def test_insolvency_without_hook(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        scr_percentage: "0.1"
+        scr_interest_rate: "0.02"
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 20000
+        initial_balances:
+        - user: LP1
+          amount: 10000
+        - user: CUST1
+          amount: 200
+    etokens:
+      - name: eUSD1YEAR
+        expiration_period: 31536000
+    """
+
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    rm = pool.risk_modules["Roulette"]
+    rm.grant_role("PRICER_ROLE", rm.owner)
+    rm.grant_role("RESOLVER_ROLE", rm.owner)
+
+    USD = pool.currency
+    etk = pool.etokens["eUSD1YEAR"]
+
+    USD.approve("LP1", pool.contract_id, _W(1000))
+    assert pool.deposit("eUSD1YEAR", "LP1", _W(1000)) == _W(1000)
+
+    USD.approve("CUST1", pool.contract_id, _W(200))
+    policy = rm.new_policy(
+        payout=_W(9200), premium=_W(200), customer="CUST1",
+        loss_prob=_R("0.01"), expiration=timecontrol.now + 365 * DAY // 2
+    )
+    pure_premium, _, _, for_lps = policy.premium_split()
+    etk.scr.assert_equal(_W(900))
+
+    assert USD.balance_of(pool.contract_id) == _W(1000 + 200)
+
+    timecontrol.fast_forward(365 * DAY // 2)
+
+    with pytest.raises(RevertError, match="ERC20: transfer amount exceeds balance"):
+        rm.resolve_policy(policy.id, True)
+
+    return locals()
+
+
+def test_grant_insolvency_hook(tenv):
+    vars = test_insolvency_without_hook(tenv)
+    pool = vars["pool"]
+    rm = vars["rm"]
+    policy = vars["policy"]
+    ins_hook = tenv.module.FreeGrantInsolvencyHook(pool=pool)
+    pool.set_insolvency_hook(ins_hook)
+
+    rm.resolve_policy(policy.id, True)
+
+    ins_hook.cash_granted.assert_equal(_W(8000))

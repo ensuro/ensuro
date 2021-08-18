@@ -1,7 +1,7 @@
 from m9g import Model
 from m9g.fields import StringField, IntField, DictField, CompositeField
 from .contracts import AccessControlContract, ERC20Token, external, view, RayField, WadField, AddressField, \
-    ContractProxyField, ContractProxy, require, only_role
+    ContractProxyField, ContractProxy, require, only_role, Contract
 from .contracts import ERC721Token
 from .wadray import RAY, Ray, Wad, _W, _R
 import time
@@ -418,6 +418,7 @@ class PolicyPool(AccessControlContract):
     won_pure_premiums = WadField(default=Wad(0))
     treasury = AddressField(default="ENS")
     asset_manager = ContractProxyField(default=None, allow_none=True)
+    insolvency_hook = ContractProxyField(default=None, allow_none=True)
 
     @property
     def pure_premiums(self):
@@ -430,8 +431,12 @@ class PolicyPool(AccessControlContract):
         self.etokens[etoken.name] = ContractProxy(etoken.contract_id)
 
     def set_asset_manager(self, asset_manager):
-        # TODO: if current asset_manager, first deinvest all
+        if self.asset_manager:
+            self.asset_manager.deinvest_all()
         self.asset_manager = ContractProxy(asset_manager.contract_id)
+
+    def set_insolvency_hook(self, insolvency_hook):
+        self.insolvency_hook = ContractProxy(insolvency_hook.contract_id) if insolvency_hook else None
 
     @external
     def deposit(self, etoken, provider, amount):
@@ -503,8 +508,12 @@ class PolicyPool(AccessControlContract):
         if amount == _W(0):
             return
         balance = self.currency.balance_of(self.contract_id)
-        if balance < amount:
+        if self.asset_manager and balance < amount:
             self.asset_manager.refill_wallet(amount)
+
+        # Calculate again the balance and check if enought, if not call unsolvency_hook
+        if self.insolvency_hook and self.currency.balance_of(self.contract_id) < amount:
+            self.insolvency_hook.out_of_cash(amount - self.currency.balance_of(self.contract_id))
         return self.currency.transfer(self.contract_id, target, amount)
 
     def _pay_from_pool(self, to_pay):
@@ -537,6 +546,11 @@ class PolicyPool(AccessControlContract):
         self.won_pure_premiums += pure_premium_won
 
     @external
+    def receive_grant(self, sender, amount):
+        self.currency.transfer_from(self.contract_id, sender, self.contract_id, amount)
+        self._store_pure_premium_won(amount)
+
+    @external
     def resolve_policy(self, policy_id, payout):
         policy = self.policies[policy_id]
         if type(payout) == bool:
@@ -551,12 +565,12 @@ class PolicyPool(AccessControlContract):
         adjustment = for_lps - policy.accrued_interest()
 
         if customer_won:
-            to_pay_from_pool, pure_premium_won, return_to_rm = policy.split_payout(payout)
-            borrow_from_scr = self._pay_from_pool(to_pay_from_pool)
             policy_owner = self.policy_nft.owner_of(policy.id)
             self._transfer_to(policy_owner, payout)
+            to_pay_from_pool, pure_premium_won, return_to_rm = policy.split_payout(payout)
             if return_to_rm:
                 self._transfer_to(policy.risk_module.wallet, return_to_rm)
+            borrow_from_scr = self._pay_from_pool(to_pay_from_pool)
         else:
             # Pay Ensuro and RM
             self._transfer_to(policy.risk_module.wallet, for_rm + policy.rm_scr)
@@ -711,6 +725,9 @@ class AssetManager(AccessControlContract):
         self.last_investment_value -= amount
         # Must be reimplemented and do the actual cash movement
 
+    def deinvest_all(self):
+        self._deinvest(self.get_investment_value())
+
 
 class FixedRateAssetManager(AssetManager):
     """Test asset manager that accrues interest at fixed rate"""
@@ -746,3 +763,15 @@ class FixedRateAssetManager(AssetManager):
         self._mint_burn()
         super()._deinvest(amount)
         self.pool.currency.transfer(self.contract_id, self.pool.contract_id, amount)
+
+
+class FreeGrantInsolvencyHook(Contract):
+    pool = ContractProxyField()
+    cash_granted = WadField(default=Wad(0))
+
+    def out_of_cash(self, amount):
+        # Just a simple implementation that mints money and grants
+        self.pool.currency.mint(self.contract_id, amount)
+        self.pool.currency.approve(self.contract_id, self.pool.contract_id, amount)
+        self.pool.receive_grant(self.contract_id, amount)
+        self.cash_granted += amount
