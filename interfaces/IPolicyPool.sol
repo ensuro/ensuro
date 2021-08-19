@@ -17,7 +17,7 @@ interface IPolicyPool {
 
   function resolvePolicy(uint256 policyId, bool customerWon) external;
 
-  function receiveGrant(address sender, uint256 amount) external;
+  function receiveGrant(uint256 amount) external;
 
   function getPolicy(uint256 policyId) external view returns (Policy.PolicyData memory);
 

@@ -41,7 +41,7 @@ contract PolicyPoolMock is IPolicyPool {
     return IEToken(address(0));
   }
 
-  function assetEarnings(uint256 amount, bool positive) external override {
+  function assetEarnings(uint256, bool) external override {
     revert("Not Implemented");
   }
 
@@ -71,7 +71,7 @@ contract PolicyPoolMock is IPolicyPool {
     emit PolicyResolved(IRiskModule(msg.sender), policyId, payout);
   }
 
-  function receiveGrant(address sender, uint256 amount) external override {
+  function receiveGrant(uint256) external override {
     revert("Not Implemented");
   }
 

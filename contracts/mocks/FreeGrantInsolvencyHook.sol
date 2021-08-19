@@ -23,9 +23,7 @@ contract FreeGrantInsolvencyHook is IInsolvencyHook, IPolicyPoolComponent {
 
   event OutOfCashGranted(uint256 amount);
 
-  constructor(
-    IPolicyPool policyPool_
-  ) {
+  constructor(IPolicyPool policyPool_) {
     _policyPool = policyPool_;
   }
 
@@ -37,7 +35,7 @@ contract FreeGrantInsolvencyHook is IInsolvencyHook, IPolicyPoolComponent {
     IERC20 currency = _policyPool.currency();
     IMintableERC20(address(currency)).mint(address(this), paymentAmount);
     currency.approve(address(_policyPool), paymentAmount);
-    _policyPool.receiveGrant(address(this), paymentAmount);
+    _policyPool.receiveGrant(paymentAmount);
     cashGranted += paymentAmount;
     emit OutOfCashGranted(paymentAmount);
   }

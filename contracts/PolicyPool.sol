@@ -465,7 +465,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     delete _policiesFunds[policy.id];
   }
 
-  function receiveGrant(address sender, uint256 amount) external override {
+  function receiveGrant(uint256 amount) external override {
     _currency.safeTransferFrom(_msgSender(), address(this), amount);
     _storePurePremiumWon(amount);
   }
