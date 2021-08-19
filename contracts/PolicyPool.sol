@@ -10,6 +10,7 @@ import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {IRiskModule} from "../interfaces/IRiskModule.sol";
+import {IInsolvencyHook} from "../interfaces/IInsolvencyHook.sol";
 import {IPolicyPoolComponent} from "../interfaces/IPolicyPoolComponent.sol";
 import {IEToken} from "../interfaces/IEToken.sol";
 import {IMintable} from "../interfaces/IMintable.sol";
@@ -58,6 +59,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
 
   address internal _treasury; // address of Ensuro treasury
   IAssetManager internal _assetManager; // asset manager
+  IInsolvencyHook internal _insolvencyHook; // Contract that handles insolvency situations
 
   event NewPolicy(IRiskModule indexed riskModule, uint256 policyId);
   event PolicyRebalanced(IRiskModule indexed riskModule, uint256 indexed policyId);
@@ -70,6 +72,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
 
   event ETokenStatusChanged(IEToken indexed eToken, DataTypes.ETokenStatus newStatus);
   event AssetManagerChanged(IAssetManager indexed assetManager);
+  event InsolvencyHookChanged(IInsolvencyHook indexed insolvencyHook);
 
   event Withdrawal(IEToken indexed eToken, address indexed provider, uint256 value);
 
@@ -209,6 +212,15 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     return _assetManager;
   }
 
+  function setInsolvencyHook(IInsolvencyHook insolvencyHook_) external onlyRole(ENSURO_DAO_ROLE) {
+    _insolvencyHook = insolvencyHook_;
+    emit InsolvencyHookChanged(_insolvencyHook);
+  }
+
+  function insolvencyHook() external view returns (IInsolvencyHook) {
+    return _insolvencyHook;
+  }
+
   /// #if_succeeds
   ///    {:msg "must take balance from sender"}
   ///    _currency.balanceOf(_msgSender()) == old(_currency.balanceOf(_msgSender()) - amount);
@@ -305,13 +317,19 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     }
   }
 
+  function _balance() internal view returns (uint256) {
+    return _currency.balanceOf(address(this));
+  }
+
   function _transferTo(address destination, uint256 amount) internal {
     if (amount == 0) return;
-    uint256 balance = _currency.balanceOf(address(this));
-    if (_assetManager != IAssetManager(address(0)) && balance < amount) {
+    if (_assetManager != IAssetManager(address(0)) && _balance() < amount) {
       _assetManager.refillWallet(amount);
     }
-    // TODO: check balance again and call InsolvencyHook if needed
+    // Calculate again the balance and check if enought, if not call unsolvency_hook
+    if (_insolvencyHook != IInsolvencyHook(address(0)) && _balance() < amount) {
+      _insolvencyHook.outOfCash(amount - _balance());
+    }
     _currency.safeTransfer(destination, amount);
   }
 
@@ -361,11 +379,11 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     uint256 aux;
 
     if (customerWon) {
+      _transferTo(_policyNFT.ownerOf(policy.id), payout);
       uint256 returnToRm;
       (aux, purePremiumWon, returnToRm) = policy.splitPayout(payout);
-      borrowFromScr = _payFromPool(aux);
-      _transferTo(_policyNFT.ownerOf(policy.id), payout);
       if (returnToRm > 0) _transferTo(policy.riskModule.wallet(), returnToRm);
+      borrowFromScr = _payFromPool(aux);
     } else {
       // Pay RM and Ensuro
       _transferTo(policy.riskModule.wallet(), policy.premiumForRm + policy.rmScr());
@@ -445,6 +463,11 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     emit PolicyResolved(policy.riskModule, policy.id, payout);
     delete _policies[policy.id];
     delete _policiesFunds[policy.id];
+  }
+
+  function receiveGrant(address sender, uint256 amount) external override {
+    _currency.safeTransferFrom(_msgSender(), address(this), amount);
+    _storePurePremiumWon(amount);
   }
 
   function rebalancePolicy(uint256 policyId) external onlyRole(REBALANCE_ROLE) {

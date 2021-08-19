@@ -643,6 +643,19 @@ class PolicyPool(ETHWrapper):
             return self._asset_manager
         return BaseAssetManager.connect(am, self.owner)
 
+    set_insolvency_hook_ = MethodAdapter((("insolvency_hook", "contract"), ))
+
+    def set_insolvency_hook(self, insolvency_hook):
+        self.set_insolvency_hook_(insolvency_hook)
+        self._insolvency_hook = insolvency_hook
+
+    @property
+    def insolvency_hook(self):
+        ih = self.contract.insolvencyHook()
+        if getattr(self, "_insolvency_hook") and self._insolvency_hook.contract.address == ih:
+            return self._insolvency_hook
+        return FreeGrantInsolvencyHook.connect(ih, self.owner)
+
 
 class BaseAssetManager(ETHWrapper):
     eth_contract = "BaseAssetManager"
@@ -673,6 +686,15 @@ class FixedRateAssetManager(BaseAssetManager):
         super().__init__(
             owner, pool, liquidity_min, liquidity_middle, liquidity_max, interest_rate
         )
+
+
+class FreeGrantInsolvencyHook(ETHWrapper):
+    eth_contract = "FreeGrantInsolvencyHook"
+
+    def __init__(self, pool):
+        super().__init__("owner", pool.contract)
+
+    cash_granted = MethodAdapter((), "amount", is_property=True)
 
 
 ERC20Token = TestCurrency
