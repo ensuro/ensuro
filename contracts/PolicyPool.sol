@@ -33,7 +33,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
 
   uint256 public constant MAX_INT =
     0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
-  uint256 public constant NEGLIGIBLE_AMOUNT = 1e14;  // "0.0001" in Wad
+  uint256 public constant NEGLIGIBLE_AMOUNT = 1e14; // "0.0001" in Wad
 
   bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
   bytes32 public constant ENSURO_DAO_ROLE = keccak256("ENSURO_DAO_ROLE");
@@ -436,27 +436,37 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
       uint256 borrowFromScrLeft;
       borrowFromScrLeft = _updatePolicyFundsCustWon(policy, borrowFromScr);
       if (borrowFromScrLeft > NEGLIGIBLE_AMOUNT)
-         borrowFromScrLeft = _takeLoanFromAnyEtk(borrowFromScrLeft);
-      require(borrowFromScrLeft <= NEGLIGIBLE_AMOUNT, "Don't know where to take the rest of the money");
+        borrowFromScrLeft = _takeLoanFromAnyEtk(borrowFromScrLeft);
+      require(
+        borrowFromScrLeft <= NEGLIGIBLE_AMOUNT,
+        "Don't know where to take the rest of the money"
+      );
     } else {
       purePremiumWon = _updatePolicyFundsCustLost(policy, purePremiumWon);
     }
 
-    _storePurePremiumWon(purePremiumWon);  // it's possible in some cases purePremiumWon > 0 && customerWon
+    _storePurePremiumWon(purePremiumWon); // it's possible in some cases purePremiumWon > 0 && customerWon
 
     emit PolicyResolved(policy.riskModule, policy.id, payout);
     delete _policies[policy.id];
     delete _policiesFunds[policy.id];
   }
 
-  function _interestAdjustment(Policy.PolicyData storage policy) internal view returns (bool, uint256) {
+  function _interestAdjustment(Policy.PolicyData storage policy)
+    internal
+    view
+    returns (bool, uint256)
+  {
     // Calculate interest accrual adjustment
     uint256 aux = policy.accruedInterest();
     if (policy.premiumForLps >= aux) return (true, policy.premiumForLps - aux);
     else return (false, aux - policy.premiumForLps);
   }
 
-  function _updatePolicyFundsCustWon(Policy.PolicyData storage policy, uint256 borrowFromScr) internal returns (uint256) {
+  function _updatePolicyFundsCustWon(Policy.PolicyData storage policy, uint256 borrowFromScr)
+    internal
+    returns (uint256)
+  {
     uint256 borrowFromScrLeft = 0;
     uint256 aux;
     uint256 interestRate = policy.interestRate();
@@ -478,8 +488,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     return borrowFromScrLeft;
   }
 
-  function _updatePolicyFundsCustLost(Policy.PolicyData storage policy, uint256 purePremiumWon) internal returns
-  (uint256) {
+  function _updatePolicyFundsCustLost(Policy.PolicyData storage policy, uint256 purePremiumWon)
+    internal
+    returns (uint256)
+  {
     uint256 aux;
     uint256 interestRate = policy.interestRate();
     (bool positive, uint256 adjustment) = _interestAdjustment(policy);
@@ -506,11 +518,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
   function _takeLoanFromAnyEtk(uint256 loanLeft) internal returns (uint256) {
     for (uint256 i = 0; i < _eTokens.length(); i++) {
       (IEToken etk, DataTypes.ETokenStatus etkStatus) = _eTokens.at(i);
-      if (etkStatus != DataTypes.ETokenStatus.active)
-        continue;
+      if (etkStatus != DataTypes.ETokenStatus.active) continue;
       loanLeft -= etk.lendToPool(loanLeft);
-      if (loanLeft <= NEGLIGIBLE_AMOUNT)
-        break;
+      if (loanLeft <= NEGLIGIBLE_AMOUNT) break;
     }
     return loanLeft;
   }

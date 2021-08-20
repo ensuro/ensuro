@@ -630,15 +630,12 @@ contract EToken is
   function _maxNegativeAdjustment() internal view returns (uint256) {
     uint256 ts = totalSupply();
     uint256 minTs = _totalSupply.wadToRay().rayMul(MIN_SCALE * 10).rayToWad();
-    if (ts > minTs)
-      return ts - minTs;
-    else
-      return 0;
+    if (ts > minTs) return ts - minTs;
+    else return 0;
   }
 
   function lendToPool(uint256 amount) external override onlyPolicyPool returns (uint256) {
-    if (amount > ocean())
-      amount = ocean();
+    if (amount > ocean()) amount = ocean();
     if (amount > _maxNegativeAdjustment()) {
       amount = _maxNegativeAdjustment();
       if (amount == 0) return amount;
