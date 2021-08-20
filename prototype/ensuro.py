@@ -572,6 +572,14 @@ class PolicyPool(AccessControlContract):
         self._store_pure_premium_won(amount)
 
     @external
+    def repay_etoken_loan(self, etoken):
+        etk = self.etokens[etoken]
+        pool_loan = etk.get_pool_loan()
+        to_pay_later = self._pay_from_pool(pool_loan)
+        etk.repay_pool_loan(pool_loan - to_pay_later)
+        return pool_loan - to_pay_later
+
+    @external
     def resolve_policy(self, policy_id, payout):
         policy = self.policies[policy_id]
         if type(payout) == bool:

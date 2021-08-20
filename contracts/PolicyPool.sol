@@ -468,19 +468,19 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     returns (uint256)
   {
     uint256 borrowFromScrLeft = 0;
-    uint256 aux;
     uint256 interestRate = policy.interestRate();
     (bool positive, uint256 adjustment) = _interestAdjustment(policy);
 
-    // Iterate policyFunds - unlockScr / adjust / take or repay loan
+    // Iterate policyFunds - unlockScr / adjust / take loan
     DataTypes.ETokenToWadMap storage policyFunds = _policiesFunds[policy.id];
     for (uint256 i = 0; i < policyFunds.length(); i++) {
       (IEToken etk, uint256 etkScr) = policyFunds.at(i);
       etk.unlockScr(interestRate, etkScr);
-      etkScr = etkScr.wadDiv(policy.scr); // Using the same variable, but now represents the share of SCR
-      // that's covered by this etk
+      etkScr = etkScr.wadDiv(policy.scr);
+      // etkScr now represents the share of SCR that's covered by this etk (variable reuse)
       etk.discreteEarning(adjustment.wadMul(etkScr), positive);
       if (borrowFromScr > 0) {
+        uint256 aux;
         aux = borrowFromScr.wadMul(etkScr);
         borrowFromScrLeft += aux - etk.lendToPool(aux);
       }
@@ -488,23 +488,24 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     return borrowFromScrLeft;
   }
 
+  // Almost duplicated code from _updatePolicyFundsCustWon but separated to avoid stack depth error
   function _updatePolicyFundsCustLost(Policy.PolicyData storage policy, uint256 purePremiumWon)
     internal
     returns (uint256)
   {
-    uint256 aux;
     uint256 interestRate = policy.interestRate();
     (bool positive, uint256 adjustment) = _interestAdjustment(policy);
 
-    // Iterate policyFunds - unlockScr / adjust / take or repay loan
+    // Iterate policyFunds - unlockScr / adjust / repay loan
     DataTypes.ETokenToWadMap storage policyFunds = _policiesFunds[policy.id];
     for (uint256 i = 0; i < policyFunds.length(); i++) {
       (IEToken etk, uint256 etkScr) = policyFunds.at(i);
       etk.unlockScr(interestRate, etkScr);
-      etkScr = etkScr.wadDiv(policy.scr); // Using the same variable, but now represents the share of SCR
-      // that's covered by this etk
+      etkScr = etkScr.wadDiv(policy.scr);
+      // etkScr now represents the share of SCR that's covered by this etk (variable reuse)
       etk.discreteEarning(adjustment.wadMul(etkScr), positive);
       if (purePremiumWon > 0 && etk.getPoolLoan() > 0) {
+        uint256 aux;
         // if debt with token, repay from purePremium
         aux = policy.purePremium.wadMul(etkScr);
         aux = Math.min(purePremiumWon, Math.min(etk.getPoolLoan(), aux));
@@ -515,6 +516,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     return purePremiumWon;
   }
 
+  /*
+   * Called when the payout to be taken from policyFunds wasn't enought.
+   * Then I take loan from the others tokens
+   */
   function _takeLoanFromAnyEtk(uint256 loanLeft) internal returns (uint256) {
     for (uint256 i = 0; i < _eTokens.length(); i++) {
       (IEToken etk, DataTypes.ETokenStatus etkStatus) = _eTokens.at(i);
@@ -523,6 +528,32 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
       if (loanLeft <= NEGLIGIBLE_AMOUNT) break;
     }
     return loanLeft;
+  }
+
+  /**
+   *
+   * Repays a loan taken with the eToken with the money in the premium pool.
+   * The repayment should happen without calling this method when customer losses and eToken is one of the
+   * policyFunds. But sometimes we need to take loans from tokens not linked to the policy.
+   *
+   * returns The amount repaid
+   *
+   * Requirements:
+   *
+   * - `eToken` must be `active` or `deprecated`
+   */
+  function repayETokenLoan(IEToken eToken) external returns (uint256) {
+    (bool found, DataTypes.ETokenStatus etkStatus) = _eTokens.tryGet(eToken);
+    require(
+      found &&
+        (etkStatus == DataTypes.ETokenStatus.active ||
+          etkStatus == DataTypes.ETokenStatus.deprecated),
+      "eToken is not active"
+    );
+    uint256 poolLoan = eToken.getPoolLoan();
+    uint256 toPayLater = _payFromPool(poolLoan);
+    eToken.repayPoolLoan(poolLoan - toPayLater);
+    return poolLoan - toPayLater;
   }
 
   function receiveGrant(uint256 amount) external override {

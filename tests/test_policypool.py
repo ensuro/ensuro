@@ -945,8 +945,10 @@ def test_insolvency_without_hook(tenv):
     etokens:
       - name: eUSD1YEAR
         expiration_period: 31536000
+        pool_loan_interest_rate: "0.06"
       - name: eUSD1MONTH
         expiration_period: 2592000
+        pool_loan_interest_rate: "0.04"
     """
 
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
@@ -987,9 +989,7 @@ def _extract_vars(vars, keys):
 
 def test_grant_insolvency_hook(tenv):
     vars = test_insolvency_without_hook(tenv)
-    pool = vars["pool"]
-    rm = vars["rm"]
-    policy = vars["policy"]
+    pool, rm, policy = _extract_vars(vars, "pool,rm,policy")
     ins_hook = tenv.module.FreeGrantInsolvencyHook(pool=pool)
     pool.set_insolvency_hook(ins_hook)
 
@@ -1022,12 +1022,15 @@ def test_lp_insolvency_hook(tenv):
 
 def test_lp_insolvency_hook_other_etk(tenv):
     vars = test_insolvency_without_hook(tenv)
-    pool, rm, etk, for_lps, policy, USD = _extract_vars(vars, "pool,rm,etk,for_lps,policy,USD")
+    pool, rm, etk, for_lps, policy, USD, timecontrol = _extract_vars(
+        vars, "pool,rm,etk,for_lps,policy,USD,timecontrol"
+    )
     etk1m = pool.etokens["eUSD1MONTH"]
     ins_hook = tenv.module.LPInsolvencyHook(pool=pool, etoken="eUSD1MONTH")
     pool.set_insolvency_hook(ins_hook)
 
     rm.resolve_policy(policy.id, True)
+    USD.balance_of("CUST1").assert_equal(_W(9200))
 
     ins_hook.cash_deposited.assert_equal(_W(8000))
     etk.ocean.assert_equal(_W(0))
@@ -1041,3 +1044,27 @@ def test_lp_insolvency_hook_other_etk(tenv):
 
     USD.approve("LP2", pool.contract_id, _W(3000))
     pool.deposit("eUSD1YEAR", "LP2", _W(3000)).assert_equal(_W(3000))
+
+    # Now our charitative customers gives some of the money back as grant
+    USD.approve("CUST1", pool.contract_id, _W(9200))
+    pool.receive_grant("CUST1", _W(4000))
+    pool.won_pure_premiums.assert_equal(_W(4000))  # The grant is on premium pool
+
+    pool.repay_etoken_loan("eUSD1MONTH").assert_equal(_W(4000))
+    etk1m.get_pool_loan().assert_equal(_W(4000))
+
+    etk1m.balance_of(ins_hook).assert_equal(_W(4000))
+    pool.won_pure_premiums.assert_equal(_W(0))  # The grant is no longer in premium pool
+
+    # After some time and send another grant
+    timecontrol.fast_forward(30 * DAY)
+    pool.receive_grant("CUST1", _W(5000))
+    pool_loan_1y = etk.get_pool_loan()
+    pool_loan_1y.assert_equal((_W(1000) + for_lps) * _W(1.0 + 0.06 * 30 / 365))
+    # Only is repaid up to pool loan
+    pool.repay_etoken_loan("eUSD1YEAR").assert_equal(pool_loan_1y)
+
+    pool.repay_etoken_loan("eUSD1MONTH").assert_equal(_W(5000) - pool_loan_1y)
+    etk1m.get_pool_loan().assert_equal(
+        _W(4000) - (_W(5000) - pool_loan_1y) + _W(4000) * _W(0.04 * 30/365)
+    )
