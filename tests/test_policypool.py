@@ -1020,6 +1020,7 @@ def test_lp_insolvency_hook(tenv):
     etk.balance_of(ins_hook).assert_equal(_W(0))
 
 
+@set_precision(Wad, 3)
 def test_lp_insolvency_hook_other_etk(tenv):
     vars = test_insolvency_without_hook(tenv)
     pool, rm, etk, for_lps, policy, USD, timecontrol = _extract_vars(
@@ -1051,9 +1052,9 @@ def test_lp_insolvency_hook_other_etk(tenv):
     pool.won_pure_premiums.assert_equal(_W(4000))  # The grant is on premium pool
 
     pool.repay_etoken_loan("eUSD1MONTH").assert_equal(_W(4000))
-    etk1m.get_pool_loan().assert_equal(_W(4000))
+    etk1m.get_pool_loan().assert_equal(_W(4000), decimals=2)
 
-    etk1m.balance_of(ins_hook).assert_equal(_W(4000))
+    etk1m.balance_of(ins_hook).assert_equal(_W(4000), decimals=2)
     pool.won_pure_premiums.assert_equal(_W(0))  # The grant is no longer in premium pool
 
     # After some time and send another grant

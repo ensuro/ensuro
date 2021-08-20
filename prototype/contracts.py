@@ -368,7 +368,8 @@ class ERC20Token(AccessControlContract):
         for account in accounts:
             if isinstance(account, (Contract, ContractProxy)):
                 yield account.contract_id
-            yield account
+            else:
+                yield account
 
     def mint(self, address, amount):
         self.balances[address] = self.balances.get(address, self.ZERO) + amount
