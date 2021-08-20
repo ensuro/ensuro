@@ -433,7 +433,15 @@ class ETokenETH(IERC20):
         adapt_args=lambda args, kwargs: ((args[0].expiration, ), {})
     )
 
-    lend_to_pool = MethodAdapter((("amount", "amount"), ))
+    lend_to_pool_ = MethodAdapter((("amount", "amount"), ))
+
+    def lend_to_pool(self, amount):
+        receipt = self.lend_to_pool_(amount)
+        if "PoolLoan" in receipt.events:
+            return Wad(receipt.events["PoolLoan"]["value"])
+        else:
+            return Wad(0)
+
     repay_pool_loan = MethodAdapter((("amount", "amount"), ))
     get_pool_loan = MethodAdapter((), "amount")
     get_investable = MethodAdapter((), "amount")
@@ -695,6 +703,16 @@ class FreeGrantInsolvencyHook(ETHWrapper):
         super().__init__("owner", pool.contract)
 
     cash_granted = MethodAdapter((), "amount", is_property=True)
+
+
+class LPInsolvencyHook(ETHWrapper):
+    eth_contract = "LPInsolvencyHook"
+
+    def __init__(self, pool, etoken):
+        etoken = pool.etokens[etoken]
+        super().__init__("owner", pool.contract, etoken.contract)
+
+    cash_deposited = MethodAdapter((), "amount", is_property=True)
 
 
 ERC20Token = TestCurrency

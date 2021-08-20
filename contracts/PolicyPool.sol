@@ -33,6 +33,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
 
   uint256 public constant MAX_INT =
     0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
+  uint256 public constant NEGLIGIBLE_AMOUNT = 1e14;  // "0.0001" in Wad
 
   bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
   bytes32 public constant ENSURO_DAO_ROLE = keccak256("ENSURO_DAO_ROLE");
@@ -224,14 +225,14 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
   /// #if_succeeds
   ///    {:msg "must take balance from sender"}
   ///    _currency.balanceOf(_msgSender()) == old(_currency.balanceOf(_msgSender()) - amount);
-  function deposit(IEToken eToken, uint256 amount) external {
+  function deposit(IEToken eToken, uint256 amount) external override {
     (bool found, DataTypes.ETokenStatus etkStatus) = _eTokens.tryGet(eToken);
     require(found && etkStatus == DataTypes.ETokenStatus.active, "eToken is not active");
     _currency.safeTransferFrom(_msgSender(), address(this), amount);
     eToken.deposit(_msgSender(), amount);
   }
 
-  function withdraw(IEToken eToken, uint256 amount) external returns (uint256) {
+  function withdraw(IEToken eToken, uint256 amount) external override returns (uint256) {
     (bool found, DataTypes.ETokenStatus etkStatus) = _eTokens.tryGet(eToken);
     require(
       found &&
@@ -425,44 +426,93 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     _activePremiums -= policy.premium;
     _activePurePremiums -= policy.purePremium;
 
-    uint256 aux = policy.accruedInterest();
-    bool positive = policy.premiumForLps >= aux;
-    uint256 adjustment;
-    if (positive) adjustment = policy.premiumForLps - aux;
-    else adjustment = aux - policy.premiumForLps;
-
     (uint256 borrowFromScr, uint256 purePremiumWon) = _processResolution(
       policy,
       customerWon,
       payout
     );
 
-    DataTypes.ETokenToWadMap storage policyFunds = _policiesFunds[policy.id];
+    if (customerWon) {
+      uint256 borrowFromScrLeft;
+      borrowFromScrLeft = _updatePolicyFundsCustWon(policy, borrowFromScr);
+      if (borrowFromScrLeft > NEGLIGIBLE_AMOUNT)
+         borrowFromScrLeft = _takeLoanFromAnyEtk(borrowFromScrLeft);
+      require(borrowFromScrLeft <= NEGLIGIBLE_AMOUNT, "Don't know where to take the rest of the money");
+    } else {
+      purePremiumWon = _updatePolicyFundsCustLost(policy, purePremiumWon);
+    }
 
+    _storePurePremiumWon(purePremiumWon);  // it's possible in some cases purePremiumWon > 0 && customerWon
+
+    emit PolicyResolved(policy.riskModule, policy.id, payout);
+    delete _policies[policy.id];
+    delete _policiesFunds[policy.id];
+  }
+
+  function _interestAdjustment(Policy.PolicyData storage policy) internal view returns (bool, uint256) {
+    // Calculate interest accrual adjustment
+    uint256 aux = policy.accruedInterest();
+    if (policy.premiumForLps >= aux) return (true, policy.premiumForLps - aux);
+    else return (false, aux - policy.premiumForLps);
+  }
+
+  function _updatePolicyFundsCustWon(Policy.PolicyData storage policy, uint256 borrowFromScr) internal returns (uint256) {
+    uint256 borrowFromScrLeft = 0;
+    uint256 aux;
+    uint256 interestRate = policy.interestRate();
+    (bool positive, uint256 adjustment) = _interestAdjustment(policy);
+
+    // Iterate policyFunds - unlockScr / adjust / take or repay loan
+    DataTypes.ETokenToWadMap storage policyFunds = _policiesFunds[policy.id];
     for (uint256 i = 0; i < policyFunds.length(); i++) {
       (IEToken etk, uint256 etkScr) = policyFunds.at(i);
-      etk.unlockScr(policy.interestRate(), etkScr);
+      etk.unlockScr(interestRate, etkScr);
       etkScr = etkScr.wadDiv(policy.scr); // Using the same variable, but now represents the share of SCR
       // that's covered by this etk
       etk.discreteEarning(adjustment.wadMul(etkScr), positive);
-      if (!customerWon && purePremiumWon > 0 && etk.getPoolLoan() > 0) {
+      if (borrowFromScr > 0) {
+        aux = borrowFromScr.wadMul(etkScr);
+        borrowFromScrLeft += aux - etk.lendToPool(aux);
+      }
+    }
+    return borrowFromScrLeft;
+  }
+
+  function _updatePolicyFundsCustLost(Policy.PolicyData storage policy, uint256 purePremiumWon) internal returns
+  (uint256) {
+    uint256 aux;
+    uint256 interestRate = policy.interestRate();
+    (bool positive, uint256 adjustment) = _interestAdjustment(policy);
+
+    // Iterate policyFunds - unlockScr / adjust / take or repay loan
+    DataTypes.ETokenToWadMap storage policyFunds = _policiesFunds[policy.id];
+    for (uint256 i = 0; i < policyFunds.length(); i++) {
+      (IEToken etk, uint256 etkScr) = policyFunds.at(i);
+      etk.unlockScr(interestRate, etkScr);
+      etkScr = etkScr.wadDiv(policy.scr); // Using the same variable, but now represents the share of SCR
+      // that's covered by this etk
+      etk.discreteEarning(adjustment.wadMul(etkScr), positive);
+      if (purePremiumWon > 0 && etk.getPoolLoan() > 0) {
         // if debt with token, repay from purePremium
         aux = policy.purePremium.wadMul(etkScr);
         aux = Math.min(purePremiumWon, Math.min(etk.getPoolLoan(), aux));
         etk.repayPoolLoan(aux);
         purePremiumWon -= aux;
-      } else {
-        if (borrowFromScr > 0) {
-          etk.lendToPool(borrowFromScr.wadMul(etkScr));
-        }
       }
     }
+    return purePremiumWon;
+  }
 
-    _storePurePremiumWon(purePremiumWon);
-    // policy.rm.removePolicy...
-    emit PolicyResolved(policy.riskModule, policy.id, payout);
-    delete _policies[policy.id];
-    delete _policiesFunds[policy.id];
+  function _takeLoanFromAnyEtk(uint256 loanLeft) internal returns (uint256) {
+    for (uint256 i = 0; i < _eTokens.length(); i++) {
+      (IEToken etk, DataTypes.ETokenStatus etkStatus) = _eTokens.at(i);
+      if (etkStatus != DataTypes.ETokenStatus.active)
+        continue;
+      loanLeft -= etk.lendToPool(loanLeft);
+      if (loanLeft <= NEGLIGIBLE_AMOUNT)
+        break;
+    }
+    return loanLeft;
   }
 
   function receiveGrant(uint256 amount) external override {

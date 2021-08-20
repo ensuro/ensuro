@@ -937,12 +937,16 @@ def test_insolvency_without_hook(tenv):
         initial_supply: 20000
         initial_balances:
         - user: LP1
-          amount: 10000
+          amount: 5000
+        - user: LP2
+          amount: 3000
         - user: CUST1
           amount: 200
     etokens:
       - name: eUSD1YEAR
         expiration_period: 31536000
+      - name: eUSD1MONTH
+        expiration_period: 2592000
     """
 
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
@@ -975,6 +979,12 @@ def test_insolvency_without_hook(tenv):
     return locals()
 
 
+def _extract_vars(vars, keys):
+    keys = keys.split(",")
+    for k in keys:
+        yield vars[k]
+
+
 def test_grant_insolvency_hook(tenv):
     vars = test_insolvency_without_hook(tenv)
     pool = vars["pool"]
@@ -986,3 +996,48 @@ def test_grant_insolvency_hook(tenv):
     rm.resolve_policy(policy.id, True)
 
     ins_hook.cash_granted.assert_equal(_W(8000))
+
+
+def test_lp_insolvency_hook(tenv):
+    vars = test_insolvency_without_hook(tenv)
+    pool, rm, etk, for_lps, policy, USD = _extract_vars(vars, "pool,rm,etk,for_lps,policy,USD")
+    ins_hook = tenv.module.LPInsolvencyHook(pool=pool, etoken="eUSD1YEAR")
+    pool.set_insolvency_hook(ins_hook)
+
+    rm.resolve_policy(policy.id, True)
+
+    ins_hook.cash_deposited.assert_equal(_W(8000))
+    etk.ocean.assert_equal(_W(0))
+    etk.scr.assert_equal(_W(0))
+    etk.get_pool_loan().assert_equal(_W(9000) + for_lps)
+
+    etk.balance_of("LP1").assert_equal(_W(0))
+    etk.balance_of(ins_hook).assert_equal(_W(0))
+
+    USD.approve("LP2", pool.contract_id, _W(3000))
+    pool.deposit("eUSD1YEAR", "LP2", _W(3000)).assert_equal(_W(3000))
+    etk.balance_of("LP1").assert_equal(_W(0))
+    etk.balance_of(ins_hook).assert_equal(_W(0))
+
+
+def test_lp_insolvency_hook_other_etk(tenv):
+    vars = test_insolvency_without_hook(tenv)
+    pool, rm, etk, for_lps, policy, USD = _extract_vars(vars, "pool,rm,etk,for_lps,policy,USD")
+    etk1m = pool.etokens["eUSD1MONTH"]
+    ins_hook = tenv.module.LPInsolvencyHook(pool=pool, etoken="eUSD1MONTH")
+    pool.set_insolvency_hook(ins_hook)
+
+    rm.resolve_policy(policy.id, True)
+
+    ins_hook.cash_deposited.assert_equal(_W(8000))
+    etk.ocean.assert_equal(_W(0))
+    etk.scr.assert_equal(_W(0))
+    etk.get_pool_loan().assert_equal(_W(1000) + for_lps)
+    etk1m.get_pool_loan().assert_equal(_W(8000))
+
+    etk.balance_of("LP1").assert_equal(_W(0))
+    etk.balance_of(ins_hook).assert_equal(_W(0))
+    etk1m.balance_of(ins_hook).assert_equal(_W(0))
+
+    USD.approve("LP2", pool.contract_id, _W(3000))
+    pool.deposit("eUSD1YEAR", "LP2", _W(3000)).assert_equal(_W(3000))

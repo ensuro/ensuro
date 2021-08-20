@@ -28,4 +28,8 @@ interface IPolicyPool {
   function getETokenAt(uint256 index) external view returns (IEToken);
 
   function assetEarnings(uint256 amount, bool positive) external;
+
+  function deposit(IEToken eToken, uint256 amount) external;
+
+  function withdraw(IEToken eToken, uint256 amount) external returns (uint256);
 }

@@ -236,8 +236,11 @@ def test_pool_loan(tenv):
     tenv.time_control.fast_forward(7 * DAY)
     etk.ocean.assert_equal(_W(400) + _W(600 * 0.04 * 7 / 365))
 
-    with pytest.raises(RevertError):
-        etk.lend_to_pool(_W(401))  # Can't lend more than ocean
+    ocean = etk.ocean
+
+    lended = etk.lend_to_pool(_W(401))  # Can't lend more than ocean
+    lended.assert_equal(ocean)
+    etk.repay_pool_loan(lended)
 
     etk.lend_to_pool(_W(300))
     etk.get_pool_loan().assert_equal(_W(300))
@@ -304,9 +307,9 @@ def test_asset_and_discrete_earnings(tenv):
     etk.balance_of("LP2").assert_equal(_W(2000) * _W(2900/3000))
     etk.total_supply().assert_equal(_W(2900))
 
-    # Finally, down to zero adjustment
-    etk.discrete_earning(-etk.total_supply())
-    etk.total_supply().assert_equal(_W(0))
+    # Finally, down to zero adjustment (almost zero, zero not allowed)
+    etk.discrete_earning(-etk.total_supply() * _W("0.99999"))
+    etk.total_supply().assert_equal(_W(0), decimals=1)
 
 
 def test_name_and_others(tenv):

@@ -189,10 +189,16 @@ class Policy(Model):
         return (self.locked_funds[etoken_name] // self.scr).to_ray()
 
 
+def non_negative(value):
+    if value < 0:
+        raise ValueError("Not allowed negative")
+
+
 class EToken(ERC20Token):
+    MIN_SCALE = _R("0.0000000001")  # 1e-10
     policy_pool = ContractProxyField()
     expiration_period = IntField()
-    scale_factor = RayField(default=_R(1))
+    scale_factor = RayField(default=_R(1), validation_hook=non_negative)
     last_scale_update = IntField(default=time_control.now)
 
     scr = WadField(default=_W(0))
@@ -216,6 +222,7 @@ class EToken(ERC20Token):
 
     def _update_current_scale(self):
         self.scale_factor = self._calculate_current_scale()
+        require(self.scale_factor >= self.MIN_SCALE, "Scale too small, can lead to rounding errors")
         self.last_scale_update = time_control.now
 
     def _update_token_interest_rate(self):
@@ -294,6 +301,7 @@ class EToken(ERC20Token):
         self._update_current_scale()
         new_total_supply = amount + self.total_supply()
         self.scale_factor = new_total_supply.to_ray() // self._base_supply().to_ray()
+        require(self.scale_factor >= self.MIN_SCALE, "Scale too small, can lead to rounding errors")
         self._update_token_interest_rate()
 
     def asset_earnings(self, amount):
@@ -350,9 +358,19 @@ class EToken(ERC20Token):
         self.pool_loan_scale = self._get_pool_loan_scale()
         self.pool_loan_last_update = time_control.now
 
+    def _max_negative_adjustment(self):
+        return max(
+            self.total_supply() - (self.MIN_SCALE * _R(10) * self._base_supply().to_ray()).to_wad(),
+            _W(0)
+        )
+
     def lend_to_pool(self, amount):
-        require(amount <= self.ocean or amount.equal(self.ocean),  # rounding error
-                "Not enought capital to lend")
+        if amount > self.ocean:
+            amount = self.ocean
+        if amount > self._max_negative_adjustment():
+            amount = self._max_negative_adjustment()
+            if amount <= 0:
+                return Wad(0)
         if self.pool_loan == 0:
             self.pool_loan = amount
             self.pool_loan_scale = Ray(RAY)
@@ -362,6 +380,7 @@ class EToken(ERC20Token):
             self.pool_loan += (amount.to_ray() // self.pool_loan_scale).to_wad()
         self._update_current_scale()
         self.discrete_earning(-amount)
+        return amount
 
     def repay_pool_loan(self, amount):
         self._update_pool_loan_scale()
@@ -407,6 +426,8 @@ class PolicyNFT(ERC721Token):
 
 
 class PolicyPool(AccessControlContract):
+    NEGLIGIBLE_AMOUNT = _W("0.0001")
+
     policy_nft = ContractProxyField()
     currency = ContractProxyField()
     risk_modules = DictField(StringField(), ContractProxyField(), default={})
@@ -582,6 +603,7 @@ class PolicyPool(AccessControlContract):
                 self.borrowed_active_pp -= to_cover
                 pure_premium_won -= to_cover
 
+        etk_borrow_left = Wad(0)
         for (etoken_name, scr_amount) in policy.locked_funds.items():
             etk = self.etokens[etoken_name]
             etk.unlock_scr(policy, scr_amount)
@@ -597,12 +619,25 @@ class PolicyPool(AccessControlContract):
                     pure_premium_won -= repay_amount
             elif borrow_from_scr:
                 etk_borrow = borrow_from_scr * etk_share
-                etk.lend_to_pool(etk_borrow)
+                etk_borrow_left += etk_borrow - etk.lend_to_pool(etk_borrow)
+
+        if etk_borrow_left > self.NEGLIGIBLE_AMOUNT:
+            etk_borrow_left = self._take_loan_from_any_etk(etk_borrow_left)
+
+        require(etk_borrow_left <= self.NEGLIGIBLE_AMOUNT, "Don't know where to take the rest of the money")
 
         self._store_pure_premium_won(pure_premium_won)
 
         policy.risk_module.remove_policy(policy)
         del self.policies[policy_id]
+
+    def _take_loan_from_any_etk(self, etk_borrow_left):
+        "When locked tokens don't have enought money, we take money from any token"
+        for etk in self.etokens.values():
+            etk_borrow_left -= etk.lend_to_pool(etk_borrow_left)
+            if etk_borrow_left <= self.NEGLIGIBLE_AMOUNT:
+                break
+        return etk_borrow_left
 
     @external
     def rebalance_policy(self, policy_id):
@@ -775,3 +810,16 @@ class FreeGrantInsolvencyHook(Contract):
         self.pool.currency.approve(self.contract_id, self.pool.contract_id, amount)
         self.pool.receive_grant(self.contract_id, amount)
         self.cash_granted += amount
+
+
+class LPInsolvencyHook(Contract):
+    pool = ContractProxyField()
+    etoken = StringField()
+    cash_deposited = WadField(default=Wad(0))
+
+    def out_of_cash(self, amount):
+        # Just a simple implementation that mints money and grants
+        self.pool.currency.mint(self.contract_id, amount)
+        self.pool.currency.approve(self.contract_id, self.pool.contract_id, amount)
+        self.pool.deposit(self.etoken, self.contract_id, amount)
+        self.cash_deposited += amount

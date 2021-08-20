@@ -29,6 +29,8 @@ contract EToken is
   bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
   bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
 
+  uint256 public constant MIN_SCALE = 1e17; // 0.0000000001 == 1e-10 in ray
+
   using WadRayMath for uint256;
   using SafeERC20 for IERC20;
 
@@ -58,6 +60,9 @@ contract EToken is
   uint256 internal _poolLoanInterestRate; // in Ray
   uint256 internal _poolLoanScale; // in Ray
   uint40 internal _poolLoanLastUpdate;
+
+  event PoolLoan(uint256 value);
+  event PoolLoanRepaid(uint256 value);
 
   modifier onlyPolicyPool {
     require(_msgSender() == address(_policyPool), "The caller must be the PolicyPool");
@@ -453,6 +458,7 @@ contract EToken is
   function _updateCurrentScale() internal {
     if (uint40(block.timestamp) == _lastScaleUpdate) return;
     _scaleFactor = _calculateCurrentScale();
+    require(_scaleFactor >= MIN_SCALE, "Scale too small, can lead to rounding errors");
     _lastScaleUpdate = uint40(block.timestamp);
   }
 
@@ -554,6 +560,7 @@ contract EToken is
   function _discreteChange(uint256 amount, bool positive) internal {
     uint256 newTotalSupply = positive ? (totalSupply() + amount) : (totalSupply() - amount);
     _scaleFactor = newTotalSupply.wadToRay().rayDiv(_totalSupply.wadToRay());
+    require(_scaleFactor >= MIN_SCALE, "Scale too small, can lead to rounding errors");
     _updateTokenInterestRate();
   }
 
@@ -620,8 +627,22 @@ contract EToken is
     _poolLoanLastUpdate = uint40(block.timestamp);
   }
 
-  function lendToPool(uint256 amount) external override onlyPolicyPool {
-    require(amount <= ocean(), "Not enought capital to lend");
+  function _maxNegativeAdjustment() internal view returns (uint256) {
+    uint256 ts = totalSupply();
+    uint256 minTs = _totalSupply.wadToRay().rayMul(MIN_SCALE * 10).rayToWad();
+    if (ts > minTs)
+      return ts - minTs;
+    else
+      return 0;
+  }
+
+  function lendToPool(uint256 amount) external override onlyPolicyPool returns (uint256) {
+    if (amount > ocean())
+      amount = ocean();
+    if (amount > _maxNegativeAdjustment()) {
+      amount = _maxNegativeAdjustment();
+      if (amount == 0) return amount;
+    }
     if (_poolLoan == 0) {
       _poolLoan = amount;
       _poolLoanScale = WadRayMath.ray();
@@ -630,17 +651,18 @@ contract EToken is
       _updatePoolLoanScale();
       _poolLoan += amount.wadToRay().rayDiv(_poolLoanScale).rayToWad();
     }
-    _updateCurrentScale(); // shouldn't do anything because lendToPool is after unlock_scr but doing
-    // anyway
+    _updateCurrentScale(); // shouldn't do anything because lendToPool is after unlock_scr but doing anyway
     _discreteChange(amount, false);
+    emit PoolLoan(amount);
+    return amount;
   }
 
   function repayPoolLoan(uint256 amount) external override onlyPolicyPool {
     _updatePoolLoanScale();
     _poolLoan = (getPoolLoan() - amount).wadToRay().rayDiv(_poolLoanScale).rayToWad();
-    _updateCurrentScale(); // shouldn't do anything because lendToPool is after unlock_scr but doing
-    // anyway
+    _updateCurrentScale(); // shouldn't do anything because lendToPool is after unlock_scr but doing anyway
     _discreteChange(amount, true);
+    emit PoolLoanRepaid(amount);
   }
 
   function _getPoolLoanScale() internal view returns (uint256) {
