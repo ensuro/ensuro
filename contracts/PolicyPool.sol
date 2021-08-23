@@ -10,6 +10,7 @@ import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {IRiskModule} from "../interfaces/IRiskModule.sol";
+import {IInsolvencyHook} from "../interfaces/IInsolvencyHook.sol";
 import {IPolicyPoolComponent} from "../interfaces/IPolicyPoolComponent.sol";
 import {IEToken} from "../interfaces/IEToken.sol";
 import {IMintable} from "../interfaces/IMintable.sol";
@@ -32,6 +33,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
 
   uint256 public constant MAX_INT =
     0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
+  uint256 public constant NEGLIGIBLE_AMOUNT = 1e14; // "0.0001" in Wad
 
   bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
   bytes32 public constant ENSURO_DAO_ROLE = keccak256("ENSURO_DAO_ROLE");
@@ -58,6 +60,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
 
   address internal _treasury; // address of Ensuro treasury
   IAssetManager internal _assetManager; // asset manager
+  IInsolvencyHook internal _insolvencyHook; // Contract that handles insolvency situations
 
   event NewPolicy(IRiskModule indexed riskModule, uint256 policyId);
   event PolicyRebalanced(IRiskModule indexed riskModule, uint256 indexed policyId);
@@ -70,6 +73,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
 
   event ETokenStatusChanged(IEToken indexed eToken, DataTypes.ETokenStatus newStatus);
   event AssetManagerChanged(IAssetManager indexed assetManager);
+  event InsolvencyHookChanged(IInsolvencyHook indexed insolvencyHook);
 
   event Withdrawal(IEToken indexed eToken, address indexed provider, uint256 value);
 
@@ -209,17 +213,26 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     return _assetManager;
   }
 
+  function setInsolvencyHook(IInsolvencyHook insolvencyHook_) external onlyRole(ENSURO_DAO_ROLE) {
+    _insolvencyHook = insolvencyHook_;
+    emit InsolvencyHookChanged(_insolvencyHook);
+  }
+
+  function insolvencyHook() external view returns (IInsolvencyHook) {
+    return _insolvencyHook;
+  }
+
   /// #if_succeeds
   ///    {:msg "must take balance from sender"}
   ///    _currency.balanceOf(_msgSender()) == old(_currency.balanceOf(_msgSender()) - amount);
-  function deposit(IEToken eToken, uint256 amount) external {
+  function deposit(IEToken eToken, uint256 amount) external override {
     (bool found, DataTypes.ETokenStatus etkStatus) = _eTokens.tryGet(eToken);
     require(found && etkStatus == DataTypes.ETokenStatus.active, "eToken is not active");
     _currency.safeTransferFrom(_msgSender(), address(this), amount);
     eToken.deposit(_msgSender(), amount);
   }
 
-  function withdraw(IEToken eToken, uint256 amount) external returns (uint256) {
+  function withdraw(IEToken eToken, uint256 amount) external override returns (uint256) {
     (bool found, DataTypes.ETokenStatus etkStatus) = _eTokens.tryGet(eToken);
     require(
       found &&
@@ -305,13 +318,19 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     }
   }
 
+  function _balance() internal view returns (uint256) {
+    return _currency.balanceOf(address(this));
+  }
+
   function _transferTo(address destination, uint256 amount) internal {
     if (amount == 0) return;
-    uint256 balance = _currency.balanceOf(address(this));
-    if (balance < amount) {
+    if (_assetManager != IAssetManager(address(0)) && _balance() < amount) {
       _assetManager.refillWallet(amount);
     }
-    // TODO: check balance again and call InsolvencyHook if needed
+    // Calculate again the balance and check if enought, if not call unsolvency_hook
+    if (_insolvencyHook != IInsolvencyHook(address(0)) && _balance() < amount) {
+      _insolvencyHook.outOfCash(amount - _balance());
+    }
     _currency.safeTransfer(destination, amount);
   }
 
@@ -361,11 +380,11 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     uint256 aux;
 
     if (customerWon) {
+      _transferTo(_policyNFT.ownerOf(policy.id), payout);
       uint256 returnToRm;
       (aux, purePremiumWon, returnToRm) = policy.splitPayout(payout);
-      borrowFromScr = _payFromPool(aux);
-      _transferTo(_policyNFT.ownerOf(policy.id), payout);
       if (returnToRm > 0) _transferTo(policy.riskModule.wallet(), returnToRm);
+      borrowFromScr = _payFromPool(aux);
     } else {
       // Pay RM and Ensuro
       _transferTo(policy.riskModule.wallet(), policy.premiumForRm + policy.rmScr());
@@ -407,44 +426,139 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     _activePremiums -= policy.premium;
     _activePurePremiums -= policy.purePremium;
 
-    uint256 aux = policy.accruedInterest();
-    bool positive = policy.premiumForLps >= aux;
-    uint256 adjustment;
-    if (positive) adjustment = policy.premiumForLps - aux;
-    else adjustment = aux - policy.premiumForLps;
-
     (uint256 borrowFromScr, uint256 purePremiumWon) = _processResolution(
       policy,
       customerWon,
       payout
     );
 
-    DataTypes.ETokenToWadMap storage policyFunds = _policiesFunds[policy.id];
+    if (customerWon) {
+      uint256 borrowFromScrLeft;
+      borrowFromScrLeft = _updatePolicyFundsCustWon(policy, borrowFromScr);
+      if (borrowFromScrLeft > NEGLIGIBLE_AMOUNT)
+        borrowFromScrLeft = _takeLoanFromAnyEtk(borrowFromScrLeft);
+      require(
+        borrowFromScrLeft <= NEGLIGIBLE_AMOUNT,
+        "Don't know where to take the rest of the money"
+      );
+    } else {
+      purePremiumWon = _updatePolicyFundsCustLost(policy, purePremiumWon);
+    }
 
+    _storePurePremiumWon(purePremiumWon); // it's possible in some cases purePremiumWon > 0 && customerWon
+
+    emit PolicyResolved(policy.riskModule, policy.id, payout);
+    delete _policies[policy.id];
+    delete _policiesFunds[policy.id];
+  }
+
+  function _interestAdjustment(Policy.PolicyData storage policy)
+    internal
+    view
+    returns (bool, uint256)
+  {
+    // Calculate interest accrual adjustment
+    uint256 aux = policy.accruedInterest();
+    if (policy.premiumForLps >= aux) return (true, policy.premiumForLps - aux);
+    else return (false, aux - policy.premiumForLps);
+  }
+
+  function _updatePolicyFundsCustWon(Policy.PolicyData storage policy, uint256 borrowFromScr)
+    internal
+    returns (uint256)
+  {
+    uint256 borrowFromScrLeft = 0;
+    uint256 interestRate = policy.interestRate();
+    (bool positive, uint256 adjustment) = _interestAdjustment(policy);
+
+    // Iterate policyFunds - unlockScr / adjust / take loan
+    DataTypes.ETokenToWadMap storage policyFunds = _policiesFunds[policy.id];
     for (uint256 i = 0; i < policyFunds.length(); i++) {
       (IEToken etk, uint256 etkScr) = policyFunds.at(i);
-      etk.unlockScr(policy.interestRate(), etkScr);
-      etkScr = etkScr.wadDiv(policy.scr); // Using the same variable, but now represents the share of SCR
-      // that's covered by this etk
+      etk.unlockScr(interestRate, etkScr);
+      etkScr = etkScr.wadDiv(policy.scr);
+      // etkScr now represents the share of SCR that's covered by this etk (variable reuse)
       etk.discreteEarning(adjustment.wadMul(etkScr), positive);
-      if (!customerWon && purePremiumWon > 0 && etk.getPoolLoan() > 0) {
+      if (borrowFromScr > 0) {
+        uint256 aux;
+        aux = borrowFromScr.wadMul(etkScr);
+        borrowFromScrLeft += aux - etk.lendToPool(aux);
+      }
+    }
+    return borrowFromScrLeft;
+  }
+
+  // Almost duplicated code from _updatePolicyFundsCustWon but separated to avoid stack depth error
+  function _updatePolicyFundsCustLost(Policy.PolicyData storage policy, uint256 purePremiumWon)
+    internal
+    returns (uint256)
+  {
+    uint256 interestRate = policy.interestRate();
+    (bool positive, uint256 adjustment) = _interestAdjustment(policy);
+
+    // Iterate policyFunds - unlockScr / adjust / repay loan
+    DataTypes.ETokenToWadMap storage policyFunds = _policiesFunds[policy.id];
+    for (uint256 i = 0; i < policyFunds.length(); i++) {
+      (IEToken etk, uint256 etkScr) = policyFunds.at(i);
+      etk.unlockScr(interestRate, etkScr);
+      etkScr = etkScr.wadDiv(policy.scr);
+      // etkScr now represents the share of SCR that's covered by this etk (variable reuse)
+      etk.discreteEarning(adjustment.wadMul(etkScr), positive);
+      if (purePremiumWon > 0 && etk.getPoolLoan() > 0) {
+        uint256 aux;
         // if debt with token, repay from purePremium
         aux = policy.purePremium.wadMul(etkScr);
         aux = Math.min(purePremiumWon, Math.min(etk.getPoolLoan(), aux));
         etk.repayPoolLoan(aux);
         purePremiumWon -= aux;
-      } else {
-        if (borrowFromScr > 0) {
-          etk.lendToPool(borrowFromScr.wadMul(etkScr));
-        }
       }
     }
+    return purePremiumWon;
+  }
 
-    _storePurePremiumWon(purePremiumWon);
-    // policy.rm.removePolicy...
-    emit PolicyResolved(policy.riskModule, policy.id, payout);
-    delete _policies[policy.id];
-    delete _policiesFunds[policy.id];
+  /*
+   * Called when the payout to be taken from policyFunds wasn't enought.
+   * Then I take loan from the others tokens
+   */
+  function _takeLoanFromAnyEtk(uint256 loanLeft) internal returns (uint256) {
+    for (uint256 i = 0; i < _eTokens.length(); i++) {
+      (IEToken etk, DataTypes.ETokenStatus etkStatus) = _eTokens.at(i);
+      if (etkStatus != DataTypes.ETokenStatus.active) continue;
+      loanLeft -= etk.lendToPool(loanLeft);
+      if (loanLeft <= NEGLIGIBLE_AMOUNT) break;
+    }
+    return loanLeft;
+  }
+
+  /**
+   *
+   * Repays a loan taken with the eToken with the money in the premium pool.
+   * The repayment should happen without calling this method when customer losses and eToken is one of the
+   * policyFunds. But sometimes we need to take loans from tokens not linked to the policy.
+   *
+   * returns The amount repaid
+   *
+   * Requirements:
+   *
+   * - `eToken` must be `active` or `deprecated`
+   */
+  function repayETokenLoan(IEToken eToken) external returns (uint256) {
+    (bool found, DataTypes.ETokenStatus etkStatus) = _eTokens.tryGet(eToken);
+    require(
+      found &&
+        (etkStatus == DataTypes.ETokenStatus.active ||
+          etkStatus == DataTypes.ETokenStatus.deprecated),
+      "eToken is not active"
+    );
+    uint256 poolLoan = eToken.getPoolLoan();
+    uint256 toPayLater = _payFromPool(poolLoan);
+    eToken.repayPoolLoan(poolLoan - toPayLater);
+    return poolLoan - toPayLater;
+  }
+
+  function receiveGrant(uint256 amount) external override {
+    _currency.safeTransferFrom(_msgSender(), address(this), amount);
+    _storePurePremiumWon(amount);
   }
 
   function rebalancePolicy(uint256 policyId) external onlyRole(REBALANCE_ROLE) {

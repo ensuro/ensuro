@@ -17,6 +17,8 @@ interface IPolicyPool {
 
   function resolvePolicy(uint256 policyId, bool customerWon) external;
 
+  function receiveGrant(uint256 amount) external;
+
   function getPolicy(uint256 policyId) external view returns (Policy.PolicyData memory);
 
   function getInvestable() external view returns (uint256);
@@ -26,4 +28,8 @@ interface IPolicyPool {
   function getETokenAt(uint256 index) external view returns (IEToken);
 
   function assetEarnings(uint256 amount, bool positive) external;
+
+  function deposit(IEToken eToken, uint256 amount) external;
+
+  function withdraw(IEToken eToken, uint256 amount) external returns (uint256);
 }
