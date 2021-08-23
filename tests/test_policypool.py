@@ -867,20 +867,14 @@ def test_asset_manager(tenv):
     USD.approve("LP1", pool.contract_id, _W(10000))
     assert pool.deposit("eUSD1YEAR", "LP1", _W(10000)) == _W(10000)
 
-    with pytest.raises(RevertError, match="AccessControl"):
-        asset_manager.checkpoint()  # Rebalance cash
-
-    asset_manager.grant_role("CHECKPOINT_ROLE", "crontask")
-    with asset_manager.as_("crontask"):
-        asset_manager.checkpoint()  # Rebalance cash
+    asset_manager.checkpoint()  # Rebalance cash
 
     assert USD.balance_of(pool.contract_id) == _W(1500)
     assert USD.balance_of(asset_manager.contract_id) == _W(8500)
 
     timecontrol.fast_forward(365 * DAY)
     assert etk.balance_of("LP1") == _W(10000)
-    with asset_manager.as_("crontask"):
-        asset_manager.checkpoint()
+    asset_manager.checkpoint()
     assert USD.balance_of(pool.contract_id) == _W(1500)  # unchanged
     etk.balance_of("LP1").assert_equal(_W(10000) + _W(8500) * _W("0.05"))  # All earnings for the LP
     lp1_balance = etk.balance_of("LP1")
@@ -892,8 +886,7 @@ def test_asset_manager(tenv):
     )
     pure_premium, _, _, for_lps = policy.premium_split()
 
-    with asset_manager.as_("crontask"):
-        asset_manager.checkpoint()
+    asset_manager.checkpoint()
     assert USD.balance_of(pool.contract_id) == _W(1700)  # +200 but not sent to asset_manager
     etk.balance_of("LP1").assert_equal(lp1_balance)
     pool.get_investable().assert_equal(_W(200))
@@ -905,8 +898,7 @@ def test_asset_manager(tenv):
 
     pool_share = _W(200) // asset_manager.total_investable()
     etk_share = etk.get_investable() // asset_manager.total_investable()
-    with asset_manager.as_("crontask"):
-        asset_manager.checkpoint()
+    asset_manager.checkpoint()
 
     pool.won_pure_premiums.assert_equal(_W(8500) * _W("0.025") * pool_share)
     etk.balance_of("LP1").assert_equal(lp1_balance + for_lps + _W(8500) * _W("0.025") * etk_share)
