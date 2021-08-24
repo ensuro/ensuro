@@ -17,7 +17,11 @@ import {WadRayMath} from "./WadRayMath.sol";
  * @dev Contract that holds the access roles for PolicyPool and other components of the protocol
  * @author Ensuro
  */
-contract PolicyPoolConfig is Initializable, AccessControlUpgradeable, UUPSUpgradeable, IPolicyPoolConfig
+contract PolicyPoolConfig is
+  Initializable,
+  AccessControlUpgradeable,
+  UUPSUpgradeable,
+  IPolicyPoolConfig
 {
   using WadRayMath for uint256;
 
@@ -46,14 +50,10 @@ contract PolicyPoolConfig is Initializable, AccessControlUpgradeable, UUPSUpgrad
 
   mapping(IRiskModule => RiskModuleStatus) private _riskModules;
 
-  event RiskModuleStatusChanged(
-    IRiskModule indexed riskModule,
-    RiskModuleStatus newStatus
-  );
+  event RiskModuleStatusChanged(IRiskModule indexed riskModule, RiskModuleStatus newStatus);
 
   modifier onlyRole2(bytes32 role1, bytes32 role2) {
-    if (!hasRole(role1, _msgSender()))
-      _checkRole(role2, _msgSender());
+    if (!hasRole(role1, _msgSender())) _checkRole(role2, _msgSender());
     _;
   }
 
@@ -86,15 +86,19 @@ contract PolicyPoolConfig is Initializable, AccessControlUpgradeable, UUPSUpgrad
     // require(_policyPool.config() == this, "PolicyPool not connected to this config");
   }
 
+  // solhint-disable-next-line no-empty-blocks
   function _authorizeUpgrade(address) internal override onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {}
 
-  function checkRole(bytes32 role, address account) external override view {
+  function checkRole(bytes32 role, address account) external view override {
     _checkRole(role, account);
   }
 
-  function checkRole2(bytes32 role1, bytes32 role2, address account) external override view {
-    if (!hasRole(role1, account))
-      _checkRole(role2, account);
+  function checkRole2(
+    bytes32 role1,
+    bytes32 role2,
+    address account
+  ) external view override {
+    if (!hasRole(role1, account)) _checkRole(role2, account);
   }
 
   function setAssetManager(IAssetManager assetManager_) external onlyRole(LEVEL1_ROLE) {
@@ -112,28 +116,35 @@ contract PolicyPoolConfig is Initializable, AccessControlUpgradeable, UUPSUpgrad
     // TODO emit EVENT
   }
 
-  function treasury() external override view returns (address) {
+  function treasury() external view override returns (address) {
     return _treasury;
   }
 
-  function setInsolvencyHook(IInsolvencyHook insolvencyHook_) external onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {
+  function setInsolvencyHook(IInsolvencyHook insolvencyHook_)
+    external
+    onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
+  {
     _insolvencyHook = insolvencyHook_;
     // TODO: access event
   }
 
-  function insolvencyHook() external override view returns (IInsolvencyHook) {
+  function insolvencyHook() external view override returns (IInsolvencyHook) {
     return _insolvencyHook;
   }
 
   function addRiskModule(IRiskModule riskModule) external onlyRole2(LEVEL1_ROLE, LEVEL2_ROLE) {
-    require(_riskModules[riskModule] == RiskModuleStatus.inactive, "Risk Module already in the pool");
+    require(
+      _riskModules[riskModule] == RiskModuleStatus.inactive,
+      "Risk Module already in the pool"
+    );
     require(address(riskModule) != address(0), "riskModule can't be zero");
     require(
       IPolicyPoolComponent(address(riskModule)).policyPool() == _policyPool,
       "RiskModule not linked to this pool"
     );
     require(
-      hasRole(LEVEL1_ROLE, msg.sender) || _policyPool.totalETokenSupply() > (riskModule.scrLimit().wadMul(L2_RM_LIMIT)),
+      hasRole(LEVEL1_ROLE, msg.sender) ||
+        _policyPool.totalETokenSupply() > (riskModule.scrLimit().wadMul(L2_RM_LIMIT)),
       "RiskModule SCR Limit exceeds the limit for LEVEL2 user"
     );
     _riskModules[riskModule] = RiskModuleStatus.active;

@@ -12,10 +12,7 @@ import {IPolicyPoolComponent} from "../interfaces/IPolicyPoolComponent.sol";
  * @dev
  * @author Ensuro
  */
-abstract contract PolicyPoolComponent is
-  Initializable,
-  IPolicyPoolComponent
-{
+abstract contract PolicyPoolComponent is Initializable, IPolicyPoolComponent {
   IPolicyPool internal _policyPool;
 
   modifier onlyPoolRole2(bytes32 role1, bytes32 role2) {
@@ -28,10 +25,12 @@ abstract contract PolicyPoolComponent is
     _;
   }
 
+  // solhint-disable-next-line func-name-mixedcase
   function __PolicyPoolComponent_init(IPolicyPool policyPool_) internal initializer {
     __PolicyPoolComponent_init_unchained(policyPool_);
   }
 
+  // solhint-disable-next-line func-name-mixedcase
   function __PolicyPoolComponent_init_unchained(IPolicyPool policyPool_) internal initializer {
     _policyPool = policyPool_;
   }

@@ -13,11 +13,22 @@ import {IRiskModule} from "./IRiskModule.sol";
  */
 interface IPolicyPoolConfig is IAccessControlUpgradeable {
   function checkRole(bytes32 role, address account) external view;
-  function checkRole2(bytes32 role1, bytes32 role2, address account) external view;
+
+  function checkRole2(
+    bytes32 role1,
+    bytes32 role2,
+    address account
+  ) external view;
+
   function connect() external;
+
   function assetManager() external view returns (IAssetManager);
+
   function insolvencyHook() external view returns (IInsolvencyHook);
+
   function treasury() external view returns (address);
+
   function checkAcceptsNewPolicy(IRiskModule riskModule) external view;
+
   function checkAcceptsResolvePolicy(IRiskModule riskModule) external view;
 }

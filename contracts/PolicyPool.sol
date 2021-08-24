@@ -20,7 +20,6 @@ import {WadRayMath} from "./WadRayMath.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {DataTypes} from "./DataTypes.sol";
 
-
 // #invariant_disabled {:msg "Borrow up to activePurePremiums"} _borrowedActivePP <= _activePurePremiums;
 // #invariant_disabled {:msg "Can't borrow if not exhausted before won"} (_borrowedActivePP > 0) ==> _wonPurePremiums == 0;
 contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
@@ -69,7 +68,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   event Withdrawal(IEToken indexed eToken, address indexed provider, uint256 value);
 
   modifier onlyAssetManager {
-    require(msg.sender == address(_config.assetManager()), "Only assetManager can call this function");
+    require(
+      msg.sender == address(_config.assetManager()),
+      "Only assetManager can call this function"
+    );
     _;
   }
 
@@ -193,7 +195,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
       _config.assetManager().deinvestAll(); // deInvest all assets
       _currency.approve(address(_config.assetManager()), 0); // revoke currency management approval
     }
-    _currency.approve(address(newAssetManager), MAX_INT);  // infinite approval should be enought for few years
+    _currency.approve(address(newAssetManager), MAX_INT); // infinite approval should be enought for few years
   }
 
   /// #if_succeeds
@@ -570,7 +572,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     else return 0;
   }
 
-  function totalETokenSupply() public override view returns (uint256) {
+  function totalETokenSupply() public view override returns (uint256) {
     uint256 ret = 0;
     for (uint256 i = 0; i < _eTokens.length(); i++) {
       (

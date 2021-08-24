@@ -101,7 +101,7 @@ contract PolicyPoolMock is IPolicyPool, AccessControl {
     revert("Not Implemented");
   }
 
-  function totalETokenSupply() external override view returns (uint256) {
+  function totalETokenSupply() external view override returns (uint256) {
     revert("Not Implemented");
   }
 }
