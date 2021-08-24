@@ -8,4 +8,4 @@ services:
         DEV_ENV: "1"
         # BASE_CONTAINER: "minimal-notebook-pypy:latest"
     volumes:
-      - ./:/usr/local/app/
+      - ./:/code
