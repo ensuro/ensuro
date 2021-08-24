@@ -42,8 +42,9 @@ contract PolicyPoolMock is IPolicyPool, AccessControl {
     return IEToken(address(0));
   }
 
-  // solhint-disable-next-line no-empty-blocks
-  function assetEarnings(uint256 amount, bool positive) external override {}
+  function assetEarnings(uint256, bool) external override {
+    revert("Not Implemented");
+  }
 
   function newPolicy(
     Policy.PolicyData memory policy,
@@ -71,11 +72,23 @@ contract PolicyPoolMock is IPolicyPool, AccessControl {
     emit PolicyResolved(IRiskModule(msg.sender), policyId, payout);
   }
 
+  function receiveGrant(uint256) external override {
+    revert("Not Implemented");
+  }
+
   function resolvePolicy(uint256 policyId, uint256 payout) external override {
     _resolvePolicy(policyId, payout);
   }
 
   function resolvePolicy(uint256 policyId, bool customerWon) external override {
     return _resolvePolicy(policyId, customerWon ? policies[policyId].payout : 0);
+  }
+
+  function deposit(IEToken, uint256) external override {
+    revert("Not Implemented");
+  }
+
+  function withdraw(IEToken, uint256) external override returns (uint256) {
+    revert("Not Implemented");
   }
 }

@@ -88,7 +88,7 @@ def load_config(yaml_config=None, module=None):
     pool.grant_role("LEVEL1_ROLE", pool.owner)
 
     with nft.as_(nft.owner):
-        nft.grant_role("MINTER_ROLE", pool)
+        nft.grant_role("MINTER_ROLE", pool.contract_id)
 
     for risk_module_dict in config.get("risk_modules", []):
         risk_module_dict["policy_pool"] = pool

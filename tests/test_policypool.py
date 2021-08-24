@@ -867,20 +867,14 @@ def test_asset_manager(tenv):
     USD.approve("LP1", pool.contract_id, _W(10000))
     assert pool.deposit("eUSD1YEAR", "LP1", _W(10000)) == _W(10000)
 
-    with pytest.raises(RevertError, match="AccessControl"):
-        asset_manager.checkpoint()  # Rebalance cash
-
-    asset_manager.grant_role("CHECKPOINT_ROLE", "crontask")
-    with asset_manager.as_("crontask"):
-        asset_manager.checkpoint()  # Rebalance cash
+    asset_manager.checkpoint()  # Rebalance cash
 
     assert USD.balance_of(pool.contract_id) == _W(1500)
     assert USD.balance_of(asset_manager.contract_id) == _W(8500)
 
     timecontrol.fast_forward(365 * DAY)
     assert etk.balance_of("LP1") == _W(10000)
-    with asset_manager.as_("crontask"):
-        asset_manager.checkpoint()
+    asset_manager.checkpoint()
     assert USD.balance_of(pool.contract_id) == _W(1500)  # unchanged
     etk.balance_of("LP1").assert_equal(_W(10000) + _W(8500) * _W("0.05"))  # All earnings for the LP
     lp1_balance = etk.balance_of("LP1")
@@ -892,8 +886,7 @@ def test_asset_manager(tenv):
     )
     pure_premium, _, _, for_lps = policy.premium_split()
 
-    with asset_manager.as_("crontask"):
-        asset_manager.checkpoint()
+    asset_manager.checkpoint()
     assert USD.balance_of(pool.contract_id) == _W(1700)  # +200 but not sent to asset_manager
     etk.balance_of("LP1").assert_equal(lp1_balance)
     pool.get_investable().assert_equal(_W(200))
@@ -905,8 +898,7 @@ def test_asset_manager(tenv):
 
     pool_share = _W(200) // asset_manager.total_investable()
     etk_share = etk.get_investable() // asset_manager.total_investable()
-    with asset_manager.as_("crontask"):
-        asset_manager.checkpoint()
+    asset_manager.checkpoint()
 
     pool.won_pure_premiums.assert_equal(_W(8500) * _W("0.025") * pool_share)
     etk.balance_of("LP1").assert_equal(lp1_balance + for_lps + _W(8500) * _W("0.025") * etk_share)
@@ -922,4 +914,150 @@ def test_asset_manager(tenv):
     assert pool.get_investable() == _W(0)
     assert etk.get_investable() == (
         etk.ocean + etk.get_pool_loan()  # not really the money available but used for etk_share
+    )
+
+
+def test_insolvency_without_hook(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        scr_percentage: "0.1"
+        scr_interest_rate: "0.02"
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 20000
+        initial_balances:
+        - user: LP1
+          amount: 5000
+        - user: LP2
+          amount: 3000
+        - user: CUST1
+          amount: 200
+    etokens:
+      - name: eUSD1YEAR
+        expiration_period: 31536000
+        pool_loan_interest_rate: "0.06"
+      - name: eUSD1MONTH
+        expiration_period: 2592000
+        pool_loan_interest_rate: "0.04"
+    """
+
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    rm = pool.risk_modules["Roulette"]
+    rm.grant_role("PRICER_ROLE", rm.owner)
+    rm.grant_role("RESOLVER_ROLE", rm.owner)
+
+    USD = pool.currency
+    etk = pool.etokens["eUSD1YEAR"]
+
+    USD.approve("LP1", pool.contract_id, _W(1000))
+    assert pool.deposit("eUSD1YEAR", "LP1", _W(1000)) == _W(1000)
+
+    USD.approve("CUST1", pool.contract_id, _W(200))
+    policy = rm.new_policy(
+        payout=_W(9200), premium=_W(200), customer="CUST1",
+        loss_prob=_R("0.01"), expiration=timecontrol.now + 365 * DAY // 2
+    )
+    pure_premium, _, _, for_lps = policy.premium_split()
+    etk.scr.assert_equal(_W(900))
+
+    assert USD.balance_of(pool.contract_id) == _W(1000 + 200)
+
+    timecontrol.fast_forward(365 * DAY // 2)
+
+    with pytest.raises(RevertError, match="ERC20: transfer amount exceeds balance"):
+        rm.resolve_policy(policy.id, True)
+
+    return locals()
+
+
+def _extract_vars(vars, keys):
+    keys = keys.split(",")
+    for k in keys:
+        yield vars[k]
+
+
+def test_grant_insolvency_hook(tenv):
+    vars = test_insolvency_without_hook(tenv)
+    pool, rm, policy = _extract_vars(vars, "pool,rm,policy")
+    ins_hook = tenv.module.FreeGrantInsolvencyHook(pool=pool)
+    pool.set_insolvency_hook(ins_hook)
+
+    rm.resolve_policy(policy.id, True)
+
+    ins_hook.cash_granted.assert_equal(_W(8000))
+
+
+def test_lp_insolvency_hook(tenv):
+    vars = test_insolvency_without_hook(tenv)
+    pool, rm, etk, for_lps, policy, USD = _extract_vars(vars, "pool,rm,etk,for_lps,policy,USD")
+    ins_hook = tenv.module.LPInsolvencyHook(pool=pool, etoken="eUSD1YEAR")
+    pool.set_insolvency_hook(ins_hook)
+
+    rm.resolve_policy(policy.id, True)
+
+    ins_hook.cash_deposited.assert_equal(_W(8000))
+    etk.ocean.assert_equal(_W(0))
+    etk.scr.assert_equal(_W(0))
+    etk.get_pool_loan().assert_equal(_W(9000) + for_lps)
+
+    etk.balance_of("LP1").assert_equal(_W(0))
+    etk.balance_of(ins_hook).assert_equal(_W(0))
+
+    USD.approve("LP2", pool.contract_id, _W(3000))
+    pool.deposit("eUSD1YEAR", "LP2", _W(3000)).assert_equal(_W(3000))
+    etk.balance_of("LP1").assert_equal(_W(0))
+    etk.balance_of(ins_hook).assert_equal(_W(0))
+
+
+@set_precision(Wad, 3)
+def test_lp_insolvency_hook_other_etk(tenv):
+    vars = test_insolvency_without_hook(tenv)
+    pool, rm, etk, for_lps, policy, USD, timecontrol = _extract_vars(
+        vars, "pool,rm,etk,for_lps,policy,USD,timecontrol"
+    )
+    etk1m = pool.etokens["eUSD1MONTH"]
+    ins_hook = tenv.module.LPInsolvencyHook(pool=pool, etoken="eUSD1MONTH")
+    pool.set_insolvency_hook(ins_hook)
+
+    rm.resolve_policy(policy.id, True)
+    USD.balance_of("CUST1").assert_equal(_W(9200))
+
+    ins_hook.cash_deposited.assert_equal(_W(8000))
+    etk.ocean.assert_equal(_W(0))
+    etk.scr.assert_equal(_W(0))
+    etk.get_pool_loan().assert_equal(_W(1000) + for_lps)
+    etk1m.get_pool_loan().assert_equal(_W(8000))
+
+    etk.balance_of("LP1").assert_equal(_W(0))
+    etk.balance_of(ins_hook).assert_equal(_W(0))
+    etk1m.balance_of(ins_hook).assert_equal(_W(0))
+
+    USD.approve("LP2", pool.contract_id, _W(3000))
+    pool.deposit("eUSD1YEAR", "LP2", _W(3000)).assert_equal(_W(3000))
+
+    # Now our charitative customers gives some of the money back as grant
+    USD.approve("CUST1", pool.contract_id, _W(9200))
+    pool.receive_grant("CUST1", _W(4000))
+    pool.won_pure_premiums.assert_equal(_W(4000))  # The grant is on premium pool
+
+    pool.repay_etoken_loan("eUSD1MONTH").assert_equal(_W(4000))
+    etk1m.get_pool_loan().assert_equal(_W(4000), decimals=2)
+
+    etk1m.balance_of(ins_hook).assert_equal(_W(4000), decimals=2)
+    pool.won_pure_premiums.assert_equal(_W(0))  # The grant is no longer in premium pool
+
+    # After some time and send another grant
+    timecontrol.fast_forward(30 * DAY)
+    pool.receive_grant("CUST1", _W(5000))
+    pool_loan_1y = etk.get_pool_loan()
+    pool_loan_1y.assert_equal((_W(1000) + for_lps) * _W(1.0 + 0.06 * 30 / 365))
+    # Only is repaid up to pool loan
+    pool.repay_etoken_loan("eUSD1YEAR").assert_equal(pool_loan_1y)
+
+    pool.repay_etoken_loan("eUSD1MONTH").assert_equal(_W(5000) - pool_loan_1y)
+    etk1m.get_pool_loan().assert_equal(
+        _W(4000) - (_W(5000) - pool_loan_1y) + _W(4000) * _W(0.04 * 30/365)
     )

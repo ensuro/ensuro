@@ -367,6 +367,9 @@ class ETokenETH(IERC20):
     def __init__(self, name, symbol, policy_pool, expiration_period, liquidity_requirement=_R(1),
                  max_utilization_rate=_R(1),
                  pool_loan_interest_rate=_R("0.05"), owner="owner"):
+        pool_loan_interest_rate = _R(pool_loan_interest_rate)
+        liquidity_requirement = _R(liquidity_requirement)
+        max_utilization_rate = _R(max_utilization_rate)
         if isinstance(policy_pool, ETHWrapper):
             self._auto_from = policy_pool.contract.address
             policy_pool = policy_pool.contract
@@ -433,7 +436,15 @@ class ETokenETH(IERC20):
         adapt_args=lambda args, kwargs: ((args[0].expiration, ), {})
     )
 
-    lend_to_pool = MethodAdapter((("amount", "amount"), ))
+    lend_to_pool_ = MethodAdapter((("amount", "amount"), ))
+
+    def lend_to_pool(self, amount):
+        receipt = self.lend_to_pool_(amount)
+        if "PoolLoan" in receipt.events:
+            return Wad(receipt.events["PoolLoan"]["value"])
+        else:
+            return Wad(0)
+
     repay_pool_loan = MethodAdapter((("amount", "amount"), ))
     get_pool_loan = MethodAdapter((), "amount")
     get_investable = MethodAdapter((), "amount")
@@ -643,6 +654,31 @@ class PolicyPool(ETHWrapper):
             return self._asset_manager
         return BaseAssetManager.connect(am, self.owner)
 
+    set_insolvency_hook_ = MethodAdapter((("insolvency_hook", "contract"), ))
+
+    def set_insolvency_hook(self, insolvency_hook):
+        self.set_insolvency_hook_(insolvency_hook)
+        self._insolvency_hook = insolvency_hook
+
+    @property
+    def insolvency_hook(self):
+        ih = self.contract.insolvencyHook()
+        if getattr(self, "_insolvency_hook") and self._insolvency_hook.contract.address == ih:
+            return self._insolvency_hook
+        return FreeGrantInsolvencyHook.connect(ih, self.owner)
+
+    receive_grant = MethodAdapter((("sender", "msg.sender"), ("amount", "amount")))
+
+    repay_etoken_loan_ = MethodAdapter((("etoken", "contract"), ), eth_method="repayETokenLoan")
+
+    def repay_etoken_loan(self, etoken_name):
+        etoken = self.etokens[etoken_name]
+        receipt = self.repay_etoken_loan_(etoken)
+        if "PoolLoanRepaid" in receipt.events:
+            return Wad(receipt.events["PoolLoanRepaid"]["value"])
+        else:
+            return Wad(0)
+
 
 class BaseAssetManager(ETHWrapper):
     eth_contract = "BaseAssetManager"
@@ -673,6 +709,25 @@ class FixedRateAssetManager(BaseAssetManager):
         super().__init__(
             owner, pool, liquidity_min, liquidity_middle, liquidity_max, interest_rate
         )
+
+
+class FreeGrantInsolvencyHook(ETHWrapper):
+    eth_contract = "FreeGrantInsolvencyHook"
+
+    def __init__(self, pool):
+        super().__init__("owner", pool.contract)
+
+    cash_granted = MethodAdapter((), "amount", is_property=True)
+
+
+class LPInsolvencyHook(ETHWrapper):
+    eth_contract = "LPInsolvencyHook"
+
+    def __init__(self, pool, etoken):
+        etoken = pool.etokens[etoken]
+        super().__init__("owner", pool.contract, etoken.contract)
+
+    cash_deposited = MethodAdapter((), "amount", is_property=True)
 
 
 ERC20Token = TestCurrency

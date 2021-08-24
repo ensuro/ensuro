@@ -359,6 +359,18 @@ class ERC20Token(AccessControlContract):
         if initial_supply:
             self.mint(self.owner, initial_supply)
 
+    def _parse_account(self, account):
+        if isinstance(account, (Contract, ContractProxy)):
+            return account.contract_id
+        return account
+
+    def _parse_accounts(self, *accounts):
+        for account in accounts:
+            if isinstance(account, (Contract, ContractProxy)):
+                yield account.contract_id
+            else:
+                yield account
+
     def mint(self, address, amount):
         self.balances[address] = self.balances.get(address, self.ZERO) + amount
         self._total_supply += amount
@@ -375,15 +387,16 @@ class ERC20Token(AccessControlContract):
         self._total_supply -= amount
 
     def balance_of(self, account):
-        return self.balances.get(account, self.ZERO)
+        return self.balances.get(self._parse_account(account), self.ZERO)
 
     @external
     def transfer(self, sender, recipient, amount):
         return self._transfer(sender, recipient, amount)
 
     def _transfer(self, sender, recipient, amount):
+        sender, recipient = self._parse_accounts(sender, recipient)
         if self.balance_of(sender) < amount:
-            raise RevertError("Not enought balance")
+            raise RevertError("ERC20: transfer amount exceeds balance")
         elif self.balances[sender] == amount:
             del self.balances[sender]
         else:
@@ -393,13 +406,11 @@ class ERC20Token(AccessControlContract):
 
     @view
     def allowance(self, owner, spender):
+        owner, spender = self._parse_accounts(owner, spender)
         return self.allowances.get((owner, spender), self.ZERO)
 
     def _approve(self, owner, spender, amount):
-        if isinstance(owner, (Contract, ContractProxy)):
-            owner = owner.contract_id
-        if isinstance(spender, (Contract, ContractProxy)):
-            spender = spender.contract_id
+        owner, spender = self._parse_accounts(owner, spender)
         require(owner is not None, "ERC20: approve from the zero address")
         require(spender is not None, "ERC20: approve to the zero address")
         if amount == self.ZERO:
@@ -420,12 +431,14 @@ class ERC20Token(AccessControlContract):
 
     @external
     def decrease_allowance(self, sender, spender, amount):
+        sender, spender = self._parse_accounts(sender, spender)
         allowance = self.allowances.get((sender, spender), self.ZERO)
         require(allowance >= amount, "ERC20: decreased allowance below zero")
         self._approve(sender, spender, allowance - amount)
 
     @external
     def transfer_from(self, spender, sender, recipient, amount):
+        spender, sender, recipient = self._parse_accounts(spender, sender, recipient)
         allowance = self.allowances.get((sender, spender), self.ZERO)
         if allowance < amount:
             raise RevertError("ERC20: transfer amount exceeds allowance")

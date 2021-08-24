@@ -34,7 +34,7 @@ interface IEToken is IERC20 {
 
   function accepts(uint40 policyExpiration) external view returns (bool);
 
-  function lendToPool(uint256 amount) external;
+  function lendToPool(uint256 amount) external returns (uint256);
 
   function repayPoolLoan(uint256 amount) external;
 
