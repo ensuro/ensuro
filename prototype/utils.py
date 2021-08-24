@@ -80,12 +80,16 @@ def load_config(yaml_config=None, module=None):
     nft_params.setdefault("symbol", "EPOLI")
     nft = module.PolicyNFT(**nft_params)
 
+    pool_config_params = config.get("policy_pool_config", {})
+    pool_config_params.setdefault("owner", "owner")
+    pool_config = module.PolicyPoolConfig(**pool_config_params)
+
     pool_params = config.get("policy_pool", {})
-    pool_params.setdefault("owner", "owner")
     pool_params["policy_nft"] = nft
     pool_params["currency"] = currency
+    pool_params["config"] = pool_config
     pool = module.PolicyPool(**pool_params)
-    pool.grant_role("LEVEL1_ROLE", pool.owner)
+    pool.config.grant_role("LEVEL1_ROLE", pool_config.owner)
 
     with nft.as_(nft.owner):
         nft.grant_role("MINTER_ROLE", pool.contract_id)
@@ -93,23 +97,23 @@ def load_config(yaml_config=None, module=None):
     for risk_module_dict in config.get("risk_modules", []):
         risk_module_dict["policy_pool"] = pool
         rm = module.TrustfulRiskModule(**risk_module_dict)
-        pool.add_risk_module(rm)
+        pool.config.add_risk_module(rm)
 
     for etoken_dict in config.get("etokens", []):
         if "symbol" not in etoken_dict:
             etoken_dict["symbol"] = etoken_dict["name"]
         etoken_dict["policy_pool"] = pool
-        etoken_dict["owner"] = pool.owner
+        etoken_dict["owner"] = pool_config.owner
         etk = module.EToken(**etoken_dict)
         pool.add_etoken(etk)
 
     asset_manager = config.get("asset_manager", {})
     if asset_manager:
         asset_manager_class = asset_manager.pop("class")
-        asset_manager["owner"] = pool.owner
+        asset_manager["owner"] = pool_config.owner
         asset_manager["pool"] = pool
         asset_manager = getattr(module, asset_manager_class)(**asset_manager)
-        pool.set_asset_manager(asset_manager)
+        pool.config.set_asset_manager(asset_manager)
 
     return pool
 

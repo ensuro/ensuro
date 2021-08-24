@@ -561,21 +561,66 @@ class TrustfulRiskModule(RiskModuleETH):
             return None
 
 
+class PolicyPoolConfig(ETHWrapper):
+    eth_contract = "PolicyPoolConfig"
+
+    proxy_kind = "uups"
+
+    def __init__(self, owner, treasury="ENS", asset_manager=None, insolvency_hook=None):
+        treasury = self._get_account(treasury)
+        if asset_manager:
+            self._asset_manager = asset_manager
+        asset_manager = self._get_account(asset_manager)
+        insolvency_hook = self._get_account(insolvency_hook)
+        super().__init__(owner, treasury, asset_manager, insolvency_hook)
+        self._auto_from = self.owner
+        self.risk_modules = {}
+
+    add_risk_module_ = MethodAdapter((("risk_module", "contract"), ))
+
+    def add_risk_module(self, risk_module):
+        self.add_risk_module_(risk_module)
+        self.risk_modules[risk_module.name] = risk_module
+
+    set_asset_manager_ = MethodAdapter((("asset_manager", "contract"), ))
+
+    def set_asset_manager(self, asset_manager):
+        self.set_asset_manager_(asset_manager)
+        self._asset_manager = asset_manager
+
+    @property
+    def asset_manager(self):
+        am = self.contract.assetManager()
+        if getattr(self, "_asset_manager") and self._asset_manager.contract.address == am:
+            return self._asset_manager
+        return BaseAssetManager.connect(am, self.owner)
+
+    set_insolvency_hook_ = MethodAdapter((("insolvency_hook", "contract"), ))
+
+    def set_insolvency_hook(self, insolvency_hook):
+        self.set_insolvency_hook_(insolvency_hook)
+        self._insolvency_hook = insolvency_hook
+
+    @property
+    def insolvency_hook(self):
+        ih = self.contract.insolvencyHook()
+        if getattr(self, "_insolvency_hook") and self._insolvency_hook.contract.address == ih:
+            return self._insolvency_hook
+        return FreeGrantInsolvencyHook.connect(ih, self.owner)
+
+
 class PolicyPool(ETHWrapper):
     eth_contract = "PolicyPool"
 
     proxy_kind = "uups"
 
-    def __init__(self, owner, policy_nft, currency, treasury="ENS", asset_manager=None):
-        treasury = self._get_account(treasury)
-        asset_manager = self._get_account(asset_manager)
+    def __init__(self, config, policy_nft, currency):
+        self._config = config
         self._currency = currency
         self._policy_nft = policy_nft
-        super().__init__(owner, policy_nft.contract, currency.contract,
-                         treasury, asset_manager)
+        super().__init__(config.owner, config.contract, policy_nft.contract, currency.contract)
         self._auto_from = self.owner
         self.etokens = {}
-        self.risk_modules = {}
 
     @property
     def currency(self):
@@ -583,6 +628,13 @@ class PolicyPool(ETHWrapper):
             return self._currency
         else:
             return IERC20.connect(self.contract.currency())
+
+    @property
+    def config(self):
+        if hasattr(self, "_config"):
+            return self._config
+        else:
+            return PolicyPoolConfig.connect(self.contract.config())
 
     @property
     def policy_nft(self):
@@ -604,16 +656,11 @@ class PolicyPool(ETHWrapper):
     active_premiums = MethodAdapter((), "amount", is_property=True)
     active_pure_premiums = MethodAdapter((), "amount", is_property=True)
     borrowed_active_pp = MethodAdapter((), "amount", is_property=True)
-    add_risk_module_ = MethodAdapter((("risk_module", "contract"), ))
     add_etoken_ = MethodAdapter((("etoken", "contract"), ), eth_method="addEToken")
 
     def add_etoken(self, etoken):
         self.add_etoken_(etoken)
         self.etokens[etoken.name] = etoken
-
-    def add_risk_module(self, risk_module):
-        self.add_risk_module_(risk_module)
-        self.risk_modules[risk_module.name] = risk_module
 
     deposit_ = MethodAdapter((("etoken", "contract"), ("provider", "msg.sender"), ("amount", "amount")))
 
@@ -641,32 +688,6 @@ class PolicyPool(ETHWrapper):
     get_policy_fund = MethodAdapter((("policy_id", "int"), ("etoken", "contract")), "amount")
     rebalance_policy = MethodAdapter((("policy_id", "int"), ))
     get_investable = MethodAdapter((), "amount")
-    set_asset_manager_ = MethodAdapter((("asset_manager", "contract"), ))
-
-    def set_asset_manager(self, asset_manager):
-        self.set_asset_manager_(asset_manager)
-        self._asset_manager = asset_manager
-
-    @property
-    def asset_manager(self):
-        am = self.contract.assetManager()
-        if getattr(self, "_asset_manager") and self._asset_manager.contract.address == am:
-            return self._asset_manager
-        return BaseAssetManager.connect(am, self.owner)
-
-    set_insolvency_hook_ = MethodAdapter((("insolvency_hook", "contract"), ))
-
-    def set_insolvency_hook(self, insolvency_hook):
-        self.set_insolvency_hook_(insolvency_hook)
-        self._insolvency_hook = insolvency_hook
-
-    @property
-    def insolvency_hook(self):
-        ih = self.contract.insolvencyHook()
-        if getattr(self, "_insolvency_hook") and self._insolvency_hook.contract.address == ih:
-            return self._insolvency_hook
-        return FreeGrantInsolvencyHook.connect(ih, self.owner)
-
     receive_grant = MethodAdapter((("sender", "msg.sender"), ("amount", "amount")))
 
     repay_etoken_loan_ = MethodAdapter((("etoken", "contract"), ), eth_method="repayETokenLoan")

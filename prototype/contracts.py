@@ -320,14 +320,18 @@ class AccessControlContract(Contract):
         self.roles[role] = (members, admin_role)
 
     def __setattr__(self, attr_name, value):
-        if not getattr(self, "_role_validation_disabled", False) and attr_name in self.set_attr_roles:
+        if not getattr(self, "_role_validation_disabled", False):
+            self._validate_setattr(attr_name, value)
+
+        return super().__setattr__(attr_name, value)
+
+    def _validate_setattr(self, attr_name, value):
+        if attr_name in self.set_attr_roles:
             require(
                 self.has_role(self.set_attr_roles[attr_name], self._running_as),
                 f"AccessControl: AccessControl: account {self._running_as} is missing role "
                 f"'{self.set_attr_roles[attr_name]}'"
             )
-
-        return super().__setattr__(attr_name, value)
 
 
 def require(condition, message=None):

@@ -6,6 +6,7 @@ die() {
 }
 
 npx hardhat compile || die "Failed to compile contracts"
+npx hardhat size-contracts || die "Failed to size contracts"
 
 npm run solhint || die "Linting error"
 

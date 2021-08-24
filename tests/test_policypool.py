@@ -54,7 +54,7 @@ def test_transfers(tenv):
 
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
-    rm = pool.risk_modules["Roulette"]
+    rm = pool.config.risk_modules["Roulette"]
 
     rm.grant_role("PRICER_ROLE", rm.owner)
     rm.grant_role("RESOLVER_ROLE", rm.owner)
@@ -131,7 +131,7 @@ def test_rebalance_policy(tenv):
 
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
-    rm = pool.risk_modules["Roulette"]
+    rm = pool.config.risk_modules["Roulette"]
     rm.grant_role("PRICER_ROLE", rm.owner)
     rm.grant_role("RESOLVER_ROLE", rm.owner)
 
@@ -174,7 +174,7 @@ def test_rebalance_policy(tenv):
     total_ocean = _W(3000) + for_lps * _W(4/10)
 
     # After four days, now the policy expires in less than a week, so eUSD1WEEK is eligible
-    pool.grant_role("REBALANCE_ROLE", "REBALANCER_USER")
+    pool.config.grant_role("REBALANCE_ROLE", "REBALANCER_USER")
     with pool.as_("REBALANCER_USER"):
         pool.rebalance_policy(policy.id)
 
@@ -233,7 +233,7 @@ def test_risk_module_shared_coverage(tenv):
 
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
-    rm = pool.risk_modules["Roulette"]
+    rm = pool.config.risk_modules["Roulette"]
     rm.grant_role("PRICER_ROLE", rm.owner)
     rm.grant_role("RESOLVER_ROLE", rm.owner)
 
@@ -333,10 +333,10 @@ def test_walkthrough(tenv):
 
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
-    rm = pool.risk_modules["Roulette"]
+    rm = pool.config.risk_modules["Roulette"]
     rm.grant_role("PRICER_ROLE", rm.owner)
     rm.grant_role("RESOLVER_ROLE", rm.owner)
-    rm.grant_role("ENSURO_DAO_ROLE", rm.owner)  # For setting scr_interest_rate
+    pool.config.grant_role("ENSURO_DAO_ROLE", rm.owner)  # For setting scr_interest_rate
 
     with pytest.raises(RevertError, match="transfer amount exceeds allowance"):
         pool.deposit("eUSD1YEAR", "LP1", _W(1000))
@@ -647,7 +647,7 @@ def test_nfts(tenv):
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     nft = pool.policy_nft
     timecontrol = tenv.time_control
-    rm = pool.risk_modules["Roulette"]
+    rm = pool.config.risk_modules["Roulette"]
     rm.grant_role("PRICER_ROLE", rm.owner)
     rm.grant_role("RESOLVER_ROLE", rm.owner)
 
@@ -701,7 +701,7 @@ def test_partial_payout(tenv):
 
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
-    rm = pool.risk_modules["Roulette"]
+    rm = pool.config.risk_modules["Roulette"]
     rm.grant_role("PRICER_ROLE", rm.owner)
     rm.grant_role("RESOLVER_ROLE", rm.owner)
 
@@ -761,7 +761,7 @@ def test_partial_payout_shared_coverage(tenv):
 
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
-    rm = pool.risk_modules["Roulette"]
+    rm = pool.config.risk_modules["Roulette"]
     rm.grant_role("PRICER_ROLE", rm.owner)
     rm.grant_role("RESOLVER_ROLE", rm.owner)
 
@@ -856,13 +856,13 @@ def test_asset_manager(tenv):
 
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
-    rm = pool.risk_modules["Roulette"]
+    rm = pool.config.risk_modules["Roulette"]
     rm.grant_role("PRICER_ROLE", rm.owner)
     rm.grant_role("RESOLVER_ROLE", rm.owner)
 
     USD = pool.currency
     etk = pool.etokens["eUSD1YEAR"]
-    asset_manager = pool.asset_manager
+    asset_manager = pool.config.asset_manager
 
     USD.approve("LP1", pool.contract_id, _W(10000))
     assert pool.deposit("eUSD1YEAR", "LP1", _W(10000)) == _W(10000)
@@ -945,7 +945,7 @@ def test_insolvency_without_hook(tenv):
 
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
-    rm = pool.risk_modules["Roulette"]
+    rm = pool.config.risk_modules["Roulette"]
     rm.grant_role("PRICER_ROLE", rm.owner)
     rm.grant_role("RESOLVER_ROLE", rm.owner)
 
@@ -983,7 +983,7 @@ def test_grant_insolvency_hook(tenv):
     vars = test_insolvency_without_hook(tenv)
     pool, rm, policy = _extract_vars(vars, "pool,rm,policy")
     ins_hook = tenv.module.FreeGrantInsolvencyHook(pool=pool)
-    pool.set_insolvency_hook(ins_hook)
+    pool.config.set_insolvency_hook(ins_hook)
 
     rm.resolve_policy(policy.id, True)
 
@@ -994,7 +994,7 @@ def test_lp_insolvency_hook(tenv):
     vars = test_insolvency_without_hook(tenv)
     pool, rm, etk, for_lps, policy, USD = _extract_vars(vars, "pool,rm,etk,for_lps,policy,USD")
     ins_hook = tenv.module.LPInsolvencyHook(pool=pool, etoken="eUSD1YEAR")
-    pool.set_insolvency_hook(ins_hook)
+    pool.config.set_insolvency_hook(ins_hook)
 
     rm.resolve_policy(policy.id, True)
 
@@ -1020,7 +1020,7 @@ def test_lp_insolvency_hook_other_etk(tenv):
     )
     etk1m = pool.etokens["eUSD1MONTH"]
     ins_hook = tenv.module.LPInsolvencyHook(pool=pool, etoken="eUSD1MONTH")
-    pool.set_insolvency_hook(ins_hook)
+    pool.config.set_insolvency_hook(ins_hook)
 
     rm.resolve_policy(policy.id, True)
     USD.balance_of("CUST1").assert_equal(_W(9200))

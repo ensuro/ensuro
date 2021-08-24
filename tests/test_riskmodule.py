@@ -9,7 +9,7 @@ from prototype.wadray import _W, _R
 from . import wrappers
 from prototype.utils import WEEK
 
-TEnv = namedtuple("TEnv", "time_control currency rm_class policy_factory")
+TEnv = namedtuple("TEnv", "time_control currency rm_class policy_factory pool_config")
 
 
 @pytest.fixture(params=["ethereum", "prototype"])
@@ -17,10 +17,12 @@ def tenv(request):
     if request.param == "prototype":
         FakePolicy = namedtuple("FakePolicy", "scr interest_rate expiration")
         currency = ERC20Token(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
+        pool_config = ensuro.PolicyPoolConfig()
 
         class PolicyPoolMock(Contract):
             currency = ContractProxyField()
             policy_count = IntField(default=0)
+            config = pool_config
 
             def new_policy(self, policy, customer):
                 self.policy_count += 1
@@ -33,6 +35,7 @@ def tenv(request):
             currency=currency,
             time_control=ensuro.time_control,
             policy_factory=FakePolicy,
+            pool_config=pool_config,
             rm_class=partial(ensuro.TrustfulRiskModule, policy_pool=PolicyPoolMock(currency=currency))
         )
     elif request.param == "ethereum":
@@ -40,13 +43,15 @@ def tenv(request):
         from brownie import PolicyPoolMock
 
         currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
+        config = wrappers.PolicyPoolConfig(owner="owner")
 
-        pool = PolicyPoolMock.deploy(currency.contract, {"from": currency.owner})
+        pool = PolicyPoolMock.deploy(currency.contract, config.contract, {"from": currency.owner})
 
         return TEnv(
             currency=currency,
             time_control=wrappers.time_control,
             policy_factory=FakePolicy,
+            pool_config=config,
             rm_class=partial(wrappers.TrustfulRiskModule,
                              policy_pool=wrappers.PolicyPool.connect(pool, currency.owner))
         )
@@ -70,7 +75,7 @@ def test_getset_rm_parameters(tenv):
     rm.shared_coverage_percentage.assert_equal(_R(1/2))
 
     rm.grant_role("RM_PROVIDER_ROLE", "CASINO")  # Grant the role to the casino owner
-    rm.grant_role("ENSURO_DAO_ROLE", "ENSURO_DAO")  # Grant the role to the casino owner
+    tenv.pool_config.grant_role("ENSURO_DAO_ROLE", "ENSURO_DAO")  # Grant the role to the casino owner
 
     users = ("CASINO", "ENSURO_DAO", "JOHNDOE")
 
@@ -175,7 +180,7 @@ def test_moc(tenv):
     with pytest.raises(RevertError, match="missing role"):
         rm.moc = _R("1.01")
 
-    rm.grant_role("ENSURO_DAO_ROLE", "DAO")
+    tenv.pool_config.grant_role("ENSURO_DAO_ROLE", "DAO")
     with rm.as_("DAO"):
         rm.moc = _R("1.01")
 

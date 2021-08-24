@@ -124,7 +124,7 @@ abstract contract RiskModule is
   }
 
   // solhint-disable-next-line no-empty-blocks
-  function _authorizeUpgrade(address) internal override onlyRole(UPGRADER_ROLE) {}
+  function _authorizeUpgrade(address) internal override onlyPoolRole(UPGRADER_ROLE) {}
 
   function name() public view override returns (string memory) {
     return _name;
@@ -174,38 +174,38 @@ abstract contract RiskModule is
     return _wallet;
   }
 
-  function setScrPercentage(uint256 newScrPercentage) external onlyPoolRole(LEVEL2_ROLE) {
+  function setScrPercentage(uint256 newScrPercentage) external onlyPoolRole(ENSURO_DAO_ROLE) {
     // TODO emit Event?
     _scrPercentage = newScrPercentage;
   }
 
-  function setMoc(uint256 newMoc) external onlyRole(ENSURO_DAO_ROLE) {
+  function setMoc(uint256 newMoc) external onlyPoolRole(ENSURO_DAO_ROLE) {
     // TODO emit Event?
     _moc = newMoc;
   }
 
-  function setScrInterestRate(uint256 newScrInterestRate) external onlyRole(ENSURO_DAO_ROLE) {
+  function setScrInterestRate(uint256 newScrInterestRate) external onlyPoolRole(ENSURO_DAO_ROLE) {
     // TODO emit Event?
     _scrInterestRate = newScrInterestRate;
   }
 
-  function setEnsuroFee(uint256 newEnsuroFee) external onlyRole(ENSURO_DAO_ROLE) {
+  function setEnsuroFee(uint256 newEnsuroFee) external onlyPoolRole(ENSURO_DAO_ROLE) {
     // TODO emit Event?
     _ensuroFee = newEnsuroFee;
   }
 
-  function setMaxScrPerPolicy(uint256 newMaxScrPerPolicy) external onlyRole(ENSURO_DAO_ROLE) {
+  function setMaxScrPerPolicy(uint256 newMaxScrPerPolicy) external onlyPoolRole(ENSURO_DAO_ROLE) {
     // TODO emit Event?
     _maxScrPerPolicy = newMaxScrPerPolicy;
   }
 
-  function setScrLimit(uint256 newScrLimit) external onlyRole(ENSURO_DAO_ROLE) {
+  function setScrLimit(uint256 newScrLimit) external onlyPoolRole(ENSURO_DAO_ROLE) {
     // TODO emit Event?
     require(newScrLimit >= _totalScr, "Can't set SCR less than current SCR allocation");
     _scrLimit = newScrLimit;
   }
 
-  function setSharedCoverageMinPercentage(uint256 newSCMP) external onlyRole(ENSURO_DAO_ROLE) {
+  function setSharedCoverageMinPercentage(uint256 newSCMP) external onlyPoolRole(ENSURO_DAO_ROLE) {
     // TODO emit Event?
     _sharedCoverageMinPercentage = newSCMP;
     if (newSCMP < _sharedCoveragePercentage) _sharedCoveragePercentage = newSCMP;

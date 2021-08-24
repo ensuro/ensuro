@@ -5,7 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
@@ -20,15 +20,15 @@ import {WadRayMath} from "./WadRayMath.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {DataTypes} from "./DataTypes.sol";
 
+
 // #invariant_disabled {:msg "Borrow up to activePurePremiums"} _borrowedActivePP <= _activePurePremiums;
 // #invariant_disabled {:msg "Can't borrow if not exhausted before won"} (_borrowedActivePP > 0) ==> _wonPurePremiums == 0;
-contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeable, UUPSUpgradeable {
+contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   using EnumerableSet for EnumerableSet.AddressSet;
   using WadRayMath for uint256;
   using SafeERC20 for IERC20;
   using Policy for Policy.PolicyData;
   using DataTypes for DataTypes.ETokenToWadMap;
-  using DataTypes for DataTypes.RiskModuleStatusMap;
   using DataTypes for DataTypes.ETokenStatusMap;
 
   uint256 public constant MAX_INT =
@@ -42,16 +42,14 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
   bytes32 public constant LEVEL2_ROLE = keccak256("LEVEL2_ROLE");
   bytes32 public constant LEVEL3_ROLE = keccak256("LEVEL3_ROLE");
 
-  uint256 public constant L2_RM_LIMIT = 5e16; // 5% in WAD
-
   uint256 public constant MAX_ETOKENS = 10;
 
+  IPolicyPoolConfig internal _config;
   // #if_updated_disabled {:msg "Only set on creation"} msg.sig == bytes4(0);
   IERC20 internal _currency;
 
   IERC721 internal _policyNFT;
 
-  DataTypes.RiskModuleStatusMap internal _riskModules;
   DataTypes.ETokenStatusMap internal _eTokens;
 
   mapping(uint256 => Policy.PolicyData) internal _policies;
@@ -62,56 +60,47 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
   uint256 internal _borrowedActivePP; // amount borrowed from active pure premiums to pay defaulted policies
   uint256 internal _wonPurePremiums; // amount of pure premiums won from non-defaulted policies
 
-  address internal _treasury; // address of Ensuro treasury
-  IAssetManager internal _assetManager; // asset manager
-  IInsolvencyHook internal _insolvencyHook; // Contract that handles insolvency situations
-
   event NewPolicy(IRiskModule indexed riskModule, uint256 policyId);
   event PolicyRebalanced(IRiskModule indexed riskModule, uint256 indexed policyId);
   event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, uint256 payout);
 
-  event RiskModuleStatusChanged(
-    IRiskModule indexed riskModule,
-    DataTypes.RiskModuleStatus newStatus
-  );
-
   event ETokenStatusChanged(IEToken indexed eToken, DataTypes.ETokenStatus newStatus);
-  event AssetManagerChanged(IAssetManager indexed assetManager);
-  event InsolvencyHookChanged(IInsolvencyHook indexed insolvencyHook);
 
   event Withdrawal(IEToken indexed eToken, address indexed provider, uint256 value);
 
   modifier onlyAssetManager {
-    require(_msgSender() == address(_assetManager), "Only assetManager can call this function");
+    require(msg.sender == address(_config.assetManager()), "Only assetManager can call this function");
+    _;
+  }
+
+  modifier onlyRole(bytes32 role) {
+    _config.checkRole(role, msg.sender);
     _;
   }
 
   modifier onlyRole2(bytes32 role1, bytes32 role2) {
-    if (!hasRole(role1, _msgSender()))
-      _checkRole(role2, _msgSender());
+    _config.checkRole2(role1, role2, msg.sender);
     _;
   }
 
   function initialize(
+    IPolicyPoolConfig config_,
     IERC721 policyNFT_,
-    IERC20 currency_,
-    address treasury_,
-    IAssetManager assetManager_
+    IERC20 currency_
   ) public initializer {
     __UUPSUpgradeable_init();
     __Pausable_init();
-    __AccessControl_init();
-    __PolicyPool_init_unchained(policyNFT_, currency_, treasury_, assetManager_);
+    __PolicyPool_init_unchained(config_, policyNFT_, currency_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
   function __PolicyPool_init_unchained(
+    IPolicyPoolConfig config_,
     IERC721 policyNFT_,
-    IERC20 currency_,
-    address treasury_,
-    IAssetManager assetManager_
+    IERC20 currency_
   ) internal initializer {
-    _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
+    _config = config_;
+    _config.connect();
     _currency = currency_;
     _policyNFT = policyNFT_;
     /*
@@ -120,8 +109,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     _borrowedActivePP = 0;
     _wonPurePremiums = 0;
     */
-    _treasury = treasury_;
-    _assetManager = assetManager_;
   }
 
   // solhint-disable-next-line no-empty-blocks
@@ -133,6 +120,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
 
   function unpause() public onlyRole(GUARDIAN_ROLE) {
     _unpause();
+  }
+
+  function config() external view virtual override returns (IPolicyPoolConfig) {
+    return _config;
   }
 
   function currency() external view virtual override returns (IERC20) {
@@ -163,43 +154,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     return _borrowedActivePP;
   }
 
-  function addRiskModule(IRiskModule riskModule) external onlyRole2(LEVEL1_ROLE, LEVEL2_ROLE) {
-    require(!_riskModules.contains(riskModule), "Risk Module already in the pool");
-    require(address(riskModule) != address(0), "riskModule can't be zero");
-    require(
-      IPolicyPoolComponent(address(riskModule)).policyPool() == this,
-      "RiskModule not linked to this pool"
-    );
-    require(
-      hasRole(LEVEL1_ROLE, _msgSender()) || totalETokenSupply() > (riskModule.scrLimit().wadMul(L2_RM_LIMIT)),
-      "RiskModule SCR Limit exceeds the limit for LEVEL2 user"
-    );
-    _riskModules.set(riskModule, DataTypes.RiskModuleStatus.active);
-    emit RiskModuleStatusChanged(riskModule, DataTypes.RiskModuleStatus.active);
-  }
-
-  // #if_succeeds_disabled _riskModules.get(riskModule) == DataTypes.RiskModuleStatus.inactive;
-  function removeRiskModule(IRiskModule riskModule) external onlyRole(LEVEL2_ROLE) {
-    require(_riskModules.contains(riskModule), "Risk Module not found");
-    require(riskModule.totalScr() == 0, "Can't remove a module with active policies");
-    _riskModules.remove(riskModule);
-    emit RiskModuleStatusChanged(riskModule, DataTypes.RiskModuleStatus.inactive);
-  }
-
-  // #if_succeeds_disabled _riskModules.get(riskModule) == newStatus;
-  function changeRiskModuleStatus(IRiskModule riskModule, DataTypes.RiskModuleStatus newStatus)
-    external
-    onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
-  {
-    require(_riskModules.contains(riskModule), "Risk Module not found");
-    require(
-      newStatus != DataTypes.RiskModuleStatus.suspended || hasRole(GUARDIAN_ROLE, _msgSender()),
-      "Only GUARDIAN can suspend modules"
-    );
-    _riskModules.set(riskModule, newStatus);
-    emit RiskModuleStatusChanged(riskModule, newStatus);
-  }
-
   // #if_succeeds_disabled {:msg "eToken added as active"} _eTokens.get(eToken) == DataTypes.ETokenStatus.active;
   function addEToken(IEToken eToken) external onlyRole(LEVEL1_ROLE) {
     require(_eTokens.length() < MAX_ETOKENS, "Maximum number of ETokens reached");
@@ -226,53 +180,30 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
   {
     require(_eTokens.contains(eToken), "Risk Module not found");
     require(
-      newStatus != DataTypes.ETokenStatus.suspended || hasRole(GUARDIAN_ROLE, _msgSender()),
+      newStatus != DataTypes.ETokenStatus.suspended || _config.hasRole(GUARDIAN_ROLE, msg.sender),
       "Only GUARDIAN can suspend eTokens"
     );
     _eTokens.set(eToken, newStatus);
     emit ETokenStatusChanged(eToken, newStatus);
   }
 
-  function setAssetManager(IAssetManager assetManager_) external onlyRole(LEVEL1_ROLE) {
-    if (address(_assetManager) != address(0)) {
-      _assetManager.deinvestAll(); // deInvest all assets
-      _currency.approve(address(_assetManager), 0); // revoke currency management approval
+  function setAssetManager(IAssetManager newAssetManager) external override {
+    require(msg.sender == address(_config), "Only the PolicyPoolConfig can change assetManager");
+    if (address(_config.assetManager()) != address(0)) {
+      _config.assetManager().deinvestAll(); // deInvest all assets
+      _currency.approve(address(_config.assetManager()), 0); // revoke currency management approval
     }
-    _assetManager = assetManager_;
-    _currency.approve(address(_assetManager), MAX_INT); // infinite approval should be enought for few years
-    emit AssetManagerChanged(_assetManager);  // TODO: review event
-  }
-
-  function assetManager() external view virtual override returns (IAssetManager) {
-    return _assetManager;
-  }
-
-  function setTreasury(address treasury_) external onlyRole(LEVEL1_ROLE) {
-    _treasury = treasury_;
-    // TODO emit EVENT
-  }
-
-  function treasury() external view returns (address) {
-    return _treasury;
-  }
-
-  function setInsolvencyHook(IInsolvencyHook insolvencyHook_) external onlyRole(ENSURO_DAO_ROLE) {
-    _insolvencyHook = insolvencyHook_;
-    emit InsolvencyHookChanged(_insolvencyHook);
-  }
-
-  function insolvencyHook() external view returns (IInsolvencyHook) {
-    return _insolvencyHook;
+    _currency.approve(address(newAssetManager), MAX_INT);  // infinite approval should be enought for few years
   }
 
   /// #if_succeeds
   ///    {:msg "must take balance from sender"}
-  ///    _currency.balanceOf(_msgSender()) == old(_currency.balanceOf(_msgSender()) - amount);
+  ///    _currency.balanceOf(msg.sender) == old(_currency.balanceOf(msg.sender) - amount);
   function deposit(IEToken eToken, uint256 amount) external override {
     (bool found, DataTypes.ETokenStatus etkStatus) = _eTokens.tryGet(eToken);
     require(found && etkStatus == DataTypes.ETokenStatus.active, "eToken is not active");
-    _currency.safeTransferFrom(_msgSender(), address(this), amount);
-    eToken.deposit(_msgSender(), amount);
+    _currency.safeTransferFrom(msg.sender, address(this), amount);
+    eToken.deposit(msg.sender, amount);
   }
 
   function withdraw(IEToken eToken, uint256 amount) external override returns (uint256) {
@@ -285,7 +216,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
         ),
       "eToken not found or withdraws not allowed"
     );
-    address provider = _msgSender();
+    address provider = msg.sender;
     uint256 withdrawed = eToken.withdraw(provider, amount);
     if (withdrawed > 0) _transferTo(provider, withdrawed);
     emit Withdrawal(eToken, provider, withdrawed);
@@ -298,12 +229,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     returns (uint256)
   {
     IRiskModule rm = policy_.riskModule;
-    require(address(rm) == _msgSender(), "Only the RM can create new policies");
-    (bool success, DataTypes.RiskModuleStatus rmStatus) = _riskModules.tryGet(rm);
-    require(
-      success && rmStatus == DataTypes.RiskModuleStatus.active,
-      "RM module not found or not active"
-    );
+    require(address(rm) == msg.sender, "Only the RM can create new policies");
+    _config.checkAcceptsNewPolicy(rm);
     _currency.safeTransferFrom(customer, address(this), policy_.premium);
     uint256 policyId = IMintable(address(_policyNFT)).safeMint(customer);
     Policy.PolicyData storage policy = _policies[policyId] = policy_;
@@ -367,12 +294,12 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
 
   function _transferTo(address destination, uint256 amount) internal {
     if (amount == 0) return;
-    if (_assetManager != IAssetManager(address(0)) && _balance() < amount) {
-      _assetManager.refillWallet(amount);
+    if (_config.assetManager() != IAssetManager(address(0)) && _balance() < amount) {
+      _config.assetManager().refillWallet(amount);
     }
     // Calculate again the balance and check if enought, if not call unsolvency_hook
-    if (_insolvencyHook != IInsolvencyHook(address(0)) && _balance() < amount) {
-      _insolvencyHook.outOfCash(amount - _balance());
+    if (_config.insolvencyHook() != IInsolvencyHook(address(0)) && _balance() < amount) {
+      _config.insolvencyHook().outOfCash(amount - _balance());
     }
     _currency.safeTransfer(destination, amount);
   }
@@ -431,7 +358,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     } else {
       // Pay RM and Ensuro
       _transferTo(policy.riskModule.wallet(), policy.premiumForRm + policy.rmScr());
-      _transferTo(_treasury, policy.premiumForEnsuro);
+      _transferTo(_config.treasury(), policy.premiumForEnsuro);
       purePremiumWon = policy.purePremium;
       // cover first _borrowedActivePP
       if (_borrowedActivePP > _activePurePremiums) {
@@ -455,13 +382,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     Policy.PolicyData storage policy = _policies[policyId];
     require(policy.id == policyId && policyId != 0, "Policy not found");
     IRiskModule rm = policy.riskModule;
-    require(address(rm) == _msgSender(), "Only the RM can resolve policies");
-    DataTypes.RiskModuleStatus rmStatus = _riskModules.get(rm);
-    require(
-      rmStatus == DataTypes.RiskModuleStatus.active ||
-        rmStatus == DataTypes.RiskModuleStatus.deprecated,
-      "Module must be active or deprecated to process resolutions"
-    );
+    require(address(rm) == msg.sender, "Only the RM can resolve policies");
+    _config.checkAcceptsResolvePolicy(rm);
     require(payout <= policy.payout, "Actual payout can't be more than policy payout");
 
     bool customerWon = payout > 0;
@@ -600,7 +522,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
   }
 
   function receiveGrant(uint256 amount) external override {
-    _currency.safeTransferFrom(_msgSender(), address(this), amount);
+    _currency.safeTransferFrom(msg.sender, address(this), amount);
     _storePurePremiumWon(amount);
   }
 
@@ -648,7 +570,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, AccessControlUpgradeabl
     else return 0;
   }
 
-  function totalETokenSupply() public view returns (uint256) {
+  function totalETokenSupply() public override view returns (uint256) {
     uint256 ret = 0;
     for (uint256 i = 0; i < _eTokens.length(); i++) {
       (

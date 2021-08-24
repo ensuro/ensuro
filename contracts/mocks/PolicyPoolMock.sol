@@ -5,29 +5,38 @@ import {IPolicyPool} from "../../interfaces/IPolicyPool.sol";
 import {IRiskModule} from "../../interfaces/IRiskModule.sol";
 import {IEToken} from "../../interfaces/IEToken.sol";
 import {IAssetManager} from "../../interfaces/IAssetManager.sol";
+import {IPolicyPoolConfig} from "../../interfaces/IPolicyPoolConfig.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Policy} from "../Policy.sol";
 
 contract PolicyPoolMock is IPolicyPool, AccessControl {
   IERC20 internal _currency;
+  IPolicyPoolConfig internal _config;
+
   uint256 public policyCount;
   mapping(uint256 => Policy.PolicyData) internal policies;
 
   event NewPolicy(IRiskModule indexed riskModule, uint256 policyId);
   event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, uint256 payout);
 
-  constructor(IERC20 currency_) {
+  constructor(IERC20 currency_, IPolicyPoolConfig config_) {
     _currency = currency_;
     policyCount = 0;
+    _config = config_;
+    _config.connect();
   }
 
   function currency() external view override returns (IERC20) {
     return _currency;
   }
 
-  function assetManager() external pure override returns (IAssetManager) {
-    return IAssetManager(address(0));
+  function config() external view override returns (IPolicyPoolConfig) {
+    return _config;
+  }
+
+  function setAssetManager(IAssetManager) external pure override {
+    revert("Not Implemented");
   }
 
   function getInvestable() external view override returns (uint256) {
@@ -89,6 +98,10 @@ contract PolicyPoolMock is IPolicyPool, AccessControl {
   }
 
   function withdraw(IEToken, uint256) external override returns (uint256) {
+    revert("Not Implemented");
+  }
+
+  function totalETokenSupply() external override view returns (uint256) {
     revert("Not Implemented");
   }
 }
