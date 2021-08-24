@@ -125,7 +125,8 @@ abstract contract BaseAssetManager is
   /**
    * @dev Calculates asset earnings and distributes them updating accounting in PolicyPool and eTokens
    */
-  function distibuteEarnings() public virtual whenNotPaused onlyRole(CHECKPOINT_ROLE) {
+  function distibuteEarnings() public virtual whenNotPaused {
+    // TODO Check: Anyone can call this funcion. This could be a potencial surface of flash loan attack?
     uint256 investmentValue = getInvestmentValue();
     bool positive;
     uint256 earnings;
@@ -160,7 +161,8 @@ abstract contract BaseAssetManager is
   /**
    * @dev Rebalances cash between PolicyPool wallet and
    */
-  function rebalance() public virtual whenNotPaused onlyRole(CHECKPOINT_ROLE) {
+  function rebalance() public virtual whenNotPaused {
+    // TODO Check: Anyone can call this funcion. This could be a potencial surface of flash loan attack?
     uint256 poolCash = _currency().balanceOf(address(_policyPool));
     if (poolCash > _liquidityMax) {
       _invest(poolCash - _liquidityMiddle);
