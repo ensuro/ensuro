@@ -16,5 +16,6 @@ jobs:
       - run: npx hardhat compile
       - run: npx hardhat size-contracts
       - run: npm run solhint
-      - run: ./ci-tests.sh
+      - run: SKIP_PROXY=1 brownie test -v --coverage
         timeout-minutes: 20
+      - run: ./instrumented-tests.sh
