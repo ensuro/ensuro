@@ -3,6 +3,7 @@
 pragma solidity ^0.8.0;
 
 import {Proxy} from "@openzeppelin/contracts/proxy/Proxy.sol";
+
 /**
  * @dev This contract provides a fallback function that forwards all calls to another contract using the EVM
  * instruction `call`.
@@ -25,6 +26,7 @@ contract ForwardProxy is Proxy {
    * This function does not return to its internall call site, it will return directly to the external caller.
    */
   function _delegate(address implementation) internal virtual override {
+    // solhint-disable-next-line no-inline-assembly
     assembly {
       // Copy msg.data. We take full control of memory in this inline assembly
       // block because it will not return to Solidity code. We overwrite the

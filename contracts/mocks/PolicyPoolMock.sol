@@ -107,7 +107,6 @@ contract PolicyPoolMock is IPolicyPool {
   }
 }
 
-
 /**
  * @title PolicyPoolMockForward
  * @dev PolicyPool that forwards fallback calls to another contract. Used to simulate calls to EToken
@@ -117,9 +116,11 @@ contract PolicyPoolMockForward is ForwardProxy {
   IERC20 internal _currency;
   IPolicyPoolConfig internal _config;
 
-  constructor(address forwardTo, IERC20 currency_, IPolicyPoolConfig config_)
-    ForwardProxy(forwardTo)
-  {
+  constructor(
+    address forwardTo,
+    IERC20 currency_,
+    IPolicyPoolConfig config_
+  ) ForwardProxy(forwardTo) {
     _currency = currency_;
     _config = config_;
     _config.connect();
@@ -132,5 +133,4 @@ contract PolicyPoolMockForward is ForwardProxy {
   function config() external view returns (IPolicyPoolConfig) {
     return _config;
   }
-
 }
