@@ -46,6 +46,8 @@ class AddressBook:
     def get_account(self, name):
         if isinstance(name, (Account, LocalAccount)):
             return name
+        if isinstance(name, (Contract, ProjectContract)):
+            return name
         if name is None:
             return self.ZERO
         if name not in self.name_to_address:
@@ -238,6 +240,9 @@ class ETHWrapper:
     def connect(cls, contract, owner=None):
         """Connects a wrapper to an existing deployed object"""
         obj = cls.__new__(cls)
+        if isinstance(contract, str):
+            eth_contract = getattr(brownie, cls.eth_contract)
+            contract = Contract.from_abi(cls.eth_contract, contract, eth_contract.abi)
         obj.contract = contract
         obj.owner = owner
         return obj
@@ -371,16 +376,24 @@ class ETokenETH(IERC20):
         liquidity_requirement = _R(liquidity_requirement)
         max_utilization_rate = _R(max_utilization_rate)
         if isinstance(policy_pool, ETHWrapper):
-            self._auto_from = policy_pool.contract.address
-            policy_pool = policy_pool.contract
-        else:  # is just an address - for tests
-            policy_pool = self._get_account(policy_pool)
-            self._auto_from = policy_pool
+            self._policy_pool = policy_pool.contract
+        else:  # is just an address or raw contract - for tests
+            self._policy_pool = self._get_account(policy_pool)
+        self._auto_from = self._get_account("johhdoe")
 
         super().__init__(
-            owner, name, symbol, policy_pool, expiration_period, liquidity_requirement,
+            owner, name, symbol, self._policy_pool, expiration_period, liquidity_requirement,
             max_utilization_rate, pool_loan_interest_rate
         )
+
+    @contextmanager
+    def thru_policy_pool(self):
+        prev_contract = self.contract
+        self.contract = Contract.from_abi(self.eth_contract, self._policy_pool, brownie.EToken.abi)
+        try:
+            yield self
+        finally:
+            self.contract = prev_contract
 
     ocean = MethodAdapter((), "amount", is_property=True)
     ocean_for_new_scr = MethodAdapter((), "amount", is_property=True)
@@ -450,6 +463,13 @@ class ETokenETH(IERC20):
     get_investable = MethodAdapter((), "amount")
 
     get_current_scale = MethodAdapter((("updated", "bool"), ), "ray")
+
+    def grant_role(self, role, user):
+        # EToken doesn't haves grant_role
+        policy_pool = PolicyPool.connect(self._policy_pool)
+        config = policy_pool.config
+        with config.as_(self._auto_from):
+            return config.grant_role(role, user)
 
 
 class Policy:

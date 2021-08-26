@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from m9g import Model
 from m9g.fields import StringField, IntField, DictField, CompositeField
 from .contracts import AccessControlContract, ERC20Token, external, view, RayField, WadField, AddressField, \
@@ -221,7 +222,7 @@ class EToken(ERC20Token):
     pool_loan_last_update = IntField(default=None, allow_none=True)
 
     set_attr_roles = {
-        "pool_loan_interest_rate": "SET_LOAN_RATE_ROLE"
+        "pool_loan_interest_rate": "LEVEL2_ROLE"
     }
 
     def __init__(self, **kwargs):
@@ -250,6 +251,10 @@ class EToken(ERC20Token):
             Ray.from_value(SECONDS_IN_YEAR)
         )
         return self.scale_factor * (Ray(RAY) + increment)
+
+    @contextmanager
+    def thru_policy_pool(self):
+        yield self
 
     @view
     def get_current_scale(self, updated):

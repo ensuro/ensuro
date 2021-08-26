@@ -9,8 +9,9 @@ import {IPolicyPoolConfig} from "../../interfaces/IPolicyPoolConfig.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Policy} from "../Policy.sol";
+import {ForwardProxy} from "./ForwardProxy.sol";
 
-contract PolicyPoolMock is IPolicyPool, AccessControl {
+contract PolicyPoolMock is IPolicyPool {
   IERC20 internal _currency;
   IPolicyPoolConfig internal _config;
 
@@ -94,14 +95,42 @@ contract PolicyPoolMock is IPolicyPool, AccessControl {
   }
 
   function deposit(IEToken, uint256) external override {
-    revert("Not Implemented");
+    revert("Not Implemented deposit");
   }
 
   function withdraw(IEToken, uint256) external override returns (uint256) {
-    revert("Not Implemented");
+    revert("Not Implemented withdraw");
   }
 
   function totalETokenSupply() external view override returns (uint256) {
-    revert("Not Implemented");
+    revert("Not Implemented totalETokenSupply");
   }
+}
+
+
+/**
+ * @title PolicyPoolMockForward
+ * @dev PolicyPool that forwards fallback calls to another contract. Used to simulate calls to EToken
+ *      and other contracts that have functions that can be called only from PolicyPool
+ */
+contract PolicyPoolMockForward is ForwardProxy {
+  IERC20 internal _currency;
+  IPolicyPoolConfig internal _config;
+
+  constructor(address forwardTo, IERC20 currency_, IPolicyPoolConfig config_)
+    ForwardProxy(forwardTo)
+  {
+    _currency = currency_;
+    _config = config_;
+    _config.connect();
+  }
+
+  function currency() external view returns (IERC20) {
+    return _currency;
+  }
+
+  function config() external view returns (IPolicyPoolConfig) {
+    return _config;
+  }
+
 }

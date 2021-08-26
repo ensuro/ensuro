@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
-import {IPolicyPoolComponent} from "../interfaces/IPolicyPoolComponent.sol";
+import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
 import {IEToken} from "../interfaces/IEToken.sol";
 import {WadRayMath} from "./WadRayMath.sol";
 
@@ -16,19 +13,7 @@ import {WadRayMath} from "./WadRayMath.sol";
  * @dev Implementation of the interest/earnings bearing token for the Ensuro protocol
  * @author Ensuro
  */
-contract EToken is
-  UUPSUpgradeable,
-  AccessControlUpgradeable,
-  PausableUpgradeable,
-  IERC20,
-  IEToken,
-  IPolicyPoolComponent
-{
-  bytes32 public constant SET_LOAN_RATE_ROLE = keccak256("SET_LOAN_RATE_ROLE");
-  bytes32 public constant SET_LIQ_PARAMS_ROLE = keccak256("SET_LIQ_PARAMS_ROLE");
-  bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
-  bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
-
+contract EToken is PolicyPoolComponent, IERC20, IEToken {
   uint256 public constant MIN_SCALE = 1e17; // 0.0000000001 == 1e-10 in ray
 
   using WadRayMath for uint256;
@@ -43,8 +28,6 @@ contract EToken is
 
   string private _name;
   string private _symbol;
-
-  IPolicyPool internal _policyPool;
 
   uint40 internal _expirationPeriod;
   uint256 internal _scaleFactor; // in Ray
@@ -96,12 +79,10 @@ contract EToken is
     uint256 maxUtilizationRate_,
     uint256 poolLoanInterestRate_
   ) public initializer {
-    __AccessControl_init();
-    __Pausable_init();
+    __PolicyPoolComponent_init(policyPool_);
     __EToken_init_unchained(
       name_,
       symbol_,
-      policyPool_,
       expirationPeriod,
       liquidityRequirement_,
       maxUtilizationRate_,
@@ -113,7 +94,6 @@ contract EToken is
   function __EToken_init_unchained(
     string memory name_,
     string memory symbol_,
-    IPolicyPool policyPool_,
     uint40 expirationPeriod,
     uint256 liquidityRequirement_,
     uint256 maxUtilizationRate_,
@@ -121,7 +101,6 @@ contract EToken is
   ) public initializer {
     _name = name_;
     _symbol = symbol_;
-    _policyPool = policyPool_;
     _expirationPeriod = expirationPeriod;
     _scaleFactor = WadRayMath.ray();
     _lastScaleUpdate = uint40(block.timestamp);
@@ -135,11 +114,7 @@ contract EToken is
     _poolLoanInterestRate = poolLoanInterestRate_;
     _poolLoanScale = WadRayMath.ray();
     _poolLoanLastUpdate = uint40(block.timestamp);
-    _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
   }
-
-  // solhint-disable-next-line no-empty-blocks
-  function _authorizeUpgrade(address) internal override onlyRole(UPGRADER_ROLE) {}
 
   /*** BEGIN ERC20 methods - mainly copied from OpenZeppelin but changes in events and scaledAmount */
 
@@ -173,34 +148,6 @@ contract EToken is
    */
   function decimals() public view virtual returns (uint8) {
     return 18;
-  }
-
-  /**
-   * @dev Pauses all token transfers.
-   *
-   * See {ERC20Pausable} and {Pausable-_pause}.
-   *
-   * Requirements:
-   *
-   * - the caller must have the `PAUSER_ROLE`.
-   */
-  function pause() public virtual {
-    require(hasRole(PAUSER_ROLE, _msgSender()), "EToken: must have pauser role to pause");
-    _pause();
-  }
-
-  /**
-   * @dev Unpauses all token transfers.
-   *
-   * See {ERC20Pausable} and {Pausable-_unpause}.
-   *
-   * Requirements:
-   *
-   * - the caller must have the `PAUSER_ROLE`.
-   */
-  function unpause() public virtual {
-    require(hasRole(PAUSER_ROLE, _msgSender()), "EToken: must have pauser role to unpause");
-    _unpause();
   }
 
   /**
@@ -477,10 +424,6 @@ contract EToken is
       );
   }
 
-  function policyPool() public view override returns (IPolicyPool) {
-    return _policyPool;
-  }
-
   function getCurrentScale(bool updated) public view returns (uint256) {
     if (updated) return _calculateCurrentScale();
     else return _scaleFactor;
@@ -680,16 +623,16 @@ contract EToken is
     return _poolLoanInterestRate;
   }
 
-  function setPoolLoanInterestRate(uint256 newRate) external onlyRole(SET_LOAN_RATE_ROLE) {
+  function setPoolLoanInterestRate(uint256 newRate) external onlyPoolRole(LEVEL2_ROLE) {
     _updatePoolLoanScale();
     _poolLoanInterestRate = newRate;
   }
 
-  function setLiquidityRequirement(uint256 newRate) external onlyRole(SET_LIQ_PARAMS_ROLE) {
+  function setLiquidityRequirement(uint256 newRate) external onlyPoolRole(LEVEL2_ROLE) {
     _liquidityRequirement = newRate;
   }
 
-  function setMaxUtilizationRate(uint256 newRate) external onlyRole(SET_LIQ_PARAMS_ROLE) {
+  function setMaxUtilizationRate(uint256 newRate) external onlyPoolRole(LEVEL2_ROLE) {
     _maxUtilizationRate = newRate;
   }
 

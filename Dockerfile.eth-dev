@@ -7,8 +7,7 @@ RUN pip install --no-cache-dir m9g \
                                environs
 
 # Installs some utils for debugging
-ARG DEV_ENV="0"
-RUN if [ $DEV_ENV -ne 0 ]; then pip install ipdb ipython rpdb colorama responses pytest pytest-cov; fi
+RUN pip install ipdb ipython rpdb colorama responses pytest pytest-cov
 
 RUN pip install -e "git+https://github.com/gnarvaja/mythril.git#egg=mythril"
 

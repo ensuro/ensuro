@@ -2,9 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {WadRayMath} from "./WadRayMath.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
 import {IRiskModule} from "../interfaces/IRiskModule.sol";
@@ -15,24 +13,12 @@ import {Policy} from "./Policy.sol";
  * @dev Risk Module that keeps the configuration and is responsible for pricing and policy resolution
  * @author Ensuro
  */
-abstract contract RiskModule is
-  IRiskModule,
-  UUPSUpgradeable,
-  AccessControlUpgradeable,
-  PausableUpgradeable,
-  PolicyPoolComponent
-{
+abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoolComponent {
   using Policy for Policy.PolicyData;
   using WadRayMath for uint256;
 
-  // For parameters that can be changed by Ensuro
-  bytes32 public constant ENSURO_DAO_ROLE = keccak256("ENSURO_DAO_ROLE");
-  bytes32 public constant LEVEL2_ROLE = keccak256("LEVEL2_ROLE");
   // For parameters that can be changed by the risk module provider
   bytes32 public constant RM_PROVIDER_ROLE = keccak256("RM_PROVIDER_ROLE");
-
-  bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
-  bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
 
   string private _name;
   uint256 internal _scrPercentage; // in ray - Solvency Capital Requirement percentage, to calculate
@@ -81,8 +67,6 @@ abstract contract RiskModule is
     uint256 sharedCoverageMinPercentage_
   ) internal initializer {
     __AccessControl_init();
-    __Pausable_init();
-    __UUPSUpgradeable_init();
     __PolicyPoolComponent_init(policyPool_);
     __RiskModule_init_unchained(
       name_,
@@ -122,9 +106,6 @@ abstract contract RiskModule is
     _sharedCoverageScr = 0;
     _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
   }
-
-  // solhint-disable-next-line no-empty-blocks
-  function _authorizeUpgrade(address) internal override onlyPoolRole(UPGRADER_ROLE) {}
 
   function name() public view override returns (string memory) {
     return _name;
