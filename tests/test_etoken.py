@@ -1,6 +1,6 @@
 """Unitary tests for eToken contract"""
 
-from functools import partial
+from functools import partial, wraps
 from collections import namedtuple
 import pytest
 from prototype.contracts import RevertError
@@ -64,6 +64,17 @@ def test_only_policy_pool_validation(tenv):
         etk.unlock_scr(policy, policy.scr)
 
 
+def skip_if_coverage_activated(f):
+    @wraps(f)
+    def wrapped(tenv, *args, **kwargs):
+        from brownie._config import CONFIG
+        if CONFIG.argv.get("coverage", False) and tenv.kind == "ethereum":
+            return
+        return f(tenv, *args, **kwargs)
+    return wrapped
+
+
+@skip_if_coverage_activated
 def test_deposit_withdraw(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
     with etk.thru_policy_pool():
@@ -82,6 +93,7 @@ def test_deposit_withdraw(tenv):
         assert etk.withdraw("LP1", None) == _W(0)
 
 
+@skip_if_coverage_activated
 def test_lock_unlock_scr(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
     with etk.thru_policy_pool():
@@ -114,6 +126,7 @@ def test_lock_unlock_scr(tenv):
     etk.balance_of("LP1").assert_equal(_W(0))
 
 
+@skip_if_coverage_activated
 def test_etoken_erc20(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
     with etk.thru_policy_pool():
@@ -160,6 +173,7 @@ def test_etoken_erc20(tenv):
         etk.withdraw("LP2", None).assert_equal(expected_balance // _W(2) - _W(100))
 
 
+@skip_if_coverage_activated
 def test_multiple_policies(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
     with etk.thru_policy_pool():
@@ -216,6 +230,7 @@ def test_multiple_policies(tenv):
     etk.total_supply().assert_equal(expected_balance)
 
 
+@skip_if_coverage_activated
 def test_multiple_lps(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
     with etk.thru_policy_pool():
@@ -251,6 +266,7 @@ def test_multiple_lps(tenv):
         etk.withdraw("LP2", None).assert_equal(lp2_balance + _W("0.06"))
 
 
+@skip_if_coverage_activated
 def test_lock_scr_validation(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
     policy = tenv.policy_factory(scr=_W(600), interest_rate=_R("0.0365"),
@@ -264,6 +280,7 @@ def test_lock_scr_validation(tenv):
             etk.lock_scr(policy, policy.scr)
 
 
+@skip_if_coverage_activated
 def test_accepts_policy(tenv):
     etk_week = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
     etk_year = tenv.etoken_class(name="eUSD1YEAR", expiration_period=365 * DAY)
@@ -284,6 +301,7 @@ def test_accepts_policy(tenv):
     assert etk_year.accepts(policy_10_day)
 
 
+@skip_if_coverage_activated
 def test_pool_loan(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK,
                             pool_loan_interest_rate=_R("0.073"))
@@ -338,6 +356,7 @@ def test_pool_loan(tenv):
         etk.get_pool_loan().assert_equal(_W(0))
 
 
+@skip_if_coverage_activated
 def test_asset_and_discrete_earnings(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
 
@@ -391,6 +410,7 @@ def test_name_and_others(tenv):
     assert etk.decimals == 18
 
 
+@skip_if_coverage_activated
 def test_max_utilization_rate(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK, max_utilization_rate=_R("0.9"))
     assert etk.max_utilization_rate == _R("0.9")
