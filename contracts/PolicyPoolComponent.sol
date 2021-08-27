@@ -28,7 +28,11 @@ abstract contract PolicyPoolComponent is
   bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
   bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
 
+  uint40 public constant TWEAK_EXPIRATION = 86400; // 24 * 3600
+
   IPolicyPool internal _policyPool;
+  uint40 internal _lastTweakTimestamp;
+  uint56 internal _lastTweakActions; // bitwise map of applied actions
 
   modifier onlyPoolRole3(
     bytes32 role1,
@@ -82,8 +86,22 @@ abstract contract PolicyPoolComponent is
     return _policyPool.config().hasRole(role, msg.sender);
   }
 
-  // solhint-disable-next-line no-empty-blocks
+  function lastTweak() external view returns (uint40, uint56) {
+    return (_lastTweakTimestamp, _lastTweakActions);
+  }
+
   function _registerTweak(IPolicyPoolConfig.GovernanceActions action) internal {
-    // TODO: register tweak to avoid repeated tweaks in short time
+    uint56 actionBitMap = uint56(1 << (uint8(action) - 1));
+    if ((uint40(block.timestamp) - _lastTweakTimestamp) > TWEAK_EXPIRATION) {
+      _lastTweakTimestamp = uint40(block.timestamp);
+      _lastTweakActions = actionBitMap;
+    } else {
+      if ((actionBitMap & _lastTweakActions) == 0) {
+        _lastTweakActions |= actionBitMap;
+        _lastTweakTimestamp = uint40(block.timestamp); // Updates the expiration
+      } else {
+        revert("You already tweaked this parameter recently. Wait before tweaking again");
+      }
+    }
   }
 }

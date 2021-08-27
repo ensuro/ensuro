@@ -32,11 +32,11 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
   uint256 internal _scrLimit; // in wad - Max SCR to be allocated to this module
   uint256 internal _totalScr; // in wad - Current SCR allocated to this module
 
-  address internal _wallet; // Address of the RiskModule provider
   uint256 internal _sharedCoverageMinPercentage; // in ray - minimal % of SCR that must be covered by the RM
   uint256 internal _sharedCoveragePercentage; // in ray - current % of SCR that will be covered by the RM.
   // Always >= _sharedCoverageMinPercentage
   uint256 internal _sharedCoverageScr; // in wad - Current SCR covered by the Risk Module
+  address internal _wallet; // Address of the RiskModule provider
 
   event RiskModuleGovernanceAction(
     IRiskModule indexed riskModule,

@@ -7,7 +7,7 @@ from prototype.contracts import RevertError, Contract, IntField, ERC20Token, Con
 from prototype import ensuro
 from prototype.wadray import _W, _R, Wad
 from . import wrappers
-from prototype.utils import WEEK
+from prototype.utils import WEEK, DAY
 
 TEnv = namedtuple("TEnv", "time_control currency rm_class policy_factory pool_config kind")
 
@@ -207,6 +207,8 @@ def test_getset_rm_parameters_tweaks(tenv):
             setattr(rm, attr_name, attr_value)
         assert getattr(rm, attr_name) == attr_value
 
+    tenv.time_control.fast_forward(WEEK)  # To avoid repeated tweaks
+
     # Set total liquidity
     rm.policy_pool.contract.setTotalETokenSupply(_W(1e7))
     Wad(rm.policy_pool.contract.totalETokenSupply()).assert_equal(_W(1e7))
@@ -229,6 +231,38 @@ def test_getset_rm_parameters_tweaks(tenv):
     with rm.as_("L1_USER"):
         rm.scr_limit = _W(4e6)
         assert rm.scr_limit == _W(4e6)
+
+
+def test_avoid_repeated_tweaks(tenv):
+    if tenv.kind != "ethereum":
+        return
+    rm = tenv.rm_class(
+        name="Roulette", scr_percentage=_R(1), ensuro_fee=_R("0.03"),
+        scr_interest_rate=_R("0.02"),
+        max_scr_per_policy=_W(1000), scr_limit=_W(1e6),  # 1m
+        wallet="CASINO", shared_coverage_min_percentage=_R("0.5")
+    )
+    tenv.pool_config.grant_role("LEVEL3_ROLE", "L3_USER")
+
+    with rm.as_("L3_USER"):
+        rm.scr_percentage = _R("0.95")
+        assert rm.scr_percentage == _R("0.95")
+        rm.scr_interest_rate = _R("0.021")
+        assert rm.scr_interest_rate == _R("0.021")
+
+    with rm.as_("L3_USER"), pytest.raises(RevertError, match="You already tweaked this parameter recently"):
+        rm.scr_percentage = _R("0.93")
+
+    with rm.as_("L3_USER"), pytest.raises(RevertError, match="You already tweaked this parameter recently"):
+        rm.scr_interest_rate = _R("0.022")
+
+    tenv.time_control.fast_forward(2 * DAY)
+
+    with rm.as_("L3_USER"):
+        rm.scr_percentage = _R("0.96")
+        assert rm.scr_percentage == _R("0.96")
+        rm.scr_interest_rate = _R("0.022")
+        assert rm.scr_interest_rate == _R("0.022")
 
 
 def test_new_policy(tenv):
