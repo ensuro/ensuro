@@ -48,12 +48,6 @@ contract EToken is PolicyPoolComponent, IERC20, IEToken {
   event PoolLoan(uint256 value);
   event PoolLoanRepaid(uint256 value);
 
-  event ETokenGovernanceAction(
-    IEToken indexed eToken,
-    IPolicyPoolConfig.GovernanceActions action,
-    uint256 value
-  );
-
   modifier onlyPolicyPool {
     require(_msgSender() == address(_policyPool), "The caller must be the PolicyPool");
     _;
@@ -647,15 +641,6 @@ contract EToken is PolicyPoolComponent, IERC20, IEToken {
 
   function poolLoanInterestRate() public view returns (uint256) {
     return _poolLoanInterestRate;
-  }
-
-  function _parameterChanged(
-    IPolicyPoolConfig.GovernanceActions action,
-    uint256 value,
-    bool tweak
-  ) internal {
-    if (tweak) _registerTweak(action);
-    emit ETokenGovernanceAction(this, action, value);
   }
 
   function setPoolLoanInterestRate(uint256 newRate)

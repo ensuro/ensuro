@@ -38,12 +38,6 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
   uint256 internal _sharedCoverageScr; // in wad - Current SCR covered by the Risk Module
   address internal _wallet; // Address of the RiskModule provider
 
-  event RiskModuleGovernanceAction(
-    IRiskModule indexed riskModule,
-    IPolicyPoolConfig.GovernanceActions action,
-    uint256 value
-  );
-
   modifier validateParamsAfterChange() {
     _;
     _validateParameters();
@@ -190,15 +184,6 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
 
   function wallet() public view override returns (address) {
     return _wallet;
-  }
-
-  function _parameterChanged(
-    IPolicyPoolConfig.GovernanceActions action,
-    uint256 value,
-    bool tweak
-  ) internal {
-    if (tweak) _registerTweak(action);
-    emit RiskModuleGovernanceAction(this, action, value);
   }
 
   function setScrPercentage(uint256 newScrPercentage)

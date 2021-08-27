@@ -37,6 +37,11 @@ abstract contract PolicyPoolComponent is
   uint40 internal _lastTweakTimestamp;
   uint56 internal _lastTweakActions; // bitwise map of applied actions
 
+  event GovernanceAction(
+    IPolicyPoolConfig.GovernanceActions indexed action,
+    uint256 value
+  );
+
   modifier onlyPoolRole3(
     bytes32 role1,
     bytes32 role2,
@@ -117,6 +122,15 @@ abstract contract PolicyPoolComponent is
     } else {
       return (WadRayMath.WAD - newValue.wadDiv(oldValue)) <= maxTweak;
     }
+  }
+
+  function _parameterChanged(
+    IPolicyPoolConfig.GovernanceActions action,
+    uint256 value,
+    bool tweak
+  ) internal {
+    if (tweak) _registerTweak(action);
+    emit GovernanceAction(action, value);
   }
 
   function lastTweak() external view returns (uint40, uint56) {
