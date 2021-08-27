@@ -29,6 +29,10 @@ interface IPolicyPoolConfig is IAccessControlUpgradeable {
     setSharedCoverageMinPercentage,
     setSharedCoveragePercentage,
     setWallet,
+    // EToken Governance Actions
+    setLiquidityRequirement,
+    setMaxUtilizationRate,
+    setPoolLoanInterestRate,
     last
   }
 

@@ -42,19 +42,19 @@ contract PolicyPoolMock is IPolicyPool {
     revert("Not Implemented");
   }
 
-  function getInvestable() external view override returns (uint256) {
+  function getInvestable() external pure override returns (uint256) {
     return 0;
   }
 
-  function getETokenCount() external view override returns (uint256) {
+  function getETokenCount() external pure override returns (uint256) {
     return 0;
   }
 
-  function getETokenAt(uint256) external view override returns (IEToken) {
+  function getETokenAt(uint256) external pure override returns (IEToken) {
     return IEToken(address(0));
   }
 
-  function assetEarnings(uint256, bool) external override {
+  function assetEarnings(uint256, bool) external pure override {
     revert("Not Implemented");
   }
 
@@ -84,7 +84,7 @@ contract PolicyPoolMock is IPolicyPool {
     emit PolicyResolved(IRiskModule(msg.sender), policyId, payout);
   }
 
-  function receiveGrant(uint256) external override {
+  function receiveGrant(uint256) external pure override {
     revert("Not Implemented");
   }
 
@@ -96,11 +96,11 @@ contract PolicyPoolMock is IPolicyPool {
     return _resolvePolicy(policyId, customerWon ? policies[policyId].payout : 0);
   }
 
-  function deposit(IEToken, uint256) external override {
+  function deposit(IEToken, uint256) external pure override {
     revert("Not Implemented deposit");
   }
 
-  function withdraw(IEToken, uint256) external override returns (uint256) {
+  function withdraw(IEToken, uint256) external pure override returns (uint256) {
     revert("Not Implemented withdraw");
   }
 

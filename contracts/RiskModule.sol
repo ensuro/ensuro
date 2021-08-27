@@ -192,36 +192,6 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     return _wallet;
   }
 
-  function _isTweakRay(
-    uint256 oldValue,
-    uint256 newValue,
-    uint256 maxTweak
-  ) internal pure returns (bool) {
-    if (oldValue == newValue) return true;
-    if (oldValue == 0) return maxTweak >= WadRayMath.RAY;
-    if (newValue == 0) return false;
-    if (oldValue < newValue) {
-      return (newValue.rayDiv(oldValue) - WadRayMath.RAY) <= maxTweak;
-    } else {
-      return (WadRayMath.RAY - newValue.rayDiv(oldValue)) <= maxTweak;
-    }
-  }
-
-  function _isTweakWad(
-    uint256 oldValue,
-    uint256 newValue,
-    uint256 maxTweak
-  ) internal pure returns (bool) {
-    if (oldValue == newValue) return true;
-    if (oldValue == 0) return maxTweak >= WadRayMath.WAD;
-    if (newValue == 0) return false;
-    if (oldValue < newValue) {
-      return (newValue.wadDiv(oldValue) - WadRayMath.WAD) <= maxTweak;
-    } else {
-      return (WadRayMath.WAD - newValue.wadDiv(oldValue)) <= maxTweak;
-    }
-  }
-
   function _parameterChanged(
     IPolicyPoolConfig.GovernanceActions action,
     uint256 value,

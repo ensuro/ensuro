@@ -7,6 +7,7 @@ import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {IPolicyPoolComponent} from "../interfaces/IPolicyPoolComponent.sol";
 import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
+import {WadRayMath} from "./WadRayMath.sol";
 
 /**
  * @title Base class for PolicyPool components
@@ -18,6 +19,8 @@ abstract contract PolicyPoolComponent is
   PausableUpgradeable,
   IPolicyPoolComponent
 {
+  using WadRayMath for uint256;
+
   bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
   bytes32 public constant LEVEL1_ROLE = keccak256("LEVEL1_ROLE");
   bytes32 public constant LEVEL2_ROLE = keccak256("LEVEL2_ROLE");
@@ -84,6 +87,36 @@ abstract contract PolicyPoolComponent is
 
   function hasPoolRole(bytes32 role) internal view returns (bool) {
     return _policyPool.config().hasRole(role, msg.sender);
+  }
+
+  function _isTweakRay(
+    uint256 oldValue,
+    uint256 newValue,
+    uint256 maxTweak
+  ) internal pure returns (bool) {
+    if (oldValue == newValue) return true;
+    if (oldValue == 0) return maxTweak >= WadRayMath.RAY;
+    if (newValue == 0) return false;
+    if (oldValue < newValue) {
+      return (newValue.rayDiv(oldValue) - WadRayMath.RAY) <= maxTweak;
+    } else {
+      return (WadRayMath.RAY - newValue.rayDiv(oldValue)) <= maxTweak;
+    }
+  }
+
+  function _isTweakWad(
+    uint256 oldValue,
+    uint256 newValue,
+    uint256 maxTweak
+  ) internal pure returns (bool) {
+    if (oldValue == newValue) return true;
+    if (oldValue == 0) return maxTweak >= WadRayMath.WAD;
+    if (newValue == 0) return false;
+    if (oldValue < newValue) {
+      return (newValue.wadDiv(oldValue) - WadRayMath.WAD) <= maxTweak;
+    } else {
+      return (WadRayMath.WAD - newValue.wadDiv(oldValue)) <= maxTweak;
+    }
   }
 
   function lastTweak() external view returns (uint40, uint56) {

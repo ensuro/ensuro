@@ -6,6 +6,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
 import {IEToken} from "../interfaces/IEToken.sol";
+import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
 import {WadRayMath} from "./WadRayMath.sol";
 
 /**
@@ -47,6 +48,12 @@ contract EToken is PolicyPoolComponent, IERC20, IEToken {
   event PoolLoan(uint256 value);
   event PoolLoanRepaid(uint256 value);
 
+  event ETokenGovernanceAction(
+    IEToken indexed eToken,
+    IPolicyPoolConfig.GovernanceActions action,
+    uint256 value
+  );
+
   modifier onlyPolicyPool {
     require(_msgSender() == address(_policyPool), "The caller must be the PolicyPool");
     _;
@@ -58,6 +65,11 @@ contract EToken is PolicyPoolComponent, IERC20, IEToken {
       "The caller must be the PolicyPool's AssetManager"
     );
     _;
+  }
+
+  modifier validateParamsAfterChange() {
+    _;
+    _validateParameters();
   }
 
   /**
@@ -114,6 +126,20 @@ contract EToken is PolicyPoolComponent, IERC20, IEToken {
     _poolLoanInterestRate = poolLoanInterestRate_;
     _poolLoanScale = WadRayMath.ray();
     _poolLoanLastUpdate = uint40(block.timestamp);
+    _validateParameters();
+  }
+
+  // runs validation on EToken parameters
+  function _validateParameters() internal view {
+    require(
+      _liquidityRequirement >= 8e26 && _liquidityRequirement <= 13e26,
+      "Validation: liquidityRequirement must be [0.8, 1.3]"
+    );
+    require(
+      _maxUtilizationRate >= 5e26 && _maxUtilizationRate <= WadRayMath.RAY,
+      "Validation: maxUtilizationRate must be [0.5, 1]"
+    );
+    require(_poolLoanInterestRate <= 5e26, "Validation: poolLoanInterestRate must be <= 50%");
   }
 
   /*** BEGIN ERC20 methods - mainly copied from OpenZeppelin but changes in events and scaledAmount */
@@ -623,17 +649,56 @@ contract EToken is PolicyPoolComponent, IERC20, IEToken {
     return _poolLoanInterestRate;
   }
 
-  function setPoolLoanInterestRate(uint256 newRate) external onlyPoolRole(LEVEL2_ROLE) {
+  function _parameterChanged(
+    IPolicyPoolConfig.GovernanceActions action,
+    uint256 value,
+    bool tweak
+  ) internal {
+    if (tweak) _registerTweak(action);
+    emit ETokenGovernanceAction(this, action, value);
+  }
+
+  function setPoolLoanInterestRate(uint256 newRate)
+    external
+    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
+    validateParamsAfterChange
+  {
+    bool tweak = !hasPoolRole(LEVEL2_ROLE);
+    require(
+      !tweak || _isTweakRay(_poolLoanInterestRate, newRate, 3e26),
+      "Tweak exceeded: poolLoanInterestRate tweaks only up to 30%"
+    );
     _updatePoolLoanScale();
     _poolLoanInterestRate = newRate;
+    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setPoolLoanInterestRate, newRate, tweak);
   }
 
-  function setLiquidityRequirement(uint256 newRate) external onlyPoolRole(LEVEL2_ROLE) {
+  function setLiquidityRequirement(uint256 newRate)
+    external
+    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
+    validateParamsAfterChange
+  {
+    bool tweak = !hasPoolRole(LEVEL2_ROLE);
+    require(
+      !tweak || _isTweakRay(_liquidityRequirement, newRate, 1e26),
+      "Tweak exceeded: liquidityRequirement tweaks only up to 10%"
+    );
     _liquidityRequirement = newRate;
+    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setLiquidityRequirement, newRate, tweak);
   }
 
-  function setMaxUtilizationRate(uint256 newRate) external onlyPoolRole(LEVEL2_ROLE) {
+  function setMaxUtilizationRate(uint256 newRate)
+    external
+    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
+    validateParamsAfterChange
+  {
+    bool tweak = !hasPoolRole(LEVEL2_ROLE);
+    require(
+      !tweak || _isTweakRay(_maxUtilizationRate, newRate, 3e26),
+      "Tweak exceeded: maxUtilizationRate tweaks only up to 30%"
+    );
     _maxUtilizationRate = newRate;
+    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setMaxUtilizationRate, newRate, tweak);
   }
 
   function getInvestable() public view virtual override returns (uint256) {
