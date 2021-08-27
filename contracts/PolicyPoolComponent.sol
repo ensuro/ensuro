@@ -37,10 +37,7 @@ abstract contract PolicyPoolComponent is
   uint40 internal _lastTweakTimestamp;
   uint56 internal _lastTweakActions; // bitwise map of applied actions
 
-  event GovernanceAction(
-    IPolicyPoolConfig.GovernanceActions indexed action,
-    uint256 value
-  );
+  event GovernanceAction(IPolicyPoolConfig.GovernanceActions indexed action, uint256 value);
 
   modifier onlyPoolRole3(
     bytes32 role1,
