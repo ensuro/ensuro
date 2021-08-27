@@ -27,7 +27,7 @@ contract PolicyPoolMock is IPolicyPool {
     policyCount = 0;
     _config = config_;
     _config.connect();
-    _totalETokenSupply = 1e40;  // 1e22 = a lot...
+    _totalETokenSupply = 1e40; // 1e22 = a lot...
   }
 
   function currency() external view override returns (IERC20) {

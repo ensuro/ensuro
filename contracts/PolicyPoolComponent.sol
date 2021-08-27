@@ -30,7 +30,11 @@ abstract contract PolicyPoolComponent is
 
   IPolicyPool internal _policyPool;
 
-  modifier onlyPoolRole3(bytes32 role1, bytes32 role2, bytes32 role3) {
+  modifier onlyPoolRole3(
+    bytes32 role1,
+    bytes32 role2,
+    bytes32 role3
+  ) {
     if (!hasPoolRole(role1)) {
       _policyPool.config().checkRole2(role2, role3, msg.sender);
     }
@@ -78,6 +82,7 @@ abstract contract PolicyPoolComponent is
     return _policyPool.config().hasRole(role, msg.sender);
   }
 
+  // solhint-disable-next-line no-empty-blocks
   function _registerTweak(IPolicyPoolConfig.GovernanceActions action) internal {
     // TODO: register tweak to avoid repeated tweaks in short time
   }
