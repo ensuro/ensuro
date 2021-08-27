@@ -5,6 +5,7 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {IPolicyPoolComponent} from "../interfaces/IPolicyPoolComponent.sol";
+import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 
 /**
@@ -28,6 +29,13 @@ abstract contract PolicyPoolComponent is
   bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
 
   IPolicyPool internal _policyPool;
+
+  modifier onlyPoolRole3(bytes32 role1, bytes32 role2, bytes32 role3) {
+    if (!hasPoolRole(role1)) {
+      _policyPool.config().checkRole2(role2, role3, msg.sender);
+    }
+    _;
+  }
 
   modifier onlyPoolRole2(bytes32 role1, bytes32 role2) {
     _policyPool.config().checkRole2(role1, role2, msg.sender);
@@ -64,5 +72,13 @@ abstract contract PolicyPoolComponent is
 
   function policyPool() public view override returns (IPolicyPool) {
     return _policyPool;
+  }
+
+  function hasPoolRole(bytes32 role) internal view returns (bool) {
+    return _policyPool.config().hasRole(role, msg.sender);
+  }
+
+  function _registerTweak(IPolicyPoolConfig.GovernanceActions action) internal {
+    // TODO: register tweak to avoid repeated tweaks in short time
   }
 }

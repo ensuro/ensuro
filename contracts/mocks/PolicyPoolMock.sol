@@ -16,6 +16,7 @@ contract PolicyPoolMock is IPolicyPool {
   IPolicyPoolConfig internal _config;
 
   uint256 public policyCount;
+  uint256 internal _totalETokenSupply;
   mapping(uint256 => Policy.PolicyData) internal policies;
 
   event NewPolicy(IRiskModule indexed riskModule, uint256 policyId);
@@ -26,6 +27,7 @@ contract PolicyPoolMock is IPolicyPool {
     policyCount = 0;
     _config = config_;
     _config.connect();
+    _totalETokenSupply = 1e40;  // 1e22 = a lot...
   }
 
   function currency() external view override returns (IERC20) {
@@ -102,8 +104,12 @@ contract PolicyPoolMock is IPolicyPool {
     revert("Not Implemented withdraw");
   }
 
+  function setTotalETokenSupply(uint256 value) external {
+    _totalETokenSupply = value;
+  }
+
   function totalETokenSupply() external view override returns (uint256) {
-    revert("Not Implemented totalETokenSupply");
+    return _totalETokenSupply;
   }
 }
 

@@ -36,21 +36,12 @@ contract PolicyPoolConfig is
   // Specific actions roles
   bytes32 public constant REBALANCE_ROLE = keccak256("REBALANCE_ROLE");
 
-  enum RiskModuleStatus {
-    inactive, // newPolicy and resolvePolicy rejected
-    active, // newPolicy and resolvePolicy accepted
-    deprecated, // newPolicy rejected, resolvePolicy accepted
-    suspended // newPolicy and resolvePolicy rejected (temporarily)
-  }
-
   address internal _treasury; // address of Ensuro treasury
   IAssetManager internal _assetManager; // asset manager
   IInsolvencyHook internal _insolvencyHook; // Contract that handles insolvency situations
   IPolicyPool internal _policyPool;
 
   mapping(IRiskModule => RiskModuleStatus) private _riskModules;
-
-  event RiskModuleStatusChanged(IRiskModule indexed riskModule, RiskModuleStatus newStatus);
 
   modifier onlyRole2(bytes32 role1, bytes32 role2) {
     if (!hasRole(role1, _msgSender())) _checkRole(role2, _msgSender());

@@ -336,7 +336,7 @@ def test_walkthrough(tenv):
     rm = pool.config.risk_modules["Roulette"]
     rm.grant_role("PRICER_ROLE", rm.owner)
     rm.grant_role("RESOLVER_ROLE", rm.owner)
-    pool.config.grant_role("ENSURO_DAO_ROLE", rm.owner)  # For setting scr_interest_rate
+    pool.config.grant_role("LEVEL2_ROLE", rm.owner)  # For setting scr_interest_rate
 
     with pytest.raises(RevertError, match="transfer amount exceeds allowance"):
         pool.deposit("eUSD1YEAR", "LP1", _W(1000))

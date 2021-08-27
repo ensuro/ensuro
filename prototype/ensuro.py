@@ -51,13 +51,13 @@ class RiskModule(AccessControlContract):
     }
 
     pool_set_attr_roles = {
-        "moc": "ENSURO_DAO_ROLE",
-        "scr_percentage": "ENSURO_DAO_ROLE",
-        "ensuro_fee": "ENSURO_DAO_ROLE",
-        "scr_interest_rate": "ENSURO_DAO_ROLE",
-        "max_scr_per_policy": "ENSURO_DAO_ROLE",
-        "scr_limit": "ENSURO_DAO_ROLE",
-        "shared_coverage_min_percentage": "ENSURO_DAO_ROLE",
+        "moc": "LEVEL2_ROLE",
+        "scr_percentage": "LEVEL2_ROLE",
+        "ensuro_fee": "LEVEL2_ROLE",
+        "scr_interest_rate": "LEVEL2_ROLE",
+        "max_scr_per_policy": "LEVEL2_ROLE",
+        "scr_limit": "LEVEL2_ROLE",
+        "shared_coverage_min_percentage": "LEVEL2_ROLE",
     }
 
     def __init__(self, **kwargs):

@@ -12,6 +12,35 @@ import {IRiskModule} from "./IRiskModule.sol";
  * @author Ensuro
  */
 interface IPolicyPoolConfig is IAccessControlUpgradeable {
+  enum GovernanceActions {
+    none,
+    setTreasury, // Changes PolicyPool treasury address
+    setAssetManager, // Changes PolicyPool AssetManager
+    setInsolvencyHook, // Changes PolicyPool InsolvencyHook
+    addRiskModule,
+    removeRiskModule,
+    // RiskModule Governance Actions
+    setScrPercentage,
+    setMoc,
+    setScrInterestRate,
+    setEnsuroFee,
+    setMaxScrPerPolicy,
+    setScrLimit,
+    setSharedCoverageMinPercentage,
+    setSharedCoveragePercentage,
+    setWallet,
+    last
+  }
+
+  enum RiskModuleStatus {
+    inactive, // newPolicy and resolvePolicy rejected
+    active, // newPolicy and resolvePolicy accepted
+    deprecated, // newPolicy rejected, resolvePolicy accepted
+    suspended // newPolicy and resolvePolicy rejected (temporarily)
+  }
+
+  event RiskModuleStatusChanged(IRiskModule indexed riskModule, RiskModuleStatus newStatus);
+
   function checkRole(bytes32 role, address account) external view;
 
   function checkRole2(
