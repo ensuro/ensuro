@@ -33,9 +33,6 @@ contract PolicyPoolConfig is
 
   uint256 public constant L2_RM_LIMIT = 5e16; // 5% in WAD
 
-  // Specific actions roles
-  bytes32 public constant REBALANCE_ROLE = keccak256("REBALANCE_ROLE");
-
   address internal _treasury; // address of Ensuro treasury
   IAssetManager internal _assetManager; // asset manager
   IInsolvencyHook internal _insolvencyHook; // Contract that handles insolvency situations

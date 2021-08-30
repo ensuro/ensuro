@@ -2,7 +2,6 @@
 pragma solidity ^0.8.0;
 
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {IPolicyPoolComponent} from "../interfaces/IPolicyPoolComponent.sol";
 import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
@@ -25,9 +24,6 @@ abstract contract PolicyPoolComponent is
   bytes32 public constant LEVEL1_ROLE = keccak256("LEVEL1_ROLE");
   bytes32 public constant LEVEL2_ROLE = keccak256("LEVEL2_ROLE");
   bytes32 public constant LEVEL3_ROLE = keccak256("LEVEL3_ROLE");
-
-  bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
-  bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
 
   uint40 public constant TWEAK_EXPIRATION = 1 days;
 
