@@ -12,13 +12,23 @@ On the policy side, the policies are injected into the protocol by *Risk Modules
 ## Contracts
 <dl>
 <dt>PolicyPool</dt>
-<dd>This is the main contract that keeps track of active policies and manages the assets. It has the methods for LP to deposit/withdraw. The contract follow ERC721 standard to control the ownership of the policies (each policy is an NFT). The PolicyPool is connected to a set of eTokens and RiskModules.</dd>
+<dd>This is the main contract that keeps track of active policies and manages the assets. It has the methods for LP to deposit/withdraw. The PolicyPool is connected to a set of eTokens and RiskModules.</dd>
+</dl>
+
+<dl>
+<dt>PolicyNFT</dt>
+<dd>This contract follows ERC721 standard to control the ownership of the policies (each policy is an NFT). Policies are minted by PolicyPool.</dd>
+</dl>
+
+<dl>
+<dt>PolicyPoolConfig</dt>
+<dd>This contract holds some configurable components of the protocol such as treasury address, InsolvencyHook, AssetManager and the installed risk modules. Also this module holds the access control permissions for the governance actions.</dd>
 </dl>
 
 <dl>
 <dt>EToken</dt>
 <dd>This is a ERC20 compatible contract that represents the capital of each liquidity provider in a given pool. The valuation is one-to-one with the underlyng stablecoin. The view `scr()` returns the amount of capital that's locked backing up policies. For this capital locked, the pool receives an interest (`scrInterestRate()` / `tokenInterestRate()`) that is continously accrued in the balance of eToken holders.</dd>
-  </dl>
+</dl>
 
 <dl>
 <dt>RiskModule</dt>
@@ -26,9 +36,19 @@ On the policy side, the policies are injected into the protocol by *Risk Modules
   </dl>
 
 <dl>
+<dt>AssetManager</dt>
+<dd>This component of the protocol is the one responsible for managing the assets and getting additional interest reinvesting the assets. Different implementations of the asset management can be done, depeding on the strategy to be applied. In the base class, has different liquidity parameters that affect how much liquidity to keep in the PolicyPool to avoid continous invest/deinvest operations.</dd>
+</dl>
+
+<dl>
+<dt>InsolvencyHook</dt>
+<dd>This component of the protocol is the one responsible for handling situations where there is not enough money in the protocol to cover losses (something unluckily possible since we aren't fully collaterized). Possible implementations of this are trigger of reinsurance (excess loss) policy from another company, sell governance tokens or take a loan.</dd>
+</dl>
+
+<dl>
 <dt>Policy</dt>
 <dd>This is a library with the struct and the calculation of relevant attributes of a policy. It includes the logic around the distribution of the premium, calculation of SCR, shared coverage and other behaviour of the protocol.</dd>
-  </dl>
+</dl>
 
 
 ## Development
@@ -45,7 +65,7 @@ Also the docker container is prepared to run [hardhat](https://hardhat.org/). Th
 ## Contributing
 
 Thank you for your interest in Ensuro! Head over to our [Contributing Guidelines](CONTRIBUTING.md) for instructions on how to sign our Contributors Agreement and get started with
-Cartesi!
+Ensuro!
 
 Please note we have a [Code of Conduct](CODE_OF_CONDUCT.md), please follow it in all your interactions with the project.
 
