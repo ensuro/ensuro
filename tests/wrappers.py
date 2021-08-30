@@ -46,6 +46,8 @@ class AddressBook:
     def get_account(self, name):
         if isinstance(name, (Account, LocalAccount)):
             return name
+        if isinstance(name, (Contract, ProjectContract)):
+            return name
         if name is None:
             return self.ZERO
         if name not in self.name_to_address:
@@ -238,6 +240,9 @@ class ETHWrapper:
     def connect(cls, contract, owner=None):
         """Connects a wrapper to an existing deployed object"""
         obj = cls.__new__(cls)
+        if isinstance(contract, str):
+            eth_contract = getattr(brownie, cls.eth_contract)
+            contract = Contract.from_abi(cls.eth_contract, contract, eth_contract.abi)
         obj.contract = contract
         obj.owner = owner
         return obj
@@ -371,16 +376,24 @@ class ETokenETH(IERC20):
         liquidity_requirement = _R(liquidity_requirement)
         max_utilization_rate = _R(max_utilization_rate)
         if isinstance(policy_pool, ETHWrapper):
-            self._auto_from = policy_pool.contract.address
-            policy_pool = policy_pool.contract
-        else:  # is just an address - for tests
-            policy_pool = self._get_account(policy_pool)
-            self._auto_from = policy_pool
+            self._policy_pool = policy_pool.contract
+        else:  # is just an address or raw contract - for tests
+            self._policy_pool = self._get_account(policy_pool)
+        self._auto_from = self._get_account("johhdoe")
 
         super().__init__(
-            owner, name, symbol, policy_pool, expiration_period, liquidity_requirement,
+            owner, name, symbol, self._policy_pool, expiration_period, liquidity_requirement,
             max_utilization_rate, pool_loan_interest_rate
         )
+
+    @contextmanager
+    def thru_policy_pool(self):
+        prev_contract = self.contract
+        self.contract = Contract.from_abi(self.eth_contract, self._policy_pool, brownie.EToken.abi)
+        try:
+            yield self
+        finally:
+            self.contract = prev_contract
 
     ocean = MethodAdapter((), "amount", is_property=True)
     ocean_for_new_scr = MethodAdapter((), "amount", is_property=True)
@@ -450,6 +463,13 @@ class ETokenETH(IERC20):
     get_investable = MethodAdapter((), "amount")
 
     get_current_scale = MethodAdapter((("updated", "bool"), ), "ray")
+
+    def grant_role(self, role, user):
+        # EToken doesn't haves grant_role
+        policy_pool = PolicyPool.connect(self._policy_pool)
+        config = policy_pool.config
+        with config.as_(self._auto_from):
+            return config.grant_role(role, user)
 
 
 class Policy:
@@ -561,21 +581,66 @@ class TrustfulRiskModule(RiskModuleETH):
             return None
 
 
+class PolicyPoolConfig(ETHWrapper):
+    eth_contract = "PolicyPoolConfig"
+
+    proxy_kind = "uups"
+
+    def __init__(self, owner, treasury="ENS", asset_manager=None, insolvency_hook=None):
+        treasury = self._get_account(treasury)
+        if asset_manager:
+            self._asset_manager = asset_manager
+        asset_manager = self._get_account(asset_manager)
+        insolvency_hook = self._get_account(insolvency_hook)
+        super().__init__(owner, treasury, asset_manager, insolvency_hook)
+        self._auto_from = self.owner
+        self.risk_modules = {}
+
+    add_risk_module_ = MethodAdapter((("risk_module", "contract"), ))
+
+    def add_risk_module(self, risk_module):
+        self.add_risk_module_(risk_module)
+        self.risk_modules[risk_module.name] = risk_module
+
+    set_asset_manager_ = MethodAdapter((("asset_manager", "contract"), ))
+
+    def set_asset_manager(self, asset_manager):
+        self.set_asset_manager_(asset_manager)
+        self._asset_manager = asset_manager
+
+    @property
+    def asset_manager(self):
+        am = self.contract.assetManager()
+        if getattr(self, "_asset_manager") and self._asset_manager.contract.address == am:
+            return self._asset_manager
+        return BaseAssetManager.connect(am, self.owner)
+
+    set_insolvency_hook_ = MethodAdapter((("insolvency_hook", "contract"), ))
+
+    def set_insolvency_hook(self, insolvency_hook):
+        self.set_insolvency_hook_(insolvency_hook)
+        self._insolvency_hook = insolvency_hook
+
+    @property
+    def insolvency_hook(self):
+        ih = self.contract.insolvencyHook()
+        if getattr(self, "_insolvency_hook") and self._insolvency_hook.contract.address == ih:
+            return self._insolvency_hook
+        return FreeGrantInsolvencyHook.connect(ih, self.owner)
+
+
 class PolicyPool(ETHWrapper):
     eth_contract = "PolicyPool"
 
     proxy_kind = "uups"
 
-    def __init__(self, owner, policy_nft, currency, treasury="ENS", asset_manager=None):
-        treasury = self._get_account(treasury)
-        asset_manager = self._get_account(asset_manager)
+    def __init__(self, config, policy_nft, currency):
+        self._config = config
         self._currency = currency
         self._policy_nft = policy_nft
-        super().__init__(owner, policy_nft.contract, currency.contract,
-                         treasury, asset_manager)
+        super().__init__(config.owner, config.contract, policy_nft.contract, currency.contract)
         self._auto_from = self.owner
         self.etokens = {}
-        self.risk_modules = {}
 
     @property
     def currency(self):
@@ -583,6 +648,13 @@ class PolicyPool(ETHWrapper):
             return self._currency
         else:
             return IERC20.connect(self.contract.currency())
+
+    @property
+    def config(self):
+        if hasattr(self, "_config"):
+            return self._config
+        else:
+            return PolicyPoolConfig.connect(self.contract.config())
 
     @property
     def policy_nft(self):
@@ -604,16 +676,11 @@ class PolicyPool(ETHWrapper):
     active_premiums = MethodAdapter((), "amount", is_property=True)
     active_pure_premiums = MethodAdapter((), "amount", is_property=True)
     borrowed_active_pp = MethodAdapter((), "amount", is_property=True)
-    add_risk_module_ = MethodAdapter((("risk_module", "contract"), ))
     add_etoken_ = MethodAdapter((("etoken", "contract"), ), eth_method="addEToken")
 
     def add_etoken(self, etoken):
         self.add_etoken_(etoken)
         self.etokens[etoken.name] = etoken
-
-    def add_risk_module(self, risk_module):
-        self.add_risk_module_(risk_module)
-        self.risk_modules[risk_module.name] = risk_module
 
     deposit_ = MethodAdapter((("etoken", "contract"), ("provider", "msg.sender"), ("amount", "amount")))
 
@@ -641,32 +708,6 @@ class PolicyPool(ETHWrapper):
     get_policy_fund = MethodAdapter((("policy_id", "int"), ("etoken", "contract")), "amount")
     rebalance_policy = MethodAdapter((("policy_id", "int"), ))
     get_investable = MethodAdapter((), "amount")
-    set_asset_manager_ = MethodAdapter((("asset_manager", "contract"), ))
-
-    def set_asset_manager(self, asset_manager):
-        self.set_asset_manager_(asset_manager)
-        self._asset_manager = asset_manager
-
-    @property
-    def asset_manager(self):
-        am = self.contract.assetManager()
-        if getattr(self, "_asset_manager") and self._asset_manager.contract.address == am:
-            return self._asset_manager
-        return BaseAssetManager.connect(am, self.owner)
-
-    set_insolvency_hook_ = MethodAdapter((("insolvency_hook", "contract"), ))
-
-    def set_insolvency_hook(self, insolvency_hook):
-        self.set_insolvency_hook_(insolvency_hook)
-        self._insolvency_hook = insolvency_hook
-
-    @property
-    def insolvency_hook(self):
-        ih = self.contract.insolvencyHook()
-        if getattr(self, "_insolvency_hook") and self._insolvency_hook.contract.address == ih:
-            return self._insolvency_hook
-        return FreeGrantInsolvencyHook.connect(ih, self.owner)
-
     receive_grant = MethodAdapter((("sender", "msg.sender"), ("amount", "amount")))
 
     repay_etoken_loan_ = MethodAdapter((("etoken", "contract"), ), eth_method="repayETokenLoan")
@@ -689,8 +730,13 @@ class BaseAssetManager(ETHWrapper):
         liquidity_middle = _W(liquidity_middle)
         liquidity_max = _W(liquidity_max)
 
+        if isinstance(pool, ETHWrapper):
+            self._policy_pool = pool.contract
+        else:  # is just an address or raw contract - for tests
+            self._policy_pool = self._get_account(pool)
+
         super().__init__(
-            owner, pool.contract, liquidity_min, liquidity_middle, liquidity_max, *args
+            owner, self._policy_pool, liquidity_min, liquidity_middle, liquidity_max, *args
         )
         self._auto_from = self.owner
 
@@ -698,6 +744,17 @@ class BaseAssetManager(ETHWrapper):
     rebalance = MethodAdapter()
     distribute_earnings = MethodAdapter()
     total_investable = MethodAdapter((), "amount")
+
+    liquidity_min = MethodAdapter((), "amount", is_property=True)
+    liquidity_middle = MethodAdapter((), "amount", is_property=True)
+    liquidity_max = MethodAdapter((), "amount", is_property=True)
+
+    def grant_role(self, role, user):
+        # AssetManager doesn't haves grant_role
+        policy_pool = PolicyPool.connect(self._policy_pool)
+        config = policy_pool.config
+        with config.as_(self._auto_from):
+            return config.grant_role(role, user)
 
 
 class FixedRateAssetManager(BaseAssetManager):

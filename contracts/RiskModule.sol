@@ -2,12 +2,11 @@
 pragma solidity ^0.8.0;
 
 import {WadRayMath} from "./WadRayMath.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
-import {IPolicyPoolComponent} from "../interfaces/IPolicyPoolComponent.sol";
+import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
 import {IRiskModule} from "../interfaces/IRiskModule.sol";
+import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
 import {Policy} from "./Policy.sol";
 
 /**
@@ -15,26 +14,14 @@ import {Policy} from "./Policy.sol";
  * @dev Risk Module that keeps the configuration and is responsible for pricing and policy resolution
  * @author Ensuro
  */
-abstract contract RiskModule is
-  IRiskModule,
-  UUPSUpgradeable,
-  AccessControlUpgradeable,
-  PausableUpgradeable,
-  IPolicyPoolComponent
-{
+abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoolComponent {
   using Policy for Policy.PolicyData;
   using WadRayMath for uint256;
 
-  // For parameters that can be changed by Ensuro
-  bytes32 public constant ENSURO_DAO_ROLE = keccak256("ENSURO_DAO_ROLE");
   // For parameters that can be changed by the risk module provider
   bytes32 public constant RM_PROVIDER_ROLE = keccak256("RM_PROVIDER_ROLE");
 
-  bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
-  bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
-
   string private _name;
-  IPolicyPool internal _policyPool;
   uint256 internal _scrPercentage; // in ray - Solvency Capital Requirement percentage, to calculate
   // capital requirement as % of (payout - premium)
   uint256 internal _moc; // in ray - Margin Of Conservativism - factor that multiplies lossProb
@@ -45,15 +32,16 @@ abstract contract RiskModule is
   uint256 internal _scrLimit; // in wad - Max SCR to be allocated to this module
   uint256 internal _totalScr; // in wad - Current SCR allocated to this module
 
-  address internal _wallet; // Address of the RiskModule provider
-  uint256 internal _sharedCoverageMinPercentage;
-  // in ray - minimal % of SCR that must be covered by the RM
-  uint256 internal _sharedCoveragePercentage;
-  // in ray - current % of SCR that will be covered by the RM.
+  uint256 internal _sharedCoverageMinPercentage; // in ray - minimal % of SCR that must be covered by the RM
+  uint256 internal _sharedCoveragePercentage; // in ray - current % of SCR that will be covered by the RM.
   // Always >= _sharedCoverageMinPercentage
-  uint256 internal _sharedCoverageScr;
+  uint256 internal _sharedCoverageScr; // in wad - Current SCR covered by the Risk Module
+  address internal _wallet; // Address of the RiskModule provider
 
-  // in wad - Current SCR covered by the Risk Module
+  modifier validateParamsAfterChange() {
+    _;
+    _validateParameters();
+  }
 
   /**
    * @dev Initializes the RiskModule
@@ -81,11 +69,9 @@ abstract contract RiskModule is
     uint256 sharedCoverageMinPercentage_
   ) internal initializer {
     __AccessControl_init();
-    __Pausable_init();
-    __UUPSUpgradeable_init();
+    __PolicyPoolComponent_init(policyPool_);
     __RiskModule_init_unchained(
       name_,
-      policyPool_,
       scrPercentage_,
       ensuroFee_,
       scrInterestRate_,
@@ -99,7 +85,6 @@ abstract contract RiskModule is
   // solhint-disable-next-line func-name-mixedcase
   function __RiskModule_init_unchained(
     string memory name_,
-    IPolicyPool policyPool_,
     uint256 scrPercentage_,
     uint256 ensuroFee_,
     uint256 scrInterestRate_,
@@ -109,7 +94,6 @@ abstract contract RiskModule is
     uint256 sharedCoverageMinPercentage_
   ) internal initializer {
     _name = name_;
-    _policyPool = policyPool_;
     _scrPercentage = scrPercentage_;
     _moc = WadRayMath.RAY;
     _ensuroFee = ensuroFee_;
@@ -117,19 +101,41 @@ abstract contract RiskModule is
     _maxScrPerPolicy = maxScrPerPolicy_;
     _scrLimit = scrLimit_;
     _totalScr = 0;
-    require(wallet_ != address(0), "Wallet can't be zero address");
     _wallet = wallet_;
     _sharedCoverageMinPercentage = sharedCoverageMinPercentage_;
     _sharedCoveragePercentage = sharedCoverageMinPercentage_;
     _sharedCoverageScr = 0;
     _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
+    _validateParameters();
   }
 
-  // solhint-disable-next-line no-empty-blocks
-  function _authorizeUpgrade(address) internal override onlyRole(UPGRADER_ROLE) {}
-
-  function policyPool() public view override returns (IPolicyPool) {
-    return _policyPool;
+  // runs validation on RiskModule parameters
+  function _validateParameters() internal view {
+    require(
+      _scrPercentage <= WadRayMath.RAY && _scrPercentage > 0,
+      "Validation: scrPercentage must be <=1"
+    );
+    require(
+      _moc <= (2 * WadRayMath.RAY) && _moc >= (WadRayMath.RAY / 2),
+      "Validation: moc must be [0.5, 2]"
+    );
+    require(_ensuroFee <= WadRayMath.RAY, "Validation: ensuroFee must be <= 1");
+    require(_scrInterestRate <= WadRayMath.RAY, "Validation: scrInterestRate must be <= 1 (100%)");
+    // _maxScrPerPolicy no limits
+    require(_scrLimit >= _totalScr, "Validation: scrLimit can't be less than actual totalScr");
+    require(
+      _sharedCoverageMinPercentage <= WadRayMath.RAY,
+      "Validation: sharedCoverageMinPercentage <= 1"
+    );
+    require(
+      _sharedCoveragePercentage <= WadRayMath.RAY,
+      "Validation: sharedCoveragePercentage <= 1"
+    );
+    require(
+      _sharedCoveragePercentage >= _sharedCoverageMinPercentage,
+      "Validation: sharedCoveragePercentage must be >= sharedCoverageMinPercentage"
+    );
+    require(_wallet != address(0), "Validation: Wallet can't be zero address");
   }
 
   function name() public view override returns (string memory) {
@@ -180,56 +186,153 @@ abstract contract RiskModule is
     return _wallet;
   }
 
-  function setScrPercentage(uint256 newScrPercentage) external onlyRole(ENSURO_DAO_ROLE) {
-    // TODO emit Event?
+  function setScrPercentage(uint256 newScrPercentage)
+    external
+    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
+    validateParamsAfterChange
+  {
+    bool tweak = !hasPoolRole(LEVEL2_ROLE);
+    require(
+      !tweak || _isTweakRay(_scrPercentage, newScrPercentage, 1e26),
+      "Tweak exceeded: scrPercentage tweaks only up to 10%"
+    );
     _scrPercentage = newScrPercentage;
+    _parameterChanged(
+      IPolicyPoolConfig.GovernanceActions.setScrPercentage,
+      newScrPercentage,
+      tweak
+    );
   }
 
-  function setMoc(uint256 newMoc) external onlyRole(ENSURO_DAO_ROLE) {
-    // TODO emit Event?
+  function setMoc(uint256 newMoc)
+    external
+    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
+    validateParamsAfterChange
+  {
+    bool tweak = !hasPoolRole(LEVEL2_ROLE);
+    require(!tweak || _isTweakRay(_moc, newMoc, 1e26), "Tweak exceeded: moc tweaks only up to 10%");
     _moc = newMoc;
+    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setMoc, newMoc, tweak);
   }
 
-  function setScrInterestRate(uint256 newScrInterestRate) external onlyRole(ENSURO_DAO_ROLE) {
-    // TODO emit Event?
+  function setScrInterestRate(uint256 newScrInterestRate)
+    external
+    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
+    validateParamsAfterChange
+  {
+    bool tweak = !hasPoolRole(LEVEL2_ROLE);
+    require(
+      !tweak || _isTweakRay(_scrInterestRate, newScrInterestRate, 3e26),
+      "Tweak exceeded: scrInterestRate tweaks only up to 30%"
+    );
     _scrInterestRate = newScrInterestRate;
+    _parameterChanged(
+      IPolicyPoolConfig.GovernanceActions.setScrInterestRate,
+      newScrInterestRate,
+      tweak
+    );
   }
 
-  function setEnsuroFee(uint256 newEnsuroFee) external onlyRole(ENSURO_DAO_ROLE) {
-    // TODO emit Event?
+  function setEnsuroFee(uint256 newEnsuroFee)
+    external
+    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
+    validateParamsAfterChange
+  {
+    bool tweak = !hasPoolRole(LEVEL2_ROLE);
+    require(
+      !tweak || _isTweakRay(_ensuroFee, newEnsuroFee, 3e26),
+      "Tweak exceeded: ensuroFee tweaks only up to 30%"
+    );
     _ensuroFee = newEnsuroFee;
+    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setEnsuroFee, newEnsuroFee, tweak);
   }
 
-  function setMaxScrPerPolicy(uint256 newMaxScrPerPolicy) external onlyRole(ENSURO_DAO_ROLE) {
-    // TODO emit Event?
+  function setMaxScrPerPolicy(uint256 newMaxScrPerPolicy)
+    external
+    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
+    validateParamsAfterChange
+  {
+    bool tweak = !hasPoolRole(LEVEL2_ROLE);
+    require(
+      !tweak || _isTweakWad(_maxScrPerPolicy, newMaxScrPerPolicy, 3e17),
+      "Tweak exceeded: maxScrPerPolicy tweaks only up to 30%"
+    );
     _maxScrPerPolicy = newMaxScrPerPolicy;
+    _parameterChanged(
+      IPolicyPoolConfig.GovernanceActions.setMaxScrPerPolicy,
+      newMaxScrPerPolicy,
+      tweak
+    );
   }
 
-  function setScrLimit(uint256 newScrLimit) external onlyRole(ENSURO_DAO_ROLE) {
-    // TODO emit Event?
+  function setScrLimit(uint256 newScrLimit)
+    external
+    onlyPoolRole3(LEVEL1_ROLE, LEVEL2_ROLE, LEVEL3_ROLE)
+    validateParamsAfterChange
+  {
+    bool tweak = !hasPoolRole(LEVEL2_ROLE) && !hasPoolRole(LEVEL1_ROLE);
+    require(
+      !tweak || _isTweakWad(_scrLimit, newScrLimit, 1e17),
+      "Tweak exceeded: scrLimit tweaks only up to 10%"
+    );
+    require(
+      newScrLimit <= _scrLimit ||
+        hasPoolRole(LEVEL1_ROLE) ||
+        _policyPool.totalETokenSupply().wadMul(1e17) > newScrLimit,
+      "Tweak exceeded: Increase, >=10% of the total liquidity, requires LEVEL1_ROLE"
+    );
     require(newScrLimit >= _totalScr, "Can't set SCR less than current SCR allocation");
     _scrLimit = newScrLimit;
+    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setScrLimit, newScrLimit, tweak);
   }
 
-  function setSharedCoverageMinPercentage(uint256 newSCMP) external onlyRole(ENSURO_DAO_ROLE) {
-    // TODO emit Event?
+  function setSharedCoverageMinPercentage(uint256 newSCMP)
+    external
+    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
+    validateParamsAfterChange
+  {
+    bool tweak = !hasPoolRole(LEVEL2_ROLE);
+    require(
+      !tweak || _isTweakRay(_sharedCoverageMinPercentage, newSCMP, 3e26),
+      "Tweak exceeded: sharedCoverageMinPercentage tweaks only up to 30%"
+    );
     _sharedCoverageMinPercentage = newSCMP;
-    if (newSCMP < _sharedCoveragePercentage) _sharedCoveragePercentage = newSCMP;
+    if (newSCMP > _sharedCoveragePercentage) _sharedCoveragePercentage = newSCMP;
+    _parameterChanged(
+      IPolicyPoolConfig.GovernanceActions.setSharedCoverageMinPercentage,
+      newSCMP,
+      tweak
+    );
   }
 
-  function setSharedCoveragePercentage(uint256 newSCP) external onlyRole(RM_PROVIDER_ROLE) {
-    // TODO emit Event?
+  function setSharedCoveragePercentage(uint256 newSCP)
+    external
+    onlyRole(RM_PROVIDER_ROLE)
+    validateParamsAfterChange
+  {
     require(
       newSCP >= _sharedCoverageMinPercentage,
       "Can't set shared coverage perc. less than minimum"
     );
     _sharedCoveragePercentage = newSCP;
+    _parameterChanged(
+      IPolicyPoolConfig.GovernanceActions.setSharedCoverageMinPercentage,
+      newSCP,
+      false
+    );
   }
 
-  function setWallet(address wallet_) external onlyRole(RM_PROVIDER_ROLE) {
-    // TODO emit Event?
-    require(wallet_ != address(0), "Wallet can't be zero address");
+  function setWallet(address wallet_)
+    external
+    onlyRole(RM_PROVIDER_ROLE)
+    validateParamsAfterChange
+  {
     _wallet = wallet_;
+    _parameterChanged(
+      IPolicyPoolConfig.GovernanceActions.setWallet,
+      uint256(uint160(wallet_)),
+      false
+    );
   }
 
   function _newPolicy(

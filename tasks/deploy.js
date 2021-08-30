@@ -57,13 +57,27 @@ async function deployPolicyNFT({verify, nftName, nftSymbol}, hre) {
   return policyNFT.address;
 }
 
-async function deployPolicyPool({verify, nftAddress, currencyAddress, treasuryAddress}, hre) {
-  const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
-  const policyPool = await hre.upgrades.deployProxy(PolicyPool, [
-    nftAddress,
-    currencyAddress,
+async function deployPolicyPoolConfig({verify, treasuryAddress}, hre) {
+  const PolicyPoolConfig = await hre.ethers.getContractFactory("PolicyPoolConfig");
+  const policyPoolConfig = await hre.upgrades.deployProxy(PolicyPoolConfig, [
     treasuryAddress,
     hre.ethers.constants.AddressZero,
+    hre.ethers.constants.AddressZero,
+  ], {kind: 'uups'});
+
+  await policyPoolConfig.deployed();
+  console.log("PolicyPoolConfig deployed to:", policyPoolConfig.address);
+  if (verify)
+    await verifyContract(hre, policyPoolConfig, true);
+  return policyPoolConfig.address;
+}
+
+async function deployPolicyPool({verify, configAddress, nftAddress, currencyAddress}, hre) {
+  const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
+  const policyPool = await hre.upgrades.deployProxy(PolicyPool, [
+    configAddress,
+    nftAddress,
+    currencyAddress,
   ], {kind: 'uups'});
 
   await policyPool.deployed();
@@ -135,6 +149,7 @@ function add_task() {
     .addOptionalParam("nftSymbol", "Symbol of Policies NFT Token", "EPOL", types.str)
     .addOptionalParam("nftAddress", "NFT Address", undefined, types.address)
     .addOptionalParam("currencyAddress", "Currency Address", undefined, types.address)
+    .addOptionalParam("configAddress", "PolicyPoolConfig Address", undefined, types.address)
     .addOptionalParam("treasuryAddress", "Treasury Address", ethers.constants.AddressZero, types.address)
     .setAction(async function(taskArgs, hre) {
       if (taskArgs.currencyAddress === undefined) {
@@ -142,6 +157,9 @@ function add_task() {
       }
       if (taskArgs.nftAddress === undefined) {
         taskArgs.nftAddress = await deployPolicyNFT(taskArgs, hre);
+      }
+      if (taskArgs.configAddress === undefined) {
+        taskArgs.configAddress = await deployPolicyPoolConfig(taskArgs, hre);
       }
       let policyPoolAddress = await deployPolicyPool(taskArgs, hre);
       console.log("Deploy task called ", taskArgs, " policyPool", policyPoolAddress);
@@ -160,11 +178,16 @@ function add_task() {
     .addOptionalParam("nftSymbol", "Symbol of Policies NFT Token", "EPOL", types.str)
     .setAction(deployPolicyNFT);
 
+  task("deploy:poolConfig", "Deploys the PolicyPoolConfig")
+    .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
+    .addOptionalParam("treasuryAddress", "Treasury Address", ethers.constants.AddressZero, types.address)
+    .setAction(deployPolicyPoolConfig);
+
   task("deploy:pool", "Deploys the PolicyPool")
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addParam("nftAddress", "NFT Address", types.address)
     .addParam("currencyAddress", "Currency Address", types.address)
-    .addOptionalParam("treasuryAddress", "Treasury Address", ethers.constants.AddressZero, types.address)
+    .addParam("configAddress", "PolicyPoolConfig Address", types.address)
     .setAction(deployPolicyPool);
 
   task("deploy:eToken", "Deploy an EToken and adds it to the pool")

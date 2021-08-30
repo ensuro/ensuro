@@ -2,14 +2,12 @@
 pragma solidity ^0.8.0;
 
 import {WadRayMath} from "./WadRayMath.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
-import {IPolicyPoolComponent} from "../interfaces/IPolicyPoolComponent.sol";
+import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
 import {IAssetManager} from "../interfaces/IAssetManager.sol";
 import {IEToken} from "../interfaces/IEToken.sol";
+import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
 import {Policy} from "./Policy.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
@@ -18,23 +16,9 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
  * @dev Base class for asset managers that implement
  * @author Ensuro
  */
-abstract contract BaseAssetManager is
-  IAssetManager,
-  UUPSUpgradeable,
-  AccessControlUpgradeable,
-  PausableUpgradeable,
-  IPolicyPoolComponent
-{
+abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
   using WadRayMath for uint256;
 
-  // For parameters that can be changed by Ensuro
-  bytes32 public constant ENSURO_DAO_ROLE = keccak256("ENSURO_DAO_ROLE");
-  bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
-  bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
-  // This user can trigger rebalance and distibuteEarnings
-  bytes32 public constant CHECKPOINT_ROLE = keccak256("CHECKPOINT_ROLE");
-
-  IPolicyPool internal _policyPool;
   int256 internal _cashBalance;
   uint256 internal _liquidityMin;
   uint256 internal _liquidityMiddle;
@@ -46,9 +30,9 @@ abstract contract BaseAssetManager is
   event MoneyDeinvested(uint256 amount);
   event EarningsDistributed(bool positive, uint256 amount);
 
-  modifier onlyPolicyPool {
-    require(_msgSender() == address(_policyPool), "The caller must be the PolicyPool");
+  modifier validateParamsAfterChange() {
     _;
+    _validateParameters();
   }
 
   /**
@@ -65,39 +49,32 @@ abstract contract BaseAssetManager is
     uint256 liquidityMiddle_,
     uint256 liquidityMax_
   ) public initializer {
-    __AccessControl_init();
-    __Pausable_init();
-    __UUPSUpgradeable_init();
-    __BaseAssetManager_init_unchained(policyPool_, liquidityMin_, liquidityMiddle_, liquidityMax_);
+    __PolicyPoolComponent_init(policyPool_);
+    __BaseAssetManager_init_unchained(liquidityMin_, liquidityMiddle_, liquidityMax_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
   function __BaseAssetManager_init_unchained(
-    IPolicyPool policyPool_,
     uint256 liquidityMin_,
     uint256 liquidityMiddle_,
     uint256 liquidityMax_
   ) public initializer {
-    _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
-    _policyPool = policyPool_;
     /*
     _cashBalance = 0;
     _lastInvestmentValue = 0;
     */
-    require(
-      liquidityMin_ <= liquidityMiddle_ && liquidityMiddle_ <= liquidityMax_,
-      "Liquidity limits are invalid"
-    );
     _liquidityMin = liquidityMin_;
     _liquidityMiddle = liquidityMiddle_;
     _liquidityMax = liquidityMax_;
+    _validateParameters();
   }
 
-  // solhint-disable-next-line no-empty-blocks
-  function _authorizeUpgrade(address) internal override onlyRole(UPGRADER_ROLE) {}
-
-  function policyPool() public view override returns (IPolicyPool) {
-    return _policyPool;
+  // runs validation on EToken parameters
+  function _validateParameters() internal view {
+    require(
+      _liquidityMin <= _liquidityMiddle && _liquidityMiddle <= _liquidityMax,
+      "Validation: Liquidity limits are invalid"
+    );
   }
 
   function _currency() internal view returns (IERC20) {
@@ -215,5 +192,59 @@ abstract contract BaseAssetManager is
    */
   function deinvestAll() external virtual override onlyPolicyPool {
     _deinvest(getInvestmentValue());
+  }
+
+  function liquidityMin() external view returns (uint256) {
+    return _liquidityMin;
+  }
+
+  function liquidityMiddle() external view returns (uint256) {
+    return _liquidityMiddle;
+  }
+
+  function liquidityMax() external view returns (uint256) {
+    return _liquidityMax;
+  }
+
+  function setLiquidityMin(uint256 newValue)
+    external
+    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
+    validateParamsAfterChange
+  {
+    bool tweak = !hasPoolRole(LEVEL2_ROLE);
+    require(
+      !tweak || _isTweakRay(_liquidityMin, newValue, 3e26),
+      "Tweak exceeded: liquidityMin tweaks only up to 30%"
+    );
+    _liquidityMin = newValue;
+    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setLiquidityMin, newValue, tweak);
+  }
+
+  function setLiquidityMiddle(uint256 newValue)
+    external
+    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
+    validateParamsAfterChange
+  {
+    bool tweak = !hasPoolRole(LEVEL2_ROLE);
+    require(
+      !tweak || _isTweakRay(_liquidityMiddle, newValue, 3e26),
+      "Tweak exceeded: liquidityMiddle tweaks only up to 30%"
+    );
+    _liquidityMiddle = newValue;
+    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setLiquidityMiddle, newValue, tweak);
+  }
+
+  function setLiquidityMax(uint256 newValue)
+    external
+    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
+    validateParamsAfterChange
+  {
+    bool tweak = !hasPoolRole(LEVEL2_ROLE);
+    require(
+      !tweak || _isTweakRay(_liquidityMax, newValue, 3e26),
+      "Tweak exceeded: liquidityMax tweaks only up to 30%"
+    );
+    _liquidityMax = newValue;
+    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setLiquidityMax, newValue, tweak);
   }
 }

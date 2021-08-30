@@ -62,11 +62,19 @@ contract TrustfulRiskModule is RiskModule {
     return _newPolicy(payout, premium, lossProb, expiration, customer);
   }
 
-  function resolvePolicy(uint256 policyId, uint256 payout) external onlyRole(RESOLVER_ROLE) {
+  function resolvePolicy(uint256 policyId, uint256 payout)
+    external
+    onlyRole(RESOLVER_ROLE)
+    whenNotPaused
+  {
     return _policyPool.resolvePolicy(policyId, payout);
   }
 
-  function resolvePolicy(uint256 policyId, bool customerWon) external onlyRole(RESOLVER_ROLE) {
+  function resolvePolicy(uint256 policyId, bool customerWon)
+    external
+    onlyRole(RESOLVER_ROLE)
+    whenNotPaused
+  {
     return _policyPool.resolvePolicy(policyId, customerWon);
   }
 }

@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from m9g import Model
 from m9g.fields import StringField, IntField, DictField, CompositeField
 from .contracts import AccessControlContract, ERC20Token, external, view, RayField, WadField, AddressField, \
@@ -45,15 +46,18 @@ class RiskModule(AccessControlContract):
     shared_coverage_scr = WadField(default=_W(0))
 
     set_attr_roles = {
-        "moc": "ENSURO_DAO_ROLE",
-        "scr_percentage": "ENSURO_DAO_ROLE",
-        "ensuro_fee": "ENSURO_DAO_ROLE",
-        "scr_interest_rate": "ENSURO_DAO_ROLE",
-        "max_scr_per_policy": "ENSURO_DAO_ROLE",
-        "scr_limit": "ENSURO_DAO_ROLE",
         "wallet": "RM_PROVIDER_ROLE",
         "shared_coverage_percentage": "RM_PROVIDER_ROLE",
-        "shared_coverage_min_percentage": "ENSURO_DAO_ROLE",
+    }
+
+    pool_set_attr_roles = {
+        "moc": "LEVEL2_ROLE",
+        "scr_percentage": "LEVEL2_ROLE",
+        "ensuro_fee": "LEVEL2_ROLE",
+        "scr_interest_rate": "LEVEL2_ROLE",
+        "max_scr_per_policy": "LEVEL2_ROLE",
+        "scr_limit": "LEVEL2_ROLE",
+        "shared_coverage_min_percentage": "LEVEL2_ROLE",
     }
 
     def __init__(self, **kwargs):
@@ -62,12 +66,17 @@ class RiskModule(AccessControlContract):
             with self._disable_role_validation():
                 self.shared_coverage_percentage = self.shared_coverage_min_percentage
 
-    def __setattr__(self, attr_name, value):
-        if not getattr(self, "_role_validation_disabled", False) and \
-                attr_name == "shared_coverage_percentage":
+    def _validate_setattr(self, attr_name, value):
+        if attr_name in self.pool_set_attr_roles:
+            require(
+                self.policy_pool.config.has_role(self.pool_set_attr_roles[attr_name], self._running_as),
+                f"AccessControl: AccessControl: account {self._running_as} is missing role "
+                f"'{self.pool_set_attr_roles[attr_name]}'"
+            )
+        if attr_name == "shared_coverage_percentage":
             require(value >= self.shared_coverage_min_percentage,
                     "RiskModule: shared_coverage_percentage can't be less than minimum")
-        return super().__setattr__(attr_name, value)
+        return super()._validate_setattr(attr_name, value)
 
     @external
     def new_policy(self, payout, premium, loss_prob, expiration, customer):
@@ -213,7 +222,7 @@ class EToken(ERC20Token):
     pool_loan_last_update = IntField(default=None, allow_none=True)
 
     set_attr_roles = {
-        "pool_loan_interest_rate": "SET_LOAN_RATE_ROLE"
+        "pool_loan_interest_rate": "LEVEL2_ROLE"
     }
 
     def __init__(self, **kwargs):
@@ -242,6 +251,10 @@ class EToken(ERC20Token):
             Ray.from_value(SECONDS_IN_YEAR)
         )
         return self.scale_factor * (Ray(RAY) + increment)
+
+    @contextmanager
+    def thru_policy_pool(self):
+        yield self
 
     @view
     def get_current_scale(self, updated):
@@ -425,39 +438,58 @@ class PolicyNFT(ERC721Token):
         return self.policy_count
 
 
+class PolicyPoolConfig(AccessControlContract):
+    policy_pool = ContractProxyField(allow_none=True, default=None)
+    treasury = AddressField(default="ENS")
+    asset_manager = ContractProxyField(default=None, allow_none=True)
+    insolvency_hook = ContractProxyField(default=None, allow_none=True)
+    risk_modules = DictField(StringField(), ContractProxyField(), default={})
+
+    def connect(self, policy_pool):
+        require(self.policy_pool is None, "PolicyPool already connected")
+        require(self.contract_id == policy_pool.config.contract_id, "PolicyPool not connected to this config")
+        self.policy_pool = policy_pool
+
+    def add_risk_module(self, risk_module):
+        self.risk_modules[risk_module.name] = ContractProxy(risk_module.contract_id)
+
+    def set_insolvency_hook(self, insolvency_hook):
+        self.insolvency_hook = ContractProxy(insolvency_hook.contract_id) if insolvency_hook else None
+
+    def set_asset_manager(self, asset_manager):
+        self.policy_pool.set_asset_manager(asset_manager)
+        self.asset_manager = asset_manager
+
+
 class PolicyPool(AccessControlContract):
     NEGLIGIBLE_AMOUNT = _W("0.0001")
 
+    config = ContractProxyField()
     policy_nft = ContractProxyField()
     currency = ContractProxyField()
-    risk_modules = DictField(StringField(), ContractProxyField(), default={})
     etokens = DictField(StringField(), ContractProxyField(), default={})
     policies = DictField(IntField(), CompositeField(Policy), default={})
     active_premiums = WadField(default=Wad(0))
     active_pure_premiums = WadField(default=Wad(0))
     borrowed_active_pp = WadField(default=Wad(0))
     won_pure_premiums = WadField(default=Wad(0))
-    treasury = AddressField(default="ENS")
-    asset_manager = ContractProxyField(default=None, allow_none=True)
-    insolvency_hook = ContractProxyField(default=None, allow_none=True)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.config.connect(self)
 
     @property
     def pure_premiums(self):
         return self.active_pure_premiums + self.won_pure_premiums - self.borrowed_active_pp
 
-    def add_risk_module(self, risk_module):
-        self.risk_modules[risk_module.name] = ContractProxy(risk_module.contract_id)
-
     def add_etoken(self, etoken):
         self.etokens[etoken.name] = ContractProxy(etoken.contract_id)
 
     def set_asset_manager(self, asset_manager):
-        if self.asset_manager:
-            self.asset_manager.deinvest_all()
-        self.asset_manager = ContractProxy(asset_manager.contract_id)
-
-    def set_insolvency_hook(self, insolvency_hook):
-        self.insolvency_hook = ContractProxy(insolvency_hook.contract_id) if insolvency_hook else None
+        if self.config.asset_manager:
+            self.config.asset_manager.deinvest_all()
+            self.currency.approve(self, self.config.asset_manager, _W(0))
+        self.currency.approve(self, asset_manager, _W(1e20))
 
     @external
     def deposit(self, etoken, provider, amount):
@@ -529,12 +561,12 @@ class PolicyPool(AccessControlContract):
         if amount == _W(0):
             return
         balance = self.currency.balance_of(self.contract_id)
-        if self.asset_manager and balance < amount:
-            self.asset_manager.refill_wallet(amount)
+        if self.config.asset_manager and balance < amount:
+            self.config.asset_manager.refill_wallet(amount)
 
         # Calculate again the balance and check if enought, if not call unsolvency_hook
-        if self.insolvency_hook and self.currency.balance_of(self.contract_id) < amount:
-            self.insolvency_hook.out_of_cash(amount - self.currency.balance_of(self.contract_id))
+        if self.config.insolvency_hook and self.currency.balance_of(self.contract_id) < amount:
+            self.config.insolvency_hook.out_of_cash(amount - self.currency.balance_of(self.contract_id))
         return self.currency.transfer(self.contract_id, target, amount)
 
     def _pay_from_pool(self, to_pay):
@@ -603,7 +635,7 @@ class PolicyPool(AccessControlContract):
         else:
             # Pay Ensuro and RM
             self._transfer_to(policy.risk_module.wallet, for_rm + policy.rm_scr)
-            self._transfer_to(self.treasury, for_ensuro)
+            self._transfer_to(self.config.treasury, for_ensuro)
             pure_premium_won = pure_premium
             # Cover first borrowed_active_pp
             if self.borrowed_active_pp > self.active_pure_premiums:

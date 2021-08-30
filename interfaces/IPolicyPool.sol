@@ -3,13 +3,16 @@ pragma solidity ^0.8.0;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Policy} from "../contracts/Policy.sol";
-import {IAssetManager} from "./IAssetManager.sol";
 import {IEToken} from "./IEToken.sol";
+import {IPolicyPoolConfig} from "./IPolicyPoolConfig.sol";
+import {IAssetManager} from "./IAssetManager.sol";
 
 interface IPolicyPool {
   function currency() external view returns (IERC20);
 
-  function assetManager() external view returns (IAssetManager);
+  function config() external view returns (IPolicyPoolConfig);
+
+  function setAssetManager(IAssetManager newAssetManager) external;
 
   function newPolicy(Policy.PolicyData memory policy, address customer) external returns (uint256);
 
@@ -32,4 +35,6 @@ interface IPolicyPool {
   function deposit(IEToken eToken, uint256 amount) external;
 
   function withdraw(IEToken eToken, uint256 amount) external returns (uint256);
+
+  function totalETokenSupply() external view returns (uint256);
 }
