@@ -108,8 +108,9 @@ def test_getset_rm_parameters(tenv):
     with rm.as_("CASINO"), pytest.raises(RevertError, match="less than minimum"):
         rm.shared_coverage_percentage = _R("0.25")  # Should be reverted because < 0.3 min_percentage
 
-    with rm.as_("CASINO"), pytest.raises(Exception):
-        rm.wallet = None
+    if tenv.kind == "ethereum":
+        with rm.as_("CASINO"), pytest.raises(RevertError):
+            rm.wallet = None
 
     with rm.as_("CASINO"):
         rm.shared_coverage_percentage = _R("0.45")

@@ -730,8 +730,13 @@ class BaseAssetManager(ETHWrapper):
         liquidity_middle = _W(liquidity_middle)
         liquidity_max = _W(liquidity_max)
 
+        if isinstance(pool, ETHWrapper):
+            self._policy_pool = pool.contract
+        else:  # is just an address or raw contract - for tests
+            self._policy_pool = self._get_account(pool)
+
         super().__init__(
-            owner, pool.contract, liquidity_min, liquidity_middle, liquidity_max, *args
+            owner, self._policy_pool, liquidity_min, liquidity_middle, liquidity_max, *args
         )
         self._auto_from = self.owner
 
@@ -739,6 +744,17 @@ class BaseAssetManager(ETHWrapper):
     rebalance = MethodAdapter()
     distribute_earnings = MethodAdapter()
     total_investable = MethodAdapter((), "amount")
+
+    liquidity_min = MethodAdapter((), "amount", is_property=True)
+    liquidity_middle = MethodAdapter((), "amount", is_property=True)
+    liquidity_max = MethodAdapter((), "amount", is_property=True)
+
+    def grant_role(self, role, user):
+        # AssetManager doesn't haves grant_role
+        policy_pool = PolicyPool.connect(self._policy_pool)
+        config = policy_pool.config
+        with config.as_(self._auto_from):
+            return config.grant_role(role, user)
 
 
 class FixedRateAssetManager(BaseAssetManager):

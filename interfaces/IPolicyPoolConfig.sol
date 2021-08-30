@@ -33,6 +33,10 @@ interface IPolicyPoolConfig is IAccessControlUpgradeable {
     setLiquidityRequirement,
     setMaxUtilizationRate,
     setPoolLoanInterestRate,
+    // AssetManager Governance Actions
+    setLiquidityMin,
+    setLiquidityMiddle,
+    setLiquidityMax,
     last
   }
 
