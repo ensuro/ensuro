@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.2;
+pragma solidity ^0.8.0;
 
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -42,6 +42,8 @@ contract PolicyPoolConfig is
   IPolicyPool internal _policyPool;
 
   mapping(IRiskModule => RiskModuleStatus) private _riskModules;
+
+  event ComponentChanged(IPolicyPoolConfig.GovernanceActions indexed action, address value);
 
   modifier onlyRole2(bytes32 role1, bytes32 role2) {
     if (!hasRole(role1, _msgSender())) _checkRole(role2, _msgSender());
@@ -106,7 +108,7 @@ contract PolicyPoolConfig is
   function setAssetManager(IAssetManager assetManager_) external onlyRole(LEVEL1_ROLE) {
     _policyPool.setAssetManager(assetManager_);
     _assetManager = assetManager_;
-    // TODO: access event
+    emit ComponentChanged(GovernanceActions.setAssetManager, address(_assetManager));
   }
 
   function assetManager() external view virtual override returns (IAssetManager) {
@@ -115,7 +117,7 @@ contract PolicyPoolConfig is
 
   function setTreasury(address treasury_) external onlyRole(LEVEL1_ROLE) {
     _treasury = treasury_;
-    // TODO emit EVENT
+    emit ComponentChanged(GovernanceActions.setTreasury, _treasury);
   }
 
   function treasury() external view override returns (address) {
@@ -127,7 +129,7 @@ contract PolicyPoolConfig is
     onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
   {
     _insolvencyHook = insolvencyHook_;
-    // TODO: access event
+    emit ComponentChanged(GovernanceActions.setInsolvencyHook, address(_insolvencyHook));
   }
 
   function insolvencyHook() external view override returns (IInsolvencyHook) {

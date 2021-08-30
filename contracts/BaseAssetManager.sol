@@ -30,11 +30,6 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
   event MoneyDeinvested(uint256 amount);
   event EarningsDistributed(bool positive, uint256 amount);
 
-  modifier onlyPolicyPool {
-    require(_msgSender() == address(_policyPool), "The caller must be the PolicyPool");
-    _;
-  }
-
   modifier validateParamsAfterChange() {
     _;
     _validateParameters();

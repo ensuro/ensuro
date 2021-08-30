@@ -48,11 +48,6 @@ contract EToken is PolicyPoolComponent, IERC20, IEToken {
   event PoolLoan(uint256 value);
   event PoolLoanRepaid(uint256 value);
 
-  modifier onlyPolicyPool {
-    require(_msgSender() == address(_policyPool), "The caller must be the PolicyPool");
-    _;
-  }
-
   modifier onlyAssetManager {
     require(
       _msgSender() == address(_policyPool.config().assetManager()),
@@ -541,6 +536,7 @@ contract EToken is PolicyPoolComponent, IERC20, IEToken {
     external
     override
     onlyPolicyPool
+    whenNotPaused
     returns (uint256)
   {
     _updateCurrentScale();

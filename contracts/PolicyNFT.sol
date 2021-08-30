@@ -1,55 +1,41 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.2;
 
-import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/CountersUpgradeable.sol";
-import "../interfaces/IMintable.sol";
+import {ERC721Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
+import {CountersUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/CountersUpgradeable.sol";
+import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
+import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
+import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import {IPolicyNFT} from "../interfaces/IPolicyNFT.sol";
 
-contract PolicyNFT is
-  Initializable,
-  ERC721Upgradeable,
-  PausableUpgradeable,
-  AccessControlUpgradeable,
-  UUPSUpgradeable,
-  IMintable
-{
+contract PolicyNFT is ERC721Upgradeable, PolicyPoolComponent, IPolicyNFT {
   using CountersUpgradeable for CountersUpgradeable.Counter;
 
-  bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
-  bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
   CountersUpgradeable.Counter private _tokenIdCounter;
-  bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
 
   function initialize(string memory name_, string memory symbol_) public initializer {
     __ERC721_init(name_, symbol_);
-    __Pausable_init();
-    __AccessControl_init();
-    __UUPSUpgradeable_init();
+    __PolicyPoolComponent_init(IPolicyPool(address(0)));
+    __PolicyNFT_init_unchained();
+  }
 
-    _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
-    _setupRole(PAUSER_ROLE, msg.sender);
-    _setupRole(MINTER_ROLE, msg.sender);
-    _setupRole(UPGRADER_ROLE, msg.sender);
+  // solhint-disable-next-line func-name-mixedcase
+  function __PolicyNFT_init_unchained() internal initializer {
     _tokenIdCounter.increment(); // I don't want _tokenId==0
   }
 
-  function safeMint(address to) external override onlyRole(MINTER_ROLE) returns (uint256) {
+  function connect() external override {
+    require(address(_policyPool) == address(0), "PolicyPool already connected");
+    _policyPool = IPolicyPool(_msgSender());
+    // Not possible to do this validation because connect is called in _policyPool initialize :'(
+    // require(_policyPool.config() == this, "PolicyPool not connected to this config");
+  }
+
+  function safeMint(address to) external override onlyPolicyPool whenNotPaused returns (uint256) {
     uint256 tokenId = _tokenIdCounter.current();
     _safeMint(to, tokenId);
     _tokenIdCounter.increment();
     return tokenId;
-  }
-
-  function pause() public onlyRole(PAUSER_ROLE) {
-    _pause();
-  }
-
-  function unpause() public onlyRole(PAUSER_ROLE) {
-    _unpause();
   }
 
   function _beforeTokenTransfer(
@@ -58,17 +44,5 @@ contract PolicyNFT is
     uint256 tokenId
   ) internal override whenNotPaused {
     super._beforeTokenTransfer(from, to, tokenId);
-  }
-
-  // solhint-disable-next-line no-empty-blocks
-  function _authorizeUpgrade(address newImplementation) internal override onlyRole(UPGRADER_ROLE) {}
-
-  function supportsInterface(bytes4 interfaceId)
-    public
-    view
-    override(ERC721Upgradeable, AccessControlUpgradeable)
-    returns (bool)
-  {
-    return super.supportsInterface(interfaceId);
   }
 }
