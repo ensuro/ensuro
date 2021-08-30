@@ -26,12 +26,10 @@ abstract contract PolicyPoolComponent is
   bytes32 public constant LEVEL2_ROLE = keccak256("LEVEL2_ROLE");
   bytes32 public constant LEVEL3_ROLE = keccak256("LEVEL3_ROLE");
 
-  bytes32 public constant ENSURO_DAO_ROLE = keccak256("ENSURO_DAO_ROLE");
-
   bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
   bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
 
-  uint40 public constant TWEAK_EXPIRATION = 86400; // 24 * 3600
+  uint40 public constant TWEAK_EXPIRATION = 1 days;
 
   IPolicyPool internal _policyPool;
   uint40 internal _lastTweakTimestamp;
@@ -79,7 +77,7 @@ abstract contract PolicyPoolComponent is
     _pause();
   }
 
-  function unpause() public onlyPoolRole(GUARDIAN_ROLE) {
+  function unpause() public onlyPoolRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {
     _unpause();
   }
 

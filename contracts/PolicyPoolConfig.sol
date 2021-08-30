@@ -48,6 +48,17 @@ contract PolicyPoolConfig is
     _;
   }
 
+  modifier onlyRole3(
+    bytes32 role1,
+    bytes32 role2,
+    bytes32 role3
+  ) {
+    if (!hasRole(role1, _msgSender()) && !hasRole(role2, _msgSender())) {
+      _checkRole(role3, _msgSender());
+    }
+    _;
+  }
+
   function initialize(
     address treasury_,
     IAssetManager assetManager_,
@@ -152,13 +163,21 @@ contract PolicyPoolConfig is
   // #if_succeeds_disabled _riskModules.get(riskModule) == newStatus;
   function changeRiskModuleStatus(IRiskModule riskModule, RiskModuleStatus newStatus)
     external
-    onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
+    onlyRole3(GUARDIAN_ROLE, LEVEL1_ROLE, LEVEL2_ROLE)
   {
     require(_riskModules[riskModule] != RiskModuleStatus.inactive, "Risk Module not found");
     require(
       newStatus != RiskModuleStatus.suspended || hasRole(GUARDIAN_ROLE, msg.sender),
       "Only GUARDIAN can suspend modules"
     );
+    // To activate LEVEL1 required or LEVEL2 if <5% of total liquidity
+    require(
+      newStatus != RiskModuleStatus.active ||
+        hasRole(LEVEL1_ROLE, msg.sender) ||
+        _policyPool.totalETokenSupply() > (riskModule.scrLimit().wadMul(L2_RM_LIMIT)),
+      "RiskModule SCR Limit exceeds the limit for LEVEL2 user"
+    );
+    // Anyone (LEVEL1, LEVEL2, GUARDIAN) can deprecate
     _riskModules[riskModule] = newStatus;
     emit RiskModuleStatusChanged(riskModule, newStatus);
   }

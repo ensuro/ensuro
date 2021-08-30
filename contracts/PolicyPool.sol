@@ -120,7 +120,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     _pause();
   }
 
-  function unpause() public onlyRole(GUARDIAN_ROLE) {
+  function unpause() public onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {
     _unpause();
   }
 
