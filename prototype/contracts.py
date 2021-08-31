@@ -184,14 +184,16 @@ def view(method):
     return verify_unchanged
 
 
-def only_role(role):
+def only_role(*roles):
     def decorator(method):
         @wraps(method)
         def inner(self, *args, **kwargs):
-            if self.has_role(role, self.running_as):
-                return method(self, *args, **kwargs)
+            for role in roles:
+                if self.has_role(role, self.running_as):
+                    break
             else:
                 raise RevertError(f"AccessControl: account {self.running_as} is missing role {role}")
+            return method(self, *args, **kwargs)
 
         return inner
     return decorator

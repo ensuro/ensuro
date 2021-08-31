@@ -628,6 +628,8 @@ class PolicyPoolConfig(ETHWrapper):
             return self._insolvency_hook
         return FreeGrantInsolvencyHook.connect(ih, self.owner)
 
+    set_lp_whitelist = MethodAdapter((("whitelist", "contract"), ), eth_method="setLPWhitelist")
+
 
 class PolicyPool(ETHWrapper):
     eth_contract = "PolicyPool"
@@ -785,6 +787,16 @@ class LPInsolvencyHook(ETHWrapper):
         super().__init__("owner", pool.contract, etoken.contract)
 
     cash_deposited = MethodAdapter((), "amount", is_property=True)
+
+
+class LPManualWhitelist(ETHWrapper):
+    eth_contract = "LPManualWhitelist"
+    proxy_kind = "uups"
+
+    def __init__(self, pool):
+        super().__init__("owner", pool.contract)
+
+    whitelist_address = MethodAdapter((("address", "address"), ("whitelisted", "bool")), )
 
 
 ERC20Token = TestCurrency

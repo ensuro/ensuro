@@ -9,6 +9,7 @@ import {IInsolvencyHook} from "../interfaces/IInsolvencyHook.sol";
 import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {IRiskModule} from "../interfaces/IRiskModule.sol";
+import {ILPWhitelist} from "../interfaces/ILPWhitelist.sol";
 import {IPolicyPoolComponent} from "../interfaces/IPolicyPoolComponent.sol";
 import {WadRayMath} from "./WadRayMath.sol";
 
@@ -37,6 +38,7 @@ contract PolicyPoolConfig is
   IAssetManager internal _assetManager; // asset manager
   IInsolvencyHook internal _insolvencyHook; // Contract that handles insolvency situations
   IPolicyPool internal _policyPool;
+  ILPWhitelist internal _lpWhitelist; // Contract that handles whitelisting of Liquidity Providers
 
   mapping(IRiskModule => RiskModuleStatus) private _riskModules;
 
@@ -131,6 +133,18 @@ contract PolicyPoolConfig is
 
   function insolvencyHook() external view override returns (IInsolvencyHook) {
     return _insolvencyHook;
+  }
+
+  function setLPWhitelist(ILPWhitelist lpWhitelist_)
+    external
+    onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
+  {
+    _lpWhitelist = lpWhitelist_;
+    emit ComponentChanged(GovernanceActions.setLPWhitelist, address(_lpWhitelist));
+  }
+
+  function lpWhitelist() external view override returns (ILPWhitelist) {
+    return _lpWhitelist;
   }
 
   function addRiskModule(IRiskModule riskModule) external onlyRole2(LEVEL1_ROLE, LEVEL2_ROLE) {

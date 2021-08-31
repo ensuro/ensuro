@@ -17,10 +17,15 @@ def tenv(request):
     if request.param == "prototype":
         FakePolicy = namedtuple("FakePolicy", "scr interest_rate expiration")
 
+        pp_config = ensuro.PolicyPoolConfig()
+        policy_pool = ensuro.PolicyPool(
+            config=pp_config, currency="required-not-used", policy_nft="required-not-used"
+        )
+
         return TEnv(
             time_control=ensuro.time_control,
             policy_factory=FakePolicy,
-            etoken_class=partial(ensuro.EToken, policy_pool="required-not-used"),
+            etoken_class=partial(ensuro.EToken, policy_pool=policy_pool),
             kind="prototype"
         )
     elif request.param == "ethereum":
