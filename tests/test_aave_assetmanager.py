@@ -1,6 +1,6 @@
 """Unitary tests for eToken contract"""
 
-from functools import partial
+from functools import wraps
 from collections import namedtuple
 import pytest
 from prototype.contracts import RevertError
@@ -94,7 +94,20 @@ def donate_wmatic(WMATIC, ac_from, ac_to, amount=None):
     WMATIC.transfer(ac_from, ac_to, amount)
 
 
-@pytest.mark.require_network("polygon-main-fork")
+def skip_if_not_fork(f):
+    from brownie._config import CONFIG
+    if CONFIG.argv.get("network", None) == "polygon-main-fork":
+        return f
+    else:
+        def test_foo():
+            pass
+        test_foo.__name__ = f.__name__
+
+        return test_foo
+
+
+# @pytest.mark.require_network("polygon-main-fork") - DOES NOT WORK
+@skip_if_not_fork
 def test_get_balance(USDC, aave, PolicyPoolAndConfig, WMATIC):
     AAVE_address = "0x1a13f4ca1d028320a707d99520abfefca3998b7f"
     assert int(USDC.balance_of(AAVE_address)) > (1000000 * 10**6)  # At least 1 millon if in the right fork
