@@ -701,6 +701,15 @@ class PolicyPool(ETHWrapper):
         else:
             return Wad(0)
 
+    withdraw_won_premiums_ = MethodAdapter((("amount", "amount"), ))
+
+    def withdraw_won_premiums(self, amount):
+        receipt = self.withdraw_won_premiums_(amount)
+        if "WonPremiumsInOut" in receipt.events:
+            return Wad(receipt.events["WonPremiumsInOut"]["value"])
+        else:
+            return Wad(0)
+
     def get_policy(self, policy_id):
         policy_data = self.contract.getPolicy(policy_id)
         if policy_data:
@@ -721,6 +730,8 @@ class PolicyPool(ETHWrapper):
             return Wad(receipt.events["PoolLoanRepaid"]["value"])
         else:
             return Wad(0)
+
+    expire_policy = MethodAdapter((("policy_id", "int"), ))
 
 
 class BaseAssetManager(ETHWrapper):
