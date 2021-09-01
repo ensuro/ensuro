@@ -478,6 +478,9 @@ class PolicyPool(AccessControlContract):
         super().__init__(*args, **kwargs)
         self.config.connect(self)
 
+    def has_role(self, role, account):
+        return self.config.has_role(role, account)
+
     @property
     def pure_premiums(self):
         return self.active_pure_premiums + self.won_pure_premiums - self.borrowed_active_pp
@@ -604,12 +607,28 @@ class PolicyPool(AccessControlContract):
         self._store_pure_premium_won(amount)
 
     @external
+    @only_role("WITHDRAW_WON_PREMIUMS_ROLE")
+    def withdraw_won_premiums(self, amount):
+        if amount > self.won_pure_premiums:
+            amount = self.won_pure_premiums
+        require(amount > 0, "No premiums to withdraw")
+        self._pay_from_pool(amount)
+        self._transfer_to(self.config.treasury, amount)
+        return amount
+
+    @external
     def repay_etoken_loan(self, etoken):
         etk = self.etokens[etoken]
         pool_loan = etk.get_pool_loan()
         to_pay_later = self._pay_from_pool(pool_loan)
         etk.repay_pool_loan(pool_loan - to_pay_later)
         return pool_loan - to_pay_later
+
+    @external
+    def expire_policy(self, policy_id):
+        policy = self.policies[policy_id]
+        require(policy.expiration <= time_control.now, "Policy not expired yet")
+        return self.resolve_policy(policy_id, Wad(0))
 
     @external
     def resolve_policy(self, policy_id, payout):
