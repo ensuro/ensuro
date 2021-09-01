@@ -27,6 +27,7 @@
     "solidity-coverage": "^0.7.16"
   },
   "dependencies": {
+    "@aave/protocol-v2": "git+https://github.com/gnarvaja/protocol-v2.git",
     "@openzeppelin/contracts": "^4.2.0",
     "@openzeppelin/contracts-upgradeable": "^4.2.0"
   }

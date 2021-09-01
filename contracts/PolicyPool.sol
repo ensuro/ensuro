@@ -111,6 +111,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     _config = config_;
     _config.connect();
     _currency = currency_;
+    if (address(_config.assetManager()) != address(0)) {
+      _currency.approve(address(_config.assetManager()), MAX_INT); // infinite approval should be enought for few years
+    }
     _policyNFT = policyNFT_;
     _policyNFT.connect();
     /*
@@ -203,7 +206,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
       _config.assetManager().deinvestAll(); // deInvest all assets
       _currency.approve(address(_config.assetManager()), 0); // revoke currency management approval
     }
-    _currency.approve(address(newAssetManager), MAX_INT); // infinite approval should be enought for few years
+    if (address(newAssetManager) != address(0)) {
+      _currency.approve(address(newAssetManager), MAX_INT); // infinite approval should be enought for few years
+    }
   }
 
   /// #if_succeeds

@@ -72,7 +72,7 @@ module.exports = {
     polygon: {
       url: "https://polygon-mainnet.infura.io/v3/" + process.env.WEB3_INFURA_PROJECT_ID,
       chainId: 137,
-      hardfork: "berlin",
+      accounts: readEnvAccounts("polygon"),
     },
     polytest: {
       url: "https://polygon-mumbai.infura.io/v3/" + process.env.WEB3_INFURA_PROJECT_ID,

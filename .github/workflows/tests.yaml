@@ -19,3 +19,4 @@ jobs:
       - run: SKIP_PROXY=1 brownie test -v --coverage
         timeout-minutes: 30
       - run: ./instrumented-tests.sh
+      - run: SKIP_PROXY=1 brownie test --network polygon-main-fork -s -k test_aave_assetmanager

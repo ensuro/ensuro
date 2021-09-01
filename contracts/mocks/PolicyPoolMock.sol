@@ -12,6 +12,9 @@ import {Policy} from "../Policy.sol";
 import {ForwardProxy} from "./ForwardProxy.sol";
 
 contract PolicyPoolMock is IPolicyPool {
+  uint256 public constant MAX_INT =
+    0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
+
   IERC20Metadata internal _currency;
   IPolicyPoolConfig internal _config;
 
@@ -27,6 +30,9 @@ contract PolicyPoolMock is IPolicyPool {
     policyCount = 0;
     _config = config_;
     _config.connect();
+    if (address(_config.assetManager()) != address(0)) {
+      _currency.approve(address(_config.assetManager()), MAX_INT); // infinite approval should be enought for few years
+    }
     _totalETokenSupply = 1e40; // 1e22 = a lot...
   }
 
@@ -38,8 +44,15 @@ contract PolicyPoolMock is IPolicyPool {
     return _config;
   }
 
-  function setAssetManager(IAssetManager) external pure override {
-    revert("Not Implemented");
+  function setAssetManager(IAssetManager newAssetManager) external override {
+    require(msg.sender == address(_config), "Only the PolicyPoolConfig can change assetManager");
+    if (address(_config.assetManager()) != address(0)) {
+      _config.assetManager().deinvestAll(); // deInvest all assets
+      _currency.approve(address(_config.assetManager()), 0); // revoke currency management approval
+    }
+    if (address(newAssetManager) != address(0)) {
+      _currency.approve(address(newAssetManager), MAX_INT); // infinite approval should be enought for few years
+    }
   }
 
   function getInvestable() external pure override returns (uint256) {
@@ -119,6 +132,9 @@ contract PolicyPoolMock is IPolicyPool {
  *      and other contracts that have functions that can be called only from PolicyPool
  */
 contract PolicyPoolMockForward is ForwardProxy {
+  uint256 public constant MAX_INT =
+    0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
+
   IERC20Metadata internal _currency;
   IPolicyPoolConfig internal _config;
 
@@ -138,5 +154,28 @@ contract PolicyPoolMockForward is ForwardProxy {
 
   function config() external view returns (IPolicyPoolConfig) {
     return _config;
+  }
+
+  function setAssetManager(IAssetManager newAssetManager) external {
+    require(msg.sender == address(_config), "Only the PolicyPoolConfig can change assetManager");
+    if (address(_config.assetManager()) != address(0)) {
+      _config.assetManager().deinvestAll(); // deInvest all assets
+      _currency.approve(address(_config.assetManager()), 0); // revoke currency management approval
+    }
+    if (address(newAssetManager) != address(0)) {
+      _currency.approve(address(newAssetManager), MAX_INT); // infinite approval should be enought for few years
+    }
+  }
+
+  function getInvestable() external returns (uint256) {
+    return _currency.balanceOf(address(this));
+  }
+
+  function getETokenCount() external pure returns (uint256) {
+    return 0;
+  }
+
+  function getETokenAt(uint256) external pure returns (IEToken) {
+    return IEToken(address(0));
   }
 }

@@ -60,26 +60,16 @@ contract PolicyPoolConfig is
     _;
   }
 
-  function initialize(
-    address treasury_,
-    IAssetManager assetManager_,
-    IInsolvencyHook insolvencyHook_
-  ) public initializer {
+  function initialize(address treasury_) public initializer {
     __AccessControl_init();
     __UUPSUpgradeable_init();
-    __PolicyPoolConfig_init_unchained(treasury_, assetManager_, insolvencyHook_);
+    __PolicyPoolConfig_init_unchained(treasury_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
-  function __PolicyPoolConfig_init_unchained(
-    address treasury_,
-    IAssetManager assetManager_,
-    IInsolvencyHook insolvencyHook_
-  ) internal initializer {
+  function __PolicyPoolConfig_init_unchained(address treasury_) internal initializer {
     _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
     _treasury = treasury_;
-    _assetManager = assetManager_;
-    _insolvencyHook = insolvencyHook_;
   }
 
   function connect() external override {
