@@ -34,6 +34,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   uint256 public constant NEGLIGIBLE_AMOUNT = 1e14; // "0.0001" in Wad
 
   bytes32 public constant REBALANCE_ROLE = keccak256("REBALANCE_ROLE");
+  bytes32 public constant WITHDRAW_WON_PREMIUMS_ROLE = keccak256("WITHDRAW_WON_PREMIUMS_ROLE");
 
   bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
   bytes32 public constant LEVEL1_ROLE = keccak256("LEVEL1_ROLE");
@@ -66,6 +67,12 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
 
   event Deposit(IEToken indexed eToken, address indexed provider, uint256 value);
   event Withdrawal(IEToken indexed eToken, address indexed provider, uint256 value);
+
+  /*
+   * Premiums can come in (for free, without liability) with receiveGrant.
+   * And can come out (withdrawed to treasury) with withdrawWonPremiums
+   */
+  event WonPremiumsInOut(bool moneyIn, uint256 value);
 
   modifier onlyAssetManager {
     require(
@@ -380,19 +387,30 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     return (borrowFromScr, purePremiumWon);
   }
 
+  function expirePolicy(uint256 policyId) external whenNotPaused {
+    Policy.PolicyData storage policy = _policies[policyId];
+    require(policy.id == policyId && policyId != 0, "Policy not found");
+    require(policy.expiration <= block.timestamp, "Policy not expired yet");
+    return _resolvePolicy(policyId, 0, true);
+  }
+
   function resolvePolicy(uint256 policyId, uint256 payout) external override whenNotPaused {
-    return _resolvePolicy(policyId, payout);
+    return _resolvePolicy(policyId, payout, false);
   }
 
   function resolvePolicy(uint256 policyId, bool customerWon) external override whenNotPaused {
-    return _resolvePolicy(policyId, customerWon ? _policies[policyId].payout : 0);
+    return _resolvePolicy(policyId, customerWon ? _policies[policyId].payout : 0, false);
   }
 
-  function _resolvePolicy(uint256 policyId, uint256 payout) internal {
+  function _resolvePolicy(
+    uint256 policyId,
+    uint256 payout,
+    bool expired
+  ) internal {
     Policy.PolicyData storage policy = _policies[policyId];
     require(policy.id == policyId && policyId != 0, "Policy not found");
     IRiskModule rm = policy.riskModule;
-    require(address(rm) == msg.sender, "Only the RM can resolve policies");
+    require(expired || address(rm) == msg.sender, "Only the RM can resolve policies");
     _config.checkAcceptsResolvePolicy(rm);
     require(payout <= policy.payout, "Actual payout can't be more than policy payout");
 
@@ -531,9 +549,43 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     return poolLoan - toPayLater;
   }
 
+  /**
+   *
+   * Endpoint to receive "free money" and inject that money into the premium pool.
+   *
+   * Can be used for example if the PolicyPool subscribes an excess loss policy with other company.
+   *
+   */
   function receiveGrant(uint256 amount) external override {
     _currency.safeTransferFrom(msg.sender, address(this), amount);
     _storePurePremiumWon(amount);
+    emit WonPremiumsInOut(true, amount);
+  }
+
+  /**
+   *
+   * Withdraws excess premiums to PolicyPool's treasury.
+   * This might be needed in some cases for example if we are deprecating the protocol or the excess premiums
+   * are needed to compensate something. Shouldn't be used. Can be disabled revoking role WITHDRAW_WON_PREMIUMS_ROLE
+   *
+   * returns The amount withdrawed
+   *
+   * Requirements:
+   *
+   * - onlyRole(WITHDRAW_WON_PREMIUMS_ROLE)
+   * - _wonPurePremiums > 0
+   */
+  function withdrawWonPremiums(uint256 amount)
+    external
+    onlyRole(WITHDRAW_WON_PREMIUMS_ROLE)
+    returns (uint256)
+  {
+    if (amount > _wonPurePremiums) amount = _wonPurePremiums;
+    require(amount > 0, "No premiums to withdraw");
+    _wonPurePremiums -= amount;
+    _transferTo(_config.treasury(), amount);
+    emit WonPremiumsInOut(false, amount);
+    return amount;
   }
 
   function rebalancePolicy(uint256 policyId) external onlyRole(REBALANCE_ROLE) whenNotPaused {

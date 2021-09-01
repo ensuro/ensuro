@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 import {IAccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {IAssetManager} from "./IAssetManager.sol";
 import {IInsolvencyHook} from "./IInsolvencyHook.sol";
+import {ILPWhitelist} from "./ILPWhitelist.sol";
 import {IRiskModule} from "./IRiskModule.sol";
 
 /**
@@ -17,6 +18,7 @@ interface IPolicyPoolConfig is IAccessControlUpgradeable {
     setTreasury, // Changes PolicyPool treasury address
     setAssetManager, // Changes PolicyPool AssetManager
     setInsolvencyHook, // Changes PolicyPool InsolvencyHook
+    setLPWhitelist, // Changes PolicyPool Liquidity Providers Whitelist
     addRiskModule,
     removeRiskModule,
     // RiskModule Governance Actions
@@ -62,6 +64,8 @@ interface IPolicyPoolConfig is IAccessControlUpgradeable {
   function assetManager() external view returns (IAssetManager);
 
   function insolvencyHook() external view returns (IInsolvencyHook);
+
+  function lpWhitelist() external view returns (ILPWhitelist);
 
   function treasury() external view returns (address);
 

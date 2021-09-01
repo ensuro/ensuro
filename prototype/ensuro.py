@@ -322,6 +322,11 @@ class EToken(ERC20Token):
         self.discrete_earning(amount)
 
     def deposit(self, provider, amount):
+        require(
+            self.policy_pool.config.lp_whitelist is None or
+            self.policy_pool.config.lp_whitelist.accepts_deposit(self, provider, amount),
+            "Liquidity Provider not whitelisted"
+        )
         self._update_current_scale()
         scaled_amount = (amount.to_ray() // self.scale_factor).to_wad()
         self.mint(provider, scaled_amount)
@@ -336,6 +341,11 @@ class EToken(ERC20Token):
         return (principal_balance.to_ray() * scale_factor).to_wad()
 
     def _transfer(self, sender, recipient, amount):
+        require(
+            self.policy_pool.config.lp_whitelist is None or
+            self.policy_pool.config.lp_whitelist.accepts_transfer(self, sender, recipient, amount),
+            "Transfer not allowed - Liquidity Provider not whitelisted"
+        )
         scaled_amount = (amount.to_ray() // self._calculate_current_scale()).to_wad()
         super()._transfer(sender, recipient, scaled_amount)
 
@@ -443,6 +453,7 @@ class PolicyPoolConfig(AccessControlContract):
     treasury = AddressField(default="ENS")
     asset_manager = ContractProxyField(default=None, allow_none=True)
     insolvency_hook = ContractProxyField(default=None, allow_none=True)
+    lp_whitelist = ContractProxyField(default=None, allow_none=True)
     risk_modules = DictField(StringField(), ContractProxyField(), default={})
 
     def connect(self, policy_pool):
@@ -453,9 +464,15 @@ class PolicyPoolConfig(AccessControlContract):
     def add_risk_module(self, risk_module):
         self.risk_modules[risk_module.name] = ContractProxy(risk_module.contract_id)
 
+    @only_role("LEVEL1_ROLE", "GUARDIAN_ROLE")
     def set_insolvency_hook(self, insolvency_hook):
         self.insolvency_hook = ContractProxy(insolvency_hook.contract_id) if insolvency_hook else None
 
+    @only_role("LEVEL1_ROLE", "GUARDIAN_ROLE")
+    def set_lp_whitelist(self, lp_whitelist):
+        self.lp_whitelist = ContractProxy(lp_whitelist.contract_id) if lp_whitelist else None
+
+    @only_role("LEVEL1_ROLE", "GUARDIAN_ROLE")
     def set_asset_manager(self, asset_manager):
         self.policy_pool.set_asset_manager(asset_manager)
         self.asset_manager = asset_manager
@@ -477,6 +494,9 @@ class PolicyPool(AccessControlContract):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.config.connect(self)
+
+    def has_role(self, role, account):
+        return self.config.has_role(role, account)
 
     @property
     def pure_premiums(self):
@@ -604,12 +624,28 @@ class PolicyPool(AccessControlContract):
         self._store_pure_premium_won(amount)
 
     @external
+    @only_role("WITHDRAW_WON_PREMIUMS_ROLE")
+    def withdraw_won_premiums(self, amount):
+        if amount > self.won_pure_premiums:
+            amount = self.won_pure_premiums
+        require(amount > 0, "No premiums to withdraw")
+        self._pay_from_pool(amount)
+        self._transfer_to(self.config.treasury, amount)
+        return amount
+
+    @external
     def repay_etoken_loan(self, etoken):
         etk = self.etokens[etoken]
         pool_loan = etk.get_pool_loan()
         to_pay_later = self._pay_from_pool(pool_loan)
         etk.repay_pool_loan(pool_loan - to_pay_later)
         return pool_loan - to_pay_later
+
+    @external
+    def expire_policy(self, policy_id):
+        policy = self.policies[policy_id]
+        require(policy.expiration <= time_control.now, "Policy not expired yet")
+        return self.resolve_policy(policy_id, Wad(0))
 
     @external
     def resolve_policy(self, policy_id, payout):
@@ -861,3 +897,21 @@ class LPInsolvencyHook(Contract):
         self.pool.currency.approve(self.contract_id, self.pool.contract_id, amount)
         self.pool.deposit(self.etoken, self.contract_id, amount)
         self.cash_deposited += amount
+
+
+class LPManualWhitelist(Contract):
+    pool = ContractProxyField()
+    whitelisted = DictField(AddressField(), IntField(), default={})
+
+    def has_role(self, role, account):
+        return self.pool.config.has_role(role, account)
+
+    @only_role("LP_WHITELIST_ROLE")
+    def whitelist_address(self, address, whitelisted):
+        self.whitelisted[address] = whitelisted
+
+    def accepts_deposit(self, etoken, provider, amount):
+        return self.whitelisted.get(provider, False)
+
+    def accepts_transfer(self, etoken, from_, to_, amount):
+        return self.whitelisted.get(to_, False)
