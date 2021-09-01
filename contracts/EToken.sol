@@ -413,7 +413,15 @@ contract EToken is PolicyPoolComponent, IERC20, IEToken {
     address from,
     address to,
     uint256 amount
-  ) internal virtual {} // solhint-disable-line no-empty-blocks
+  ) internal virtual {
+    require(
+      from == address(0) ||
+        to == address(0) ||
+        address(policyPool().config().lpWhitelist()) == address(0) ||
+        policyPool().config().lpWhitelist().acceptsTransfer(this, from, to, amount),
+      "Transfer not allowed - Liquidity Provider not whitelisted"
+    );
+  }
 
   /*** END ERC20 methods - mainly copied from OpenZeppelin but changes in events and scaledAmount */
 
@@ -539,6 +547,11 @@ contract EToken is PolicyPoolComponent, IERC20, IEToken {
     whenNotPaused
     returns (uint256)
   {
+    require(
+      address(policyPool().config().lpWhitelist()) == address(0) ||
+        policyPool().config().lpWhitelist().acceptsDeposit(this, provider, amount),
+      "Liquidity Provider not whitelisted"
+    );
     _updateCurrentScale();
     _mint(provider, amount);
     _updateTokenInterestRate();
