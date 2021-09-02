@@ -765,6 +765,7 @@ class BaseAssetManager(ETHWrapper):
     distribute_earnings = MethodAdapter()
     total_investable = MethodAdapter((), "amount")
     get_investment_value = MethodAdapter((), "amount")
+    refill_wallet = MethodAdapter((("amount", "amount"),))
 
     liquidity_min = MethodAdapter((), "amount", is_property=True)
     liquidity_middle = MethodAdapter((), "amount", is_property=True)
@@ -776,6 +777,16 @@ class BaseAssetManager(ETHWrapper):
         config = policy_pool.config
         with config.as_(self._auto_from):
             return config.grant_role(role, user)
+
+    @contextmanager
+    def thru_policy_pool(self):
+        prev_contract = self.contract
+        abi = get_contract_factory("IAssetManager").abi
+        self.contract = Contract.from_abi(self.eth_contract, self._policy_pool, abi)
+        try:
+            yield self
+        finally:
+            self.contract = prev_contract
 
 
 class FixedRateAssetManager(BaseAssetManager):
@@ -793,9 +804,9 @@ class AaveAssetManager(BaseAssetManager):
     eth_contract = "AaveAssetManager"
 
     def __init__(self, owner, pool, liquidity_min, liquidity_middle, liquidity_max,
-                 aave_address_provider):
+                 aave_address_provider, swap_router):
         super().__init__(
-            owner, pool, liquidity_min, liquidity_middle, liquidity_max, aave_address_provider
+            owner, pool, liquidity_min, liquidity_middle, liquidity_max, aave_address_provider, swap_router
         )
 
     @property
@@ -807,8 +818,22 @@ class AaveAssetManager(BaseAssetManager):
         return IERC20.connect(self.contract.rewardToken())
 
     @property
+    def rewardAToken(self):
+        return IERC20.connect(self.contract.rewardAToken())
+
+    @property
     def aToken(self):
         return IERC20.connect(self.contract.aToken())
+
+    swap_rewards_ = MethodAdapter((("amount", "amount"), ))
+
+    def swap_rewards(self, amount):
+        receipt = self.swap_rewards_(amount)
+        if "RewardSwapped" in receipt.events:
+            event = receipt.events["RewardSwapped"]
+            return Wad(event["rewardIn"]), Wad(event["currencyOut"])
+        else:
+            return Wad(0)
 
 
 class FreeGrantInsolvencyHook(ETHWrapper):

@@ -167,7 +167,7 @@ contract PolicyPoolMockForward is ForwardProxy {
     }
   }
 
-  function getInvestable() external returns (uint256) {
+  function getInvestable() external view returns (uint256) {
     return _currency.balanceOf(address(this));
   }
 

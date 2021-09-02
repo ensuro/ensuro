@@ -7,3 +7,4 @@ compiler:
     remappings:
     - "@openzeppelin=node_modules/@openzeppelin"
     - "@aave=node_modules/@aave"
+    - "@uniswap=node_modules/@uniswap"

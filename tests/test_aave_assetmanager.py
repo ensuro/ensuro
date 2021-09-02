@@ -16,6 +16,7 @@ AAVE = namedtuple("AAVE", "address_provider lending_pool price_oracle")
 AAVE_AP_ADDRESS = "0xd05e3E715d945B59290df0ae8eF85c1BdB684744"
 WMATIC_ADDRESS = "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270"
 USDC_ADDRESS = "0x2791bca1f2de4661ed88a30c99a7a9449aa84174"
+SUSHISWAP_ROUTER_ADDRESS = "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506"
 
 
 @pytest.fixture
@@ -130,7 +131,8 @@ def test_get_balance(USDC, aave, PolicyPoolAndConfig, WMATIC):
         liquidity_min=liquidity_min,
         liquidity_middle=liquidity_middle,
         liquidity_max=liquidity_max,
-        aave_address_provider=AAVE_AP_ADDRESS
+        aave_address_provider=AAVE_AP_ADDRESS,
+        swap_router=SUSHISWAP_ROUTER_ADDRESS
     )
 
     # Donate 2 matic to aave_mgr
@@ -150,3 +152,44 @@ def test_get_balance(USDC, aave, PolicyPoolAndConfig, WMATIC):
     aave_mgr.rebalance()
     aave_mgr.aToken.balance_of(aave_mgr).assert_equal(liquidity_middle)
     USDC.balance_of(pool).assert_equal(usd_amount - liquidity_middle)
+    # Rewards are reinvested on each rebalance
+    aave_mgr.rewardToken.balance_of(aave_mgr).assert_equal(_W(0))
+    aave_mgr.rewardAToken.balance_of(aave_mgr).assert_equal(_W(2))
+
+    # swapRewards
+    with pytest.raises(RevertError, match="AccessControl"):
+        swapIn, swapOut = aave_mgr.swap_rewards(_W(3))
+
+    config.grant_role("SWAP_REWARDS_ROLE", "WHOKNOWSWHENTOSELL")
+
+    with aave_mgr.as_("WHOKNOWSWHENTOSELL"):
+        wmatic_in, usdc_out = aave_mgr.swap_rewards(_W(3))
+
+    wmatic_in.assert_equal(_W(2))
+    usdc_out.assert_equal(_W(2) * usd_per_matic // _W(10**12))
+    aave_mgr.aToken.balance_of(aave_mgr).assert_equal(liquidity_middle + usdc_out)
+
+    # Donate another 3 matic to aave_mgr
+    donate_wmatic(WMATIC, "VITALIK", aave_mgr.contract, _W(1))
+
+    aave_mgr.get_investment_value().assert_equal(
+        liquidity_middle + usdc_out + _W(1) * usd_per_matic // _W(10**12)
+    )
+
+    one_dollar = _W(1) // _W(10**12)
+    with aave_mgr.thru_policy_pool():
+        aave_mgr.refill_wallet(usd_amount - liquidity_middle + one_dollar)
+    # Money taken from aToken
+    aave_mgr.aToken.balance_of(aave_mgr).assert_equal(liquidity_middle + usdc_out - one_dollar)
+
+    USDC.balance_of(pool).assert_equal(usd_amount - liquidity_middle + one_dollar)
+    aave_mgr.rebalance()
+    USDC.balance_of(pool).assert_equal(usd_amount - liquidity_middle)  # Shouldn't change
+
+    config.set_asset_manager(None)  # Should deinvestAll
+    USDC.balance_of(pool).assert_equal(usd_amount + _W(3) * usd_per_matic // _W(10**12))
+
+    # No funds in aave_mgr
+    aave_mgr.aToken.balance_of(aave_mgr).assert_equal(_W(0))
+    WMATIC.balance_of(aave_mgr).assert_equal(_W(0))
+    aave_mgr.rewardAToken.balance_of(aave_mgr).assert_equal(_W(0))
