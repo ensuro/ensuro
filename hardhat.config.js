@@ -60,11 +60,10 @@ module.exports = {
     },
     hardhat: {
     },
-    testnet: {
+    bsctestnet: {
       url: "https://data-seed-prebsc-1-s3.binance.org:8545/",
       chainId: 97,
       gasPrice: 20000000000,
-//      accounts: {mnemonic: mnemonic}
     },
     rinkeby: {
       url: "https://rinkeby.infura.io/v3/" + process.env.WEB3_INFURA_PROJECT_ID,
@@ -73,17 +72,17 @@ module.exports = {
     polygon: {
       url: "https://polygon-mainnet.infura.io/v3/" + process.env.WEB3_INFURA_PROJECT_ID,
       chainId: 137,
+      accounts: readEnvAccounts("polygon"),
     },
     polytest: {
       url: "https://polygon-mumbai.infura.io/v3/" + process.env.WEB3_INFURA_PROJECT_ID,
       chainId: 80001,
       accounts: readEnvAccounts("polytest"),
+      hardfork: "berlin",
     },
     mainnet: {
-      url: "https://bsc-dataseed.binance.org/",
-      chainId: 56,
-      gasPrice: 20000000000,
-//      accounts: {mnemonic: mnemonic}
+      url: "https://mainnet.infura.io/v3/" + process.env.WEB3_INFURA_PROJECT_ID,
+      accounts: readEnvAccounts("mainnet"),
     }
   },
   etherscan: {

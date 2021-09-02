@@ -35,6 +35,15 @@ class TimeControl:
 time_control = TimeControl()
 
 
+def get_contract_factory(eth_contract):
+    ret = getattr(brownie, eth_contract, None)
+    if ret is not None:
+        return ret
+    # Might be an interface
+    project = brownie.project.get_loaded_projects()[0]
+    return getattr(project.interface, eth_contract)
+
+
 class AddressBook:
     ZERO = "0x0000000000000000000000000000000000000000"
 
@@ -221,11 +230,11 @@ class ETHWrapper:
     def __init__(self, owner="owner", *init_params):
         self.owner = AddressBook.instance.get_account(owner)
         for library in self.libraries_required:
-            getattr(brownie, library).deploy({"from": self.owner})
+            get_contract_factory(library).deploy({"from": self.owner})
+        eth_contract = get_contract_factory(self.eth_contract)
         if self.proxy_kind is None:
-            self.contract = getattr(brownie, self.eth_contract).deploy(*init_params, {"from": self.owner})
+            self.contract = eth_contract.deploy(*init_params, {"from": self.owner})
         elif self.proxy_kind == "uups" and not SKIP_PROXY:
-            eth_contract = getattr(brownie, self.eth_contract)
             real_contract = eth_contract.deploy({"from": self.owner})
             proxy_contract = brownie.ERC1967Proxy.deploy(
                 real_contract, encode_function_data(real_contract.initialize, *init_params),
@@ -233,7 +242,7 @@ class ETHWrapper:
             )
             self.contract = Contract.from_abi(self.eth_contract, proxy_contract.address, eth_contract.abi)
         elif self.proxy_kind == "uups" and SKIP_PROXY:
-            self.contract = getattr(brownie, self.eth_contract).deploy({"from": self.owner})
+            self.contract = eth_contract.deploy({"from": self.owner})
             self.contract.initialize(*init_params, {"from": self.owner})
 
     @classmethod
@@ -241,7 +250,7 @@ class ETHWrapper:
         """Connects a wrapper to an existing deployed object"""
         obj = cls.__new__(cls)
         if isinstance(contract, str):
-            eth_contract = getattr(brownie, cls.eth_contract)
+            eth_contract = get_contract_factory(cls.eth_contract)
             contract = Contract.from_abi(cls.eth_contract, contract, eth_contract.abi)
         obj.contract = contract
         obj.owner = owner
@@ -273,6 +282,8 @@ class ETHWrapper:
 
 
 class IERC20(ETHWrapper):
+    eth_contract = "IERC20Metadata"
+
     name = MethodAdapter((), "string", is_property=True)
     symbol = MethodAdapter((), "string", is_property=True)
     decimals = MethodAdapter((), "int", is_property=True)
@@ -586,13 +597,9 @@ class PolicyPoolConfig(ETHWrapper):
 
     proxy_kind = "uups"
 
-    def __init__(self, owner, treasury="ENS", asset_manager=None, insolvency_hook=None):
+    def __init__(self, owner, treasury="ENS"):
         treasury = self._get_account(treasury)
-        if asset_manager:
-            self._asset_manager = asset_manager
-        asset_manager = self._get_account(asset_manager)
-        insolvency_hook = self._get_account(insolvency_hook)
-        super().__init__(owner, treasury, asset_manager, insolvency_hook)
+        super().__init__(owner, treasury)
         self._auto_from = self.owner
         self.risk_modules = {}
 
@@ -757,6 +764,8 @@ class BaseAssetManager(ETHWrapper):
     rebalance = MethodAdapter()
     distribute_earnings = MethodAdapter()
     total_investable = MethodAdapter((), "amount")
+    get_investment_value = MethodAdapter((), "amount")
+    refill_wallet = MethodAdapter((("amount", "amount"),))
 
     liquidity_min = MethodAdapter((), "amount", is_property=True)
     liquidity_middle = MethodAdapter((), "amount", is_property=True)
@@ -769,6 +778,16 @@ class BaseAssetManager(ETHWrapper):
         with config.as_(self._auto_from):
             return config.grant_role(role, user)
 
+    @contextmanager
+    def thru_policy_pool(self):
+        prev_contract = self.contract
+        abi = get_contract_factory("IAssetManager").abi
+        self.contract = Contract.from_abi(self.eth_contract, self._policy_pool, abi)
+        try:
+            yield self
+        finally:
+            self.contract = prev_contract
+
 
 class FixedRateAssetManager(BaseAssetManager):
     eth_contract = "FixedRateAssetManager"
@@ -779,6 +798,42 @@ class FixedRateAssetManager(BaseAssetManager):
         super().__init__(
             owner, pool, liquidity_min, liquidity_middle, liquidity_max, interest_rate
         )
+
+
+class AaveAssetManager(BaseAssetManager):
+    eth_contract = "AaveAssetManager"
+
+    def __init__(self, owner, pool, liquidity_min, liquidity_middle, liquidity_max,
+                 aave_address_provider, swap_router):
+        super().__init__(
+            owner, pool, liquidity_min, liquidity_middle, liquidity_max, aave_address_provider, swap_router
+        )
+
+    @property
+    def currency(self):
+        return IERC20.connect(self.contract.currency())
+
+    @property
+    def rewardToken(self):
+        return IERC20.connect(self.contract.rewardToken())
+
+    @property
+    def rewardAToken(self):
+        return IERC20.connect(self.contract.rewardAToken())
+
+    @property
+    def aToken(self):
+        return IERC20.connect(self.contract.aToken())
+
+    swap_rewards_ = MethodAdapter((("amount", "amount"), ))
+
+    def swap_rewards(self, amount):
+        receipt = self.swap_rewards_(amount)
+        if "RewardSwapped" in receipt.events:
+            event = receipt.events["RewardSwapped"]
+            return Wad(event["rewardIn"]), Wad(event["currencyOut"])
+        else:
+            return Wad(0)
 
 
 class FreeGrantInsolvencyHook(ETHWrapper):

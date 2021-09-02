@@ -77,10 +77,6 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
     );
   }
 
-  function _currency() internal view returns (IERC20) {
-    return _policyPool.currency();
-  }
-
   /**
    * @dev Returns the total amount that is available to invest by the asset manager
    */
@@ -140,7 +136,7 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
    */
   function rebalance() public virtual whenNotPaused {
     // TODO Check: Anyone can call this funcion. This could be a potencial surface of flash loan attack?
-    uint256 poolCash = _currency().balanceOf(address(_policyPool));
+    uint256 poolCash = currency().balanceOf(address(_policyPool));
     if (poolCash > _liquidityMax) {
       _invest(poolCash - _liquidityMiddle);
     } else if (poolCash < _liquidityMin) {
@@ -163,7 +159,7 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
    * @param paymentAmount The amount of the payment
    */
   function refillWallet(uint256 paymentAmount) external override onlyPolicyPool {
-    uint256 poolCash = _currency().balanceOf(address(_policyPool));
+    uint256 poolCash = currency().balanceOf(address(_policyPool));
     require(poolCash < paymentAmount, "No need to refill the wallet for this payment");
     uint256 investmentValue = getInvestmentValue();
     // try to leave the pool balance at liquidity_middle after the payment

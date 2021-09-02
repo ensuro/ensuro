@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
@@ -24,13 +24,11 @@ import {DataTypes} from "./DataTypes.sol";
 contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   using EnumerableSet for EnumerableSet.AddressSet;
   using WadRayMath for uint256;
-  using SafeERC20 for IERC20;
+  using SafeERC20 for IERC20Metadata;
   using Policy for Policy.PolicyData;
   using DataTypes for DataTypes.ETokenToWadMap;
   using DataTypes for DataTypes.ETokenStatusMap;
 
-  uint256 public constant MAX_INT =
-    0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
   uint256 public constant NEGLIGIBLE_AMOUNT = 1e14; // "0.0001" in Wad
 
   bytes32 public constant REBALANCE_ROLE = keccak256("REBALANCE_ROLE");
@@ -45,7 +43,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
 
   IPolicyPoolConfig internal _config;
   // #if_updated_disabled {:msg "Only set on creation"} msg.sig == bytes4(0);
-  IERC20 internal _currency;
+  IERC20Metadata internal _currency;
 
   IPolicyNFT internal _policyNFT;
 
@@ -95,7 +93,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   function initialize(
     IPolicyPoolConfig config_,
     IPolicyNFT policyNFT_,
-    IERC20 currency_
+    IERC20Metadata currency_
   ) public initializer {
     __UUPSUpgradeable_init();
     __Pausable_init();
@@ -106,11 +104,15 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   function __PolicyPool_init_unchained(
     IPolicyPoolConfig config_,
     IPolicyNFT policyNFT_,
-    IERC20 currency_
+    IERC20Metadata currency_
   ) internal initializer {
     _config = config_;
     _config.connect();
     _currency = currency_;
+    require(
+      _config.assetManager() == IAssetManager(address(0)),
+      "AssetManager can't be set before PolicyPool initialization"
+    );
     _policyNFT = policyNFT_;
     _policyNFT.connect();
     /*
@@ -136,7 +138,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     return _config;
   }
 
-  function currency() external view virtual override returns (IERC20) {
+  function currency() external view virtual override returns (IERC20Metadata) {
     return _currency;
   }
 
@@ -203,7 +205,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
       _config.assetManager().deinvestAll(); // deInvest all assets
       _currency.approve(address(_config.assetManager()), 0); // revoke currency management approval
     }
-    _currency.approve(address(newAssetManager), MAX_INT); // infinite approval should be enought for few years
+    if (address(newAssetManager) != address(0)) {
+      _currency.approve(address(newAssetManager), type(uint256).max);
+    }
   }
 
   /// #if_succeeds

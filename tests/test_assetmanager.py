@@ -5,7 +5,7 @@ from collections import namedtuple
 import pytest
 from prototype.contracts import RevertError
 from prototype import ensuro
-from prototype.wadray import _W, _R
+from prototype.wadray import _W
 from prototype.utils import WEEK, DAY
 from .wrappers import time_control, AddressBook, TestCurrency, PolicyPoolConfig
 from . import wrappers
@@ -40,6 +40,8 @@ def tenv(request):
             )
             obj = cls(pool=pool, owner="owner", **kwargs)
             pool.setForwardTo(obj.contract, {"from": currency.owner})
+            config.grant_role("LEVEL1_ROLE", "owner")
+            config.set_asset_manager(obj)
             return obj
 
         return TEnv(

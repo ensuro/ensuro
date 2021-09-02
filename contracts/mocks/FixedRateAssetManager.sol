@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {BaseAssetManager} from "../BaseAssetManager.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IPolicyPool} from "../../interfaces/IPolicyPool.sol";
@@ -9,7 +9,7 @@ import {WadRayMath} from "../WadRayMath.sol";
 import {IMintableERC20} from "./IMintableERC20.sol";
 
 contract FixedRateAssetManager is BaseAssetManager {
-  using SafeERC20 for IERC20;
+  using SafeERC20 for IERC20Metadata;
   using WadRayMath for uint256;
 
   uint256 internal constant SECONDS_PER_YEAR = 365 days;
@@ -30,7 +30,7 @@ contract FixedRateAssetManager is BaseAssetManager {
   }
 
   function getInvestmentValue() public view override returns (uint256) {
-    uint256 balance = _currency().balanceOf(address(this));
+    uint256 balance = currency().balanceOf(address(this));
     if (lastMintBurn >= block.timestamp) return balance;
     uint256 secs = block.timestamp - lastMintBurn;
     uint256 scale = WadRayMath.ray() + (interestRate * secs) / SECONDS_PER_YEAR;
@@ -39,12 +39,12 @@ contract FixedRateAssetManager is BaseAssetManager {
 
   function _mintBurn() internal {
     if (lastMintBurn >= block.timestamp) return;
-    uint256 balance = _currency().balanceOf(address(this));
+    uint256 balance = currency().balanceOf(address(this));
     uint256 currentValue = getInvestmentValue();
     if (currentValue > balance) {
-      IMintableERC20(address(_currency())).mint(address(this), currentValue - balance);
+      IMintableERC20(address(currency())).mint(address(this), currentValue - balance);
     } else if (currentValue < balance) {
-      IMintableERC20(address(_currency())).burn(address(this), balance - currentValue);
+      IMintableERC20(address(currency())).burn(address(this), balance - currentValue);
     }
     lastMintBurn = block.timestamp;
   }

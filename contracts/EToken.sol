@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
@@ -14,11 +14,11 @@ import {WadRayMath} from "./WadRayMath.sol";
  * @dev Implementation of the interest/earnings bearing token for the Ensuro protocol
  * @author Ensuro
  */
-contract EToken is PolicyPoolComponent, IERC20, IEToken {
+contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
   uint256 public constant MIN_SCALE = 1e17; // 0.0000000001 == 1e-10 in ray
 
   using WadRayMath for uint256;
-  using SafeERC20 for IERC20;
+  using SafeERC20 for IERC20Metadata;
 
   uint256 internal constant SECONDS_PER_YEAR = 365 days;
 
@@ -136,7 +136,7 @@ contract EToken is PolicyPoolComponent, IERC20, IEToken {
   /**
    * @dev Returns the name of the token.
    */
-  function name() public view virtual returns (string memory) {
+  function name() public view virtual override returns (string memory) {
     return _name;
   }
 
@@ -144,7 +144,7 @@ contract EToken is PolicyPoolComponent, IERC20, IEToken {
    * @dev Returns the symbol of the token, usually a shorter version of the
    * name.
    */
-  function symbol() public view virtual returns (string memory) {
+  function symbol() public view virtual override returns (string memory) {
     return _symbol;
   }
 
@@ -161,8 +161,8 @@ contract EToken is PolicyPoolComponent, IERC20, IEToken {
    * no way affects any of the arithmetic of the contract, including
    * {IERC20-balanceOf} and {IERC20-transfer}.
    */
-  function decimals() public view virtual returns (uint8) {
-    return 18;
+  function decimals() public view virtual override returns (uint8) {
+    return _policyPool.currency().decimals();
   }
 
   /**

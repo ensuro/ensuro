@@ -60,26 +60,16 @@ contract PolicyPoolConfig is
     _;
   }
 
-  function initialize(
-    address treasury_,
-    IAssetManager assetManager_,
-    IInsolvencyHook insolvencyHook_
-  ) public initializer {
+  function initialize(address treasury_) public initializer {
     __AccessControl_init();
     __UUPSUpgradeable_init();
-    __PolicyPoolConfig_init_unchained(treasury_, assetManager_, insolvencyHook_);
+    __PolicyPoolConfig_init_unchained(treasury_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
-  function __PolicyPoolConfig_init_unchained(
-    address treasury_,
-    IAssetManager assetManager_,
-    IInsolvencyHook insolvencyHook_
-  ) internal initializer {
+  function __PolicyPoolConfig_init_unchained(address treasury_) internal initializer {
     _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
     _treasury = treasury_;
-    _assetManager = assetManager_;
-    _insolvencyHook = insolvencyHook_;
   }
 
   function connect() external override {
@@ -105,6 +95,11 @@ contract PolicyPoolConfig is
   }
 
   function setAssetManager(IAssetManager assetManager_) external onlyRole(LEVEL1_ROLE) {
+    require(
+      address(assetManager_) == address(0) ||
+        IPolicyPoolComponent(address(assetManager_)).policyPool() == _policyPool,
+      "Component not linked to this PolicyPool"
+    );
     _policyPool.setAssetManager(assetManager_);
     _assetManager = assetManager_;
     emit ComponentChanged(GovernanceActions.setAssetManager, address(_assetManager));
@@ -127,6 +122,11 @@ contract PolicyPoolConfig is
     external
     onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
   {
+    require(
+      address(insolvencyHook_) == address(0) ||
+        IPolicyPoolComponent(address(insolvencyHook_)).policyPool() == _policyPool,
+      "Component not linked to this PolicyPool"
+    );
     _insolvencyHook = insolvencyHook_;
     emit ComponentChanged(GovernanceActions.setInsolvencyHook, address(_insolvencyHook));
   }
@@ -139,6 +139,11 @@ contract PolicyPoolConfig is
     external
     onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
   {
+    require(
+      address(lpWhitelist_) == address(0) ||
+        IPolicyPoolComponent(address(lpWhitelist_)).policyPool() == _policyPool,
+      "Component not linked to this PolicyPool"
+    );
     _lpWhitelist = lpWhitelist_;
     emit ComponentChanged(GovernanceActions.setLPWhitelist, address(_lpWhitelist));
   }

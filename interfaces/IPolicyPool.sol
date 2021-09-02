@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {Policy} from "../contracts/Policy.sol";
 import {IEToken} from "./IEToken.sol";
 import {IPolicyPoolConfig} from "./IPolicyPoolConfig.sol";
 import {IAssetManager} from "./IAssetManager.sol";
 
 interface IPolicyPool {
-  function currency() external view returns (IERC20);
+  function currency() external view returns (IERC20Metadata);
 
   function config() external view returns (IPolicyPoolConfig);
 

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {IPolicyPoolComponent} from "../interfaces/IPolicyPoolComponent.sol";
 import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
@@ -84,6 +85,10 @@ abstract contract PolicyPoolComponent is
 
   function policyPool() public view override returns (IPolicyPool) {
     return _policyPool;
+  }
+
+  function currency() public view returns (IERC20Metadata) {
+    return _policyPool.currency();
   }
 
   function hasPoolRole(bytes32 role) internal view returns (bool) {

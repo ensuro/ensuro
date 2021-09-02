@@ -7,12 +7,15 @@ import {IEToken} from "../../interfaces/IEToken.sol";
 import {IAssetManager} from "../../interfaces/IAssetManager.sol";
 import {IPolicyPoolConfig} from "../../interfaces/IPolicyPoolConfig.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {Policy} from "../Policy.sol";
 import {ForwardProxy} from "./ForwardProxy.sol";
 
 contract PolicyPoolMock is IPolicyPool {
-  IERC20 internal _currency;
+  uint256 public constant MAX_INT =
+    0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
+
+  IERC20Metadata internal _currency;
   IPolicyPoolConfig internal _config;
 
   uint256 public policyCount;
@@ -22,15 +25,19 @@ contract PolicyPoolMock is IPolicyPool {
   event NewPolicy(IRiskModule indexed riskModule, uint256 policyId);
   event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, uint256 payout);
 
-  constructor(IERC20 currency_, IPolicyPoolConfig config_) {
+  constructor(IERC20Metadata currency_, IPolicyPoolConfig config_) {
     _currency = currency_;
     policyCount = 0;
     _config = config_;
     _config.connect();
+    require(
+      _config.assetManager() == IAssetManager(address(0)),
+      "AssetManager can't be set before PolicyPool initialization"
+    );
     _totalETokenSupply = 1e40; // 1e22 = a lot...
   }
 
-  function currency() external view override returns (IERC20) {
+  function currency() external view override returns (IERC20Metadata) {
     return _currency;
   }
 
@@ -38,8 +45,15 @@ contract PolicyPoolMock is IPolicyPool {
     return _config;
   }
 
-  function setAssetManager(IAssetManager) external pure override {
-    revert("Not Implemented");
+  function setAssetManager(IAssetManager newAssetManager) external override {
+    require(msg.sender == address(_config), "Only the PolicyPoolConfig can change assetManager");
+    if (address(_config.assetManager()) != address(0)) {
+      _config.assetManager().deinvestAll(); // deInvest all assets
+      _currency.approve(address(_config.assetManager()), 0); // revoke currency management approval
+    }
+    if (address(newAssetManager) != address(0)) {
+      _currency.approve(address(newAssetManager), type(uint256).max);
+    }
   }
 
   function getInvestable() external pure override returns (uint256) {
@@ -119,12 +133,15 @@ contract PolicyPoolMock is IPolicyPool {
  *      and other contracts that have functions that can be called only from PolicyPool
  */
 contract PolicyPoolMockForward is ForwardProxy {
-  IERC20 internal _currency;
+  uint256 public constant MAX_INT =
+    0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
+
+  IERC20Metadata internal _currency;
   IPolicyPoolConfig internal _config;
 
   constructor(
     address forwardTo,
-    IERC20 currency_,
+    IERC20Metadata currency_,
     IPolicyPoolConfig config_
   ) ForwardProxy(forwardTo) {
     _currency = currency_;
@@ -132,11 +149,34 @@ contract PolicyPoolMockForward is ForwardProxy {
     _config.connect();
   }
 
-  function currency() external view returns (IERC20) {
+  function currency() external view returns (IERC20Metadata) {
     return _currency;
   }
 
   function config() external view returns (IPolicyPoolConfig) {
     return _config;
+  }
+
+  function setAssetManager(IAssetManager newAssetManager) external {
+    require(msg.sender == address(_config), "Only the PolicyPoolConfig can change assetManager");
+    if (address(_config.assetManager()) != address(0)) {
+      _config.assetManager().deinvestAll(); // deInvest all assets
+      _currency.approve(address(_config.assetManager()), 0); // revoke currency management approval
+    }
+    if (address(newAssetManager) != address(0)) {
+      _currency.approve(address(newAssetManager), type(uint256).max);
+    }
+  }
+
+  function getInvestable() external view returns (uint256) {
+    return _currency.balanceOf(address(this));
+  }
+
+  function getETokenCount() external pure returns (uint256) {
+    return 0;
+  }
+
+  function getETokenAt(uint256) external pure returns (IEToken) {
+    return IEToken(address(0));
   }
 }
