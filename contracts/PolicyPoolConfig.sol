@@ -95,6 +95,11 @@ contract PolicyPoolConfig is
   }
 
   function setAssetManager(IAssetManager assetManager_) external onlyRole(LEVEL1_ROLE) {
+    require(
+      address(assetManager_) == address(0) ||
+        IPolicyPoolComponent(address(assetManager_)).policyPool() == _policyPool,
+      "Component not linked to this PolicyPool"
+    );
     _policyPool.setAssetManager(assetManager_);
     _assetManager = assetManager_;
     emit ComponentChanged(GovernanceActions.setAssetManager, address(_assetManager));
@@ -117,6 +122,11 @@ contract PolicyPoolConfig is
     external
     onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
   {
+    require(
+      address(insolvencyHook_) == address(0) ||
+        IPolicyPoolComponent(address(insolvencyHook_)).policyPool() == _policyPool,
+      "Component not linked to this PolicyPool"
+    );
     _insolvencyHook = insolvencyHook_;
     emit ComponentChanged(GovernanceActions.setInsolvencyHook, address(_insolvencyHook));
   }
@@ -129,6 +139,11 @@ contract PolicyPoolConfig is
     external
     onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
   {
+    require(
+      address(lpWhitelist_) == address(0) ||
+        IPolicyPoolComponent(address(lpWhitelist_)).policyPool() == _policyPool,
+      "Component not linked to this PolicyPool"
+    );
     _lpWhitelist = lpWhitelist_;
     emit ComponentChanged(GovernanceActions.setLPWhitelist, address(_lpWhitelist));
   }

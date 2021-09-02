@@ -30,9 +30,10 @@ contract PolicyPoolMock is IPolicyPool {
     policyCount = 0;
     _config = config_;
     _config.connect();
-    if (address(_config.assetManager()) != address(0)) {
-      _currency.approve(address(_config.assetManager()), MAX_INT); // infinite approval should be enought for few years
-    }
+    require(
+      _config.assetManager() == IAssetManager(address(0)),
+      "AssetManager can't be set before PolicyPool initialization"
+    );
     _totalETokenSupply = 1e40; // 1e22 = a lot...
   }
 
@@ -51,7 +52,7 @@ contract PolicyPoolMock is IPolicyPool {
       _currency.approve(address(_config.assetManager()), 0); // revoke currency management approval
     }
     if (address(newAssetManager) != address(0)) {
-      _currency.approve(address(newAssetManager), MAX_INT); // infinite approval should be enought for few years
+      _currency.approve(address(newAssetManager), type(uint256).max);
     }
   }
 
@@ -163,7 +164,7 @@ contract PolicyPoolMockForward is ForwardProxy {
       _currency.approve(address(_config.assetManager()), 0); // revoke currency management approval
     }
     if (address(newAssetManager) != address(0)) {
-      _currency.approve(address(newAssetManager), MAX_INT); // infinite approval should be enought for few years
+      _currency.approve(address(newAssetManager), type(uint256).max);
     }
   }
 

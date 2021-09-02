@@ -6,7 +6,6 @@ import {BaseAssetManager} from "./BaseAssetManager.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {WadRayMath} from "./WadRayMath.sol";
-// import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import {ILendingPoolAddressesProvider} from "@aave/protocol-v2/contracts/interfaces/ILendingPoolAddressesProvider.sol";
 import {ILendingPool} from "@aave/protocol-v2/contracts/interfaces/ILendingPool.sol";
 import {IAToken} from "@aave/protocol-v2/contracts/interfaces/IAToken.sol";
@@ -96,8 +95,8 @@ contract AaveAssetManager is BaseAssetManager {
   }
 
   function _rewardToCurrency(uint256 amount) internal view returns (uint256) {
-    uint256[] memory amountOutMins = _swapRouter.getAmountsOut(amount, _exchangePath());
-    return amountOutMins[1];
+    // TODO Check: this is safe? Or I should use IPriceOracle instead
+    return _swapRouter.getAmountsOut(amount, _exchangePath())[1];
   }
 
   function reinvestRewardToken() public {
@@ -121,6 +120,7 @@ contract AaveAssetManager is BaseAssetManager {
     } else {
       swapIn = amount;
     }
+    // TODO Check: this is safe? Or I should use IPriceOracle instead
     uint256 swapOutMin = _swapRouter.getAmountsOut(swapIn, path)[1];
     IERC20Metadata(path[0]).approve(address(_swapRouter), swapIn);
     uint256[] memory amounts = _swapRouter.swapExactTokensForTokens(
@@ -163,7 +163,6 @@ contract AaveAssetManager is BaseAssetManager {
 
   function _deinvest(uint256 amount) internal override {
     uint256 remainingAmount = amount;
-    // Withdraw directly to _policyPool
     uint256 toWithdraw = amount;
     if (aToken().balanceOf(address(this)) < toWithdraw) {
       toWithdraw = type(uint256).max;
@@ -171,9 +170,10 @@ contract AaveAssetManager is BaseAssetManager {
     remainingAmount -= lendingPool().withdraw(
       address(currency()),
       toWithdraw,
-      address(_policyPool)
+      address(_policyPool) // Withdraw directly to _policyPool
     );
     if (remainingAmount > 0) {
+      // TODO Check: this is safe? Or I should use IPriceOracle instead
       uint256 requiredRewards = _swapRouter.getAmountsIn(remainingAmount, _exchangePath())[0];
       (, uint256 currencyOut) = _swapRewards(requiredRewards, address(_policyPool));
       if (currencyOut < remainingAmount) {

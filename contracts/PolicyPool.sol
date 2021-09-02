@@ -29,8 +29,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   using DataTypes for DataTypes.ETokenToWadMap;
   using DataTypes for DataTypes.ETokenStatusMap;
 
-  uint256 public constant MAX_INT =
-    0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
   uint256 public constant NEGLIGIBLE_AMOUNT = 1e14; // "0.0001" in Wad
 
   bytes32 public constant REBALANCE_ROLE = keccak256("REBALANCE_ROLE");
@@ -111,9 +109,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     _config = config_;
     _config.connect();
     _currency = currency_;
-    if (address(_config.assetManager()) != address(0)) {
-      _currency.approve(address(_config.assetManager()), MAX_INT); // infinite approval should be enought for few years
-    }
+    require(
+      _config.assetManager() == IAssetManager(address(0)),
+      "AssetManager can't be set before PolicyPool initialization"
+    );
     _policyNFT = policyNFT_;
     _policyNFT.connect();
     /*
@@ -207,7 +206,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
       _currency.approve(address(_config.assetManager()), 0); // revoke currency management approval
     }
     if (address(newAssetManager) != address(0)) {
-      _currency.approve(address(newAssetManager), MAX_INT); // infinite approval should be enought for few years
+      _currency.approve(address(newAssetManager), type(uint256).max);
     }
   }
 
