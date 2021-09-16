@@ -26,14 +26,13 @@ contract AaveAssetManager is BaseAssetManager {
 
   ILendingPoolAddressesProvider internal _aaveAddrProv;
   IUniswapV2Router02 internal _swapRouter; // We will use SushiSwap in Polygon
+  uint256 internal _claimRewardsMin;
+  uint256 internal _reinvestRewardsMin;
 
   bytes32 internal constant DATA_PROVIDER_ID =
     0x0100000000000000000000000000000000000000000000000000000000000000;
 
   uint256 internal constant SECONDS_PER_YEAR = 365 days;
-
-  uint256 public interestRate;
-  uint256 public lastMintBurn;
 
   event RewardSwapped(uint256 rewardIn, uint256 currencyOut);
 
@@ -43,26 +42,54 @@ contract AaveAssetManager is BaseAssetManager {
     uint256 liquidityMiddle_,
     uint256 liquidityMax_,
     ILendingPoolAddressesProvider aaveAddrProv_,
-    IUniswapV2Router02 swapRouter_
+    IUniswapV2Router02 swapRouter_,
+    uint256 claimRewardsMin_,
+    uint256 reinvestRewardsMin_
   ) public initializer {
     __BaseAssetManager_init(policyPool_, liquidityMin_, liquidityMiddle_, liquidityMax_);
-    __AaveAssetManager_init(aaveAddrProv_, swapRouter_);
+    __AaveAssetManager_init(aaveAddrProv_, swapRouter_, claimRewardsMin_, reinvestRewardsMin_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
   function __AaveAssetManager_init(
     ILendingPoolAddressesProvider aaveAddrProv_,
-    IUniswapV2Router02 swapRouter_
+    IUniswapV2Router02 swapRouter_,
+    uint256 claimRewardsMin_,
+    uint256 reinvestRewardsMin_
   ) internal initializer {
     _aaveAddrProv = aaveAddrProv_;
     _swapRouter = swapRouter_;
+    _claimRewardsMin = claimRewardsMin_;
+    _reinvestRewardsMin = reinvestRewardsMin_;
   }
 
   function getInvestmentValue() public view override returns (uint256) {
     uint256 balance = aToken().balanceOf(address(this));
     uint256 rewardBalance = rewardToken().balanceOf(address(this)) +
-      rewardAToken().balanceOf(address(this));
+      rewardAToken().balanceOf(address(this)) +
+      unclaimedRewards();
     return balance + _rewardToCurrency(rewardBalance);
+  }
+
+  function unclaimedRewards() public view returns (uint256) {
+    // Also add unclaimed rewards
+    IAToken atk = aToken();
+    address[] memory atks = new address[](2);
+    atks[0] = address(atk);
+    atks[1] = address(rewardAToken());
+    return atk.getIncentivesController().getRewardsBalance(atks, address(this));
+  }
+
+  function _claimRewards() internal returns (uint256) {
+    if (unclaimedRewards() > _claimRewardsMin) {
+      IAToken atk = aToken();
+      address[] memory atks = new address[](2);
+      atks[0] = address(atk);
+      atks[1] = address(rewardAToken());
+      atk.getIncentivesController().claimRewards(atks, type(uint256).max, address(this));
+    } else {
+      return 0;
+    }
   }
 
   function lendingPool() public view returns (ILendingPool) {
@@ -103,7 +130,7 @@ contract AaveAssetManager is BaseAssetManager {
     ILendingPool lendingPool_ = lendingPool();
     IERC20Metadata token = rewardToken();
     uint256 rewardBalance = token.balanceOf(address(this));
-    if (rewardBalance == 0) return;
+    if (rewardBalance <= _reinvestRewardsMin) return;
     token.approve(address(lendingPool_), rewardBalance);
     lendingPool_.deposit(address(token), rewardBalance, address(this), 0);
   }

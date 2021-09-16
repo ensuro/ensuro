@@ -109,7 +109,7 @@ def skip_if_not_fork(f):
 
 # @pytest.mark.require_network("polygon-main-fork") - DOES NOT WORK
 @skip_if_not_fork
-def test_get_balance(USDC, aave, PolicyPoolAndConfig, WMATIC):
+def test_aave_asset_manager(USDC, aave, PolicyPoolAndConfig, WMATIC):
     AAVE_address = "0x1a13f4ca1d028320a707d99520abfefca3998b7f"
     assert int(USDC.balance_of(AAVE_address)) > (1000000 * 10**6)  # At least 1 millon if in the right fork
 

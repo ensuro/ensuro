@@ -460,10 +460,10 @@ class ETokenETH(IERC20):
         adapt_args=lambda args, kwargs: ((args[0].expiration, ), {})
     )
 
-    lend_to_pool_ = MethodAdapter((("amount", "amount"), ))
+    lend_to_pool_ = MethodAdapter((("amount", "amount"), ("from_ocean", "bool")))
 
-    def lend_to_pool(self, amount):
-        receipt = self.lend_to_pool_(amount)
+    def lend_to_pool(self, amount, from_ocean=True):
+        receipt = self.lend_to_pool_(amount, from_ocean)
         if "PoolLoan" in receipt.events:
             return Wad(receipt.events["PoolLoan"]["value"])
         else:
@@ -804,9 +804,11 @@ class AaveAssetManager(BaseAssetManager):
     eth_contract = "AaveAssetManager"
 
     def __init__(self, owner, pool, liquidity_min, liquidity_middle, liquidity_max,
-                 aave_address_provider, swap_router):
+                 aave_address_provider, swap_router, claim_rewards_min=_W(0),
+                 reinvest_rewards_min=_W(0)):
         super().__init__(
-            owner, pool, liquidity_min, liquidity_middle, liquidity_max, aave_address_provider, swap_router
+            owner, pool, liquidity_min, liquidity_middle, liquidity_max, aave_address_provider,
+            swap_router, claim_rewards_min, reinvest_rewards_min
         )
 
     @property
