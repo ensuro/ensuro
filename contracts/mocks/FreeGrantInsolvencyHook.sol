@@ -6,6 +6,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {IPolicyPool} from "../../interfaces/IPolicyPool.sol";
 import {IPolicyPoolComponent} from "../../interfaces/IPolicyPoolComponent.sol";
 import {IInsolvencyHook} from "../../interfaces/IInsolvencyHook.sol";
+import {IEToken} from "../../interfaces/IEToken.sol";
 import {WadRayMath} from "../WadRayMath.sol";
 import {IMintableERC20} from "./IMintableERC20.sol";
 
@@ -39,4 +40,7 @@ contract FreeGrantInsolvencyHook is IInsolvencyHook, IPolicyPoolComponent {
     cashGranted += paymentAmount;
     emit OutOfCashGranted(paymentAmount);
   }
+
+  // solhint-disable-next-line no-empty-blocks
+  function insolventEToken(IEToken eToken, uint256 paymentAmount) external override {}
 }

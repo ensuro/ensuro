@@ -17,6 +17,7 @@ contract LPInsolvencyHook is IInsolvencyHook, IPolicyPoolComponent {
   IPolicyPool internal _policyPool;
   IEToken internal _eToken;
   uint256 public cashDeposited;
+  bool internal _coverEToken;
 
   modifier onlyPolicyPool {
     require(msg.sender == address(_policyPool), "The caller must be the PolicyPool");
@@ -25,9 +26,14 @@ contract LPInsolvencyHook is IInsolvencyHook, IPolicyPoolComponent {
 
   event OutOfCashDeposited(uint256 amount);
 
-  constructor(IPolicyPool policyPool_, IEToken eToken_) {
+  constructor(
+    IPolicyPool policyPool_,
+    IEToken eToken_,
+    bool coverEToken_
+  ) {
     _policyPool = policyPool_;
     _eToken = eToken_;
+    _coverEToken = coverEToken_;
   }
 
   function policyPool() public view override returns (IPolicyPool) {
@@ -35,11 +41,24 @@ contract LPInsolvencyHook is IInsolvencyHook, IPolicyPoolComponent {
   }
 
   function outOfCash(uint256 paymentAmount) external override onlyPolicyPool {
+    _mintAndDeposit(_eToken, paymentAmount);
+  }
+
+  function _mintAndDeposit(IEToken eToken, uint256 paymentAmount) internal {
     IERC20 currency = _policyPool.currency();
     IMintableERC20(address(currency)).mint(address(this), paymentAmount);
     currency.approve(address(_policyPool), paymentAmount);
-    _policyPool.deposit(_eToken, paymentAmount);
+    _policyPool.deposit(eToken, paymentAmount);
     cashDeposited += paymentAmount;
     emit OutOfCashDeposited(paymentAmount);
+  }
+
+  function insolventEToken(IEToken eToken, uint256 paymentAmount) external override {
+    require(address(eToken) == msg.sender, "Must be called from the eToken");
+    // Should validate eToken is active - But not so needed anyway since if not active deposit will revert
+    if (_coverEToken) {
+      paymentAmount += eToken.scr().wadMul(1e17); // +10% of SCR
+      _mintAndDeposit(eToken, paymentAmount);
+    }
   }
 }

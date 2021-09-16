@@ -932,7 +932,11 @@ def test_insolvency_without_hook(tenv):
           amount: 5000
         - user: LP2
           amount: 3000
+        - user: LP3
+          amount: 8000
         - user: CUST1
+          amount: 200
+        - user: CUST2
           amount: 200
     etokens:
       - name: eUSD1YEAR
@@ -1010,6 +1014,96 @@ def test_lp_insolvency_hook(tenv):
     pool.deposit("eUSD1YEAR", "LP2", _W(3000)).assert_equal(_W(3000))
     etk.balance_of("LP1").assert_equal(_W(0))
     etk.balance_of(ins_hook).assert_equal(_W(0))
+
+
+def test_lp_insolvency_hook_negative_ocean(tenv):
+    """
+    Two policies, pool balance is enought for covering the payout, but leaves the EToken
+    with less supply than SCR (negative ocean).
+    """
+    vars = test_insolvency_without_hook(tenv)
+    pool, rm, etk, for_lps, policy, USD, timecontrol = _extract_vars(
+        vars, "pool,rm,etk,for_lps,policy,USD,timecontrol"
+    )
+    ins_hook = tenv.module.LPInsolvencyHook(pool=pool, etoken="eUSD1YEAR")
+    pool.config.set_insolvency_hook(ins_hook)
+
+    etk.total_supply().assert_equal(_W(1000) + for_lps)
+
+    USD.approve("LP3", pool.contract_id, _W(8000))
+    pool.deposit("eUSD1YEAR", "LP3", _W(8000)).assert_equal(_W(8000))
+    lp3_share = _W(8000) // (_W(9000) + for_lps)
+
+    USD.approve("CUST2", pool.contract_id, _W(200))
+    policy_2 = rm.new_policy(
+        payout=_W(9200), premium=_W(200), customer="CUST2",
+        loss_prob=_R("0.01"), expiration=timecontrol.now + 365 * DAY // 2
+    )
+    etk.scr.assert_equal(_W(1800))
+
+    USD.balance_of(pool.contract_id).assert_equal(_W(9000 + 400))
+
+    rm.resolve_policy(policy.id, True)
+
+    ins_hook.cash_deposited.assert_equal(_W(0))  # Not needed
+    etk.ocean.assert_equal(_W(0))
+    etk.scr.assert_equal(_W(900))
+    etk.get_pool_loan().assert_equal(
+        _W(9200) - policy.premium_for_rm - policy.pure_premium - policy_2.pure_premium
+    )
+
+    etk.total_supply().assert_equal(policy_2.pure_premium)
+    pool.borrowed_active_pp.assert_equal(policy_2.pure_premium)
+
+    etk.balance_of("LP3").assert_equal(policy_2.pure_premium * lp3_share)
+    etk.balance_of("LP1").assert_equal(policy_2.pure_premium * (_W(1) - lp3_share))
+    etk.balance_of(ins_hook).assert_equal(_W(0))
+
+
+def test_lp_insolvency_hook_cover_etoken(tenv):
+    """
+    Two policies, pool balance is enought for covering the payout. On insolvent etoken (SCR>total_supply)
+    calls the insolvency_hook that deposits some extra cash.
+    """
+    vars = test_insolvency_without_hook(tenv)
+    pool, rm, etk, for_lps, policy, USD, timecontrol = _extract_vars(
+        vars, "pool,rm,etk,for_lps,policy,USD,timecontrol"
+    )
+    ins_hook = tenv.module.LPInsolvencyHook(pool=pool, etoken="eUSD1YEAR", cover_etoken=1)
+    pool.config.set_insolvency_hook(ins_hook)
+
+    etk.total_supply().assert_equal(_W(1000) + for_lps)
+
+    USD.approve("LP3", pool.contract_id, _W(8000))
+    pool.deposit("eUSD1YEAR", "LP3", _W(8000)).assert_equal(_W(8000))
+    lp3_share = _W(8000) // (_W(9000) + for_lps)
+
+    USD.approve("CUST2", pool.contract_id, _W(200))
+    policy_2 = rm.new_policy(
+        payout=_W(9200), premium=_W(200), customer="CUST2",
+        loss_prob=_R("0.01"), expiration=timecontrol.now + 365 * DAY // 2
+    )
+    etk.scr.assert_equal(_W(1800))
+    etk.ocean.assert_equal(_W(9000-1800) + for_lps)
+
+    USD.balance_of(pool.contract_id).assert_equal(_W(9000 + 400))
+
+    rm.resolve_policy(policy.id, True)
+
+    pool_loan = _W(9200) - policy.premium_for_rm - policy.pure_premium - policy_2.pure_premium
+    ins_hook.cash_deposited.assert_equal(_W(90) + _W(900) - policy_2.pure_premium)
+    etk.ocean.assert_equal(_W(90))  # The insolvency_hook leaves 10% of extra ocean
+    etk.scr.assert_equal(_W(900))
+    etk.get_pool_loan().assert_equal(
+        pool_loan
+    )
+
+    etk.total_supply().assert_equal(_W(990))
+    pool.borrowed_active_pp.assert_equal(policy_2.pure_premium)
+
+    etk.balance_of("LP3").assert_equal(policy_2.pure_premium * lp3_share)
+    etk.balance_of("LP1").assert_equal(policy_2.pure_premium * (_W(1) - lp3_share))
+    etk.balance_of(ins_hook).assert_equal(_W(90) + _W(900) - policy_2.pure_premium)
 
 
 @set_precision(Wad, 3)
@@ -1144,7 +1238,7 @@ def test_lp_whitelist(tenv):
     # But can withdraw
     pool.withdraw("eUSD1YEAR", "LP2", _W(300)).assert_equal(_W(300))
 
-    
+
 def test_expire_policy(tenv):
     YAML_SETUP = """
     risk_modules:

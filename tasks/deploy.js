@@ -61,8 +61,6 @@ async function deployPolicyPoolConfig({verify, treasuryAddress}, hre) {
   const PolicyPoolConfig = await hre.ethers.getContractFactory("PolicyPoolConfig");
   const policyPoolConfig = await hre.upgrades.deployProxy(PolicyPoolConfig, [
     treasuryAddress,
-    hre.ethers.constants.AddressZero,
-    hre.ethers.constants.AddressZero,
   ], {kind: 'uups'});
 
   await policyPoolConfig.deployed();

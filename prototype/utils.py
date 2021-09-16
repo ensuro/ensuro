@@ -112,6 +112,13 @@ def load_config(yaml_config=None, module=None):
         asset_manager = getattr(module, asset_manager_class)(**asset_manager)
         pool.config.set_asset_manager(asset_manager)
 
+    insolvency_hook = config.get("insolvency_hook", {})
+    if insolvency_hook:
+        insolvency_hook_class = insolvency_hook.pop("class")
+        insolvency_hook["pool"] = pool
+        insolvency_hook = getattr(module, insolvency_hook_class)(**insolvency_hook)
+        pool.config.set_insolvency_hook(insolvency_hook)
+
     return pool
 
 
