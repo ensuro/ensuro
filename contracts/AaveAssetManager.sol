@@ -175,6 +175,7 @@ contract AaveAssetManager is BaseAssetManager {
   }
 
   function rebalance() public virtual override whenNotPaused {
+    _claimRewards();
     super.rebalance();
     reinvestRewardToken();
   }
