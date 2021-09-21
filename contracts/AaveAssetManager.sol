@@ -28,6 +28,7 @@ contract AaveAssetManager is BaseAssetManager {
   IUniswapV2Router02 internal _swapRouter; // We will use SushiSwap in Polygon
   uint256 internal _claimRewardsMin;
   uint256 internal _reinvestRewardsMin;
+  uint256 internal _maxSlippage; // Maximum slippage in WAD
 
   bytes32 internal constant DATA_PROVIDER_ID =
     0x0100000000000000000000000000000000000000000000000000000000000000;
@@ -44,10 +45,17 @@ contract AaveAssetManager is BaseAssetManager {
     ILendingPoolAddressesProvider aaveAddrProv_,
     IUniswapV2Router02 swapRouter_,
     uint256 claimRewardsMin_,
-    uint256 reinvestRewardsMin_
+    uint256 reinvestRewardsMin_,
+    uint256 maxSlippage_
   ) public initializer {
     __BaseAssetManager_init(policyPool_, liquidityMin_, liquidityMiddle_, liquidityMax_);
-    __AaveAssetManager_init(aaveAddrProv_, swapRouter_, claimRewardsMin_, reinvestRewardsMin_);
+    __AaveAssetManager_init(
+      aaveAddrProv_,
+      swapRouter_,
+      claimRewardsMin_,
+      reinvestRewardsMin_,
+      maxSlippage_
+    );
   }
 
   // solhint-disable-next-line func-name-mixedcase
@@ -55,12 +63,14 @@ contract AaveAssetManager is BaseAssetManager {
     ILendingPoolAddressesProvider aaveAddrProv_,
     IUniswapV2Router02 swapRouter_,
     uint256 claimRewardsMin_,
-    uint256 reinvestRewardsMin_
+    uint256 reinvestRewardsMin_,
+    uint256 maxSlippage_
   ) internal initializer {
     _aaveAddrProv = aaveAddrProv_;
     _swapRouter = swapRouter_;
     _claimRewardsMin = claimRewardsMin_;
     _reinvestRewardsMin = reinvestRewardsMin_;
+    _maxSlippage = maxSlippage_;
   }
 
   function getInvestmentValue() public view override returns (uint256) {
@@ -86,7 +96,7 @@ contract AaveAssetManager is BaseAssetManager {
       address[] memory atks = new address[](2);
       atks[0] = address(atk);
       atks[1] = address(rewardAToken());
-      atk.getIncentivesController().claimRewards(atks, type(uint256).max, address(this));
+      return atk.getIncentivesController().claimRewards(atks, type(uint256).max, address(this));
     } else {
       return 0;
     }
@@ -94,6 +104,10 @@ contract AaveAssetManager is BaseAssetManager {
 
   function lendingPool() public view returns (ILendingPool) {
     return ILendingPool(_aaveAddrProv.getLendingPool());
+  }
+
+  function priceOracle() public view returns (IPriceOracle) {
+    return IPriceOracle(_aaveAddrProv.getPriceOracle());
   }
 
   function _aaveDataProvider() internal view returns (AaveProtocolDataProvider) {
@@ -123,7 +137,18 @@ contract AaveAssetManager is BaseAssetManager {
 
   function _rewardToCurrency(uint256 amount) internal view returns (uint256) {
     // TODO Check: this is safe? Or I should use IPriceOracle instead
-    return _swapRouter.getAmountsOut(amount, _exchangePath())[1];
+    IPriceOracle oracle = priceOracle();
+    IERC20Metadata from_ = rewardToken();
+    IERC20Metadata to_ = currency();
+    uint256 exchangeRate = oracle.getAssetPrice(address(from_)).wadDiv(
+      oracle.getAssetPrice(address(to_))
+    );
+    if (from_.decimals() > to_.decimals()) {
+      exchangeRate /= 10**(from_.decimals() - to_.decimals());
+    } else {
+      exchangeRate *= 10**(from_.decimals() - to_.decimals());
+    }
+    return amount.wadMul(exchangeRate);
   }
 
   function reinvestRewardToken() public {
@@ -147,8 +172,7 @@ contract AaveAssetManager is BaseAssetManager {
     } else {
       swapIn = amount;
     }
-    // TODO Check: this is safe? Or I should use IPriceOracle instead
-    uint256 swapOutMin = _swapRouter.getAmountsOut(swapIn, path)[1];
+    uint256 swapOutMin = _rewardToCurrency(swapIn).wadMul(1e18 - _maxSlippage);
     IERC20Metadata(path[0]).approve(address(_swapRouter), swapIn);
     uint256[] memory amounts = _swapRouter.swapExactTokensForTokens(
       swapIn,
@@ -201,7 +225,9 @@ contract AaveAssetManager is BaseAssetManager {
       address(_policyPool) // Withdraw directly to _policyPool
     );
     if (remainingAmount > 0) {
-      // TODO Check: this is safe? Or I should use IPriceOracle instead
+      // In this case, it's safe using getAmountsIn to compute how many rewards are needed to swap
+      // but then, when I do the swap I validate the slippage with the market price (given by AAVE's Oracle)
+      // is acceptable
       uint256 requiredRewards = _swapRouter.getAmountsIn(remainingAmount, _exchangePath())[0];
       (, uint256 currencyOut) = _swapRewards(requiredRewards, address(_policyPool));
       if (currencyOut < remainingAmount) {

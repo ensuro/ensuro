@@ -132,7 +132,8 @@ def test_aave_asset_manager(USDC, aave, PolicyPoolAndConfig, WMATIC):
         liquidity_middle=liquidity_middle,
         liquidity_max=liquidity_max,
         aave_address_provider=AAVE_AP_ADDRESS,
-        swap_router=SUSHISWAP_ROUTER_ADDRESS
+        swap_router=SUSHISWAP_ROUTER_ADDRESS,
+        max_slippage=_W("0.01")
     )
 
     # Donate 2 matic to aave_mgr

@@ -805,10 +805,10 @@ class AaveAssetManager(BaseAssetManager):
 
     def __init__(self, owner, pool, liquidity_min, liquidity_middle, liquidity_max,
                  aave_address_provider, swap_router, claim_rewards_min=_W(0),
-                 reinvest_rewards_min=_W(0)):
+                 reinvest_rewards_min=_W(0), max_slippage=_W("0.01")):
         super().__init__(
             owner, pool, liquidity_min, liquidity_middle, liquidity_max, aave_address_provider,
-            swap_router, claim_rewards_min, reinvest_rewards_min
+            swap_router, claim_rewards_min, reinvest_rewards_min, max_slippage
         )
 
     @property
