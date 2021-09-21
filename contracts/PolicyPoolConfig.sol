@@ -60,20 +60,27 @@ contract PolicyPoolConfig is
     _;
   }
 
-  function initialize(address treasury_) public initializer {
+  function initialize(IPolicyPool policyPool_, address treasury_) public initializer {
     __AccessControl_init();
     __UUPSUpgradeable_init();
-    __PolicyPoolConfig_init_unchained(treasury_);
+    __PolicyPoolConfig_init_unchained(policyPool_, treasury_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
-  function __PolicyPoolConfig_init_unchained(address treasury_) internal initializer {
+  function __PolicyPoolConfig_init_unchained(IPolicyPool policyPool_, address treasury_)
+    internal
+    initializer
+  {
     _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
+    _policyPool = policyPool_;
     _treasury = treasury_;
   }
 
   function connect() external override {
-    require(address(_policyPool) == address(0), "PolicyPool already connected");
+    require(
+      address(_policyPool) == address(0) || address(_policyPool) == _msgSender(),
+      "PolicyPool already connected"
+    );
     _policyPool = IPolicyPool(_msgSender());
     // Not possible to do this validation because connect is called in _policyPool initialize :'(
     // require(_policyPool.config() == this, "PolicyPool not connected to this config");

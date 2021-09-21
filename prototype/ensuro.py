@@ -387,9 +387,13 @@ class EToken(ERC20Token):
             _W(0)
         )
 
-    def lend_to_pool(self, amount):
-        if amount > self.ocean:
-            amount = self.ocean
+    def lend_to_pool(self, amount, from_ocean=True):
+        if from_ocean:
+            if amount > self.ocean:
+                amount = self.ocean
+        else:
+            if amount > self.total_supply():
+                amount = self.total_supply()
         if amount > self._max_negative_adjustment():
             amount = self._max_negative_adjustment()
             if amount <= 0:
@@ -403,6 +407,12 @@ class EToken(ERC20Token):
             self.pool_loan += (amount.to_ray() // self.pool_loan_scale).to_wad()
         self._update_current_scale()
         self.discrete_earning(-amount)
+        if not from_ocean and self.scr > self.total_supply():
+            # Notify insolvency_hook - Insuficient solvency
+            if self.policy_pool.config.insolvency_hook:
+                self.policy_pool.config.insolvency_hook.insolvent_etoken(
+                    self, self.scr - self.total_supply()
+                )
         return amount
 
     def repay_pool_loan(self, amount):
@@ -710,7 +720,7 @@ class PolicyPool(AccessControlContract):
     def _take_loan_from_any_etk(self, etk_borrow_left):
         "When locked tokens don't have enought money, we take money from any token"
         for etk in self.etokens.values():
-            etk_borrow_left -= etk.lend_to_pool(etk_borrow_left)
+            etk_borrow_left -= etk.lend_to_pool(etk_borrow_left, False)
             if etk_borrow_left <= self.NEGLIGIBLE_AMOUNT:
                 break
         return etk_borrow_left
@@ -885,18 +895,30 @@ class FreeGrantInsolvencyHook(Contract):
         self.pool.receive_grant(self.contract_id, amount)
         self.cash_granted += amount
 
+    def insolvent_etoken(self, etoken, amount):
+        pass
+
 
 class LPInsolvencyHook(Contract):
     pool = ContractProxyField()
     etoken = StringField()
     cash_deposited = WadField(default=Wad(0))
+    cover_etoken = IntField(default=0)
 
     def out_of_cash(self, amount):
+        self._mint_and_deposit(self.etoken, amount)
+
+    def _mint_and_deposit(self, etoken, amount):
         # Just a simple implementation that mints money and grants
         self.pool.currency.mint(self.contract_id, amount)
         self.pool.currency.approve(self.contract_id, self.pool.contract_id, amount)
-        self.pool.deposit(self.etoken, self.contract_id, amount)
+        self.pool.deposit(etoken, self.contract_id, amount)
         self.cash_deposited += amount
+
+    def insolvent_etoken(self, etoken, amount):
+        if self.cover_etoken:
+            # Covers amount + 10% of the SCR
+            self._mint_and_deposit(etoken.name, amount + etoken.scr * _W("0.1"))
 
 
 class LPManualWhitelist(Contract):

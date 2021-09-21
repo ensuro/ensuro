@@ -58,6 +58,9 @@ module.exports = {
     localhost: {
       url: "http://127.0.0.1:8545"
     },
+    ganache: {
+      url: "http://ganache-cli:8545"
+    },
     hardhat: {
     },
     bsctestnet: {

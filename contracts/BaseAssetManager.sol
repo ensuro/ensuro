@@ -69,7 +69,6 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
     _validateParameters();
   }
 
-  // runs validation on EToken parameters
   function _validateParameters() internal view {
     require(
       _liquidityMin <= _liquidityMiddle && _liquidityMiddle <= _liquidityMax,

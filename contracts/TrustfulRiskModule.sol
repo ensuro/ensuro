@@ -70,11 +70,11 @@ contract TrustfulRiskModule is RiskModule {
     return _policyPool.resolvePolicy(policyId, payout);
   }
 
-  function resolvePolicy(uint256 policyId, bool customerWon)
+  function resolvePolicyFullPayout(uint256 policyId, bool customerWon)
     external
     onlyRole(RESOLVER_ROLE)
     whenNotPaused
   {
-    return _policyPool.resolvePolicy(policyId, customerWon);
+    return _policyPool.resolvePolicyFullPayout(policyId, customerWon);
   }
 }

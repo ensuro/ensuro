@@ -199,6 +199,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     emit ETokenStatusChanged(eToken, newStatus);
   }
 
+  function getETokenStatus(IEToken eToken) external view returns (DataTypes.ETokenStatus) {
+    return _eTokens.get(eToken);
+  }
+
   function setAssetManager(IAssetManager newAssetManager) external override {
     require(msg.sender == address(_config), "Only the PolicyPoolConfig can change assetManager");
     if (address(_config.assetManager()) != address(0)) {
@@ -402,7 +406,11 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     return _resolvePolicy(policyId, payout, false);
   }
 
-  function resolvePolicy(uint256 policyId, bool customerWon) external override whenNotPaused {
+  function resolvePolicyFullPayout(uint256 policyId, bool customerWon)
+    external
+    override
+    whenNotPaused
+  {
     return _resolvePolicy(policyId, customerWon ? _policies[policyId].payout : 0, false);
   }
 
@@ -479,7 +487,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
       if (borrowFromScr > 0) {
         uint256 aux;
         aux = borrowFromScr.wadMul(etkScr);
-        borrowFromScrLeft += aux - etk.lendToPool(aux);
+        borrowFromScrLeft += aux - etk.lendToPool(aux, true);
       }
     }
     return borrowFromScrLeft;
@@ -521,7 +529,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     for (uint256 i = 0; i < _eTokens.length(); i++) {
       (IEToken etk, DataTypes.ETokenStatus etkStatus) = _eTokens.at(i);
       if (etkStatus != DataTypes.ETokenStatus.active) continue;
-      loanLeft -= etk.lendToPool(loanLeft);
+      loanLeft -= etk.lendToPool(loanLeft, false);
       if (loanLeft <= NEGLIGIBLE_AMOUNT) break;
     }
     return loanLeft;

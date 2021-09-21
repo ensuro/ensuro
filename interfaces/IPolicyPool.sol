@@ -18,7 +18,7 @@ interface IPolicyPool {
 
   function resolvePolicy(uint256 policyId, uint256 payout) external;
 
-  function resolvePolicy(uint256 policyId, bool customerWon) external;
+  function resolvePolicyFullPayout(uint256 policyId, bool customerWon) external;
 
   function receiveGrant(uint256 amount) external;
 

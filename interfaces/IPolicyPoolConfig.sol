@@ -39,6 +39,10 @@ interface IPolicyPoolConfig is IAccessControlUpgradeable {
     setLiquidityMin,
     setLiquidityMiddle,
     setLiquidityMax,
+    // AaveAssetManager Governance Actions
+    setClaimRewardsMin,
+    setReinvestRewardsMin,
+    setMaxSlippage,
     last
   }
 

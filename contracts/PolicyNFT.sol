@@ -13,19 +13,27 @@ contract PolicyNFT is ERC721Upgradeable, PolicyPoolComponent, IPolicyNFT {
 
   CountersUpgradeable.Counter private _tokenIdCounter;
 
-  function initialize(string memory name_, string memory symbol_) public initializer {
+  function initialize(
+    string memory name_,
+    string memory symbol_,
+    IPolicyPool policyPool_
+  ) public initializer {
     __ERC721_init(name_, symbol_);
     __PolicyPoolComponent_init(IPolicyPool(address(0)));
-    __PolicyNFT_init_unchained();
+    __PolicyNFT_init_unchained(policyPool_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
-  function __PolicyNFT_init_unchained() internal initializer {
+  function __PolicyNFT_init_unchained(IPolicyPool policyPool_) internal initializer {
+    _policyPool = policyPool_;
     _tokenIdCounter.increment(); // I don't want _tokenId==0
   }
 
   function connect() external override {
-    require(address(_policyPool) == address(0), "PolicyPool already connected");
+    require(
+      address(_policyPool) == address(0) || address(_policyPool) == _msgSender(),
+      "PolicyPool already connected"
+    );
     _policyPool = IPolicyPool(_msgSender());
     // Not possible to do this validation because connect is called in _policyPool initialize :'(
     // require(_policyPool.config() == this, "PolicyPool not connected to this config");
