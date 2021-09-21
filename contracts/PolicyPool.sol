@@ -406,7 +406,11 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     return _resolvePolicy(policyId, payout, false);
   }
 
-  function resolvePolicy(uint256 policyId, bool customerWon) external override whenNotPaused {
+  function resolvePolicyFullPayout(uint256 policyId, bool customerWon)
+    external
+    override
+    whenNotPaused
+  {
     return _resolvePolicy(policyId, customerWon ? _policies[policyId].payout : 0, false);
   }
 

@@ -571,16 +571,14 @@ class TrustfulRiskModule(RiskModuleETH):
         ("customer", "address")
     ), "int")
 
-    resolve_policy_bool = MethodAdapter((("policy_id", "int"), ("customer_won", "bool")),
-                                        eth_variant="uint,bool", eth_method="resolvePolicy")
-    resolve_policy_amount = MethodAdapter((("policy_id", "int"), ("payout", "amount")),
-                                          eth_variant="uint,uint", eth_method="resolvePolicy")
+    resolve_policy_full_payout = MethodAdapter((("policy_id", "int"), ("customer_won", "bool")))
+    resolve_policy_ = MethodAdapter((("policy_id", "int"), ("payout", "amount")))
 
     def resolve_policy(self, policy_id, customer_won_or_amount):
         if customer_won_or_amount is True or customer_won_or_amount is False:
-            return self.resolve_policy_bool(policy_id,  customer_won_or_amount)
+            return self.resolve_policy_full_payout(policy_id,  customer_won_or_amount)
         else:
-            return self.resolve_policy_amount(policy_id,  customer_won_or_amount)
+            return self.resolve_policy_(policy_id,  customer_won_or_amount)
 
     def new_policy(self, *args, **kwargs):
         receipt = self.new_policy_(*args, **kwargs)

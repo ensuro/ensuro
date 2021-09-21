@@ -106,7 +106,7 @@ contract PolicyPoolMock is IPolicyPool {
     _resolvePolicy(policyId, payout);
   }
 
-  function resolvePolicy(uint256 policyId, bool customerWon) external override {
+  function resolvePolicyFullPayout(uint256 policyId, bool customerWon) external override {
     return _resolvePolicy(policyId, customerWon ? policies[policyId].payout : 0);
   }
 
