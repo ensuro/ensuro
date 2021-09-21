@@ -254,10 +254,7 @@ contract AaveAssetManager is BaseAssetManager {
     return _maxSlippage;
   }
 
-  function setClaimRewardsMin(uint256 newValue)
-    external
-    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-  {
+  function setClaimRewardsMin(uint256 newValue) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
       !tweak || _isTweakWad(_claimRewardsMin, newValue, 3e26),
@@ -280,10 +277,7 @@ contract AaveAssetManager is BaseAssetManager {
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setReinvestRewardsMin, newValue, tweak);
   }
 
-  function setMaxSlippage(uint256 newValue)
-    external
-    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-  {
+  function setMaxSlippage(uint256 newValue) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
     require(newValue <= 1e17, "maxSlippage can't be more than 10%");
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
@@ -293,5 +287,4 @@ contract AaveAssetManager is BaseAssetManager {
     _maxSlippage = newValue;
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setMaxSlippage, newValue, tweak);
   }
-
 }
