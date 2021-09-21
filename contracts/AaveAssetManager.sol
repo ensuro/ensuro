@@ -282,7 +282,7 @@ contract AaveAssetManager is BaseAssetManager {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
       !tweak || _isTweakWad(_maxSlippage, newValue, 3e26),
-      "Tweak exceeded: claimRewardsMin tweaks only up to 30%"
+      "Tweak exceeded: maxSlippage tweaks only up to 30%"
     );
     _maxSlippage = newValue;
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setMaxSlippage, newValue, tweak);
