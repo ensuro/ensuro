@@ -5,6 +5,7 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import {BaseAssetManager} from "./BaseAssetManager.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
+import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
 import {WadRayMath} from "./WadRayMath.sol";
 import {ILendingPoolAddressesProvider} from "@aave/protocol-v2/contracts/interfaces/ILendingPoolAddressesProvider.sol";
 import {ILendingPool} from "@aave/protocol-v2/contracts/interfaces/ILendingPool.sol";
@@ -70,6 +71,7 @@ contract AaveAssetManager is BaseAssetManager {
     _swapRouter = swapRouter_;
     _claimRewardsMin = claimRewardsMin_;
     _reinvestRewardsMin = reinvestRewardsMin_;
+    require(maxSlippage_ <= 1e17, "maxSlippage can't be more than 10%");
     _maxSlippage = maxSlippage_;
   }
 
@@ -238,4 +240,58 @@ contract AaveAssetManager is BaseAssetManager {
     }
     super._deinvest(amount - remainingAmount);
   }
+
+  // Contract parameters
+  function claimRewardsMin() external view returns (uint256) {
+    return _claimRewardsMin;
+  }
+
+  function reinvestRewardsMin() external view returns (uint256) {
+    return _reinvestRewardsMin;
+  }
+
+  function maxSlippage() external view returns (uint256) {
+    return _maxSlippage;
+  }
+
+  function setClaimRewardsMin(uint256 newValue)
+    external
+    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
+  {
+    bool tweak = !hasPoolRole(LEVEL2_ROLE);
+    require(
+      !tweak || _isTweakWad(_claimRewardsMin, newValue, 3e26),
+      "Tweak exceeded: claimRewardsMin tweaks only up to 30%"
+    );
+    _claimRewardsMin = newValue;
+    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setClaimRewardsMin, newValue, tweak);
+  }
+
+  function setReinvestRewardsMin(uint256 newValue)
+    external
+    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
+  {
+    bool tweak = !hasPoolRole(LEVEL2_ROLE);
+    require(
+      !tweak || _isTweakWad(_reinvestRewardsMin, newValue, 3e26),
+      "Tweak exceeded: reinvestRewardsMin tweaks only up to 30%"
+    );
+    _reinvestRewardsMin = newValue;
+    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setReinvestRewardsMin, newValue, tweak);
+  }
+
+  function setMaxSlippage(uint256 newValue)
+    external
+    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
+  {
+    require(newValue <= 1e17, "maxSlippage can't be more than 10%");
+    bool tweak = !hasPoolRole(LEVEL2_ROLE);
+    require(
+      !tweak || _isTweakWad(_maxSlippage, newValue, 3e26),
+      "Tweak exceeded: claimRewardsMin tweaks only up to 30%"
+    );
+    _maxSlippage = newValue;
+    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setMaxSlippage, newValue, tweak);
+  }
+
 }

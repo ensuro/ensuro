@@ -837,6 +837,10 @@ class AaveAssetManager(BaseAssetManager):
         else:
             return Wad(0)
 
+    max_slippage = MethodAdapter((), "amount", is_property=True)
+    claim_rewards_min = MethodAdapter((), "amount", is_property=True)
+    reinvest_rewards_min = MethodAdapter((), "amount", is_property=True)
+
 
 class FreeGrantInsolvencyHook(ETHWrapper):
     eth_contract = "FreeGrantInsolvencyHook"
