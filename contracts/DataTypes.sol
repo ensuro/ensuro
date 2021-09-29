@@ -4,7 +4,6 @@ pragma solidity ^0.8.0;
 
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {IEToken} from "../interfaces/IEToken.sol";
-import {IRiskModule} from "../interfaces/IRiskModule.sol";
 
 library DataTypes {
   using EnumerableSet for EnumerableSet.AddressSet;

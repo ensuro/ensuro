@@ -365,7 +365,7 @@ class PolicyNFT(IERC721):
     proxy_kind = "uups"
 
     def __init__(self, owner="Owner", name="Test NFT", symbol="NFTEST"):
-        super().__init__(owner, name, symbol)
+        super().__init__(owner, name, symbol, AddressBook.ZERO)
 
 
 def _adapt_signed_amount(args, kwargs):
@@ -460,10 +460,10 @@ class ETokenETH(IERC20):
         adapt_args=lambda args, kwargs: ((args[0].expiration, ), {})
     )
 
-    lend_to_pool_ = MethodAdapter((("amount", "amount"), ))
+    lend_to_pool_ = MethodAdapter((("amount", "amount"), ("from_ocean", "bool")))
 
-    def lend_to_pool(self, amount):
-        receipt = self.lend_to_pool_(amount)
+    def lend_to_pool(self, amount, from_ocean=True):
+        receipt = self.lend_to_pool_(amount, from_ocean)
         if "PoolLoan" in receipt.events:
             return Wad(receipt.events["PoolLoan"]["value"])
         else:
@@ -571,16 +571,14 @@ class TrustfulRiskModule(RiskModuleETH):
         ("customer", "address")
     ), "int")
 
-    resolve_policy_bool = MethodAdapter((("policy_id", "int"), ("customer_won", "bool")),
-                                        eth_variant="uint,bool", eth_method="resolvePolicy")
-    resolve_policy_amount = MethodAdapter((("policy_id", "int"), ("payout", "amount")),
-                                          eth_variant="uint,uint", eth_method="resolvePolicy")
+    resolve_policy_full_payout = MethodAdapter((("policy_id", "int"), ("customer_won", "bool")))
+    resolve_policy_ = MethodAdapter((("policy_id", "int"), ("payout", "amount")))
 
     def resolve_policy(self, policy_id, customer_won_or_amount):
         if customer_won_or_amount is True or customer_won_or_amount is False:
-            return self.resolve_policy_bool(policy_id,  customer_won_or_amount)
+            return self.resolve_policy_full_payout(policy_id,  customer_won_or_amount)
         else:
-            return self.resolve_policy_amount(policy_id,  customer_won_or_amount)
+            return self.resolve_policy_(policy_id,  customer_won_or_amount)
 
     def new_policy(self, *args, **kwargs):
         receipt = self.new_policy_(*args, **kwargs)
@@ -599,7 +597,7 @@ class PolicyPoolConfig(ETHWrapper):
 
     def __init__(self, owner, treasury="ENS"):
         treasury = self._get_account(treasury)
-        super().__init__(owner, treasury)
+        super().__init__(owner, AddressBook.ZERO, treasury)
         self._auto_from = self.owner
         self.risk_modules = {}
 
@@ -684,7 +682,7 @@ class PolicyPool(ETHWrapper):
     won_pure_premiums = MethodAdapter((), "amount", is_property=True)
     active_premiums = MethodAdapter((), "amount", is_property=True)
     active_pure_premiums = MethodAdapter((), "amount", is_property=True)
-    borrowed_active_pp = MethodAdapter((), "amount", is_property=True)
+    borrowed_active_pp = MethodAdapter((), "amount", is_property=True, eth_method="borrowedActivePP")
     add_etoken_ = MethodAdapter((("etoken", "contract"), ), eth_method="addEToken")
 
     def add_etoken(self, etoken):
@@ -804,9 +802,11 @@ class AaveAssetManager(BaseAssetManager):
     eth_contract = "AaveAssetManager"
 
     def __init__(self, owner, pool, liquidity_min, liquidity_middle, liquidity_max,
-                 aave_address_provider, swap_router):
+                 aave_address_provider, swap_router, claim_rewards_min=_W(0),
+                 reinvest_rewards_min=_W(0), max_slippage=_W("0.01")):
         super().__init__(
-            owner, pool, liquidity_min, liquidity_middle, liquidity_max, aave_address_provider, swap_router
+            owner, pool, liquidity_min, liquidity_middle, liquidity_max, aave_address_provider,
+            swap_router, claim_rewards_min, reinvest_rewards_min, max_slippage
         )
 
     @property
@@ -835,6 +835,10 @@ class AaveAssetManager(BaseAssetManager):
         else:
             return Wad(0)
 
+    max_slippage = MethodAdapter((), "amount", is_property=True)
+    claim_rewards_min = MethodAdapter((), "amount", is_property=True)
+    reinvest_rewards_min = MethodAdapter((), "amount", is_property=True)
+
 
 class FreeGrantInsolvencyHook(ETHWrapper):
     eth_contract = "FreeGrantInsolvencyHook"
@@ -848,9 +852,9 @@ class FreeGrantInsolvencyHook(ETHWrapper):
 class LPInsolvencyHook(ETHWrapper):
     eth_contract = "LPInsolvencyHook"
 
-    def __init__(self, pool, etoken):
+    def __init__(self, pool, etoken, cover_etoken=False):
         etoken = pool.etokens[etoken]
-        super().__init__("owner", pool.contract, etoken.contract)
+        super().__init__("owner", pool.contract, etoken.contract, cover_etoken)
 
     cash_deposited = MethodAdapter((), "amount", is_property=True)
 

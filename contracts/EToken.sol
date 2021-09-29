@@ -7,6 +7,7 @@ import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
 import {IEToken} from "../interfaces/IEToken.sol";
 import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
+import {IInsolvencyHook} from "../interfaces/IInsolvencyHook.sol";
 import {WadRayMath} from "./WadRayMath.sol";
 
 /**
@@ -606,8 +607,14 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
     else return 0;
   }
 
-  function lendToPool(uint256 amount) external override onlyPolicyPool returns (uint256) {
-    if (amount > ocean()) amount = ocean();
+  function lendToPool(uint256 amount, bool fromOcean)
+    external
+    override
+    onlyPolicyPool
+    returns (uint256)
+  {
+    if (fromOcean && amount > ocean()) amount = ocean();
+    if (!fromOcean && amount > totalSupply()) amount = totalSupply();
     if (amount > _maxNegativeAdjustment()) {
       amount = _maxNegativeAdjustment();
       if (amount == 0) return amount;
@@ -623,6 +630,13 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
     _updateCurrentScale(); // shouldn't do anything because lendToPool is after unlock_scr but doing anyway
     _discreteChange(amount, false);
     emit PoolLoan(amount);
+    if (!fromOcean && _scr > totalSupply()) {
+      // Notify insolvency_hook - Insuficient solvency
+      IInsolvencyHook hook = _policyPool.config().insolvencyHook();
+      if (address(hook) != address(0)) {
+        hook.insolventEToken(this, _scr - totalSupply());
+      }
+    }
     return amount;
   }
 
