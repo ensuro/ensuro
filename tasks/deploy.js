@@ -32,8 +32,26 @@ async function verifyContract(hre, contract, isProxy, constructorArguments) {
       address: address,
       constructorArguments: constructorArguments,
     });
+    if (isProxy) {
+      console.log(
+        "Contract successfully verified, you should verify the proxy at " +
+        `https://mumbai.polygonscan.com/proxyContractChecker?a=${contract.address}`
+      );
+    }
   } catch (error) {
     console.log("Error verifying contract", error);
+  }
+}
+
+async function grantRole(hre, contract, role, user) {
+  if (user === undefined)
+    user = await _getDefaultSigner(hre);
+  const roleHex = await contract[role]();
+  if (!await contract.hasRole(roleHex, user.address)) {
+    await contract.grantRole(roleHex, user.address);
+    console.log(`Role ${role} (${roleHex}) granted to ${user.address}`);
+  } else {
+    console.log(`Role ${role} (${roleHex}) already granted to ${user.address}`);
   }
 }
 
@@ -47,9 +65,13 @@ async function deployTestCurrency({verify, currName, currSymbol, initialSupply},
   return currency.address;
 }
 
-async function deployPolicyNFT({verify, nftName, nftSymbol}, hre) {
+async function deployPolicyNFT({verify, nftName, nftSymbol, policyPoolDetAddress}, hre) {
   const PolicyNFT = await hre.ethers.getContractFactory("PolicyNFT");
-  const policyNFT = await hre.upgrades.deployProxy(PolicyNFT, [nftName, nftSymbol], {kind: 'uups'});
+  const policyNFT = await hre.upgrades.deployProxy(
+    PolicyNFT,
+    [nftName, nftSymbol, policyPoolDetAddress || ethers.constants.AddressZero],
+    {kind: 'uups'}
+  );
   await policyNFT.deployed();
   console.log("PolicyNFT deployed to:", policyNFT.address);
   if (verify)
@@ -57,9 +79,10 @@ async function deployPolicyNFT({verify, nftName, nftSymbol}, hre) {
   return policyNFT.address;
 }
 
-async function deployPolicyPoolConfig({verify, treasuryAddress}, hre) {
+async function deployPolicyPoolConfig({verify, treasuryAddress, policyPoolDetAddress}, hre) {
   const PolicyPoolConfig = await hre.ethers.getContractFactory("PolicyPoolConfig");
   const policyPoolConfig = await hre.upgrades.deployProxy(PolicyPoolConfig, [
+    policyPoolDetAddress || ethers.constants.AddressZero,
     treasuryAddress,
   ], {kind: 'uups'});
 
@@ -68,6 +91,11 @@ async function deployPolicyPoolConfig({verify, treasuryAddress}, hre) {
   if (verify)
     await verifyContract(hre, policyPoolConfig, true);
   return policyPoolConfig.address;
+}
+
+async function _getDefaultSigner(hre) {
+  const signers = await hre.ethers.getSigners();
+  return signers[0];
 }
 
 async function deployPolicyPool({verify, configAddress, nftAddress, currencyAddress}, hre) {
@@ -80,8 +108,13 @@ async function deployPolicyPool({verify, configAddress, nftAddress, currencyAddr
 
   await policyPool.deployed();
   console.log("PolicyPool deployed to:", policyPool.address);
+  console.log("PolicyPool's config is:", await policyPool.config());
+
   if (verify)
     await verifyContract(hre, policyPool, true);
+
+  const policyPoolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await policyPool.config());
+  await grantRole(hre, policyPoolConfig, "LEVEL1_ROLE");
   return policyPool.address;
 }
 
@@ -104,16 +137,16 @@ async function deployEToken({
   console.log("EToken ", etkName, " deployed to:", etoken.address);
   if (verify)
     await verifyContract(hre, etoken, true);
-  const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
-  const policyPool = PolicyPool.attach(poolAddress);
+  const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
   await policyPool.addEToken(etoken.address);
   return etoken.address;
 }
 
 async function deployRiskModule({
       verify, rmClass, rmName, poolAddress, scrPercentage, premiumShare, ensuroShare, maxScrPerPolicy,
-      scrLimit, wallet, sharedCoverageMinPercentage
+      scrLimit, wallet, sharedCoverageMinPercentage, extraArgs
   }, hre) {
+  extraArgs = extraArgs || [];
   const RiskModule = await hre.ethers.getContractFactory(rmClass);
   const rm = await hre.upgrades.deployProxy(RiskModule, [
     rmName,
@@ -125,16 +158,103 @@ async function deployRiskModule({
     _W(scrLimit),
     wallet,
     _R(sharedCoverageMinPercentage),
+    ...extraArgs
   ], {kind: 'uups'});
 
   await rm.deployed();
   console.log("RiskModule ", rmClass, rmName, " deployed to:", rm.address);
   if (verify)
     await verifyContract(hre, rm, true);
-  const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
-  const policyPool = PolicyPool.attach(poolAddress);
-  await policyPool.addRiskModule(rm.address);
+  const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
+  const policyPoolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await policyPool.config());
+  await policyPoolConfig.addRiskModule(rm.address);
   return rm.address;
+}
+
+async function trustfullPolicy({rmAddress, payout, premium, lossProb, expiration, customer}, hre) {
+  const rm = await hre.ethers.getContractAt("TrustfulRiskModule", rmAddress);
+  const policyPool = await hre.ethers.getContractAt("PolicyPool", await rm.policyPool());
+  const currency = await hre.ethers.getContractAt("IERC20Metadata", await policyPool.currency());
+  await grantRole(hre, rm, "PRICER_ROLE");
+
+  customer = customer || await _getDefaultSigner(hre);
+  premium = _W(premium);
+
+  await currency.approve(policyPool.address, premium);
+  lossProb = _R(lossProb);
+  if (expiration === undefined) {
+    expiration = 3600;
+  }
+  if (expiration < 1600000000) {
+    expiration = Math.round((new Date()).getTime() / 1000) + expiration;
+  }
+  payout = _W(payout);
+
+  const tx = await rm.newPolicy(payout, premium, lossProb, expiration, customer.address, {gasLimit: 999999});
+  console.log(tx);
+}
+
+async function resolvePolicy({rmAddress, payout, fullPayout, policyId}, hre) {
+  const rm = await hre.ethers.getContractAt("TrustfulRiskModule", rmAddress);
+  await grantRole(hre, rm, "RESOLVER_ROLE");
+
+  let tx;
+
+  if (fullPayout === undefined) {
+    payout = _W(payout);
+    tx = await rm.resolvePolicy(policyId, payout);
+  } else {
+    tx = await rm.resolvePolicyFullPayout(policyId, fullPayout);
+  }
+  console.log(tx);
+}
+
+async function flyionPolicy({rmAddress, flight, departure, expectedArrival, tolerance, payout, premium,
+                             lossProb, expiration, customer}, hre) {
+  const flyionRm = await hre.ethers.getContractAt("FlyionRiskModule", rmAddress);
+  const policyPool = await hre.ethers.getContractAt("PolicyPool", await flyionRm.policyPool());
+  const currency = await hre.ethers.getContractAt("IERC20Metadata", await policyPool.currency());
+
+  await grantRole(hre, flyionRm, "PRICER_ROLE");
+  customer = customer || await _getDefaultSigner(hre);
+  premium = _W(premium);
+
+  await currency.approve(policyPool.address, premium);
+  lossProb = _R(lossProb);
+  if (expiration === undefined) {
+    expiration = expectedArrival + tolerance + 600;
+  }
+  payout = _W(payout);
+
+  const tx = await flyionRm.newPolicy(
+    flight, departure, expectedArrival, tolerance, payout,
+    premium, lossProb, expiration, customer.address,
+    {gasLimit: 999999}
+  );
+  console.log(tx);
+}
+
+async function listETokens({poolAddress}, hre) {
+  const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
+  const etkCount = await policyPool.getETokenCount();
+
+  console.log(`Pool has ${etkCount} tokens`);
+
+  for (i=0; i < etkCount; i++) {
+    const etk = await hre.ethers.getContractAt("EToken", await policyPool.getETokenAt(i));
+    const etkName = await etk.name();
+    console.log(`eToken at ${etk.address}: ${etkName}`);
+  }
+}
+
+async function deposit({etkAddress, amount}, hre) {
+  const etk = await hre.ethers.getContractAt("EToken", etkAddress);
+  const policyPool = await hre.ethers.getContractAt("PolicyPool", await etk.policyPool());
+  const currency = await hre.ethers.getContractAt("IERC20Metadata", await policyPool.currency());
+  amount = _W(amount);
+  await currency.approve(policyPool.address, amount);
+  const tx = await policyPool.deposit(etk.address, amount, {gasLimit: 999999});
+  console.log(tx);
 }
 
 function add_task() {
@@ -214,6 +334,46 @@ function add_task() {
     .addParam("wallet", "RM address", types.address)
     .addOptionalParam("sharedCoverageMinPercentage", "Shared coverage minimum percentage", 0.0, types.float)
     .setAction(deployRiskModule);
+
+  task("ens:trustfullPolicy", "Creates a TrustfulRiskModule Policy")
+    .addParam("rmAddress", "RiskModule address", types.address)
+    .addParam("payout", "Payout for customer in case policy is triggered", undefined, types.int)
+    .addParam("premium", "Premium the customer pays", undefined, types.int)
+    .addParam("lossProb", "Probability of policy being triggered", undefined, types.float)
+    .addOptionalParam("expiration", "Probability of policy being triggered", undefined, types.float)
+    .addOptionalParam("customer", "Customer", undefined, types.address)
+    .setAction(trustfullPolicy);
+
+  task("ens:resolvePolicy", "Resolves a TrustfulRiskModule Policy")
+    .addParam("rmAddress", "RiskModule address", types.address)
+    .addParam("policyId", "Id of the policy", undefined, types.int)
+    .addOptionalParam("payout", "Payout for customer in case policy is triggered", undefined, types.int)
+    .addOptionalParam("fullPayout", "Full payout or not", undefined, types.boolean)
+    .setAction(resolvePolicy);
+
+  task("ens:flyionPolicy", "Creates a Flyion Policy")
+    .addParam("rmAddress", "RiskModule address", types.address)
+    .addParam("flight", "Flight Number as String (ex: NAX105)", types.str)
+    .addParam("departure", "Departure in epoch seconds (ex: 1631817600)", undefined, types.int)
+    .addParam("expectedArrival", "Expected arrival in epoch seconds (ex: 1631824800)", undefined, types.int)
+    .addOptionalParam("tolerance",
+      "In seconds, the tolerance margin after expectedArrival before trigger the policy", 12 * 3600,
+      types.int)
+    .addParam("payout", "Payout for customer in case policy is triggered", undefined, types.int)
+    .addParam("premium", "Premium the customer pays", undefined, types.int)
+    .addParam("lossProb", "Probability of policy being triggered", undefined, types.float)
+    .addOptionalParam("expiration", "Probability of policy being triggered", undefined, types.float)
+    .addOptionalParam("customer", "Customer", undefined, types.address)
+    .setAction(flyionPolicy);
+
+  task("ens:listETokens", "Lists eTokens")
+    .addParam("poolAddress", "PolicyPool Address", types.address)
+    .setAction(listETokens);
+
+  task("ens:deposit", "Deposits in a given eToken")
+    .addParam("etkAddress", "EToken address", types.address)
+    .addParam("amount", "Amount to Deposit", undefined, types.int)
+    .setAction(deposit);
 }
 
 module.exports = {add_task};
