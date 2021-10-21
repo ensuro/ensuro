@@ -1,14 +1,11 @@
 """Unitary tests for eToken contract"""
 
-from functools import wraps
 from collections import namedtuple
 import pytest
 from ethproto.contracts import RevertError
-from prototype import ensuro
-from ethproto.wadray import _W, _R, Wad
-from prototype.utils import WEEK, DAY
+from ethproto.wadray import _W, Wad
 from brownie.network.contract import Contract
-from . import wrappers
+from prototype import brwrappers as wrappers
 
 AAVE = namedtuple("AAVE", "address_provider lending_pool price_oracle")
 

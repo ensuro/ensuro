@@ -19,10 +19,10 @@ def tenv(request):
             kind="prototype"
         )
     elif request.param == "ethereum":
-        from . import wrappers
+        from prototype import brwrappers
         return TEnv(
-            time_control=wrappers.time_control,
-            module=wrappers,
+            time_control=brwrappers.time_control,
+            module=brwrappers,
             kind="ethereum"
         )
 

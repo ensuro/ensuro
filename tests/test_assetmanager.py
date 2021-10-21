@@ -7,8 +7,8 @@ from ethproto.contracts import RevertError
 from prototype import ensuro
 from ethproto.wadray import _W
 from prototype.utils import WEEK, DAY
-from .wrappers import time_control, AddressBook, TestCurrency, PolicyPoolConfig
-from . import wrappers
+from prototype.brwrappers import time_control, AddressBook, TestCurrency, PolicyPoolConfig
+from prototype import brwrappers as wrappers
 
 TEnv = namedtuple("TEnv", "time_control build_asset_manager kind")
 

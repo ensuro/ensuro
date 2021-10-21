@@ -7,7 +7,7 @@ from ethproto.contracts import RevertError
 from prototype import ensuro
 from ethproto.wadray import _W, _R
 from prototype.utils import WEEK, DAY
-from .wrappers import ETokenETH, time_control, AddressBook, TestCurrency, PolicyPoolConfig
+from prototype.brwrappers import ETokenETH, time_control, AddressBook, TestCurrency, PolicyPoolConfig
 
 TEnv = namedtuple("TEnv", "time_control etoken_class policy_factory kind")
 

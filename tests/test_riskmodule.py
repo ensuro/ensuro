@@ -6,7 +6,7 @@ import pytest
 from ethproto.contracts import RevertError, Contract, IntField, ERC20Token, ContractProxyField
 from prototype import ensuro
 from ethproto.wadray import _W, _R, Wad
-from . import wrappers
+from prototype import brwrappers as wrappers
 from prototype.utils import WEEK, DAY
 
 TEnv = namedtuple("TEnv", "time_control currency rm_class policy_factory pool_config kind")
