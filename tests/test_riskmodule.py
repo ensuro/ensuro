@@ -3,9 +3,9 @@
 from functools import partial
 from collections import namedtuple
 import pytest
-from prototype.contracts import RevertError, Contract, IntField, ERC20Token, ContractProxyField
+from ethproto.contracts import RevertError, Contract, IntField, ERC20Token, ContractProxyField
 from prototype import ensuro
-from prototype.wadray import _W, _R, Wad
+from ethproto.wadray import _W, _R, Wad
 from . import wrappers
 from prototype.utils import WEEK, DAY
 

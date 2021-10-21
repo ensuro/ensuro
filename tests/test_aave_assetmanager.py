@@ -3,9 +3,9 @@
 from functools import wraps
 from collections import namedtuple
 import pytest
-from prototype.contracts import RevertError
+from ethproto.contracts import RevertError
 from prototype import ensuro
-from prototype.wadray import _W, _R, Wad
+from ethproto.wadray import _W, _R, Wad
 from prototype.utils import WEEK, DAY
 from brownie.network.contract import Contract
 from . import wrappers

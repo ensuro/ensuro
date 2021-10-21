@@ -3,9 +3,9 @@
 from functools import partial
 from collections import namedtuple
 import pytest
-from prototype.contracts import RevertError
+from ethproto.contracts import RevertError
 from prototype import ensuro
-from prototype.wadray import _W
+from ethproto.wadray import _W
 from prototype.utils import WEEK, DAY
 from .wrappers import time_control, AddressBook, TestCurrency, PolicyPoolConfig
 from . import wrappers

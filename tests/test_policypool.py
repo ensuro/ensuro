@@ -1,8 +1,8 @@
 from collections import namedtuple
 from io import StringIO
 import pytest
-from prototype.contracts import RevertError
-from prototype.wadray import _W, _R, set_precision, Wad
+from ethproto.contracts import RevertError
+from ethproto.wadray import _W, _R, set_precision, Wad
 from prototype.utils import load_config, WEEK, DAY
 
 
