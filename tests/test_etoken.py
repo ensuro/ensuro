@@ -1,5 +1,5 @@
 """Unitary tests for eToken contract"""
-
+import sys
 from functools import partial, wraps
 from collections import namedtuple
 import pytest
@@ -7,7 +7,7 @@ from ethproto.contracts import RevertError
 from prototype import ensuro
 from ethproto.wadray import _W, _R
 from prototype.utils import WEEK, DAY
-from prototype.brwrappers import ETokenETH, time_control, AddressBook, TestCurrency, PolicyPoolConfig
+from prototype.wrappers import ETokenETH, AddressBook, TestCurrency, PolicyPoolConfig, get_provider
 
 TEnv = namedtuple("TEnv", "time_control etoken_class policy_factory kind")
 
@@ -30,7 +30,7 @@ def tenv(request):
         )
     elif request.param == "ethereum":
         FakePolicy = namedtuple("FakePolicy", "scr interest_rate expiration")
-        from brownie import PolicyPoolMockForward
+        PolicyPoolMockForward = get_provider().get_contract_factory("PolicyPoolMockForward")
 
         currency = TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
 
@@ -45,7 +45,7 @@ def tenv(request):
             return etoken
 
         return TEnv(
-            time_control=time_control,
+            time_control=get_provider().time_control,
             policy_factory=FakePolicy,
             # etoken_class=partial(ETokenETH, policy_pool="ensuro", symbol="ETK")
             etoken_class=etoken_factory,
@@ -72,9 +72,10 @@ def test_only_policy_pool_validation(tenv):
 def skip_if_coverage_activated(f):
     @wraps(f)
     def wrapped(tenv, *args, **kwargs):
-        from brownie._config import CONFIG
-        if CONFIG.argv.get("coverage", False) and tenv.kind == "ethereum":
-            return
+        if "brownie" in sys.modules:
+            from brownie._config import CONFIG
+            if CONFIG.argv.get("coverage", False) and tenv.kind == "ethereum":
+                return
         return f(tenv, *args, **kwargs)
     return wrapped
 

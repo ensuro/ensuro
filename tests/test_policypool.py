@@ -1,8 +1,10 @@
+import sys
 from collections import namedtuple
 from io import StringIO
 import pytest
 from ethproto.contracts import RevertError
 from ethproto.wadray import _W, _R, set_precision, Wad
+from ethproto.wrappers import get_provider
 from prototype.utils import load_config, WEEK, DAY
 
 
@@ -19,10 +21,10 @@ def tenv(request):
             kind="prototype"
         )
     elif request.param == "ethereum":
-        from prototype import brwrappers
+        from prototype import wrappers
         return TEnv(
-            time_control=brwrappers.time_control,
-            module=brwrappers,
+            time_control=get_provider().time_control,
+            module=wrappers,
             kind="ethereum"
         )
 
@@ -522,9 +524,10 @@ def test_walkthrough(tenv):
 
     pool.currency.approve("CUST3", pool.contract_id, _W(130))
 
-    from brownie._config import CONFIG
-    if CONFIG.argv.get("coverage", False) and tenv.kind == "ethereum":
-        return  # This test never ends if coverage is activated
+    if tenv.kind == "ethereum" and "brownie" in sys.modules:
+        from brownie._config import CONFIG
+        if CONFIG.argv.get("coverage", False):
+            return  # This test never ends if coverage is activated
 
     won_count = 0
 

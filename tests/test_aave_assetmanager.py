@@ -1,11 +1,11 @@
 """Unitary tests for eToken contract"""
-
+import sys
 from collections import namedtuple
 import pytest
 from ethproto.contracts import RevertError
 from ethproto.wadray import _W, Wad
-from brownie.network.contract import Contract
-from prototype import brwrappers as wrappers
+from ethproto.wrappers import get_provider
+from prototype import wrappers
 
 AAVE = namedtuple("AAVE", "address_provider lending_pool price_oracle")
 
@@ -23,19 +23,18 @@ def USDC():
 
 @pytest.fixture
 def aave():
-    ILendingPoolAddressesProvider = wrappers.get_contract_factory("ILendingPoolAddressesProvider")
-    ap = Contract.from_abi(
-        "LendingPoolAddressesProvider", AAVE_AP_ADDRESS,
-        ILendingPoolAddressesProvider.abi
-    )
+    provider = get_provider()
+    ILendingPoolAddressesProvider = provider.get_contract_factory("ILendingPoolAddressesProvider")
+    ap = provider.build_contract(AAVE_AP_ADDRESS, ILendingPoolAddressesProvider,
+                                 "ILendingPoolAddressesProvider")
 
     addr = ap.getLendingPool()
     ILendingPool = wrappers.get_contract_factory("ILendingPool")
-    lending_pool = Contract.from_abi("LendingPool", addr, ILendingPool.abi)
+    lending_pool = provider.build_contract(addr, ILendingPool, "ILendingPool")
 
     addr = ap.getPriceOracle()
     IPriceOracle = wrappers.get_contract_factory("IPriceOracle")
-    price_oracle = Contract.from_abi("PriceOracle", addr, IPriceOracle.abi)
+    price_oracle = provider.build_contract(addr, IPriceOracle, "IPriceOracle")
 
     return AAVE(ap, lending_pool, price_oracle)
 
@@ -75,7 +74,7 @@ def get_usdc_from_ether(account, USDC, aave, WMATIC, collat_ratio):
 
 @pytest.fixture
 def PolicyPoolAndConfig(USDC):
-    from brownie import PolicyPoolMockForward
+    PolicyPoolMockForward = get_provider().get_contract_factory("PolicyPoolMockForward")
 
     config = wrappers.PolicyPoolConfig("owner")
     pool = PolicyPoolMockForward.deploy(get_account(None), USDC.contract, config.contract,
@@ -93,8 +92,13 @@ def donate_wmatic(WMATIC, ac_from, ac_to, amount=None):
 
 
 def skip_if_not_fork(f):
-    from brownie._config import CONFIG
-    if CONFIG.argv.get("network", None) == "polygon-main-fork":
+    skip = False
+    if "brownie" in sys.modules:
+        from brownie._config import CONFIG
+        if CONFIG.argv.get("network", None) == "polygon-main-fork":
+            skip = True
+
+    if skip:
         return f
     else:
         def test_foo():

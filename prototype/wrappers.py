@@ -1,11 +1,7 @@
 from contextlib import contextmanager
 from ethproto.wadray import Wad, _R, Ray, _W
-import brownie
-from brownie.network.contract import Contract
-from ethproto.brwrappers import (
-    AddressBook, IERC20, IERC721, ETHWrapper, MethodAdapter, time_control,
-    get_contract_factory
-)
+from ethproto.wrappers import AddressBook, IERC20, IERC721, ETHWrapper, MethodAdapter, get_provider
+
 
 SECONDS_IN_YEAR = 365 * 24 * 3600
 
@@ -24,7 +20,7 @@ class TestCurrency(IERC20):
     def balances(self):
         return dict(
             (name, self.balance_of(name))
-            for name, address in AddressBook.instance.name_to_address.items()
+            for name, address in self.provider.address_book.name_to_address.items()
         )
 
 
@@ -59,6 +55,11 @@ def _adapt_signed_amount(args, kwargs):
 class ETokenETH(IERC20):
     eth_contract = "EToken"
     proxy_kind = "uups"
+    constructor_args = (
+        ("name", "string"), ("symbol", "string"), ("policy_pool", "address"), ("expiration_period", "int"),
+        ("liquidity_requirement", "ray"), ("max_utilization_rate", "ray"),
+        ("pool_loan_interest_rate", "ray"),
+    )
 
     def __init__(self, name, symbol, policy_pool, expiration_period, liquidity_requirement=_R(1),
                  max_utilization_rate=_R(1),
@@ -66,21 +67,21 @@ class ETokenETH(IERC20):
         pool_loan_interest_rate = _R(pool_loan_interest_rate)
         liquidity_requirement = _R(liquidity_requirement)
         max_utilization_rate = _R(max_utilization_rate)
+        super().__init__(
+            owner, name, symbol, policy_pool, expiration_period, liquidity_requirement,
+            max_utilization_rate, pool_loan_interest_rate
+        )
         if isinstance(policy_pool, ETHWrapper):
             self._policy_pool = policy_pool.contract
         else:  # is just an address or raw contract - for tests
             self._policy_pool = self._get_account(policy_pool)
         self._auto_from = self._get_account("johhdoe")
 
-        super().__init__(
-            owner, name, symbol, self._policy_pool, expiration_period, liquidity_requirement,
-            max_utilization_rate, pool_loan_interest_rate
-        )
-
     @contextmanager
     def thru_policy_pool(self):
         prev_contract = self.contract
-        self.contract = Contract.from_abi(self.eth_contract, self._policy_pool, brownie.EToken.abi)
+        contract_factory = self.provider.get_contract_factory(self.eth_contract)
+        self.contract = self.provider.build_contract(self._policy_pool, contract_factory, self.eth_contract)
         try:
             yield self
         finally:
@@ -167,9 +168,9 @@ class Policy:
 
     def __init__(self, id, payout, premium, scr, rm_coverage, loss_prob,
                  pure_premium, premium_for_ensuro, premium_for_rm, premium_for_lps,
-                 risk_module, start, expiration):
+                 risk_module, start, expiration, address_book):
         self.id = id
-        self.risk_module = AddressBook.instance.get_name(risk_module)
+        self.risk_module = address_book.get_name(risk_module)
         self.payout = Wad(payout)
         self.premium = Wad(premium)
         self.scr = Wad(scr)
@@ -204,7 +205,7 @@ class Policy:
         ).to_ray()
 
     def accrued_interest(self):
-        seconds = Ray.from_value(time_control.now - self.start)
+        seconds = Ray.from_value(get_provider().time_control.now - self.start)
         return (
             self.scr.to_ray() * seconds * self.interest_rate //
             Ray.from_value(SECONDS_IN_YEAR)
@@ -212,6 +213,12 @@ class Policy:
 
 
 class RiskModuleETH(ETHWrapper):
+
+    constructor_args = (
+        ("name", "string"), ("pool", "address"), ("scr_percentage", "ray"), ("ensuro_fee", "ray"),
+        ("scr_interest_rate", "ray"), ("max_scr_per_policy", "amount"), ("scr_limit", "amount"),
+        ("wallet", "address"), ("shared_coverage_min_percentage", "ray")
+    )
 
     def __init__(self, name, policy_pool, scr_percentage=_R(1), ensuro_fee=_R(0),
                  scr_interest_rate=_R(0), max_scr_per_policy=_W(1000000), scr_limit=_W(1000000),
@@ -221,12 +228,11 @@ class RiskModuleETH(ETHWrapper):
         scr_interest_rate = _R(scr_interest_rate)
         max_scr_per_policy = _W(max_scr_per_policy)
         scr_limit = _W(scr_limit)
-        wallet = self._get_account(wallet)
         shared_coverage_min_percentage = _R(shared_coverage_min_percentage)
-        self.policy_pool = policy_pool
         super().__init__(owner, name, policy_pool.contract, scr_percentage, ensuro_fee,
                          scr_interest_rate,
                          max_scr_per_policy, scr_limit, wallet, shared_coverage_min_percentage)
+        self.policy_pool = policy_pool
         self._auto_from = self.owner
 
     name = MethodAdapter((), "string", is_property=True)
@@ -265,7 +271,7 @@ class TrustfulRiskModule(RiskModuleETH):
         if "NewPolicy" in receipt.events:
             policy_id = receipt.events["NewPolicy"]["policyId"]
             policy_data = self.policy_pool.contract.getPolicy(policy_id)
-            return Policy(*policy_data)
+            return Policy(*policy_data, address_book=self.provider.address_book)
         else:
             return None
 
@@ -275,8 +281,9 @@ class PolicyPoolConfig(ETHWrapper):
 
     proxy_kind = "uups"
 
+    constructor_args = (("policy_pool", "address"), ("treasury", "address"))
+
     def __init__(self, owner, treasury="ENS"):
-        treasury = self._get_account(treasury)
         super().__init__(owner, AddressBook.ZERO, treasury)
         self._auto_from = self.owner
         self.risk_modules = {}
@@ -398,7 +405,7 @@ class PolicyPool(ETHWrapper):
     def get_policy(self, policy_id):
         policy_data = self.contract.getPolicy(policy_id)
         if policy_data:
-            return Policy(*policy_data)
+            return Policy(*policy_data, self.provider.address_book)
 
     get_policy_fund_count = MethodAdapter((("policy_id", "int"), ), "int")
     get_policy_fund = MethodAdapter((("policy_id", "int"), ("etoken", "contract")), "amount")
@@ -423,19 +430,24 @@ class BaseAssetManager(ETHWrapper):
     eth_contract = "BaseAssetManager"
     proxy_kind = "uups"
 
+    constructor_args = (
+        ("pool", "address"), ("liquidity_min", "amount"), ("liquidity_middle", "amount"),
+        ("liquidity_max", "amount")
+    )
+
     def __init__(self, owner, pool, liquidity_min, liquidity_middle, liquidity_max, *args):
         liquidity_min = _W(liquidity_min)
         liquidity_middle = _W(liquidity_middle)
         liquidity_max = _W(liquidity_max)
 
+        super().__init__(
+            owner, pool, liquidity_min, liquidity_middle, liquidity_max, *args
+        )
         if isinstance(pool, ETHWrapper):
             self._policy_pool = pool.contract
         else:  # is just an address or raw contract - for tests
             self._policy_pool = self._get_account(pool)
 
-        super().__init__(
-            owner, self._policy_pool, liquidity_min, liquidity_middle, liquidity_max, *args
-        )
         self._auto_from = self.owner
 
     checkpoint = MethodAdapter()
@@ -459,8 +471,8 @@ class BaseAssetManager(ETHWrapper):
     @contextmanager
     def thru_policy_pool(self):
         prev_contract = self.contract
-        abi = get_contract_factory("IAssetManager").abi
-        self.contract = Contract.from_abi(self.eth_contract, self._policy_pool, abi)
+        contract_factory = self.provider.get_contract_factory("IAssetManager")
+        self.contract = self.provider.build_contract(self._policy_pool, contract_factory, "IAssetManager")
         try:
             yield self
         finally:
@@ -469,6 +481,10 @@ class BaseAssetManager(ETHWrapper):
 
 class FixedRateAssetManager(BaseAssetManager):
     eth_contract = "FixedRateAssetManager"
+    constructor_args = (
+        ("pool", "address"), ("liquidity_min", "amount"), ("liquidity_middle", "amount"),
+        ("liquidity_max", "amount"), ("interest_rate", "ray"),
+    )
 
     def __init__(self, owner, pool, liquidity_min, liquidity_middle, liquidity_max,
                  interest_rate=_R("0.05")):
