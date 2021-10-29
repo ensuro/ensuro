@@ -44,7 +44,6 @@ class RiskModule(AccessControlContract):
     shared_coverage_percentage = RayField(default=Ray(0))
     shared_coverage_min_percentage = RayField(default=Ray(0))
     shared_coverage_scr = WadField(default=_W(0))
-    exclusive_etoken = ContractProxyField(default=None, allow_none=True)
 
     set_attr_roles = {
         "wallet": "RM_PROVIDER_ROLE",
@@ -59,7 +58,6 @@ class RiskModule(AccessControlContract):
         "max_scr_per_policy": "LEVEL2_ROLE",
         "scr_limit": "LEVEL2_ROLE",
         "shared_coverage_min_percentage": "LEVEL2_ROLE",
-        "exclusive_etoken": "LEVEL2_ROLE",
     }
 
     def __init__(self, **kwargs):
@@ -454,9 +452,6 @@ class EToken(ERC20Token):
     def set_max_utilization_rate(self, new_rate):
         self.max_utilization_rate = new_rate
 
-    def set_accept_all_rms(self, accept):
-        self.accept_all_rms = accept
-
     def get_investable(self):
         return self.scr + self.ocean + self.get_pool_loan()
 
@@ -581,22 +576,16 @@ class PolicyPool(AccessControlContract):
         return policy.id
 
     def _lock_scr(self, policy):
-        if policy.risk_module.exclusive_etoken:
-            etk = policy.risk_module.exclusive_etoken
-            require(etk.accepts(policy), "The exclusive eToken doesn't accepts the policy")
-            ocean = etk.ocean_for_new_scr
-            ocean_per_token = {etk.name: ocean}
-        else:
-            ocean = Wad(0)
-            ocean_per_token = {}
-            for etk in self.etokens.values():
-                if not etk.accepts(policy):
-                    continue
-                ocean_token = etk.ocean_for_new_scr
-                if ocean_token == 0:
-                    continue
-                ocean += ocean_token
-                ocean_per_token[etk.name] = ocean_token
+        ocean = Wad(0)
+        ocean_per_token = {}
+        for etk in self.etokens.values():
+            if not etk.accepts(policy):
+                continue
+            ocean_token = etk.ocean_for_new_scr
+            if ocean_token == 0:
+                continue
+            ocean += ocean_token
+            ocean_per_token[etk.name] = ocean_token
 
         require(ocean >= policy.scr, "Not enought ocean to cover the policy")
 

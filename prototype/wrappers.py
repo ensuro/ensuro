@@ -107,7 +107,6 @@ class EToken(IERC20):
     set_max_utilization_rate = MethodAdapter((("new_rate", "ray"), ))
 
     accept_all_rms = MethodAdapter((), "bool", is_property=True, eth_method="acceptAllRMs")
-    set_accept_all_rms = MethodAdapter((("accept", "bool"), ), eth_method="setAcceptAllRMs")
 
     is_accept_exception = MethodAdapter((("risk_module", "address"),), "bool")
     set_accept_exception = MethodAdapter((("risk_module", "address"), ("is_exception", "bool")))
