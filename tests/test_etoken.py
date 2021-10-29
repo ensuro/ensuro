@@ -7,7 +7,7 @@ from ethproto.contracts import RevertError
 from prototype import ensuro
 from ethproto.wadray import _W, _R
 from prototype.utils import WEEK, DAY
-from prototype.wrappers import ETokenETH, AddressBook, TestCurrency, PolicyPoolConfig, get_provider
+from prototype import wrappers
 
 TEnv = namedtuple("TEnv", "time_control etoken_class policy_factory kind")
 
@@ -30,22 +30,22 @@ def tenv(request):
         )
     elif request.param == "ethereum":
         FakePolicy = namedtuple("FakePolicy", "scr interest_rate expiration")
-        PolicyPoolMockForward = get_provider().get_contract_factory("PolicyPoolMockForward")
+        PolicyPoolMockForward = wrappers.get_provider().get_contract_factory("PolicyPoolMockForward")
 
-        currency = TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
+        currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
 
         def etoken_factory(**kwargs):
-            config = PolicyPoolConfig(owner="owner")
+            config = wrappers.PolicyPoolConfig(owner="owner")
             pool = PolicyPoolMockForward.deploy(
-                AddressBook.ZERO, currency.contract, config.contract, {"from": currency.owner}
+                wrappers.AddressBook.ZERO, currency.contract, config.contract, {"from": currency.owner}
             )
             symbol = kwargs.pop("symbol", "ETK")
-            etoken = ETokenETH(policy_pool=pool, symbol=symbol, **kwargs)
+            etoken = wrappers.EToken(policy_pool=pool, symbol=symbol, **kwargs)
             pool.setForwardTo(etoken.contract, {"from": currency.owner})
             return etoken
 
         return TEnv(
-            time_control=get_provider().time_control,
+            time_control=wrappers.get_provider().time_control,
             policy_factory=FakePolicy,
             # etoken_class=partial(ETokenETH, policy_pool="ensuro", symbol="ETK")
             etoken_class=etoken_factory,

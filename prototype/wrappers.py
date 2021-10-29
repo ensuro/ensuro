@@ -6,6 +6,10 @@ from ethproto.wrappers import AddressBook, IERC20, IERC721, ETHWrapper, MethodAd
 SECONDS_IN_YEAR = 365 * 24 * 3600
 
 
+def eth_call(wrapper, fn_name, *args):
+    return wrapper.provider.eth_call.get_eth_function(wrapper, fn_name)(*args)
+
+
 class TestCurrency(IERC20):
     eth_contract = "TestCurrency"
     __test__ = False
@@ -40,6 +44,10 @@ class PolicyNFT(IERC721):
     eth_contract = "PolicyNFT"
     proxy_kind = "uups"
 
+    constructor_args = (
+        ("name", "string"), ("symbol", "string"), ("policy_pool", "address"),
+    )
+
     def __init__(self, owner="Owner", name="Test NFT", symbol="NFTEST"):
         super().__init__(owner, name, symbol, AddressBook.ZERO)
 
@@ -52,7 +60,7 @@ def _adapt_signed_amount(args, kwargs):
         return (-amount, False), {}
 
 
-class ETokenETH(IERC20):
+class EToken(IERC20):
     eth_contract = "EToken"
     proxy_kind = "uups"
     constructor_args = (
@@ -286,13 +294,23 @@ class PolicyPoolConfig(ETHWrapper):
     def __init__(self, owner, treasury="ENS"):
         super().__init__(owner, AddressBook.ZERO, treasury)
         self._auto_from = self.owner
-        self.risk_modules = {}
+        self._risk_modules = {}
+
+    @property
+    def risk_modules(self):
+        if not hasattr(self, "_risk_modules"):
+            self._risk_modules = self.fetch_riskmodules(self)
+        return self._risk_modules
+
+    @classmethod
+    def fetch_riskmodules(cls, wrapper):
+        raise NotImplementedError()  # TODO
 
     add_risk_module_ = MethodAdapter((("risk_module", "contract"), ))
 
     def add_risk_module(self, risk_module):
         self.add_risk_module_(risk_module)
-        self.risk_modules[risk_module.name] = risk_module
+        self._risk_modules[risk_module.name] = risk_module
 
     set_asset_manager_ = MethodAdapter((("asset_manager", "contract"), ))
 
@@ -302,7 +320,7 @@ class PolicyPoolConfig(ETHWrapper):
 
     @property
     def asset_manager(self):
-        am = self.contract.assetManager()
+        am = eth_call(self, "assetManager")
         if getattr(self, "_asset_manager") and self._asset_manager.contract.address == am:
             return self._asset_manager
         return BaseAssetManager.connect(am, self.owner)
@@ -315,7 +333,7 @@ class PolicyPoolConfig(ETHWrapper):
 
     @property
     def insolvency_hook(self):
-        ih = self.contract.insolvencyHook()
+        ih = eth_call(self, "insolvencyHook")
         if getattr(self, "_insolvency_hook") and self._insolvency_hook.contract.address == ih:
             return self._insolvency_hook
         return FreeGrantInsolvencyHook.connect(ih, self.owner)
@@ -326,6 +344,7 @@ class PolicyPoolConfig(ETHWrapper):
 class PolicyPool(ETHWrapper):
     eth_contract = "PolicyPool"
 
+    constructor_args = (("config", "address"), ("nftToken", "address"), ("currency", "address"))
     proxy_kind = "uups"
 
     def __init__(self, config, policy_nft, currency):
@@ -334,36 +353,52 @@ class PolicyPool(ETHWrapper):
         self._policy_nft = policy_nft
         super().__init__(config.owner, config.contract, policy_nft.contract, currency.contract)
         self._auto_from = self.owner
-        self.etokens = {}
+        self._etokens = {}
 
     @property
     def currency(self):
         if hasattr(self, "_currency"):
             return self._currency
         else:
-            return IERC20.connect(self.contract.currency())
+            return IERC20.connect(eth_call(self, "currency"))
 
     @property
     def config(self):
         if hasattr(self, "_config"):
             return self._config
         else:
-            return PolicyPoolConfig.connect(self.contract.config())
+            return PolicyPoolConfig.connect(eth_call(self, "config"))
 
     @property
     def policy_nft(self):
         if hasattr(self, "_policy_nft"):
             return self._policy_nft
         else:
-            return IERC721.connect(self.contract.policyNFT())
+            return IERC721.connect(eth_call(self, "policyNFT"))
+
+    @property
+    def etokens(self):
+        if not hasattr(self, "_etokens"):
+            self._etokens = self.fetch_etokens(self)
+        return self._etokens
 
     @classmethod
     def connect(cls, contract, owner=None):
         obj = super(PolicyPool, cls).connect(contract, owner)
-        obj.etokens = {}  # TODO: load from object
-        obj.risk_modules = {}  # TODO: load from object
+        current_address = eth_call(obj, "currency")
+        obj._currency = IERC20.connect(current_address)
         obj._auto_from = obj.owner
         return obj
+
+    @classmethod
+    def fetch_etokens(cls, wrapper):
+        etk_count = eth_call(wrapper, "getETokenCount")
+        etokens = {}
+        for i in range(etk_count):
+            etk_address = eth_call(wrapper, "getETokenAt", i)
+            etk = EToken.connect(etk_address)
+            etokens[etk.name] = etk
+        return etokens
 
     pure_premiums = MethodAdapter((), "amount", is_property=True)
     won_pure_premiums = MethodAdapter((), "amount", is_property=True)
@@ -403,7 +438,7 @@ class PolicyPool(ETHWrapper):
             return Wad(0)
 
     def get_policy(self, policy_id):
-        policy_data = self.contract.getPolicy(policy_id)
+        policy_data = eth_call(self, "getPolicy", policy_id)
         if policy_data:
             return Policy(*policy_data, self.provider.address_book)
 
@@ -507,19 +542,19 @@ class AaveAssetManager(BaseAssetManager):
 
     @property
     def currency(self):
-        return IERC20.connect(self.contract.currency())
+        return IERC20.connect(eth_call(self, "currency"))
 
     @property
     def rewardToken(self):
-        return IERC20.connect(self.contract.rewardToken())
+        return IERC20.connect(eth_call(self, "rewardToken"))
 
     @property
     def rewardAToken(self):
-        return IERC20.connect(self.contract.rewardAToken())
+        return IERC20.connect(eth_call(self, "rewardAToken"))
 
     @property
     def aToken(self):
-        return IERC20.connect(self.contract.aToken())
+        return IERC20.connect(eth_call(self, "aToken"))
 
     swap_rewards_ = MethodAdapter((("amount", "amount"), ))
 
@@ -566,4 +601,3 @@ class LPManualWhitelist(ETHWrapper):
 
 
 ERC20Token = TestCurrency
-EToken = ETokenETH

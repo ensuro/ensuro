@@ -23,5 +23,5 @@ RUN echo 'alias hh="npx hardhat"' >> /root/.bashrc
 ENV M9G_VALIDATE_TYPES "Y"
 ENV M9G_SERIALIZE_THIN "Y"
 
-RUN pip install --upgrade eth-prototype[brownie]==0.3.1
+RUN pip install --upgrade eth-prototype[brownie]==0.4.0
 WORKDIR /code
