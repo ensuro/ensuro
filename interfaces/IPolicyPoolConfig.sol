@@ -43,7 +43,6 @@ interface IPolicyPoolConfig is IAccessControlUpgradeable {
     setClaimRewardsMin,
     setReinvestRewardsMin,
     setMaxSlippage,
-    setExclusiveEToken, // RiskModule Governance action - value == eToken address
     setAcceptAllRMs, // EToken Governance action  - value == boolean
     setAcceptException, // EToken Governance action - value == (!isException << 255)|address
     last

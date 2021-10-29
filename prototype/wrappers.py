@@ -260,8 +260,6 @@ class RiskModule(ETHWrapper):
     wallet = MethodAdapter((), "address", is_property=True)
     shared_coverage_min_percentage = MethodAdapter((), "ray", is_property=True)
     shared_coverage_percentage = MethodAdapter((), "ray", is_property=True)
-    exclusive_etoken = MethodAdapter((), "address", is_property=True, eth_method="exclusiveEToken",
-                                     set_eth_method="setExclusiveEToken")
 
 
 class TrustfulRiskModule(RiskModule):

@@ -30,6 +30,4 @@ interface IRiskModule {
   function sharedCoverageScr() external view returns (uint256);
 
   function wallet() external view returns (address);
-
-  function exclusiveEToken() external view returns (address);
 }

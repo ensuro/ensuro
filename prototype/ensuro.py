@@ -199,12 +199,6 @@ class Policy(Model):
             return Ray(0)
         return (self.locked_funds[etoken_name] // self.scr).to_ray()
 
-    def set_accept_exception(self, rm, isException):
-        self.accept_exceptions[rm] = isException
-
-    def is_accept_exception(self, rm):
-        return self.accept_exceptions.get(rm, False)
-
 
 def non_negative(value):
     if value < 0:
@@ -466,6 +460,12 @@ class EToken(ERC20Token):
     def get_investable(self):
         return self.scr + self.ocean + self.get_pool_loan()
 
+    def set_accept_exception(self, rm, is_exception):
+        self.accept_exceptions[rm] = is_exception
+
+    def is_accept_exception(self, rm):
+        return self.accept_exceptions.get(rm, False)
+
 
 class PolicyNFT(ERC721Token):
     policy_count = IntField(default=0)
@@ -585,6 +585,7 @@ class PolicyPool(AccessControlContract):
             etk = policy.risk_module.exclusive_etoken
             require(etk.accepts(policy), "The exclusive eToken doesn't accepts the policy")
             ocean = etk.ocean_for_new_scr
+            ocean_per_token = {etk.name: ocean}
         else:
             ocean = Wad(0)
             ocean_per_token = {}
