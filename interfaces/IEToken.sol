@@ -32,7 +32,7 @@ interface IEToken is IERC20 {
 
   function withdraw(address provider, uint256 amount) external returns (uint256);
 
-  function accepts(uint40 policyExpiration) external view returns (bool);
+  function accepts(address riskModule, uint40 policyExpiration) external view returns (bool);
 
   function lendToPool(uint256 amount, bool fromOcean) external returns (uint256);
 

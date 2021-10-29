@@ -37,6 +37,7 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
   // Always >= _sharedCoverageMinPercentage
   uint256 internal _sharedCoverageScr; // in wad - Current SCR covered by the Risk Module
   address internal _wallet; // Address of the RiskModule provider
+  address internal _exclusiveEToken; // if != address(0), address of the only eToken that can backup this RM
 
   modifier validateParamsAfterChange() {
     _;
@@ -186,6 +187,10 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     return _wallet;
   }
 
+  function exclusiveEToken() public view override returns (address) {
+    return _exclusiveEToken;
+  }
+
   function setScrPercentage(uint256 newScrPercentage)
     external
     onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
@@ -331,6 +336,19 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     _parameterChanged(
       IPolicyPoolConfig.GovernanceActions.setWallet,
       uint256(uint160(wallet_)),
+      false
+    );
+  }
+
+  function setExclusiveEToken(address eToken_)
+    external
+    onlyRole(LEVEL2_ROLE)
+    validateParamsAfterChange
+  {
+    _exclusiveEToken = eToken_;
+    _parameterChanged(
+      IPolicyPoolConfig.GovernanceActions.setExclusiveEToken,
+      uint256(uint160(eToken_)),
       false
     );
   }

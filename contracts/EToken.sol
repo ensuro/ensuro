@@ -46,6 +46,10 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
   uint256 internal _poolLoanScale; // in Ray
   uint40 internal _poolLoanLastUpdate;
 
+  bool internal _acceptAllRMs;  // By defaults, accepts (backs up) any RiskModule;
+  mapping(address => bool) internal _acceptExceptions; // Exceptions to the accept all or accept none policy defined
+                                                       // before
+
   event PoolLoan(uint256 value);
   event PoolLoanRepaid(uint256 value);
 
@@ -111,6 +115,7 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
     _tokenInterestRate = 0;
     _liquidityRequirement = liquidityRequirement_;
     _maxUtilizationRate = maxUtilizationRate_;
+    _acceptAllRMs = true;
 
     _poolLoan = 0;
     _poolLoanInterestRate = poolLoanInterestRate_;
@@ -589,8 +594,12 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
     return amount;
   }
 
-  function accepts(uint40 policyExpiration) public view virtual override returns (bool) {
+  function accepts(address riskModule, uint40 policyExpiration) public view virtual override returns (bool) {
     if (paused()) return false;
+    if (
+        (_acceptAllRMs && _acceptExceptions[riskModule]) ||   // all accepted except this one
+        (!_acceptAllRMs && !_acceptExceptions[riskModule])    // all rejected this one is not an exception
+    ) return false;
     return policyExpiration < (uint40(block.timestamp) + _expirationPeriod);
   }
 

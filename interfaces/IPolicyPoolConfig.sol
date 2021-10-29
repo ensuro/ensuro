@@ -43,6 +43,7 @@ interface IPolicyPoolConfig is IAccessControlUpgradeable {
     setClaimRewardsMin,
     setReinvestRewardsMin,
     setMaxSlippage,
+    setExclusiveEToken,  // RiskModule Governance action
     last
   }
 

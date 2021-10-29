@@ -263,25 +263,35 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     if (policy.rmScr() > 0) _currency.safeTransferFrom(rm.wallet(), address(this), policy.rmScr());
     _activePurePremiums += policy.purePremium;
     _activePremiums += policy.premium;
-    _lockScr(policy);
+    _lockScr(rm, policy);
     emit NewPolicy(rm, policy.id);
     return policy.id;
   }
 
-  function _lockScr(Policy.PolicyData storage policy) internal {
+  function _lockScr(IRiskModule rm, Policy.PolicyData storage policy) internal {
     uint256 ocean = 0;
     DataTypes.ETokenToWadMap storage policyFunds = _policiesFunds[policy.id];
 
-    // Initially I iterate over all eTokens and accumulate ocean of eligible ones
-    // saves the ocean in policyFunds, later will
-    for (uint256 i = 0; i < _eTokens.length(); i++) {
-      (IEToken etk, DataTypes.ETokenStatus etkStatus) = _eTokens.at(i);
-      if (etkStatus != DataTypes.ETokenStatus.active) continue;
-      if (!etk.accepts(policy.expiration)) continue;
-      uint256 etkOcean = etk.oceanForNewScr();
-      if (etkOcean == 0) continue;
-      ocean += etkOcean;
-      policyFunds.set(etk, etkOcean);
+    if (rm.exclusiveEToken() != address(0)) {
+      IEToken etk = IEToken(rm.exclusiveEToken());
+      DataTypes.ETokenStatus etkStatus = _eTokens.get(etk);
+      require(etkStatus == DataTypes.ETokenStatus.active, "eToken is not active");
+      require(etk.accepts(address(policy.riskModule), policy.expiration),
+              "The exclusive eToken doesn't accepts the policy");
+      ocean = etk.oceanForNewScr();
+      policyFunds.set(etk, ocean);
+    } else {
+      // Initially I iterate over all eTokens and accumulate ocean of eligible ones
+      // saves the ocean in policyFunds, later will
+      for (uint256 i = 0; i < _eTokens.length(); i++) {
+        (IEToken etk, DataTypes.ETokenStatus etkStatus) = _eTokens.at(i);
+        if (etkStatus != DataTypes.ETokenStatus.active) continue;
+        if (!etk.accepts(address(policy.riskModule), policy.expiration)) continue;
+        uint256 etkOcean = etk.oceanForNewScr();
+        if (etkOcean == 0) continue;
+        ocean += etkOcean;
+        policyFunds.set(etk, etkOcean);
+      }
     }
     _distributeScr(policy.scr, policy.interestRate(), ocean, policyFunds);
   }
@@ -615,7 +625,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
       if (locked) {
         etk.unlockScr(policy.interestRate(), etkScr);
       }
-      if (etkStatus == DataTypes.ETokenStatus.active && etk.accepts(policy.expiration))
+      if (etkStatus == DataTypes.ETokenStatus.active && etk.accepts(address(policy.riskModule), policy.expiration))
         etkOcean = etk.oceanForNewScr();
       if (etkOcean == 0) {
         if (locked) policyFunds.remove(etk);

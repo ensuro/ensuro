@@ -17,6 +17,11 @@ def tenv(request):
     if request.param == "prototype":
         FakePolicy = namedtuple("FakePolicy", "scr interest_rate expiration")
 
+        class FakePolicy(FakePolicy):
+            @property
+            def risk_module(self):
+                return None
+
         pp_config = ensuro.PolicyPoolConfig()
         policy_pool = ensuro.PolicyPool(
             config=pp_config, currency="required-not-used", policy_nft="required-not-used"

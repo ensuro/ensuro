@@ -145,8 +145,8 @@ class EToken(IERC20):
             return Wad(0)
 
     accepts = MethodAdapter(
-        (("policy_expiration", "int"), ), "bool",
-        adapt_args=lambda args, kwargs: ((args[0].expiration, ), {})
+        (("risk_module", "address"), ("policy_expiration", "int")), "bool",
+        adapt_args=lambda args, kwargs: ((None, args[0].expiration, ), {})
     )
 
     lend_to_pool_ = MethodAdapter((("amount", "amount"), ("from_ocean", "bool")))
