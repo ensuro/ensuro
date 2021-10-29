@@ -3,12 +3,12 @@
 from functools import partial
 from collections import namedtuple
 import pytest
-from prototype.contracts import RevertError
+from ethproto.contracts import RevertError
 from prototype import ensuro
-from prototype.wadray import _W
+from ethproto.wadray import _W
 from prototype.utils import WEEK, DAY
-from .wrappers import time_control, AddressBook, TestCurrency, PolicyPoolConfig
-from . import wrappers
+from prototype.wrappers import TestCurrency, PolicyPoolConfig, get_provider
+from prototype import wrappers
 
 TEnv = namedtuple("TEnv", "time_control build_asset_manager kind")
 
@@ -28,7 +28,7 @@ def tenv(request):
             kind="prototype"
         )
     elif request.param == "ethereum":
-        from brownie import PolicyPoolMockForward
+        PolicyPoolMockForward = get_provider().get_contract_factory("PolicyPoolMockForward")
 
         currency = TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
 
@@ -36,7 +36,7 @@ def tenv(request):
             cls = getattr(wrappers, asm_class)
             config = PolicyPoolConfig(owner="owner")
             pool = PolicyPoolMockForward.deploy(
-                AddressBook.ZERO, currency.contract, config.contract, {"from": currency.owner}
+                wrappers.AddressBook.ZERO, currency.contract, config.contract, {"from": currency.owner}
             )
             obj = cls(pool=pool, owner="owner", **kwargs)
             pool.setForwardTo(obj.contract, {"from": currency.owner})
@@ -45,7 +45,7 @@ def tenv(request):
             return obj
 
         return TEnv(
-            time_control=time_control,
+            time_control=get_provider().time_control,
             build_asset_manager=build_asset_manager,
             kind="ethereum"
         )

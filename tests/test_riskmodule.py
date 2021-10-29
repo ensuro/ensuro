@@ -3,10 +3,11 @@
 from functools import partial
 from collections import namedtuple
 import pytest
-from prototype.contracts import RevertError, Contract, IntField, ERC20Token, ContractProxyField
+from ethproto.contracts import RevertError, Contract, IntField, ERC20Token, ContractProxyField
+from ethproto.wrappers import get_provider
 from prototype import ensuro
-from prototype.wadray import _W, _R, Wad
-from . import wrappers
+from ethproto.wadray import _W, _R, Wad
+from prototype import wrappers
 from prototype.utils import WEEK, DAY
 
 TEnv = namedtuple("TEnv", "time_control currency rm_class policy_factory pool_config kind")
@@ -41,7 +42,7 @@ def tenv(request):
         )
     elif request.param == "ethereum":
         FakePolicy = namedtuple("FakePolicy", "scr interest_rate expiration")
-        from brownie import PolicyPoolMock
+        PolicyPoolMock = get_provider().get_contract_factory("PolicyPoolMock")
 
         currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
         config = wrappers.PolicyPoolConfig(owner="owner")
@@ -50,7 +51,7 @@ def tenv(request):
 
         return TEnv(
             currency=currency,
-            time_control=wrappers.time_control,
+            time_control=get_provider().time_control,
             policy_factory=FakePolicy,
             pool_config=config,
             kind="ethereum",

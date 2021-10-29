@@ -1,13 +1,13 @@
 """Unitary tests for eToken contract"""
-
+import sys
 from functools import partial, wraps
 from collections import namedtuple
 import pytest
-from prototype.contracts import RevertError
+from ethproto.contracts import RevertError
 from prototype import ensuro
-from prototype.wadray import _W, _R
+from ethproto.wadray import _W, _R
 from prototype.utils import WEEK, DAY
-from .wrappers import ETokenETH, time_control, AddressBook, TestCurrency, PolicyPoolConfig
+from prototype import wrappers
 
 TEnv = namedtuple("TEnv", "time_control etoken_class policy_factory kind")
 
@@ -30,22 +30,22 @@ def tenv(request):
         )
     elif request.param == "ethereum":
         FakePolicy = namedtuple("FakePolicy", "scr interest_rate expiration")
-        from brownie import PolicyPoolMockForward
+        PolicyPoolMockForward = wrappers.get_provider().get_contract_factory("PolicyPoolMockForward")
 
-        currency = TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
+        currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
 
         def etoken_factory(**kwargs):
-            config = PolicyPoolConfig(owner="owner")
+            config = wrappers.PolicyPoolConfig(owner="owner")
             pool = PolicyPoolMockForward.deploy(
-                AddressBook.ZERO, currency.contract, config.contract, {"from": currency.owner}
+                wrappers.AddressBook.ZERO, currency.contract, config.contract, {"from": currency.owner}
             )
             symbol = kwargs.pop("symbol", "ETK")
-            etoken = ETokenETH(policy_pool=pool, symbol=symbol, **kwargs)
+            etoken = wrappers.EToken(policy_pool=pool, symbol=symbol, **kwargs)
             pool.setForwardTo(etoken.contract, {"from": currency.owner})
             return etoken
 
         return TEnv(
-            time_control=time_control,
+            time_control=wrappers.get_provider().time_control,
             policy_factory=FakePolicy,
             # etoken_class=partial(ETokenETH, policy_pool="ensuro", symbol="ETK")
             etoken_class=etoken_factory,
@@ -72,9 +72,10 @@ def test_only_policy_pool_validation(tenv):
 def skip_if_coverage_activated(f):
     @wraps(f)
     def wrapped(tenv, *args, **kwargs):
-        from brownie._config import CONFIG
-        if CONFIG.argv.get("coverage", False) and tenv.kind == "ethereum":
-            return
+        if "brownie" in sys.modules:
+            from brownie._config import CONFIG
+            if CONFIG.argv.get("coverage", False) and tenv.kind == "ethereum":
+                return
         return f(tenv, *args, **kwargs)
     return wrapped
 

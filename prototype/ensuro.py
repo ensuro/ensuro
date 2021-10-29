@@ -1,10 +1,10 @@
 from contextlib import contextmanager
 from m9g import Model
 from m9g.fields import StringField, IntField, DictField, CompositeField
-from .contracts import AccessControlContract, ERC20Token, external, view, RayField, WadField, AddressField, \
+from ethproto.contracts import AccessControlContract, ERC20Token, external, view, RayField, WadField, AddressField, \
     ContractProxyField, ContractProxy, require, only_role, Contract
-from .contracts import ERC721Token
-from .wadray import RAY, Ray, Wad, _W, _R
+from ethproto.contracts import ERC721Token
+from ethproto.wadray import RAY, Ray, Wad, _W, _R
 import time
 
 SECONDS_IN_YEAR = 365 * 24 * 3600
