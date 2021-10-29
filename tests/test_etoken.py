@@ -491,12 +491,20 @@ def test_getset_etk_parameters_tweaks(tenv):
         ("liquidity_requirement", _R("0.8")),  # previous 109%
         ("max_utilization_rate", _R("0.51")),  # previous 80%
         ("pool_loan_interest_rate", _R("0.07")),  # previous 2.5%
+        ("accept_all_rms", False),  # previous True
+        ("accept_all_rms", True),  # previous False
     ]
 
     for attr_name, attr_value in test_ok_l2_changes:
         with etk.as_("L2_USER"):
             setattr(etk, attr_name, attr_value)
         assert getattr(etk, attr_name) == attr_value
+
+    assert not etk.is_accept_exception("FOORM")
+    with etk.as_("L2_USER"):
+        etk.set_accept_exception("FOORM", True)
+    assert etk.is_accept_exception("FOORM")
+    assert not etk.is_accept_exception("BARRM")
 
     tenv.time_control.fast_forward(WEEK)  # To avoid repeated tweaks
 

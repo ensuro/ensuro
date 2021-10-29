@@ -106,6 +106,12 @@ class EToken(IERC20):
     set_pool_loan_interest_rate = MethodAdapter((("new_rate", "ray"), ))
     set_max_utilization_rate = MethodAdapter((("new_rate", "ray"), ))
 
+    accept_all_rms = MethodAdapter((), "bool", is_property=True, eth_method="acceptAllRMs")
+    set_accept_all_rms = MethodAdapter((("accept", "bool"), ), eth_method="setAcceptAllRMs")
+
+    is_accept_exception = MethodAdapter((("risk_module", "address"),), "bool")
+    set_accept_exception = MethodAdapter((("risk_module", "address"), ("is_exception", "bool")))
+
     lock_scr = MethodAdapter(
         (("policy_interest_rate", "ray"), ("scr_amount", "amount")),
         adapt_args=lambda args, kwargs: ((), {
@@ -220,7 +226,7 @@ class Policy:
         ).to_wad()
 
 
-class RiskModuleETH(ETHWrapper):
+class RiskModule(ETHWrapper):
 
     constructor_args = (
         ("name", "string"), ("pool", "address"), ("scr_percentage", "ray"), ("ensuro_fee", "ray"),
@@ -254,9 +260,11 @@ class RiskModuleETH(ETHWrapper):
     wallet = MethodAdapter((), "address", is_property=True)
     shared_coverage_min_percentage = MethodAdapter((), "ray", is_property=True)
     shared_coverage_percentage = MethodAdapter((), "ray", is_property=True)
+    exclusive_etoken = MethodAdapter((), "address", is_property=True, eth_method="exclusiveEToken",
+                                     set_eth_method="setExclusiveEToken")
 
 
-class TrustfulRiskModule(RiskModuleETH):
+class TrustfulRiskModule(RiskModule):
     eth_contract = "TrustfulRiskModule"
     proxy_kind = "uups"
 

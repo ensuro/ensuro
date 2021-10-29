@@ -1,8 +1,8 @@
 from contextlib import contextmanager
 from m9g import Model
 from m9g.fields import StringField, IntField, DictField, CompositeField
-from ethproto.contracts import AccessControlContract, ERC20Token, external, view, RayField, WadField, AddressField, \
-    ContractProxyField, ContractProxy, require, only_role, Contract
+from ethproto.contracts import AccessControlContract, ERC20Token, external, view, RayField, \
+    WadField, AddressField, ContractProxyField, ContractProxy, require, only_role, Contract
 from ethproto.contracts import ERC721Token
 from ethproto.wadray import RAY, Ray, Wad, _W, _R
 import time
@@ -198,6 +198,12 @@ class Policy(Model):
         if etoken_name not in self.locked_funds:
             return Ray(0)
         return (self.locked_funds[etoken_name] // self.scr).to_ray()
+
+    def set_accept_exception(self, rm, isException):
+        self.accept_exceptions[rm] = isException
+
+    def is_accept_exception(self, rm):
+        return self.accept_exceptions.get(rm, False)
 
 
 def non_negative(value):
@@ -453,6 +459,9 @@ class EToken(ERC20Token):
 
     def set_max_utilization_rate(self, new_rate):
         self.max_utilization_rate = new_rate
+
+    def set_accept_all_rms(self, accept):
+        self.accept_all_rms = accept
 
     def get_investable(self):
         return self.scr + self.ocean + self.get_pool_loan()

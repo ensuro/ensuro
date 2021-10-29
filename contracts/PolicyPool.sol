@@ -276,8 +276,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
       IEToken etk = IEToken(rm.exclusiveEToken());
       DataTypes.ETokenStatus etkStatus = _eTokens.get(etk);
       require(etkStatus == DataTypes.ETokenStatus.active, "eToken is not active");
-      require(etk.accepts(address(policy.riskModule), policy.expiration),
-              "The exclusive eToken doesn't accepts the policy");
+      require(
+        etk.accepts(address(policy.riskModule), policy.expiration),
+        "The exclusive eToken doesn't accepts the policy"
+      );
       ocean = etk.oceanForNewScr();
       policyFunds.set(etk, ocean);
     } else {
@@ -625,8 +627,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
       if (locked) {
         etk.unlockScr(policy.interestRate(), etkScr);
       }
-      if (etkStatus == DataTypes.ETokenStatus.active && etk.accepts(address(policy.riskModule), policy.expiration))
-        etkOcean = etk.oceanForNewScr();
+      if (
+        etkStatus == DataTypes.ETokenStatus.active &&
+        etk.accepts(address(policy.riskModule), policy.expiration)
+      ) etkOcean = etk.oceanForNewScr();
       if (etkOcean == 0) {
         if (locked) policyFunds.remove(etk);
       } else {

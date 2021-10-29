@@ -91,6 +91,8 @@ def test_getset_rm_parameters(tenv):
         ("wallet", "CASINO", "CASINO_POCKET"),
         ("shared_coverage_min_percentage", "L2_USER", _R("0.3")),
         ("shared_coverage_percentage", "CASINO", _R("0.35")),
+        ("exclusive_etoken", "L2_USER", "FOOETK"),
+        ("exclusive_etoken", "L2_USER", None),
     ]
 
     for attr_name, authorized_user, new_value in test_attributes:

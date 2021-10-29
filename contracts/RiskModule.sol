@@ -342,7 +342,7 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
 
   function setExclusiveEToken(address eToken_)
     external
-    onlyRole(LEVEL2_ROLE)
+    onlyPoolRole(LEVEL2_ROLE)
     validateParamsAfterChange
   {
     _exclusiveEToken = eToken_;
