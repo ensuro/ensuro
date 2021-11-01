@@ -6,7 +6,7 @@ jobs:
     name: Ensuro Tests
     runs-on: ubuntu-latest
     container:
-      image: gnarvaja/eth-dev
+      image: gnarvaja/eth-dev:ensuro-1.0.2
     timeout-minutes: 40
 
     steps:

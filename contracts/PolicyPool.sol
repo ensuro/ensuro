@@ -277,7 +277,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     for (uint256 i = 0; i < _eTokens.length(); i++) {
       (IEToken etk, DataTypes.ETokenStatus etkStatus) = _eTokens.at(i);
       if (etkStatus != DataTypes.ETokenStatus.active) continue;
-      if (!etk.accepts(policy.expiration)) continue;
+      if (!etk.accepts(address(policy.riskModule), policy.expiration)) continue;
       uint256 etkOcean = etk.oceanForNewScr();
       if (etkOcean == 0) continue;
       ocean += etkOcean;
@@ -615,8 +615,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
       if (locked) {
         etk.unlockScr(policy.interestRate(), etkScr);
       }
-      if (etkStatus == DataTypes.ETokenStatus.active && etk.accepts(policy.expiration))
-        etkOcean = etk.oceanForNewScr();
+      if (
+        etkStatus == DataTypes.ETokenStatus.active &&
+        etk.accepts(address(policy.riskModule), policy.expiration)
+      ) etkOcean = etk.oceanForNewScr();
       if (etkOcean == 0) {
         if (locked) policyFunds.remove(etk);
       } else {
