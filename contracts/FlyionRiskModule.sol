@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IPolicyPool} from '../interfaces/IPolicyPool.sol';
-import {RiskModule} from './RiskModule.sol';
-import {Chainlink} from '@chainlink/contracts/src/v0.8/Chainlink.sol';
-import {ChainlinkClientUpgradeable} from './dependencies/ChainlinkClientUpgradeable.sol';
+import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
+import {RiskModule} from "./RiskModule.sol";
+import {Chainlink} from "@chainlink/contracts/src/v0.8/Chainlink.sol";
+import {ChainlinkClientUpgradeable} from "./dependencies/ChainlinkClientUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
@@ -21,10 +21,15 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
 
   //replace it by the ones at the top for each new contract
   // address public constant chainlinkOracleAddr = 0x2f90A6D021db21e1B2A077c5a37B3C7E75D15b7e;
+  // solhint-disable-next-line const-name-snakecase
   address public constant chainlinkOracleAddr = 0x0a908660e9319413a16978fA48dF641b4bf37C54;
-  address constant private LINK_TOKEN = 0x326C977E6efc84E512bB9C30f76E30c160eD06FB;
-  bytes32 public constant dataJobId = 0x2fb0c3a36f924e4ab43040291e14e0b700000000000000000000000000000000;
-  bytes32 public constant sleepJobId = 0xb93734c968d741a4930571586f30d0e000000000000000000000000000000000;
+  address private constant LINK_TOKEN = 0x326C977E6efc84E512bB9C30f76E30c160eD06FB;
+  // solhint-disable-next-line const-name-snakecase
+  bytes32 public constant dataJobId =
+    0x2fb0c3a36f924e4ab43040291e14e0b700000000000000000000000000000000;
+  // solhint-disable-next-line const-name-snakecase
+  bytes32 public constant sleepJobId =
+    0xb93734c968d741a4930571586f30d0e000000000000000000000000000000000;
   uint256 public constant ORACLE_DELAY_TIME = 600;
   uint256 internal oracleFee; // chainlink payment
 
@@ -35,11 +40,15 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
     uint40 tolerance;
   }
 
-  mapping (bytes32 => uint256) _pendingQueries;
-  mapping (uint256 => FlyionPolicyData) _flyionPolicies;
+  mapping(bytes32 => uint256) internal _pendingQueries;
+  mapping(uint256 => FlyionPolicyData) internal _flyionPolicies;
 
   event ChainlinkScheduled(uint256 indexed policyId, bytes32 queryId, uint256 until);
-  event ChainlinkFulfilledDebug(uint256 indexed policyId, bytes32 queryId, int256 actualArrivalDate);
+  event ChainlinkFulfilledDebug(
+    uint256 indexed policyId,
+    bytes32 queryId,
+    int256 actualArrivalDate
+  );
 
   /**
    * @dev Initializes the RiskModule
@@ -80,9 +89,10 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
     __FlyionRiskModule_init_unchained();
   }
 
+  // solhint-disable-next-line func-name-mixedcase
   function __FlyionRiskModule_init_unchained() internal initializer {
     setChainlinkToken(LINK_TOKEN);
-    oracleFee = 10e16;  // 0.1 LINK
+    oracleFee = 10e16; // 0.1 LINK
   }
 
   function setOracleFee(uint256 newOrableFee) external onlyRole(ORACLE_ADMIN_ROLE) {
@@ -106,18 +116,25 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
     uint40 departure,
     uint40 expectedArrival,
     uint40 tolerance,
-    uint256 payout, uint256 premium, uint256 lossProb, uint40 expiration, address customer
-  )  onlyRole(PRICER_ROLE) external returns (uint256) {
+    uint256 payout,
+    uint256 premium,
+    uint256 lossProb,
+    uint40 expiration,
+    address customer
+  ) external onlyRole(PRICER_ROLE) returns (uint256) {
     require(expectedArrival != 0, "expectedArrival can't be zero");
     uint256 policyId = _newPolicy(payout, premium, lossProb, expiration, customer);
 
     // request takes a JobID, a callback address, and callback function as input
-    Chainlink.Request memory req = buildChainlinkRequest(sleepJobId, address(this), this.fulfill.selector);
+    Chainlink.Request memory req = buildChainlinkRequest(
+      sleepJobId,
+      address(this),
+      this.fulfill.selector
+    );
     req.add("flight", flight);
     req.addUint("departure", departure);
     uint256 until = expectedArrival + tolerance + ORACLE_DELAY_TIME;
-    if (until < (block.timestamp + 120))
-      until = block.timestamp + 120;
+    if (until < (block.timestamp + 120)) until = block.timestamp + 120;
     req.addUint("until", until);
 
     // Sends the request with the amount of payment specified to the oracle (results will arrive with the callback = later)
@@ -136,13 +153,15 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
    * @dev Forces the resolution of the policy (without waiting Chainlink scheduled on creation)
    * @param policyId The id of the policy previously created (in newPolicy)
    */
-  function resolvePolicy(
-    uint256 policyId
-  )  onlyRole(PRICER_ROLE) external returns (uint256) {
+  function resolvePolicy(uint256 policyId) external onlyRole(PRICER_ROLE) returns (uint256) {
     FlyionPolicyData storage policy = _flyionPolicies[policyId];
     require(policy.expectedArrival != 0, "Policy not found!");
     // request takes a JobID, a callback address, and callback function as input
-    Chainlink.Request memory req = buildChainlinkRequest(dataJobId, address(this), this.fulfill.selector);
+    Chainlink.Request memory req = buildChainlinkRequest(
+      dataJobId,
+      address(this),
+      this.fulfill.selector
+    );
     req.add("flight", policy.flight);
     req.addUint("departure", policy.departure);
 
@@ -153,7 +172,8 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
     return policyId;
   }
 
-  function fulfill(bytes32 queryId, int256 actualArrivalDate) public
+  function fulfill(bytes32 queryId, int256 actualArrivalDate)
+    public
     recordChainlinkFulfillment(queryId)
   {
     uint256 policyId = _pendingQueries[queryId];
@@ -167,7 +187,11 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
       // revert("actualArrivalDate == 0, don't know what it means");
       // request takes a JobID, a callback address, and callback function as input
       // If sleepJobId not working, reschedule request
-      Chainlink.Request memory req = buildChainlinkRequest(dataJobId, address(this), this.fulfill.selector);
+      Chainlink.Request memory req = buildChainlinkRequest(
+        dataJobId,
+        address(this),
+        this.fulfill.selector
+      );
       req.add("flight", policy.flight);
       req.addUint("departure", policy.departure);
 
@@ -177,10 +201,8 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
       _pendingQueries[queryId] = policyId;
       return;
     }
-    bool customerWon = (
-      actualArrivalDate <= 0 ||  // cancelled
-      uint256(actualArrivalDate) > uint256(policy.expectedArrival + policy.tolerance)  // arrived after tolerance
-    );
+    bool customerWon = (actualArrivalDate <= 0 || // cancelled
+      uint256(actualArrivalDate) > uint256(policy.expectedArrival + policy.tolerance)); // arrived after tolerance
 
     _policyPool.resolvePolicyFullPayout(policyId, customerWon);
   }
