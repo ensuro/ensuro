@@ -208,6 +208,123 @@ def test_rebalance_policy(tenv):
     )
 
 
+def test_not_accept_rm(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        scr_percentage: 1
+        ensuro_fee: 0
+        scr_interest_rate: "0.01"
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 6000
+        initial_balances:
+        - user: LP1
+          amount: 2000
+        - user: LP2
+          amount: 1000
+        - user: LP3
+          amount: 1000
+        - user: CUST1
+          amount: 100
+    etokens:
+      - name: eUSD1WEEK
+        expiration_period: 604800
+      - name: eUSD1MONTH
+        expiration_period: 2592000
+      - name: eCASINO
+        expiration_period: 31536000
+    """
+
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    rm = pool.config.risk_modules["Roulette"]
+    rm.grant_role("PRICER_ROLE", rm.owner)
+    rm.grant_role("RESOLVER_ROLE", rm.owner)
+    pool.config.grant_role("LEVEL2_ROLE", rm.owner)
+
+    eUSD1MONTH = pool.etokens["eUSD1MONTH"]
+    eUSD1WEEK = pool.etokens["eUSD1WEEK"]
+
+    with eUSD1MONTH.as_(rm.owner):
+        eUSD1MONTH.accept_all_rms = False
+    with eUSD1WEEK.as_(rm.owner):
+        eUSD1WEEK.set_accept_exception(rm, True)
+
+    pool.currency.approve("LP1", pool.contract_id, _W(2000))
+    pool.currency.approve("LP2", pool.contract_id, _W(1000))
+    pool.currency.approve("LP3", pool.contract_id, _W(1000))
+
+    # each pool has 1000
+    assert pool.deposit("eCASINO", "LP1", _W(2000)) == _W(2000)
+    assert pool.deposit("eUSD1MONTH", "LP3", _W(1000)) == _W(1000)
+    assert pool.deposit("eUSD1WEEK", "LP2", _W(1000)) == _W(1000)
+
+    pool.currency.approve("CUST1", pool.contract_id, _W(100))
+    policy = rm.new_policy(
+        payout=_W(2100), premium=_W(100), customer="CUST1",
+        loss_prob=_R("0.03"), expiration=timecontrol.now + 10 * DAY
+    )
+    assert policy.scr == _W(2000)
+    for_lps = policy.premium_split()[-1]
+    for_lps.assert_equal(_W(2000) * _W("0.01") * _W(10/365))
+
+    # Only eCASINO accepts the policy
+    # eUSD1MONTH rejects because it rejects any RM unless exception
+    # eUSD1WEEK rejects because of expiration
+    assert pool.etokens["eCASINO"].ocean == _W(0)
+    assert eUSD1MONTH.ocean == _W(1000)
+    assert eUSD1WEEK.ocean == _W(1000)
+
+    assert pool.get_policy_fund_count(policy.id) == 1
+
+    timecontrol.fast_forward(4 * DAY)
+
+    # Calculate oceans when policy unlocked to be relocked
+    oceans = {
+        "eCASINO": pool.etokens["eCASINO"].total_supply(),
+        "eUSD1MONTH": eUSD1MONTH.total_supply(),
+        "eUSD1WEEK": eUSD1WEEK.total_supply(),
+    }
+
+    total_ocean = _W(3000) + for_lps * _W(4/10)
+
+    # After four days, now the policy expires in less than a week. Anyway still RM is exclusive, nothing
+    # changes
+    pool.config.grant_role("REBALANCE_ROLE", "REBALANCER_USER")
+    with pool.as_("REBALANCER_USER"):
+        pool.rebalance_policy(policy.id)
+
+    ocean_shares = _calculate_shares(oceans, total_ocean)
+
+    # SCR is allocated in all tokens
+    for etk_name, scr_share in ocean_shares.items():
+        if etk_name == "eCASINO":
+            pool.etokens[etk_name].scr.assert_equal(policy.scr)
+        else:
+            pool.etokens[etk_name].scr.assert_equal(_W(0))
+
+    with eUSD1WEEK.as_(rm.owner):
+        eUSD1WEEK.set_accept_exception(rm, False)
+    with eUSD1MONTH.as_(rm.owner):
+        eUSD1MONTH.set_accept_exception(rm, True)
+
+    # Now reallocation should have effect
+    with pool.as_("REBALANCER_USER"):
+        pool.rebalance_policy(policy.id)
+
+    # SCR is allocated in all tokens
+    total_scr = _W(0)
+    for etk_name, scr_share in ocean_shares.items():
+        assert not pool.etokens[etk_name].scr.equal(_W(0))
+        total_scr += pool.etokens[etk_name].scr
+
+    eUSD1MONTH.scr.assert_equal(policy.scr * _W(1/4), decimals=1)
+    eUSD1WEEK.scr.assert_equal(policy.scr * _W(1/4), decimals=1)
+    total_scr.assert_equal(policy.scr)
+
+
 def test_risk_module_shared_coverage(tenv):
     YAML_SETUP = """
     risk_modules:

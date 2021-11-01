@@ -106,6 +106,11 @@ class EToken(IERC20):
     set_pool_loan_interest_rate = MethodAdapter((("new_rate", "ray"), ))
     set_max_utilization_rate = MethodAdapter((("new_rate", "ray"), ))
 
+    accept_all_rms = MethodAdapter((), "bool", is_property=True, eth_method="acceptAllRMs")
+
+    is_accept_exception = MethodAdapter((("risk_module", "address"),), "bool")
+    set_accept_exception = MethodAdapter((("risk_module", "address"), ("is_exception", "bool")))
+
     lock_scr = MethodAdapter(
         (("policy_interest_rate", "ray"), ("scr_amount", "amount")),
         adapt_args=lambda args, kwargs: ((), {
@@ -145,8 +150,8 @@ class EToken(IERC20):
             return Wad(0)
 
     accepts = MethodAdapter(
-        (("policy_expiration", "int"), ), "bool",
-        adapt_args=lambda args, kwargs: ((args[0].expiration, ), {})
+        (("risk_module", "address"), ("policy_expiration", "int")), "bool",
+        adapt_args=lambda args, kwargs: ((None, args[0].expiration, ), {})
     )
 
     lend_to_pool_ = MethodAdapter((("amount", "amount"), ("from_ocean", "bool")))
@@ -220,7 +225,7 @@ class Policy:
         ).to_wad()
 
 
-class RiskModuleETH(ETHWrapper):
+class RiskModule(ETHWrapper):
 
     constructor_args = (
         ("name", "string"), ("pool", "address"), ("scr_percentage", "ray"), ("ensuro_fee", "ray"),
@@ -256,7 +261,7 @@ class RiskModuleETH(ETHWrapper):
     shared_coverage_percentage = MethodAdapter((), "ray", is_property=True)
 
 
-class TrustfulRiskModule(RiskModuleETH):
+class TrustfulRiskModule(RiskModule):
     eth_contract = "TrustfulRiskModule"
     proxy_kind = "uups"
 

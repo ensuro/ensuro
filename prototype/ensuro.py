@@ -1,8 +1,8 @@
 from contextlib import contextmanager
 from m9g import Model
 from m9g.fields import StringField, IntField, DictField, CompositeField
-from ethproto.contracts import AccessControlContract, ERC20Token, external, view, RayField, WadField, AddressField, \
-    ContractProxyField, ContractProxy, require, only_role, Contract
+from ethproto.contracts import AccessControlContract, ERC20Token, external, view, RayField, \
+    WadField, AddressField, ContractProxyField, ContractProxy, require, only_role, Contract
 from ethproto.contracts import ERC721Token
 from ethproto.wadray import RAY, Ray, Wad, _W, _R
 import time
@@ -221,6 +221,9 @@ class EToken(ERC20Token):
     pool_loan_scale = RayField(default=_R(1))
     pool_loan_last_update = IntField(default=None, allow_none=True)
 
+    accept_all_rms = IntField(default=Wad(1))
+    accept_exceptions = DictField(ContractProxyField(), IntField(), default={})
+
     set_attr_roles = {
         "pool_loan_interest_rate": "LEVEL2_ROLE"
     }
@@ -375,6 +378,10 @@ class EToken(ERC20Token):
         return amount
 
     def accepts(self, policy):
+        if self.accept_all_rms and self.accept_exceptions.get(policy.risk_module, False):
+            return False
+        if not self.accept_all_rms and not self.accept_exceptions.get(policy.risk_module, False):
+            return False
         return policy.expiration <= (time_control.now + self.expiration_period)
 
     def _update_pool_loan_scale(self):
@@ -447,6 +454,12 @@ class EToken(ERC20Token):
 
     def get_investable(self):
         return self.scr + self.ocean + self.get_pool_loan()
+
+    def set_accept_exception(self, rm, is_exception):
+        self.accept_exceptions[rm] = is_exception
+
+    def is_accept_exception(self, rm):
+        return self.accept_exceptions.get(rm, False)
 
 
 class PolicyNFT(ERC721Token):
