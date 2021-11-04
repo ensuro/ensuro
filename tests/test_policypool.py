@@ -6,7 +6,7 @@ from ethproto.contracts import RevertError
 from ethproto.wadray import _W, _R, set_precision, Wad
 from ethproto.wrappers import get_provider
 from prototype.utils import load_config, WEEK, DAY
-
+from . import extract_vars
 
 TEnv = namedtuple("TEnv", "time_control module kind")
 
@@ -1097,15 +1097,9 @@ def test_insolvency_without_hook(tenv):
     return locals()
 
 
-def _extract_vars(vars, keys):
-    keys = keys.split(",")
-    for k in keys:
-        yield vars[k]
-
-
 def test_grant_insolvency_hook(tenv):
     vars = test_insolvency_without_hook(tenv)
-    pool, rm, policy = _extract_vars(vars, "pool,rm,policy")
+    pool, rm, policy = extract_vars(vars, "pool,rm,policy")
     ins_hook = tenv.module.FreeGrantInsolvencyHook(pool=pool)
     pool.config.set_insolvency_hook(ins_hook)
 
@@ -1116,7 +1110,7 @@ def test_grant_insolvency_hook(tenv):
 
 def test_lp_insolvency_hook(tenv):
     vars = test_insolvency_without_hook(tenv)
-    pool, rm, etk, for_lps, policy, USD = _extract_vars(vars, "pool,rm,etk,for_lps,policy,USD")
+    pool, rm, etk, for_lps, policy, USD = extract_vars(vars, "pool,rm,etk,for_lps,policy,USD")
     ins_hook = tenv.module.LPInsolvencyHook(pool=pool, etoken="eUSD1YEAR")
     pool.config.set_insolvency_hook(ins_hook)
 
@@ -1142,7 +1136,7 @@ def test_lp_insolvency_hook_negative_ocean(tenv):
     with less supply than SCR (negative ocean).
     """
     vars = test_insolvency_without_hook(tenv)
-    pool, rm, etk, for_lps, policy, USD, timecontrol = _extract_vars(
+    pool, rm, etk, for_lps, policy, USD, timecontrol = extract_vars(
         vars, "pool,rm,etk,for_lps,policy,USD,timecontrol"
     )
     ins_hook = tenv.module.LPInsolvencyHook(pool=pool, etoken="eUSD1YEAR")
@@ -1186,7 +1180,7 @@ def test_lp_insolvency_hook_cover_etoken(tenv):
     calls the insolvency_hook that deposits some extra cash.
     """
     vars = test_insolvency_without_hook(tenv)
-    pool, rm, etk, for_lps, policy, USD, timecontrol = _extract_vars(
+    pool, rm, etk, for_lps, policy, USD, timecontrol = extract_vars(
         vars, "pool,rm,etk,for_lps,policy,USD,timecontrol"
     )
     ins_hook = tenv.module.LPInsolvencyHook(pool=pool, etoken="eUSD1YEAR", cover_etoken=1)
@@ -1229,7 +1223,7 @@ def test_lp_insolvency_hook_cover_etoken(tenv):
 @set_precision(Wad, 3)
 def test_lp_insolvency_hook_other_etk(tenv):
     vars = test_insolvency_without_hook(tenv)
-    pool, rm, etk, for_lps, policy, USD, timecontrol = _extract_vars(
+    pool, rm, etk, for_lps, policy, USD, timecontrol = extract_vars(
         vars, "pool,rm,etk,for_lps,policy,USD,timecontrol"
     )
     etk1m = pool.etokens["eUSD1MONTH"]
@@ -1436,7 +1430,7 @@ def test_expire_policy(tenv):
 
 def test_withdraw_won_premiums(tenv):
     vars = test_expire_policy(tenv)
-    pool, rm, etk, for_lps, policy, USD, timecontrol = _extract_vars(
+    pool, rm, etk, for_lps, policy, USD, timecontrol = extract_vars(
         vars, "pool,rm,etk,for_lps,policy,USD,timecontrol"
     )
     treasury_balance = USD.balance_of("ENS")

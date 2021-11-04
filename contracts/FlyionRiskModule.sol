@@ -121,6 +121,7 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
     address customer
   ) external onlyRole(PRICER_ROLE) returns (uint256) {
     require(expectedArrival != 0, "expectedArrival can't be zero");
+    require(departure != 0 && expectedArrival > departure, "expectedArrival <= departure!");
     uint256 policyId = _newPolicy(payout, premium, lossProb, expiration, customer);
     FlyionPolicyData storage policy = _flyionPolicies[policyId];
     policy.flight = flight;
@@ -146,12 +147,14 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
       this.fulfill.selector
     );
     req.add("flight", policy.flight);
+    req.add("endpoint", "actualarrivaldate");
     req.addUint("departure", policy.departure);
     if (until > 0) {
       req.addUint("until", until);
     }
 
-    // Sends the request with the amount of payment specified to the oracle (results will arrive with the callback = later)
+    // Sends the request with the amount of payment specified to the oracle
+    // (results will arrive with the callback = later)
     bytes32 queryId = sendChainlinkRequestTo(_oracleParams.oracle, req, _oracleParams.fee);
     _pendingQueries[queryId] = policyId;
   }
@@ -176,10 +179,13 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
     FlyionPolicyData storage policy = _flyionPolicies[policyId];
 
     if (actualArrivalDate == 0) {
-      // Shouldn't happen because we take field estimatedarrivaltime
-      // In case it happens, I call again the oracle - TODO: review
-      _chainlinkRequest(policyId, policy, 0);
-      return;
+      if (block.timestamp > (policy.expectedArrival + policy.tolerance)) {
+        // Treat as arrived after tolerance
+        actualArrivalDate = int256(uint256((policy.expectedArrival + policy.tolerance) + 1));
+      } else {
+        // Not arrived yet
+        return;
+      }
     }
     bool customerWon = (actualArrivalDate <= 0 || // cancelled
       uint256(actualArrivalDate) > uint256(policy.expectedArrival + policy.tolerance)); // arrived after tolerance

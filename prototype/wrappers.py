@@ -278,7 +278,7 @@ class TrustfulRiskModule(RiskModule):
     new_policy_ = MethodAdapter((
         ("payout", "amount"), ("premium", "amount"), ("loss_prob", "ray"), ("expiration", "int"),
         ("customer", "address")
-    ), "int")
+    ), "receipt")
 
     resolve_policy_full_payout = MethodAdapter((("policy_id", "int"), ("customer_won", "bool")))
     resolve_policy_ = MethodAdapter((("policy_id", "int"), ("payout", "amount")))
@@ -302,7 +302,7 @@ class FlyionRiskModule(RiskModule):
         ("flight", "string"), ("departure", "int"), ("expectedArrival", "int"), ("tolerance", "int"),
         ("payout", "amount"), ("premium", "amount"), ("loss_prob", "ray"), ("expiration", "int"),
         ("customer", "address")
-    ), "int")
+    ), "receipt")
 
     resolve_policy = MethodAdapter((("policy_id", "int"), ))
 
