@@ -10,13 +10,12 @@ from ethproto.wadray import _W, _R, Wad
 from prototype import wrappers
 from prototype.utils import WEEK, DAY
 
-TEnv = namedtuple("TEnv", "time_control currency rm_class policy_factory pool_config kind")
+TEnv = namedtuple("TEnv", "time_control currency rm_class pool_config kind")
 
 
 @pytest.fixture(params=["ethereum", "prototype"])
 def tenv(request):
     if request.param == "prototype":
-        FakePolicy = namedtuple("FakePolicy", "scr interest_rate expiration")
         currency = ERC20Token(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
         pool_config = ensuro.PolicyPoolConfig()
 
@@ -35,13 +34,11 @@ def tenv(request):
         return TEnv(
             currency=currency,
             time_control=ensuro.time_control,
-            policy_factory=FakePolicy,
             pool_config=pool_config,
             kind="prototype",
             rm_class=partial(ensuro.TrustfulRiskModule, policy_pool=PolicyPoolMock(currency=currency))
         )
     elif request.param == "ethereum":
-        FakePolicy = namedtuple("FakePolicy", "scr interest_rate expiration")
         PolicyPoolMock = get_provider().get_contract_factory("PolicyPoolMock")
 
         currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
@@ -52,7 +49,6 @@ def tenv(request):
         return TEnv(
             currency=currency,
             time_control=get_provider().time_control,
-            policy_factory=FakePolicy,
             pool_config=config,
             kind="ethereum",
             rm_class=partial(wrappers.TrustfulRiskModule,

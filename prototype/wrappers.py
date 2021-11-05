@@ -1,3 +1,4 @@
+from collections import namedtuple
 from contextlib import contextmanager
 from ethproto.wadray import Wad, _R, Ray, _W
 from ethproto.wrappers import AddressBook, IERC20, IERC721, ETHWrapper, MethodAdapter, get_provider
@@ -260,6 +261,15 @@ class RiskModule(ETHWrapper):
     shared_coverage_min_percentage = MethodAdapter((), "ray", is_property=True)
     shared_coverage_percentage = MethodAdapter((), "ray", is_property=True)
 
+    def new_policy(self, *args, **kwargs):
+        receipt = self.new_policy_(*args, **kwargs)
+        if "NewPolicy" in receipt.events:
+            policy_id = receipt.events["NewPolicy"]["policyId"]
+            policy_data = self.policy_pool.contract.getPolicy(policy_id)
+            return Policy(*policy_data, address_book=self.provider.address_book)
+        else:
+            return None
+
 
 class TrustfulRiskModule(RiskModule):
     eth_contract = "TrustfulRiskModule"
@@ -268,7 +278,7 @@ class TrustfulRiskModule(RiskModule):
     new_policy_ = MethodAdapter((
         ("payout", "amount"), ("premium", "amount"), ("loss_prob", "ray"), ("expiration", "int"),
         ("customer", "address")
-    ), "int")
+    ), "receipt")
 
     resolve_policy_full_payout = MethodAdapter((("policy_id", "int"), ("customer_won", "bool")))
     resolve_policy_ = MethodAdapter((("policy_id", "int"), ("payout", "amount")))
@@ -279,14 +289,44 @@ class TrustfulRiskModule(RiskModule):
         else:
             return self.resolve_policy_(policy_id,  customer_won_or_amount)
 
-    def new_policy(self, *args, **kwargs):
-        receipt = self.new_policy_(*args, **kwargs)
-        if "NewPolicy" in receipt.events:
-            policy_id = receipt.events["NewPolicy"]["policyId"]
-            policy_data = self.policy_pool.contract.getPolicy(policy_id)
-            return Policy(*policy_data, address_book=self.provider.address_book)
-        else:
-            return None
+
+class FlyionRiskModule(RiskModule):
+    eth_contract = "FlyionRiskModule"
+    proxy_kind = "uups"
+
+    constructor_args = RiskModule.constructor_args + (
+        ("linkToken", "address"), ("oracleParams", "(address, int, amount, bytes16, bytes16)")
+    )
+
+    new_policy_ = MethodAdapter((
+        ("flight", "string"), ("departure", "int"), ("expectedArrival", "int"), ("tolerance", "int"),
+        ("payout", "amount"), ("premium", "amount"), ("loss_prob", "ray"), ("customer", "address")
+    ), "receipt")
+
+    resolve_policy = MethodAdapter((("policy_id", "int"), ))
+
+    OracleParams = namedtuple("OracleParams", "oracle delay_time fee data_job_id sleep_job_id")
+
+    oracle_params = MethodAdapter((), "(address, int, amount, bytes16, bytes16)", is_property=True)
+
+    def __init__(self, name, policy_pool, scr_percentage=_R(1), ensuro_fee=_R(0),
+                 scr_interest_rate=_R(0), max_scr_per_policy=_W(1000000), scr_limit=_W(1000000),
+                 wallet="RM", shared_coverage_min_percentage=_R(0), owner="owner",
+                 link_token=None, oracle_params=None):
+        scr_percentage = _R(scr_percentage)
+        ensuro_fee = _R(ensuro_fee)
+        scr_interest_rate = _R(scr_interest_rate)
+        max_scr_per_policy = _W(max_scr_per_policy)
+        scr_limit = _W(scr_limit)
+        shared_coverage_min_percentage = _R(shared_coverage_min_percentage)
+        super(RiskModule, self).__init__(
+            owner, name, policy_pool.contract, scr_percentage, ensuro_fee,
+            scr_interest_rate,
+            max_scr_per_policy, scr_limit, wallet, shared_coverage_min_percentage,
+            link_token, oracle_params
+        )
+        self.policy_pool = policy_pool
+        self._auto_from = self.owner
 
 
 class PolicyPoolConfig(ETHWrapper):
