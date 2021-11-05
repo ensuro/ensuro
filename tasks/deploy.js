@@ -221,9 +221,6 @@ async function flyionPolicy({rmAddress, flight, departure, expectedArrival, tole
 
   await currency.approve(policyPool.address, premium);
   lossProb = _R(lossProb);
-  if (expiration === undefined) {
-    expiration = expectedArrival + tolerance + 600;
-  }
   payout = _W(payout);
 
   const tx = await flyionRm.newPolicy(
@@ -362,7 +359,6 @@ function add_task() {
     .addParam("payout", "Payout for customer in case policy is triggered", undefined, types.int)
     .addParam("premium", "Premium the customer pays", undefined, types.int)
     .addParam("lossProb", "Probability of policy being triggered", undefined, types.float)
-    .addOptionalParam("expiration", "Probability of policy being triggered", undefined, types.float)
     .addOptionalParam("customer", "Customer", undefined, types.address)
     .setAction(flyionPolicy);
 
