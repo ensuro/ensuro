@@ -6,7 +6,6 @@ import {RiskModule} from "./RiskModule.sol";
 import {Chainlink} from "@chainlink/contracts/src/v0.8/Chainlink.sol";
 import {ChainlinkClientUpgradeable} from "./dependencies/ChainlinkClientUpgradeable.sol";
 
-
 /**
  * @title Flyion Risk Module
  * @dev Risk Module that resolves policy based in actualarrivaldate of flight
@@ -19,7 +18,6 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
   bytes32 public constant ORACLE_ADMIN_ROLE = keccak256("ORACLE_ADMIN_ROLE");
   // Multiplier to calculate expiration = expectedArrival + tolerance + delayTime * DELAY_EXPIRATION_TIMES
   uint40 public constant DELAY_EXPIRATION_TIMES = 5;
-
 
   struct FlyionPolicyData {
     string flight;
@@ -124,7 +122,10 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
   ) external onlyRole(PRICER_ROLE) returns (uint256) {
     require(expectedArrival > block.timestamp, "expectedArrival can't be in the past");
     require(departure != 0 && expectedArrival > departure, "expectedArrival <= departure!");
-    uint40 expiration = expectedArrival + tolerance + uint40(_oracleParams.delayTime) * DELAY_EXPIRATION_TIMES;
+    uint40 expiration = expectedArrival +
+      tolerance +
+      uint40(_oracleParams.delayTime) *
+      DELAY_EXPIRATION_TIMES;
     uint256 policyId = _newPolicy(payout, premium, lossProb, expiration, customer);
     FlyionPolicyData storage policy = _flyionPolicies[policyId];
     policy.flight = flight;
