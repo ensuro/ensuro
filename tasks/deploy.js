@@ -210,7 +210,7 @@ async function resolvePolicy({rmAddress, payout, fullPayout, policyId}, hre) {
 }
 
 async function flyionPolicy({rmAddress, flight, departure, expectedArrival, tolerance, payout, premium,
-                             lossProb, expiration, customer}, hre) {
+                             lossProb, customer}, hre) {
   const flyionRm = await hre.ethers.getContractAt("FlyionRiskModule", rmAddress);
   const policyPool = await hre.ethers.getContractAt("PolicyPool", await flyionRm.policyPool());
   const currency = await hre.ethers.getContractAt("IERC20Metadata", await policyPool.currency());
@@ -228,7 +228,7 @@ async function flyionPolicy({rmAddress, flight, departure, expectedArrival, tole
 
   const tx = await flyionRm.newPolicy(
     flight, departure, expectedArrival, tolerance, payout,
-    premium, lossProb, expiration, customer.address,
+    premium, lossProb, customer.address,
     {gasLimit: 999999}
   );
   console.log(tx);

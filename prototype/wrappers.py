@@ -300,8 +300,7 @@ class FlyionRiskModule(RiskModule):
 
     new_policy_ = MethodAdapter((
         ("flight", "string"), ("departure", "int"), ("expectedArrival", "int"), ("tolerance", "int"),
-        ("payout", "amount"), ("premium", "amount"), ("loss_prob", "ray"), ("expiration", "int"),
-        ("customer", "address")
+        ("payout", "amount"), ("premium", "amount"), ("loss_prob", "ray"), ("customer", "address")
     ), "receipt")
 
     resolve_policy = MethodAdapter((("policy_id", "int"), ))

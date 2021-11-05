@@ -5,19 +5,21 @@ import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {RiskModule} from "./RiskModule.sol";
 import {Chainlink} from "@chainlink/contracts/src/v0.8/Chainlink.sol";
 import {ChainlinkClientUpgradeable} from "./dependencies/ChainlinkClientUpgradeable.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
 
 /**
  * @title Flyion Risk Module
- * @dev Risk Module that resolves policy based in
+ * @dev Risk Module that resolves policy based in actualarrivaldate of flight
  * @author Ensuro
  */
-
 contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
   using Chainlink for Chainlink.Request;
 
   bytes32 public constant PRICER_ROLE = keccak256("PRICER_ROLE");
   bytes32 public constant ORACLE_ADMIN_ROLE = keccak256("ORACLE_ADMIN_ROLE");
+  // Multiplier to calculate expiration = expectedArrival + tolerance + delayTime * DELAY_EXPIRATION_TIMES
+  uint40 public constant DELAY_EXPIRATION_TIMES = 5;
+
 
   struct FlyionPolicyData {
     string flight;
@@ -44,13 +46,15 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
    * @param name_ Name of the Risk Module
    * @param policyPool_ The address of the Ensuro PolicyPool where this module is plugged
    * @param scrPercentage_ Solvency Capital Requirement percentage, to calculate
-                          capital requirement as % of (payout - premium)  (in ray)
+                           capital requirement as % of (payout - premium)  (in ray)
    * @param ensuroFee_ % of premium that will go for Ensuro treasury (in ray)
    * @param scrInterestRate_ cost of capital (in ray)
    * @param maxScrPerPolicy_ Max SCR to be allocated to this module (in wad)
    * @param scrLimit_ Max SCR to be allocated to this module (in wad)
    * @param wallet_ Address of the RiskModule provider
    * @param sharedCoverageMinPercentage_ minimal % of SCR that must be covered by the RM
+   * @param linkToken_ Address of ChainLink LINK token
+   * @param oracleParams_ Parameters of the Oracle
    */
   function initialize(
     string memory name_,
@@ -106,7 +110,6 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
    * @param payout Payout for customer in case policy is triggered
    * @param premium Premium the customer pays
    * @param lossProb Probability of policy being triggered
-   * @param expiration Policy expiration (in epoch seconds)
    * @param customer Customer address (to take premium from and send payout)
    */
   function newPolicy(
@@ -117,11 +120,11 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
     uint256 payout,
     uint256 premium,
     uint256 lossProb,
-    uint40 expiration,
     address customer
   ) external onlyRole(PRICER_ROLE) returns (uint256) {
-    require(expectedArrival != 0, "expectedArrival can't be zero");
+    require(expectedArrival > block.timestamp, "expectedArrival can't be in the past");
     require(departure != 0 && expectedArrival > departure, "expectedArrival <= departure!");
+    uint40 expiration = expectedArrival + tolerance + uint40(_oracleParams.delayTime) * DELAY_EXPIRATION_TIMES;
     uint256 policyId = _newPolicy(payout, premium, lossProb, expiration, customer);
     FlyionPolicyData storage policy = _flyionPolicies[policyId];
     policy.flight = flight;
@@ -130,7 +133,6 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
     policy.tolerance = tolerance;
 
     uint256 until = expectedArrival + tolerance + uint256(_oracleParams.delayTime);
-    if (until < (block.timestamp + 120)) until = block.timestamp + 120;
     _chainlinkRequest(policyId, policy, until);
     return policyId;
   }

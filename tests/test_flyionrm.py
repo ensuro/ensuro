@@ -117,7 +117,7 @@ def test_flyion_new_policy_resolved_payout0(tenv):
 
     new_policy_params = (
         "AR 1234", now + 3600, expected_arrival, 1800,  # flight, departure, expectedArrival, tolerance
-        _W(1000), _W(100), _R("0.1"), now + 3600 * 6, "CUST1",  # payout, premium, loss_prob, exp, cust
+        _W(1000), _W(100), _R("0.1"), "CUST1",  # payout, premium, loss_prob, cust
     )
 
     with pytest.raises(RevertError, match="AccessControl"):
@@ -153,7 +153,7 @@ def test_flyion_new_policy_resolved_payout_full(tenv):
 
     new_policy_params = (
         "AR 1234", now + 3600, expected_arrival, 1800,  # flight, departure, expectedArrival, tolerance
-        _W(1000), _W(100), _R("0.1"), now + 3600 * 6, "CUST1",  # payout, premium, loss_prob, exp, cust
+        _W(1000), _W(100), _R("0.1"), "CUST1",  # payout, premium, loss_prob, cust
     )
 
     with flyion.as_("BACKEND"):
@@ -181,7 +181,7 @@ def test_flyion_new_policy_flight_cancelled(tenv):
 
     new_policy_params = (
         "AR 1234", now + 3600, expected_arrival, 1800,  # flight, departure, expectedArrival, tolerance
-        _W(1000), _W(100), _R("0.1"), now + 3600 * 6, "CUST1",  # payout, premium, loss_prob, exp, cust
+        _W(1000), _W(100), _R("0.1"), "CUST1",  # payout, premium, loss_prob, cust
     )
 
     with flyion.as_("BACKEND"):
@@ -209,7 +209,7 @@ def test_flyion_zero_arrival_date(tenv):
 
     new_policy_params = (
         "AR 1234", now + 3600, expected_arrival, 1800,  # flight, departure, expectedArrival, tolerance
-        _W(1000), _W(100), _R("0.1"), now + 3600 * 6, "CUST1",  # payout, premium, loss_prob, exp, cust
+        _W(1000), _W(100), _R("0.1"), "CUST1",  # payout, premium, loss_prob, cust
     )
 
     with flyion.as_("BACKEND"):
@@ -256,7 +256,7 @@ def test_flyion_resolve_manual_cancelled(tenv):
 
     new_policy_params = (
         "AR 1234", now + 3600, expected_arrival, 1800,  # flight, departure, expectedArrival, tolerance
-        _W(1000), _W(100), _R("0.1"), now + 3600 * 6, "CUST1",  # payout, premium, loss_prob, exp, cust
+        _W(1000), _W(100), _R("0.1"), "CUST1",  # payout, premium, loss_prob, cust
     )
 
     with flyion.as_("BACKEND"):
@@ -292,7 +292,7 @@ def test_flyion_resolve_manual_on_time(tenv):
 
     new_policy_params = (
         "AR 1234", now + 3600, expected_arrival, 1800,  # flight, departure, expectedArrival, tolerance
-        _W(1000), _W(100), _R("0.1"), now + 3600 * 6, "CUST1",  # payout, premium, loss_prob, exp, cust
+        _W(1000), _W(100), _R("0.1"), "CUST1",  # payout, premium, loss_prob, cust
     )
 
     with flyion.as_("BACKEND"):
