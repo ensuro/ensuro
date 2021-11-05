@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: gnarvaja/eth-dev:ensuro-1.0.4
-    timeout-minutes: 60
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -16,6 +16,4 @@ jobs:
       - run: npx hardhat compile
       - run: npx hardhat size-contracts
       - run: npm run solhint
-      - run: SKIP_PROXY=1 brownie test -v
-        timeout-minutes: 40
-      - run: ./instrumented-tests.sh
+      - run: brownie test -v
