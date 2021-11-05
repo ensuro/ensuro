@@ -6,7 +6,7 @@ from ethproto.contracts import RevertError
 from ethproto.wadray import _W, _R, set_precision, Wad
 from ethproto.wrappers import get_provider
 from prototype.utils import load_config, WEEK, DAY
-from . import extract_vars
+from . import extract_vars, is_brownie_coverage_enabled
 
 TEnv = namedtuple("TEnv", "time_control module kind")
 
@@ -641,10 +641,8 @@ def test_walkthrough(tenv):
 
     pool.currency.approve("CUST3", pool.contract_id, _W(130))
 
-    if tenv.kind == "ethereum" and "brownie" in sys.modules:
-        from brownie._config import CONFIG
-        if CONFIG.argv.get("coverage", False):
-            return  # This test never ends if coverage is activated
+    if is_brownie_coverage_enabled(tenv):
+        return  # This test never ends if coverage is activated
 
     won_count = 0
 
@@ -1429,6 +1427,8 @@ def test_expire_policy(tenv):
 
 
 def test_withdraw_won_premiums(tenv):
+    if is_brownie_coverage_enabled(tenv):
+        return  # This test never ends if coverage is activated
     vars = test_expire_policy(tenv)
     pool, rm, etk, for_lps, policy, USD, timecontrol = extract_vars(
         vars, "pool,rm,etk,for_lps,policy,USD,timecontrol"
