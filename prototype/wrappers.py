@@ -45,7 +45,7 @@ class PolicyNFT(IERC721):
     eth_contract = "PolicyNFT"
     proxy_kind = "uups"
 
-    constructor_args = (
+    initialize_args = (
         ("name", "string"), ("symbol", "string"), ("policy_pool", "address"),
     )
 
@@ -64,7 +64,7 @@ def _adapt_signed_amount(args, kwargs):
 class EToken(IERC20):
     eth_contract = "EToken"
     proxy_kind = "uups"
-    constructor_args = (
+    initialize_args = (
         ("name", "string"), ("symbol", "string"), ("policy_pool", "address"), ("expiration_period", "int"),
         ("liquidity_requirement", "ray"), ("max_utilization_rate", "ray"),
         ("pool_loan_interest_rate", "ray"),
@@ -228,7 +228,7 @@ class Policy:
 
 class RiskModule(ETHWrapper):
 
-    constructor_args = (
+    initialize_args = (
         ("name", "string"), ("pool", "address"), ("scr_percentage", "ray"), ("ensuro_fee", "ray"),
         ("scr_interest_rate", "ray"), ("max_scr_per_policy", "amount"), ("scr_limit", "amount"),
         ("wallet", "address"), ("shared_coverage_min_percentage", "ray")
@@ -294,7 +294,7 @@ class FlyionRiskModule(RiskModule):
     eth_contract = "FlyionRiskModule"
     proxy_kind = "uups"
 
-    constructor_args = RiskModule.constructor_args + (
+    initialize_args = RiskModule.initialize_args + (
         ("linkToken", "address"), ("oracleParams", "(address, int, amount, bytes16, bytes16)")
     )
 
@@ -334,7 +334,7 @@ class PolicyPoolConfig(ETHWrapper):
 
     proxy_kind = "uups"
 
-    constructor_args = (("policy_pool", "address"), ("treasury", "address"))
+    initialize_args = (("policy_pool", "address"), ("treasury", "address"))
 
     def __init__(self, owner, treasury="ENS"):
         super().__init__(owner, AddressBook.ZERO, treasury)
@@ -390,6 +390,7 @@ class PolicyPool(ETHWrapper):
     eth_contract = "PolicyPool"
 
     constructor_args = (("config", "address"), ("nftToken", "address"), ("currency", "address"))
+    initialize_args = ()
     proxy_kind = "uups"
 
     def __init__(self, config, policy_nft, currency):
@@ -468,8 +469,8 @@ class PolicyPool(ETHWrapper):
     def withdraw(self, etoken_name, provider, amount):
         etoken = self.etokens[etoken_name]
         receipt = self.withdraw_(etoken, provider, amount)
-        if "Withdrawal" in receipt.events:
-            return Wad(receipt.events["Withdrawal"]["value"])
+        if "Transfer" in receipt.events:
+            return Wad(receipt.events["Transfer"]["value"])
         else:
             return Wad(0)
 
@@ -510,7 +511,7 @@ class BaseAssetManager(ETHWrapper):
     eth_contract = "BaseAssetManager"
     proxy_kind = "uups"
 
-    constructor_args = (
+    initialize_args = (
         ("pool", "address"), ("liquidity_min", "amount"), ("liquidity_middle", "amount"),
         ("liquidity_max", "amount")
     )
@@ -561,7 +562,7 @@ class BaseAssetManager(ETHWrapper):
 
 class FixedRateAssetManager(BaseAssetManager):
     eth_contract = "FixedRateAssetManager"
-    constructor_args = (
+    initialize_args = (
         ("pool", "address"), ("liquidity_min", "amount"), ("liquidity_middle", "amount"),
         ("liquidity_max", "amount"), ("interest_rate", "ray"),
     )

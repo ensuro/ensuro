@@ -100,18 +100,17 @@ async function _getDefaultSigner(hre) {
 
 async function deployPolicyPool({verify, configAddress, nftAddress, currencyAddress}, hre) {
   const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
-  const policyPool = await hre.upgrades.deployProxy(PolicyPool, [
-    configAddress,
-    nftAddress,
-    currencyAddress,
-  ], {kind: 'uups'});
+  const policyPool = await hre.upgrades.deployProxy(PolicyPool, [], {
+    constructorArgs: [configAddress, nftAddress, currencyAddress],
+    kind: 'uups'
+  });
 
   await policyPool.deployed();
   console.log("PolicyPool deployed to:", policyPool.address);
   console.log("PolicyPool's config is:", await policyPool.config());
 
   if (verify)
-    await verifyContract(hre, policyPool, true);
+    await verifyContract(hre, policyPool, true, [configAddress, nftAddress, currencyAddress]);
 
   const policyPoolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await policyPool.config());
   await grantRole(hre, policyPoolConfig, "LEVEL1_ROLE");
