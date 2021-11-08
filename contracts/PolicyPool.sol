@@ -138,8 +138,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     return _currency;
   }
 
-  function policyNFT() external view returns (IPolicyNFT) {
-    return _policyNFT;
+  function policyNFT() external view virtual override returns (address) {
+    return address(_policyNFT);
   }
 
   function purePremiums() external view returns (uint256) {

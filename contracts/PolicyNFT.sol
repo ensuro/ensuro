@@ -3,15 +3,21 @@ pragma solidity ^0.8.2;
 
 import {ERC721Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 import {CountersUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/CountersUpgradeable.sol";
-import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {IPolicyNFT} from "../interfaces/IPolicyNFT.sol";
 
-contract PolicyNFT is ERC721Upgradeable, PolicyPoolComponent, IPolicyNFT {
+contract PolicyNFT is ERC721Upgradeable, PausableUpgradeable, IPolicyNFT {
   using CountersUpgradeable for CountersUpgradeable.Counter;
 
   CountersUpgradeable.Counter private _tokenIdCounter;
+  IPolicyPool internal _policyPool;
+
+  modifier onlyPolicyPool {
+    require(_msgSender() == address(_policyPool), "The caller must be the PolicyPool");
+    _;
+  }
 
   function initialize(
     string memory name_,
@@ -19,7 +25,6 @@ contract PolicyNFT is ERC721Upgradeable, PolicyPoolComponent, IPolicyNFT {
     IPolicyPool policyPool_
   ) public initializer {
     __ERC721_init(name_, symbol_);
-    __PolicyPoolComponent_init(IPolicyPool(address(0)));
     __PolicyNFT_init_unchained(policyPool_);
   }
 
@@ -35,8 +40,7 @@ contract PolicyNFT is ERC721Upgradeable, PolicyPoolComponent, IPolicyNFT {
       "PolicyPool already connected"
     );
     _policyPool = IPolicyPool(_msgSender());
-    // Not possible to do this validation because connect is called in _policyPool initialize :'(
-    // require(_policyPool.config() == this, "PolicyPool not connected to this config");
+    require(_policyPool.policyNFT() == address(this), "PolicyPool not connected to this config");
   }
 
   function safeMint(address to) external override onlyPolicyPool whenNotPaused returns (uint256) {

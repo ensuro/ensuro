@@ -45,6 +45,10 @@ contract PolicyPoolMock is IPolicyPool {
     return _config;
   }
 
+  function policyNFT() external pure override returns (address) {
+    return address(0);
+  }
+
   function setAssetManager(IAssetManager newAssetManager) external override {
     require(msg.sender == address(_config), "Only the PolicyPoolConfig can change assetManager");
     if (address(_config.assetManager()) != address(0)) {
