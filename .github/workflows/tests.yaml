@@ -16,4 +16,4 @@ jobs:
       - run: npx hardhat compile
       - run: npx hardhat size-contracts
       - run: npm run solhint
-      - run: brownie test -v
+      - run: brownie test -v --gas
