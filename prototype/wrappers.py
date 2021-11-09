@@ -582,13 +582,34 @@ class FixedRateAssetManager(BaseAssetManager):
 class AaveAssetManager(BaseAssetManager):
     eth_contract = "AaveAssetManager"
 
+    constructor_args = BaseAssetManager.constructor_args + (
+        ("aave_address_provider", "address"), ("swap_router", "address")
+    )
+    initialize_args = BaseAssetManager.initialize_args + (
+        ("claim_rewards_min", "amount"), ("reinvest_rewards_min", "amount"), ("max_slippage", "amount")
+    )
+
     def __init__(self, owner, pool, liquidity_min, liquidity_middle, liquidity_max,
                  aave_address_provider, swap_router, claim_rewards_min=_W(0),
                  reinvest_rewards_min=_W(0), max_slippage=_W("0.01")):
-        super().__init__(
-            owner, pool, liquidity_min, liquidity_middle, liquidity_max, aave_address_provider,
-            swap_router, claim_rewards_min, reinvest_rewards_min, max_slippage
+        liquidity_min = _W(liquidity_min)
+        liquidity_max = _W(liquidity_max)
+        liquidity_middle = _W(liquidity_middle)
+        claim_rewards_min = _W(claim_rewards_min)
+        reinvest_rewards_min = _W(reinvest_rewards_min)
+        max_slippage = _W(max_slippage)
+        super(BaseAssetManager, self).__init__(
+            owner,
+            pool, aave_address_provider, swap_router,  # constructor_args
+            liquidity_min, liquidity_middle, liquidity_max,
+            claim_rewards_min, reinvest_rewards_min, max_slippage
         )
+        if isinstance(pool, ETHWrapper):
+            self._policy_pool = pool.contract
+        else:  # is just an address or raw contract - for tests
+            self._policy_pool = self._get_account(pool)
+
+        self._auto_from = self.owner
 
     @property
     def currency(self):
