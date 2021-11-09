@@ -38,8 +38,10 @@ contract AaveAssetManager is BaseAssetManager {
 
   event RewardSwapped(uint256 rewardIn, uint256 currencyOut);
 
+  // solhint-disable-next-line no-empty-blocks
+  constructor(IPolicyPool policyPool_) BaseAssetManager(policyPool_) {}
+
   function initialize(
-    IPolicyPool policyPool_,
     uint256 liquidityMin_,
     uint256 liquidityMiddle_,
     uint256 liquidityMax_,
@@ -49,7 +51,7 @@ contract AaveAssetManager is BaseAssetManager {
     uint256 reinvestRewardsMin_,
     uint256 maxSlippage_
   ) public initializer {
-    __BaseAssetManager_init(policyPool_, liquidityMin_, liquidityMiddle_, liquidityMax_);
+    __BaseAssetManager_init(liquidityMin_, liquidityMiddle_, liquidityMax_);
     __AaveAssetManager_init(
       aaveAddrProv_,
       swapRouter_,

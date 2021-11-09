@@ -2,7 +2,6 @@
 pragma solidity ^0.8.0;
 
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
 import {IEToken} from "../interfaces/IEToken.sol";
@@ -19,7 +18,6 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
   uint256 public constant MIN_SCALE = 1e17; // 0.0000000001 == 1e-10 in ray
 
   using WadRayMath for uint256;
-  using SafeERC20 for IERC20Metadata;
 
   uint256 internal constant SECONDS_PER_YEAR = 365 days;
 
@@ -66,9 +64,12 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
     _validateParameters();
   }
 
+  /// @custom:oz-upgrades-unsafe-allow constructor
+  // solhint-disable-next-line no-empty-blocks
+  constructor(IPolicyPool policyPool_) PolicyPoolComponent(policyPool_) {}
+
   /**
    * @dev Initializes the eToken
-   * @param policyPool_ The address of the Ensuro PolicyPool where this eToken will be used
    * @param expirationPeriod Maximum expirationPeriod (from block.timestamp) of policies to be accepted
    * @param liquidityRequirement_ Liquidity requirement to allow withdrawal (in Ray - default=1 Ray)
    * @param maxUtilizationRate_ Max utilization rate (scr/totalSupply) (in Ray - default=1 Ray)
@@ -79,13 +80,12 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
   function initialize(
     string memory name_,
     string memory symbol_,
-    IPolicyPool policyPool_,
     uint40 expirationPeriod,
     uint256 liquidityRequirement_,
     uint256 maxUtilizationRate_,
     uint256 poolLoanInterestRate_
   ) public initializer {
-    __PolicyPoolComponent_init(policyPool_);
+    __PolicyPoolComponent_init();
     __EToken_init_unchained(
       name_,
       symbol_,

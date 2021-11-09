@@ -15,10 +15,13 @@ contract TrustfulRiskModule is RiskModule {
   bytes32 public constant PRICER_ROLE = keccak256("PRICER_ROLE");
   bytes32 public constant RESOLVER_ROLE = keccak256("RESOLVER_ROLE");
 
+  /// @custom:oz-upgrades-unsafe-allow constructor
+  // solhint-disable-next-line no-empty-blocks
+  constructor(IPolicyPool policyPool_) RiskModule(policyPool_) {}
+
   /**
    * @dev Initializes the RiskModule
    * @param name_ Name of the Risk Module
-   * @param policyPool_ The address of the Ensuro PolicyPool where this module is plugged
    * @param scrPercentage_ Solvency Capital Requirement percentage, to calculate
                           capital requirement as % of (payout - premium)  (in ray)
    * @param ensuroFee_ % of premium that will go for Ensuro treasury (in ray)
@@ -30,7 +33,6 @@ contract TrustfulRiskModule is RiskModule {
    */
   function initialize(
     string memory name_,
-    IPolicyPool policyPool_,
     uint256 scrPercentage_,
     uint256 ensuroFee_,
     uint256 scrInterestRate_,
@@ -41,7 +43,6 @@ contract TrustfulRiskModule is RiskModule {
   ) public initializer {
     __RiskModule_init(
       name_,
-      policyPool_,
       scrPercentage_,
       ensuroFee_,
       scrInterestRate_,

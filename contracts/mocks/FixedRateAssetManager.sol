@@ -17,14 +17,16 @@ contract FixedRateAssetManager is BaseAssetManager {
   uint256 public interestRate;
   uint256 public lastMintBurn;
 
+  // solhint-disable-next-line no-empty-blocks
+  constructor(IPolicyPool policyPool_) BaseAssetManager(policyPool_) {}
+
   function initialize(
-    IPolicyPool policyPool_,
     uint256 liquidityMin_,
     uint256 liquidityMiddle_,
     uint256 liquidityMax_,
     uint256 interestRate_
   ) public initializer {
-    __BaseAssetManager_init(policyPool_, liquidityMin_, liquidityMiddle_, liquidityMax_);
+    __BaseAssetManager_init(liquidityMin_, liquidityMiddle_, liquidityMax_);
     interestRate = interestRate_;
     lastMintBurn = block.timestamp;
   }

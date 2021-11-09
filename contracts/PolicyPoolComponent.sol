@@ -28,7 +28,8 @@ abstract contract PolicyPoolComponent is
 
   uint40 public constant TWEAK_EXPIRATION = 1 days;
 
-  IPolicyPool internal _policyPool;
+  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+  IPolicyPool internal immutable _policyPool;
   uint40 internal _lastTweakTimestamp;
   uint56 internal _lastTweakActions; // bitwise map of applied actions
 
@@ -60,16 +61,15 @@ abstract contract PolicyPoolComponent is
     _;
   }
 
-  // solhint-disable-next-line func-name-mixedcase
-  function __PolicyPoolComponent_init(IPolicyPool policyPool_) internal initializer {
-    __UUPSUpgradeable_init();
-    __Pausable_init();
-    __PolicyPoolComponent_init_unchained(policyPool_);
+  /// @custom:oz-upgrades-unsafe-allow constructor
+  constructor(IPolicyPool policyPool_) {
+    _policyPool = policyPool_;
   }
 
   // solhint-disable-next-line func-name-mixedcase
-  function __PolicyPoolComponent_init_unchained(IPolicyPool policyPool_) internal initializer {
-    _policyPool = policyPool_;
+  function __PolicyPoolComponent_init() internal initializer {
+    __UUPSUpgradeable_init();
+    __Pausable_init();
   }
 
   // solhint-disable-next-line no-empty-blocks

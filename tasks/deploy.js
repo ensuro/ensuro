@@ -125,17 +125,19 @@ async function deployEToken({
   const etoken = await hre.upgrades.deployProxy(EToken, [
     etkName,
     etkSymbol,
-    poolAddress,
     expirationPeriod * 24 * 3600,
     _R(liquidityRequirement),
     _R(maxUtilizationRate),
     _R(poolLoanInterestRate),
-  ], {kind: 'uups'});
+  ], {
+    kind: 'uups',
+    constructorArgs: [poolAddress],
+  });
 
   await etoken.deployed();
   console.log("EToken ", etkName, " deployed to:", etoken.address);
   if (verify)
-    await verifyContract(hre, etoken, true);
+    await verifyContract(hre, etoken, true, [poolAddress]);
   const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
   await policyPool.addEToken(etoken.address);
   return etoken.address;
@@ -149,7 +151,6 @@ async function deployRiskModule({
   const RiskModule = await hre.ethers.getContractFactory(rmClass);
   const rm = await hre.upgrades.deployProxy(RiskModule, [
     rmName,
-    poolAddress,
     _R(scrPercentage),
     _R(premiumShare),
     _R(ensuroShare),
@@ -158,12 +159,15 @@ async function deployRiskModule({
     wallet,
     _R(sharedCoverageMinPercentage),
     ...extraArgs
-  ], {kind: 'uups'});
+  ], {
+    kind: 'uups',
+    constructorArgs: [poolAddress]
+  });
 
   await rm.deployed();
   console.log("RiskModule ", rmClass, rmName, " deployed to:", rm.address);
   if (verify)
-    await verifyContract(hre, rm, true);
+    await verifyContract(hre, rm, true, [poolAddress]);
   const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
   const policyPoolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await policyPool.config());
   await policyPoolConfig.addRiskModule(rm.address);

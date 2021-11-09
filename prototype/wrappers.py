@@ -64,8 +64,9 @@ def _adapt_signed_amount(args, kwargs):
 class EToken(IERC20):
     eth_contract = "EToken"
     proxy_kind = "uups"
+    constructor_args = (("policy_pool", "address"), )
     initialize_args = (
-        ("name", "string"), ("symbol", "string"), ("policy_pool", "address"), ("expiration_period", "int"),
+        ("name", "string"), ("symbol", "string"), ("expiration_period", "int"),
         ("liquidity_requirement", "ray"), ("max_utilization_rate", "ray"),
         ("pool_loan_interest_rate", "ray"),
     )
@@ -77,7 +78,8 @@ class EToken(IERC20):
         liquidity_requirement = _R(liquidity_requirement)
         max_utilization_rate = _R(max_utilization_rate)
         super().__init__(
-            owner, name, symbol, policy_pool, expiration_period, liquidity_requirement,
+            owner, policy_pool,
+            name, symbol, expiration_period, liquidity_requirement,
             max_utilization_rate, pool_loan_interest_rate
         )
         if isinstance(policy_pool, ETHWrapper):
@@ -228,8 +230,9 @@ class Policy:
 
 class RiskModule(ETHWrapper):
 
+    constructor_args = (("pool", "address"), )
     initialize_args = (
-        ("name", "string"), ("pool", "address"), ("scr_percentage", "ray"), ("ensuro_fee", "ray"),
+        ("name", "string"), ("scr_percentage", "ray"), ("ensuro_fee", "ray"),
         ("scr_interest_rate", "ray"), ("max_scr_per_policy", "amount"), ("scr_limit", "amount"),
         ("wallet", "address"), ("shared_coverage_min_percentage", "ray")
     )
@@ -243,7 +246,7 @@ class RiskModule(ETHWrapper):
         max_scr_per_policy = _W(max_scr_per_policy)
         scr_limit = _W(scr_limit)
         shared_coverage_min_percentage = _R(shared_coverage_min_percentage)
-        super().__init__(owner, name, policy_pool.contract, scr_percentage, ensuro_fee,
+        super().__init__(owner, policy_pool.contract, name, scr_percentage, ensuro_fee,
                          scr_interest_rate,
                          max_scr_per_policy, scr_limit, wallet, shared_coverage_min_percentage)
         self.policy_pool = policy_pool
@@ -320,7 +323,7 @@ class FlyionRiskModule(RiskModule):
         scr_limit = _W(scr_limit)
         shared_coverage_min_percentage = _R(shared_coverage_min_percentage)
         super(RiskModule, self).__init__(
-            owner, name, policy_pool.contract, scr_percentage, ensuro_fee,
+            owner, policy_pool.contract, name, scr_percentage, ensuro_fee,
             scr_interest_rate,
             max_scr_per_policy, scr_limit, wallet, shared_coverage_min_percentage,
             link_token, oracle_params
@@ -511,8 +514,9 @@ class BaseAssetManager(ETHWrapper):
     eth_contract = "BaseAssetManager"
     proxy_kind = "uups"
 
+    constructor_args = (("pool", "address"), )
     initialize_args = (
-        ("pool", "address"), ("liquidity_min", "amount"), ("liquidity_middle", "amount"),
+        ("liquidity_min", "amount"), ("liquidity_middle", "amount"),
         ("liquidity_max", "amount")
     )
 
@@ -562,9 +566,9 @@ class BaseAssetManager(ETHWrapper):
 
 class FixedRateAssetManager(BaseAssetManager):
     eth_contract = "FixedRateAssetManager"
-    initialize_args = (
-        ("pool", "address"), ("liquidity_min", "amount"), ("liquidity_middle", "amount"),
-        ("liquidity_max", "amount"), ("interest_rate", "ray"),
+
+    initialize_args = BaseAssetManager.initialize_args + (
+        ("interest_rate", "ray"),
     )
 
     def __init__(self, owner, pool, liquidity_min, liquidity_middle, liquidity_max,
@@ -639,6 +643,9 @@ class LPInsolvencyHook(ETHWrapper):
 class LPManualWhitelist(ETHWrapper):
     eth_contract = "LPManualWhitelist"
     proxy_kind = "uups"
+
+    initialize_args = ()
+    constructor_args = (("pool", "address"), )
 
     def __init__(self, pool):
         super().__init__("owner", pool.contract)

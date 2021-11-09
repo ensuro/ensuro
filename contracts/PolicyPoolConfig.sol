@@ -82,7 +82,8 @@ contract PolicyPoolConfig is
       "PolicyPool already connected"
     );
     _policyPool = IPolicyPool(_msgSender());
-    require(_policyPool.config() == this, "PolicyPool not connected to this config");
+    // Not possible to do this validation because connect is called in _policyPool initialize :'(
+    // require(_policyPool.config() == this, "PolicyPool not connected to this config");
   }
 
   function policyPool() external view returns (IPolicyPool) {

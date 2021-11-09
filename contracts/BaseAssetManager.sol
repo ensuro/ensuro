@@ -35,21 +35,22 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
     _validateParameters();
   }
 
+  // solhint-disable-next-line no-empty-blocks
+  constructor(IPolicyPool policyPool_) PolicyPoolComponent(policyPool_) {}
+
   /**
    * @dev Initializes the asset manager
-   * @param policyPool_ The address of the Ensuro PolicyPool where this module is plugged
    * @param liquidityMin_ Minimal liquidity to keep in pool's wallet
    * @param liquidityMiddle_ Target liquidity when doing rebalance
    * @param liquidityMax_ Maximum liquidity to keep in pool's wallet
    */
   // solhint-disable-next-line func-name-mixedcase
   function __BaseAssetManager_init(
-    IPolicyPool policyPool_,
     uint256 liquidityMin_,
     uint256 liquidityMiddle_,
     uint256 liquidityMax_
   ) public initializer {
-    __PolicyPoolComponent_init(policyPool_);
+    __PolicyPoolComponent_init();
     __BaseAssetManager_init_unchained(liquidityMin_, liquidityMiddle_, liquidityMax_);
   }
 

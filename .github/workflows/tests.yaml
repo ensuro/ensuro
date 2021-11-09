@@ -18,3 +18,4 @@ jobs:
       - run: npm run solhint
       - run: SKIP_PROXY=1 brownie test -v --gas
       - run: brownie test -v
+      - run: ./deploySmokeTest.sh
