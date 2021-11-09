@@ -5,7 +5,11 @@ die() {
     exit 1
 }
 
-ganache-cli &
+ganache-cli -q &
+
+GANACHE_PID=$!
+sleep 2
+kill -0 $GANACHE_PID || die "Error launching ganache-cli localhost"
 
 POOL_ADDRESS=`npx hardhat --network localhost deploy |
     egrep -o  "^PolicyPool deployed to: 0x[0-9a-fA-F]+" |
@@ -26,3 +30,5 @@ npx hardhat --network localhost deploy:riskModule  --pool-address $POOL_ADDRESS 
 if [ $? -ne 0 ]; then
     die "Error deploying riskModule"
 fi
+
+kill $GANACHE_PID
