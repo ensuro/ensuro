@@ -602,10 +602,10 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
     returns (bool)
   {
     if (paused()) return false;
-    if (
-      (_acceptAllRMs && _acceptExceptions[riskModule]) || // all accepted except this one
-      (!_acceptAllRMs && !_acceptExceptions[riskModule]) // all rejected this one is not an exception
-    ) return false;
+    if (_acceptAllRMs == _acceptExceptions[riskModule]) {
+      // all accepted except this one or all rejected and this one is not an exception
+      return false;
+    }
     return policyExpiration < (uint40(block.timestamp) + _expirationPeriod);
   }
 
@@ -752,7 +752,7 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
   {
     _acceptExceptions[riskModule] = isException;
     uint256 value = uint160(riskModule);
-    if (!isException) value |= (1 << 255);
+    if (!isException) value |= (1 << 255); // if changed to NOT exception activate first bit
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setAcceptException, value, false);
   }
 

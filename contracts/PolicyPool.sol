@@ -274,7 +274,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     DataTypes.ETokenToWadMap storage policyFunds = _policiesFunds[policy.id];
 
     // Initially I iterate over all eTokens and accumulate ocean of eligible ones
-    // saves the ocean in policyFunds, later will
+    // saves the ocean in policyFunds, later will _distributeScr
     for (uint256 i = 0; i < _eTokens.length(); i++) {
       (IEToken etk, DataTypes.ETokenStatus etkStatus) = _eTokens.at(i);
       if (etkStatus != DataTypes.ETokenStatus.active) continue;
