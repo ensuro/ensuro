@@ -293,8 +293,8 @@ class TrustfulRiskModule(RiskModule):
             return self.resolve_policy_(policy_id,  customer_won_or_amount)
 
 
-class FlyionRiskModule(RiskModule):
-    eth_contract = "FlyionRiskModule"
+class FlightDelayRiskModule(RiskModule):
+    eth_contract = "FlightDelayRiskModule"
     proxy_kind = "uups"
 
     initialize_args = RiskModule.initialize_args + (

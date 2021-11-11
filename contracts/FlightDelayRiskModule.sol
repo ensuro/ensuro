@@ -7,11 +7,11 @@ import {Chainlink} from "@chainlink/contracts/src/v0.8/Chainlink.sol";
 import {ChainlinkClientUpgradeable} from "./dependencies/ChainlinkClientUpgradeable.sol";
 
 /**
- * @title Flyion Risk Module
+ * @title Flight Delay Risk Module
  * @dev Risk Module that resolves policy based in actualarrivaldate of flight
  * @author Ensuro
  */
-contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
+contract FlightDelayRiskModule is RiskModule, ChainlinkClientUpgradeable {
   using Chainlink for Chainlink.Request;
 
   bytes32 public constant PRICER_ROLE = keccak256("PRICER_ROLE");
@@ -19,7 +19,7 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
   // Multiplier to calculate expiration = expectedArrival + tolerance + delayTime * DELAY_EXPIRATION_TIMES
   uint40 public constant DELAY_EXPIRATION_TIMES = 5;
 
-  struct FlyionPolicyData {
+  struct PolicyData {
     string flight;
     uint40 departure;
     uint40 expectedArrival;
@@ -37,7 +37,7 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
   OracleParams internal _oracleParams;
 
   mapping(bytes32 => uint256) internal _pendingQueries;
-  mapping(uint256 => FlyionPolicyData) internal _flyionPolicies;
+  mapping(uint256 => PolicyData) internal _policies;
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
@@ -80,11 +80,11 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
       sharedCoverageMinPercentage_
     );
     __ChainlinkClient_init();
-    __FlyionRiskModule_init_unchained(linkToken_, oracleParams_);
+    __FlightDelayRiskModule_init_unchained(linkToken_, oracleParams_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
-  function __FlyionRiskModule_init_unchained(address linkToken_, OracleParams memory oracleParams_)
+  function __FlightDelayRiskModule_init_unchained(address linkToken_, OracleParams memory oracleParams_)
     internal
     initializer
   {
@@ -128,7 +128,7 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
       uint40(_oracleParams.delayTime) *
       DELAY_EXPIRATION_TIMES;
     uint256 policyId = _newPolicy(payout, premium, lossProb, expiration, customer);
-    FlyionPolicyData storage policy = _flyionPolicies[policyId];
+    PolicyData storage policy = _policies[policyId];
     policy.flight = flight;
     policy.departure = departure;
     policy.expectedArrival = expectedArrival;
@@ -141,7 +141,7 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
 
   function _chainlinkRequest(
     uint256 policyId,
-    FlyionPolicyData storage policy,
+    PolicyData storage policy,
     uint256 until
   ) internal {
     // request takes a JobID, a callback address, and callback function as input
@@ -168,7 +168,7 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
    * @param policyId The id of the policy previously created (in newPolicy)
    */
   function resolvePolicy(uint256 policyId) external onlyRole(PRICER_ROLE) returns (uint256) {
-    FlyionPolicyData storage policy = _flyionPolicies[policyId];
+    PolicyData storage policy = _policies[policyId];
     require(policy.expectedArrival != 0, "Policy not found!");
     _chainlinkRequest(policyId, policy, 0);
     return policyId;
@@ -180,7 +180,7 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
   {
     uint256 policyId = _pendingQueries[queryId];
     require(policyId != 0, "queryId not found!");
-    FlyionPolicyData storage policy = _flyionPolicies[policyId];
+    PolicyData storage policy = _policies[policyId];
 
     if (actualArrivalDate == 0) {
       if (block.timestamp > (policy.expectedArrival + policy.tolerance)) {

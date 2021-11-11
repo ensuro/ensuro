@@ -1,3 +1,5 @@
 --ignore-dir=flatten
 --ignore-dir=build
 --ignore-dir=artifacts
+--ignore-dir=cache
+--ignore-dir=.openzeppelin
