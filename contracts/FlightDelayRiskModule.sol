@@ -84,10 +84,10 @@ contract FlightDelayRiskModule is RiskModule, ChainlinkClientUpgradeable {
   }
 
   // solhint-disable-next-line func-name-mixedcase
-  function __FlightDelayRiskModule_init_unchained(address linkToken_, OracleParams memory oracleParams_)
-    internal
-    initializer
-  {
+  function __FlightDelayRiskModule_init_unchained(
+    address linkToken_,
+    OracleParams memory oracleParams_
+  ) internal initializer {
     setChainlinkToken(linkToken_);
     _oracleParams = oracleParams_;
   }

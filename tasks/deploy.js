@@ -212,13 +212,13 @@ async function resolvePolicy({rmAddress, payout, fullPayout, policyId}, hre) {
   console.log(tx);
 }
 
-async function flyionPolicy({rmAddress, flight, departure, expectedArrival, tolerance, payout, premium,
+async function flightDelayPolicy({rmAddress, flight, departure, expectedArrival, tolerance, payout, premium,
                              lossProb, customer}, hre) {
-  const flyionRm = await hre.ethers.getContractAt("FlyionRiskModule", rmAddress);
-  const policyPool = await hre.ethers.getContractAt("PolicyPool", await flyionRm.policyPool());
+  const rm = await hre.ethers.getContractAt("FlightDelayRiskModule", rmAddress);
+  const policyPool = await hre.ethers.getContractAt("PolicyPool", await rm.policyPool());
   const currency = await hre.ethers.getContractAt("IERC20Metadata", await policyPool.currency());
 
-  await grantRole(hre, flyionRm, "PRICER_ROLE");
+  await grantRole(hre, rm, "PRICER_ROLE");
   customer = customer || await _getDefaultSigner(hre);
   premium = _W(premium);
 
@@ -226,7 +226,7 @@ async function flyionPolicy({rmAddress, flight, departure, expectedArrival, tole
   lossProb = _R(lossProb);
   payout = _W(payout);
 
-  const tx = await flyionRm.newPolicy(
+  const tx = await rm.newPolicy(
     flight, departure, expectedArrival, tolerance, payout,
     premium, lossProb, customer.address,
     {gasLimit: 999999}
@@ -351,7 +351,7 @@ function add_task() {
     .addOptionalParam("fullPayout", "Full payout or not", undefined, types.boolean)
     .setAction(resolvePolicy);
 
-  task("ens:flyionPolicy", "Creates a Flyion Policy")
+  task("ens:flightDelayPolicy", "Creates a Flyion Policy")
     .addParam("rmAddress", "RiskModule address", types.address)
     .addParam("flight", "Flight Number as String (ex: NAX105)", types.str)
     .addParam("departure", "Departure in epoch seconds (ex: 1631817600)", undefined, types.int)
@@ -363,7 +363,7 @@ function add_task() {
     .addParam("premium", "Premium the customer pays", undefined, types.int)
     .addParam("lossProb", "Probability of policy being triggered", undefined, types.float)
     .addOptionalParam("customer", "Customer", undefined, types.address)
-    .setAction(flyionPolicy);
+    .setAction(flightDelayPolicy);
 
   task("ens:listETokens", "Lists eTokens")
     .addParam("poolAddress", "PolicyPool Address", types.address)
