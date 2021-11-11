@@ -2,7 +2,6 @@
 pragma solidity ^0.8.0;
 
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
@@ -24,7 +23,6 @@ import {DataTypes} from "./DataTypes.sol";
 contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   using EnumerableSet for EnumerableSet.AddressSet;
   using WadRayMath for uint256;
-  using SafeERC20 for IERC20Metadata;
   using Policy for Policy.PolicyData;
   using DataTypes for DataTypes.ETokenToWadMap;
   using DataTypes for DataTypes.ETokenStatusMap;
@@ -41,11 +39,12 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
 
   uint256 public constant MAX_ETOKENS = 10;
 
-  IPolicyPoolConfig internal _config;
-  // #if_updated_disabled {:msg "Only set on creation"} msg.sig == bytes4(0);
-  IERC20Metadata internal _currency;
-
-  IPolicyNFT internal _policyNFT;
+  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+  IPolicyPoolConfig internal immutable _config;
+  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+  IERC20Metadata internal immutable _currency;
+  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+  IPolicyNFT internal immutable _policyNFT;
 
   DataTypes.ETokenStatusMap internal _eTokens;
 
@@ -62,9 +61,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, uint256 payout);
 
   event ETokenStatusChanged(IEToken indexed eToken, DataTypes.ETokenStatus newStatus);
-
-  event Deposit(IEToken indexed eToken, address indexed provider, uint256 value);
-  event Withdrawal(IEToken indexed eToken, address indexed provider, uint256 value);
 
   /*
    * Premiums can come in (for free, without liability) with receiveGrant.
@@ -90,30 +86,30 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     _;
   }
 
-  function initialize(
+  /// @custom:oz-upgrades-unsafe-allow constructor
+  constructor(
     IPolicyPoolConfig config_,
     IPolicyNFT policyNFT_,
     IERC20Metadata currency_
-  ) public initializer {
+  ) {
+    _config = config_;
+    _policyNFT = policyNFT_;
+    _currency = currency_;
+  }
+
+  function initialize() public initializer {
     __UUPSUpgradeable_init();
     __Pausable_init();
-    __PolicyPool_init_unchained(config_, policyNFT_, currency_);
+    __PolicyPool_init_unchained();
   }
 
   // solhint-disable-next-line func-name-mixedcase
-  function __PolicyPool_init_unchained(
-    IPolicyPoolConfig config_,
-    IPolicyNFT policyNFT_,
-    IERC20Metadata currency_
-  ) internal initializer {
-    _config = config_;
+  function __PolicyPool_init_unchained() internal initializer {
     _config.connect();
-    _currency = currency_;
     require(
       _config.assetManager() == IAssetManager(address(0)),
       "AssetManager can't be set before PolicyPool initialization"
     );
-    _policyNFT = policyNFT_;
     _policyNFT.connect();
     /*
     _activePurePremiums = 0;
@@ -142,8 +138,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     return _currency;
   }
 
-  function policyNFT() external view returns (IPolicyNFT) {
-    return _policyNFT;
+  function policyNFT() external view virtual override returns (address) {
+    return address(_policyNFT);
   }
 
   function purePremiums() external view returns (uint256) {
@@ -220,9 +216,13 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   function deposit(IEToken eToken, uint256 amount) external override whenNotPaused {
     (bool found, DataTypes.ETokenStatus etkStatus) = _eTokens.tryGet(eToken);
     require(found && etkStatus == DataTypes.ETokenStatus.active, "eToken is not active");
-    _currency.safeTransferFrom(msg.sender, address(this), amount);
+    // _currency.safeTransferFrom(msg.sender, address(this), amount);
+    _safeTransferFrom(msg.sender, amount);
     eToken.deposit(msg.sender, amount);
-    emit Deposit(eToken, msg.sender, amount);
+  }
+
+  function _safeTransferFrom(address sender, uint256 amount) internal {
+    require(_currency.transferFrom(sender, address(this), amount), "ERC20: transferFrom failed");
   }
 
   function withdraw(IEToken eToken, uint256 amount)
@@ -243,7 +243,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     address provider = msg.sender;
     uint256 withdrawed = eToken.withdraw(provider, amount);
     if (withdrawed > 0) _transferTo(provider, withdrawed);
-    emit Withdrawal(eToken, provider, withdrawed);
     return withdrawed;
   }
 
@@ -256,11 +255,13 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     IRiskModule rm = policy_.riskModule;
     require(address(rm) == msg.sender, "Only the RM can create new policies");
     _config.checkAcceptsNewPolicy(rm);
-    _currency.safeTransferFrom(customer, address(this), policy_.premium);
+    // _currency.safeTransferFrom(customer, address(this), policy_.premium);
+    _safeTransferFrom(customer, policy_.premium);
     uint256 policyId = _policyNFT.safeMint(customer);
     Policy.PolicyData storage policy = _policies[policyId] = policy_;
     policy.id = policyId;
-    if (policy.rmScr() > 0) _currency.safeTransferFrom(rm.wallet(), address(this), policy.rmScr());
+    // if (policy.rmScr() > 0) _currency.safeTransferFrom(rm.wallet(), address(this), policy.rmScr());
+    if (policy.rmScr() > 0) _safeTransferFrom(rm.wallet(), policy.rmScr());
     _activePurePremiums += policy.purePremium;
     _activePremiums += policy.premium;
     _lockScr(policy);
@@ -273,7 +274,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     DataTypes.ETokenToWadMap storage policyFunds = _policiesFunds[policy.id];
 
     // Initially I iterate over all eTokens and accumulate ocean of eligible ones
-    // saves the ocean in policyFunds, later will
+    // saves the ocean in policyFunds, later will _distributeScr
     for (uint256 i = 0; i < _eTokens.length(); i++) {
       (IEToken etk, DataTypes.ETokenStatus etkStatus) = _eTokens.at(i);
       if (etkStatus != DataTypes.ETokenStatus.active) continue;
@@ -326,7 +327,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     if (_config.insolvencyHook() != IInsolvencyHook(address(0)) && _balance() < amount) {
       _config.insolvencyHook().outOfCash(amount - _balance());
     }
-    _currency.safeTransfer(destination, amount);
+    // _currency.safeTransfer(destination, amount);
+    require(_currency.transfer(destination, amount), "ERC20 transfer failed");
   }
 
   function _payFromPool(uint256 toPay) internal returns (uint256) {
@@ -569,7 +571,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
    *
    */
   function receiveGrant(uint256 amount) external override {
-    _currency.safeTransferFrom(msg.sender, address(this), amount);
+    // _currency.safeTransferFrom(msg.sender, address(this), amount);
+    _safeTransferFrom(msg.sender, amount);
     _storePurePremiumWon(amount);
     emit WonPremiumsInOut(true, amount);
   }

@@ -25,8 +25,8 @@ contract AaveAssetManager is BaseAssetManager {
 
   bytes32 public constant SWAP_REWARDS_ROLE = keccak256("SWAP_REWARDS_ROLE");
 
-  ILendingPoolAddressesProvider internal _aaveAddrProv;
-  IUniswapV2Router02 internal _swapRouter; // We will use SushiSwap in Polygon
+  ILendingPoolAddressesProvider internal immutable _aaveAddrProv;
+  IUniswapV2Router02 internal immutable _swapRouter; // We will use SushiSwap in Polygon
   uint256 internal _claimRewardsMin;
   uint256 internal _reinvestRewardsMin;
   uint256 internal _maxSlippage; // Maximum slippage in WAD
@@ -38,37 +38,33 @@ contract AaveAssetManager is BaseAssetManager {
 
   event RewardSwapped(uint256 rewardIn, uint256 currencyOut);
 
-  function initialize(
+  constructor(
     IPolicyPool policyPool_,
+    ILendingPoolAddressesProvider aaveAddrProv_,
+    IUniswapV2Router02 swapRouter_
+  ) BaseAssetManager(policyPool_) {
+    _aaveAddrProv = aaveAddrProv_;
+    _swapRouter = swapRouter_;
+  }
+
+  function initialize(
     uint256 liquidityMin_,
     uint256 liquidityMiddle_,
     uint256 liquidityMax_,
-    ILendingPoolAddressesProvider aaveAddrProv_,
-    IUniswapV2Router02 swapRouter_,
     uint256 claimRewardsMin_,
     uint256 reinvestRewardsMin_,
     uint256 maxSlippage_
   ) public initializer {
-    __BaseAssetManager_init(policyPool_, liquidityMin_, liquidityMiddle_, liquidityMax_);
-    __AaveAssetManager_init(
-      aaveAddrProv_,
-      swapRouter_,
-      claimRewardsMin_,
-      reinvestRewardsMin_,
-      maxSlippage_
-    );
+    __BaseAssetManager_init(liquidityMin_, liquidityMiddle_, liquidityMax_);
+    __AaveAssetManager_init(claimRewardsMin_, reinvestRewardsMin_, maxSlippage_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
   function __AaveAssetManager_init(
-    ILendingPoolAddressesProvider aaveAddrProv_,
-    IUniswapV2Router02 swapRouter_,
     uint256 claimRewardsMin_,
     uint256 reinvestRewardsMin_,
     uint256 maxSlippage_
   ) internal initializer {
-    _aaveAddrProv = aaveAddrProv_;
-    _swapRouter = swapRouter_;
     _claimRewardsMin = claimRewardsMin_;
     _reinvestRewardsMin = reinvestRewardsMin_;
     require(maxSlippage_ <= 1e17, "maxSlippage can't be more than 10%");

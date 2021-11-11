@@ -18,12 +18,14 @@ contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
 
   event LPWhitelisted(address provider, bool whitelisted);
 
+  // solhint-disable-next-line no-empty-blocks
+  constructor(IPolicyPool policyPool_) PolicyPoolComponent(policyPool_) {}
+
   /**
    * @dev Initializes the Whitelist contract
-   * @param policyPool_ The address of the Ensuro PolicyPool where this contract is plugged
    */
-  function initialize(IPolicyPool policyPool_) public initializer {
-    __PolicyPoolComponent_init(policyPool_);
+  function initialize() public initializer {
+    __PolicyPoolComponent_init();
   }
 
   function whitelistAddress(address provider, bool whitelisted)

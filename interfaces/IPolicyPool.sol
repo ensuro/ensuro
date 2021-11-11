@@ -12,6 +12,8 @@ interface IPolicyPool {
 
   function config() external view returns (IPolicyPoolConfig);
 
+  function policyNFT() external view returns (address);
+
   function setAssetManager(IAssetManager newAssetManager) external;
 
   function newPolicy(Policy.PolicyData memory policy, address customer) external returns (uint256);

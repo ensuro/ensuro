@@ -29,18 +29,14 @@ def aave():
                                  "ILendingPoolAddressesProvider")
 
     addr = ap.getLendingPool()
-    ILendingPool = wrappers.get_contract_factory("ILendingPool")
+    ILendingPool = provider.get_contract_factory("ILendingPool")
     lending_pool = provider.build_contract(addr, ILendingPool, "ILendingPool")
 
     addr = ap.getPriceOracle()
-    IPriceOracle = wrappers.get_contract_factory("IPriceOracle")
+    IPriceOracle = provider.get_contract_factory("IPriceOracle")
     price_oracle = provider.build_contract(addr, IPriceOracle, "IPriceOracle")
 
     return AAVE(ap, lending_pool, price_oracle)
-
-
-def get_account(name):
-    return wrappers.AddressBook.instance.get_account(name)
 
 
 @pytest.fixture
@@ -49,7 +45,7 @@ def WMATIC():
 
 
 def get_usdc_from_ether(account, USDC, aave, WMATIC, collat_ratio):
-    account = get_account(account)
+    account = WMATIC.provider.address_book.get_account(account)
     wmatic_balance = WMATIC.balance_of(account)
 
     WMATIC.approve(account, aave.lending_pool, wmatic_balance)
@@ -77,14 +73,14 @@ def PolicyPoolAndConfig(USDC):
     PolicyPoolMockForward = get_provider().get_contract_factory("PolicyPoolMockForward")
 
     config = wrappers.PolicyPoolConfig("owner")
-    pool = PolicyPoolMockForward.deploy(get_account(None), USDC.contract, config.contract,
+    pool = PolicyPoolMockForward.deploy(config._get_account(None), USDC.contract, config.contract,
                                         {"from": config.owner})
     return config, pool
 
 
 def donate_wmatic(WMATIC, ac_from, ac_to, amount=None):
     # First convert MATIC to WMATIC
-    ac_from, ac_to = get_account(ac_from), get_account(ac_to)
+    ac_from, ac_to = WMATIC._get_account(ac_from), WMATIC._get_account(ac_to)
     amount = amount or ac_from.balance()
     ac_from.transfer(WMATIC.contract.address, amount)
     # Then transfer to destination
@@ -121,7 +117,7 @@ def test_aave_asset_manager(USDC, aave, PolicyPoolAndConfig, WMATIC):
         donate_wmatic(WMATIC, f"CHARITY{i}", "LP1")
 
     wmatic_balance, usd_amount, usd_per_matic = get_usdc_from_ether("LP1", USDC, aave, WMATIC, _W("0.3"))
-    USDC.balance_of("LP1").assert_equal(usd_amount)
+    assert USDC.balance_of("LP1") == usd_amount
 
     config, pool = PolicyPoolAndConfig
 
@@ -151,6 +147,10 @@ def test_aave_asset_manager(USDC, aave, PolicyPoolAndConfig, WMATIC):
     config.set_asset_manager(aave_mgr)
 
     # Transfer LP1 USD to PolicyPoolMockForward
+    usd_amount_balance = USDC.balance_of("LP1")
+    if usd_amount_balance < usd_amount:
+        print(f"usd_amount_balance = {int(usd_amount_balance)} < usd_amount {int(usd_amount)}")
+        usd_amount = usd_amount_balance
     USDC.transfer("LP1", pool, usd_amount)
     USDC.balance_of(pool).assert_equal(usd_amount)
 

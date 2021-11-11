@@ -39,10 +39,13 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
   mapping(bytes32 => uint256) internal _pendingQueries;
   mapping(uint256 => FlyionPolicyData) internal _flyionPolicies;
 
+  /// @custom:oz-upgrades-unsafe-allow constructor
+  // solhint-disable-next-line no-empty-blocks
+  constructor(IPolicyPool policyPool_) RiskModule(policyPool_) {}
+
   /**
    * @dev Initializes the RiskModule
    * @param name_ Name of the Risk Module
-   * @param policyPool_ The address of the Ensuro PolicyPool where this module is plugged
    * @param scrPercentage_ Solvency Capital Requirement percentage, to calculate
                            capital requirement as % of (payout - premium)  (in ray)
    * @param ensuroFee_ % of premium that will go for Ensuro treasury (in ray)
@@ -56,7 +59,6 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
    */
   function initialize(
     string memory name_,
-    IPolicyPool policyPool_,
     uint256 scrPercentage_,
     uint256 ensuroFee_,
     uint256 scrInterestRate_,
@@ -69,7 +71,6 @@ contract FlyionRiskModule is RiskModule, ChainlinkClientUpgradeable {
   ) public initializer {
     __RiskModule_init(
       name_,
-      policyPool_,
       scrPercentage_,
       ensuroFee_,
       scrInterestRate_,

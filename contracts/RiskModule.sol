@@ -43,10 +43,13 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     _validateParameters();
   }
 
+  /// @custom:oz-upgrades-unsafe-allow constructor
+  // solhint-disable-next-line no-empty-blocks
+  constructor(IPolicyPool policyPool_) PolicyPoolComponent(policyPool_) {}
+
   /**
    * @dev Initializes the RiskModule
    * @param name_ Name of the Risk Module
-   * @param policyPool_ The address of the Ensuro PolicyPool where this module is plugged
    * @param scrPercentage_ Solvency Capital Requirement percentage, to calculate
                           capital requirement as % of (payout - premium)  (in ray)
    * @param ensuroFee_ % of pure premium that will go for Ensuro treasury (in ray)
@@ -59,7 +62,6 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
   // solhint-disable-next-line func-name-mixedcase
   function __RiskModule_init(
     string memory name_,
-    IPolicyPool policyPool_,
     uint256 scrPercentage_,
     uint256 ensuroFee_,
     uint256 scrInterestRate_,
@@ -69,7 +71,7 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     uint256 sharedCoverageMinPercentage_
   ) internal initializer {
     __AccessControl_init();
-    __PolicyPoolComponent_init(policyPool_);
+    __PolicyPoolComponent_init();
     __RiskModule_init_unchained(
       name_,
       scrPercentage_,

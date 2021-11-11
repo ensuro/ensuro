@@ -45,7 +45,7 @@ class PolicyNFT(IERC721):
     eth_contract = "PolicyNFT"
     proxy_kind = "uups"
 
-    constructor_args = (
+    initialize_args = (
         ("name", "string"), ("symbol", "string"), ("policy_pool", "address"),
     )
 
@@ -64,8 +64,9 @@ def _adapt_signed_amount(args, kwargs):
 class EToken(IERC20):
     eth_contract = "EToken"
     proxy_kind = "uups"
-    constructor_args = (
-        ("name", "string"), ("symbol", "string"), ("policy_pool", "address"), ("expiration_period", "int"),
+    constructor_args = (("policy_pool", "address"), )
+    initialize_args = (
+        ("name", "string"), ("symbol", "string"), ("expiration_period", "int"),
         ("liquidity_requirement", "ray"), ("max_utilization_rate", "ray"),
         ("pool_loan_interest_rate", "ray"),
     )
@@ -77,7 +78,8 @@ class EToken(IERC20):
         liquidity_requirement = _R(liquidity_requirement)
         max_utilization_rate = _R(max_utilization_rate)
         super().__init__(
-            owner, name, symbol, policy_pool, expiration_period, liquidity_requirement,
+            owner, policy_pool,
+            name, symbol, expiration_period, liquidity_requirement,
             max_utilization_rate, pool_loan_interest_rate
         )
         if isinstance(policy_pool, ETHWrapper):
@@ -228,8 +230,9 @@ class Policy:
 
 class RiskModule(ETHWrapper):
 
-    constructor_args = (
-        ("name", "string"), ("pool", "address"), ("scr_percentage", "ray"), ("ensuro_fee", "ray"),
+    constructor_args = (("pool", "address"), )
+    initialize_args = (
+        ("name", "string"), ("scr_percentage", "ray"), ("ensuro_fee", "ray"),
         ("scr_interest_rate", "ray"), ("max_scr_per_policy", "amount"), ("scr_limit", "amount"),
         ("wallet", "address"), ("shared_coverage_min_percentage", "ray")
     )
@@ -243,7 +246,7 @@ class RiskModule(ETHWrapper):
         max_scr_per_policy = _W(max_scr_per_policy)
         scr_limit = _W(scr_limit)
         shared_coverage_min_percentage = _R(shared_coverage_min_percentage)
-        super().__init__(owner, name, policy_pool.contract, scr_percentage, ensuro_fee,
+        super().__init__(owner, policy_pool.contract, name, scr_percentage, ensuro_fee,
                          scr_interest_rate,
                          max_scr_per_policy, scr_limit, wallet, shared_coverage_min_percentage)
         self.policy_pool = policy_pool
@@ -294,7 +297,7 @@ class FlyionRiskModule(RiskModule):
     eth_contract = "FlyionRiskModule"
     proxy_kind = "uups"
 
-    constructor_args = RiskModule.constructor_args + (
+    initialize_args = RiskModule.initialize_args + (
         ("linkToken", "address"), ("oracleParams", "(address, int, amount, bytes16, bytes16)")
     )
 
@@ -320,7 +323,7 @@ class FlyionRiskModule(RiskModule):
         scr_limit = _W(scr_limit)
         shared_coverage_min_percentage = _R(shared_coverage_min_percentage)
         super(RiskModule, self).__init__(
-            owner, name, policy_pool.contract, scr_percentage, ensuro_fee,
+            owner, policy_pool.contract, name, scr_percentage, ensuro_fee,
             scr_interest_rate,
             max_scr_per_policy, scr_limit, wallet, shared_coverage_min_percentage,
             link_token, oracle_params
@@ -334,7 +337,7 @@ class PolicyPoolConfig(ETHWrapper):
 
     proxy_kind = "uups"
 
-    constructor_args = (("policy_pool", "address"), ("treasury", "address"))
+    initialize_args = (("policy_pool", "address"), ("treasury", "address"))
 
     def __init__(self, owner, treasury="ENS"):
         super().__init__(owner, AddressBook.ZERO, treasury)
@@ -390,6 +393,7 @@ class PolicyPool(ETHWrapper):
     eth_contract = "PolicyPool"
 
     constructor_args = (("config", "address"), ("nftToken", "address"), ("currency", "address"))
+    initialize_args = ()
     proxy_kind = "uups"
 
     def __init__(self, config, policy_nft, currency):
@@ -468,8 +472,8 @@ class PolicyPool(ETHWrapper):
     def withdraw(self, etoken_name, provider, amount):
         etoken = self.etokens[etoken_name]
         receipt = self.withdraw_(etoken, provider, amount)
-        if "Withdrawal" in receipt.events:
-            return Wad(receipt.events["Withdrawal"]["value"])
+        if "Transfer" in receipt.events:
+            return Wad(receipt.events["Transfer"]["value"])
         else:
             return Wad(0)
 
@@ -510,8 +514,9 @@ class BaseAssetManager(ETHWrapper):
     eth_contract = "BaseAssetManager"
     proxy_kind = "uups"
 
-    constructor_args = (
-        ("pool", "address"), ("liquidity_min", "amount"), ("liquidity_middle", "amount"),
+    constructor_args = (("pool", "address"), )
+    initialize_args = (
+        ("liquidity_min", "amount"), ("liquidity_middle", "amount"),
         ("liquidity_max", "amount")
     )
 
@@ -561,9 +566,9 @@ class BaseAssetManager(ETHWrapper):
 
 class FixedRateAssetManager(BaseAssetManager):
     eth_contract = "FixedRateAssetManager"
-    constructor_args = (
-        ("pool", "address"), ("liquidity_min", "amount"), ("liquidity_middle", "amount"),
-        ("liquidity_max", "amount"), ("interest_rate", "ray"),
+
+    initialize_args = BaseAssetManager.initialize_args + (
+        ("interest_rate", "ray"),
     )
 
     def __init__(self, owner, pool, liquidity_min, liquidity_middle, liquidity_max,
@@ -577,13 +582,34 @@ class FixedRateAssetManager(BaseAssetManager):
 class AaveAssetManager(BaseAssetManager):
     eth_contract = "AaveAssetManager"
 
+    constructor_args = BaseAssetManager.constructor_args + (
+        ("aave_address_provider", "address"), ("swap_router", "address")
+    )
+    initialize_args = BaseAssetManager.initialize_args + (
+        ("claim_rewards_min", "amount"), ("reinvest_rewards_min", "amount"), ("max_slippage", "amount")
+    )
+
     def __init__(self, owner, pool, liquidity_min, liquidity_middle, liquidity_max,
                  aave_address_provider, swap_router, claim_rewards_min=_W(0),
                  reinvest_rewards_min=_W(0), max_slippage=_W("0.01")):
-        super().__init__(
-            owner, pool, liquidity_min, liquidity_middle, liquidity_max, aave_address_provider,
-            swap_router, claim_rewards_min, reinvest_rewards_min, max_slippage
+        liquidity_min = _W(liquidity_min)
+        liquidity_max = _W(liquidity_max)
+        liquidity_middle = _W(liquidity_middle)
+        claim_rewards_min = _W(claim_rewards_min)
+        reinvest_rewards_min = _W(reinvest_rewards_min)
+        max_slippage = _W(max_slippage)
+        super(BaseAssetManager, self).__init__(
+            owner,
+            pool, aave_address_provider, swap_router,  # constructor_args
+            liquidity_min, liquidity_middle, liquidity_max,
+            claim_rewards_min, reinvest_rewards_min, max_slippage
         )
+        if isinstance(pool, ETHWrapper):
+            self._policy_pool = pool.contract
+        else:  # is just an address or raw contract - for tests
+            self._policy_pool = self._get_account(pool)
+
+        self._auto_from = self.owner
 
     @property
     def currency(self):
@@ -638,6 +664,9 @@ class LPInsolvencyHook(ETHWrapper):
 class LPManualWhitelist(ETHWrapper):
     eth_contract = "LPManualWhitelist"
     proxy_kind = "uups"
+
+    initialize_args = ()
+    constructor_args = (("pool", "address"), )
 
     def __init__(self, pool):
         super().__init__("owner", pool.contract)

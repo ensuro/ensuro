@@ -86,6 +86,10 @@ contract PolicyPoolConfig is
     // require(_policyPool.config() == this, "PolicyPool not connected to this config");
   }
 
+  function policyPool() external view returns (IPolicyPool) {
+    return _policyPool;
+  }
+
   // solhint-disable-next-line no-empty-blocks
   function _authorizeUpgrade(address) internal override onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {}
 
