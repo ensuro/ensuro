@@ -68,7 +68,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
    */
   event WonPremiumsInOut(bool moneyIn, uint256 value);
 
-  modifier onlyAssetManager {
+  modifier onlyAssetManager() {
     require(
       msg.sender == address(_config.assetManager()),
       "Only assetManager can call this function"

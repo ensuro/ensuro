@@ -35,7 +35,7 @@ abstract contract PolicyPoolComponent is
 
   event GovernanceAction(IPolicyPoolConfig.GovernanceActions indexed action, uint256 value);
 
-  modifier onlyPolicyPool {
+  modifier onlyPolicyPool() {
     require(_msgSender() == address(_policyPool), "The caller must be the PolicyPool");
     _;
   }

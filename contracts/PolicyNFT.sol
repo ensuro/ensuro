@@ -18,7 +18,7 @@ contract PolicyNFT is UUPSUpgradeable, ERC721Upgradeable, PausableUpgradeable, I
   CountersUpgradeable.Counter private _tokenIdCounter;
   IPolicyPool internal _policyPool;
 
-  modifier onlyPolicyPool {
+  modifier onlyPolicyPool() {
     require(_msgSender() == address(_policyPool), "The caller must be the PolicyPool");
     _;
   }

@@ -19,7 +19,7 @@ contract LPInsolvencyHook is IInsolvencyHook, IPolicyPoolComponent {
   uint256 public cashDeposited;
   bool internal _coverEToken;
 
-  modifier onlyPolicyPool {
+  modifier onlyPolicyPool() {
     require(msg.sender == address(_policyPool), "The caller must be the PolicyPool");
     _;
   }

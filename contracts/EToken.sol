@@ -51,7 +51,7 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
   event PoolLoan(uint256 value);
   event PoolLoanRepaid(uint256 value);
 
-  modifier onlyAssetManager {
+  modifier onlyAssetManager() {
     require(
       _msgSender() == address(_policyPool.config().assetManager()),
       "The caller must be the PolicyPool's AssetManager"
@@ -500,8 +500,7 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
       uint256 origScr = _scr.wadToRay();
       _scr += scrAmount;
       _scrInterestRate = (_scrInterestRate.rayMul(origScr) +
-        policyInterestRate.rayMul(scrAmount.wadToRay()))
-      .rayDiv(_scr.wadToRay());
+        policyInterestRate.rayMul(scrAmount.wadToRay())).rayDiv(_scr.wadToRay());
     }
     emit SCRLocked(policyInterestRate, scrAmount);
     _updateTokenInterestRate();
@@ -522,8 +521,7 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
       uint256 origScr = _scr.wadToRay();
       _scr -= scrAmount;
       _scrInterestRate = (_scrInterestRate.rayMul(origScr) -
-        policyInterestRate.rayMul(scrAmount.wadToRay()))
-      .rayDiv(_scr.wadToRay());
+        policyInterestRate.rayMul(scrAmount.wadToRay())).rayDiv(_scr.wadToRay());
     }
     emit SCRUnlocked(policyInterestRate, scrAmount);
     _updateTokenInterestRate();
@@ -566,10 +564,10 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
 
   function totalWithdrawable() public view virtual override returns (uint256) {
     uint256 locked = _scr
-    .wadToRay()
-    .rayMul(WadRayMath.ray() + _scrInterestRate)
-    .rayMul(_liquidityRequirement)
-    .rayToWad();
+      .wadToRay()
+      .rayMul(WadRayMath.ray() + _scrInterestRate)
+      .rayMul(_liquidityRequirement)
+      .rayToWad();
     uint256 totalSupply_ = totalSupply();
     if (totalSupply_ >= locked) return totalSupply_ - locked;
     else return 0;

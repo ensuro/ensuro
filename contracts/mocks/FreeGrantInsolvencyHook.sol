@@ -17,7 +17,7 @@ contract FreeGrantInsolvencyHook is IInsolvencyHook, IPolicyPoolComponent {
   IPolicyPool internal _policyPool;
   uint256 public cashGranted;
 
-  modifier onlyPolicyPool {
+  modifier onlyPolicyPool() {
     require(msg.sender == address(_policyPool), "The caller must be the PolicyPool");
     _;
   }

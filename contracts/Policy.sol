@@ -63,17 +63,16 @@ library Policy {
     policy.start = uint40(block.timestamp);
     policy.expiration = expiration;
     policy.purePremium = (payout - policy.rmCoverage)
-    .wadToRay()
-    .rayMul(lossProb.rayMul(riskModule.moc()))
-    .rayToWad();
+      .wadToRay()
+      .rayMul(lossProb.rayMul(riskModule.moc()))
+      .rayToWad();
     policy.premiumForEnsuro = policy.purePremium.wadMul(riskModule.ensuroFee().rayToWad());
     policy.premiumForLps = policy.scr.wadMul(
       (
         (riskModule.scrInterestRate() * (policy.expiration - policy.start)).rayDiv(
           SECONDS_IN_YEAR_RAY
         )
-      )
-      .rayToWad()
+      ).rayToWad()
     );
     require(
       policy.purePremium + policy.premiumForEnsuro + policy.premiumForLps <= ensPremium,
