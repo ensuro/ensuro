@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
@@ -26,6 +27,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   using Policy for Policy.PolicyData;
   using DataTypes for DataTypes.ETokenToWadMap;
   using DataTypes for DataTypes.ETokenStatusMap;
+  using SafeERC20 for IERC20Metadata;
 
   uint256 public constant NEGLIGIBLE_AMOUNT = 1e14; // "0.0001" in Wad
 
@@ -216,13 +218,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   function deposit(IEToken eToken, uint256 amount) external override whenNotPaused {
     (bool found, DataTypes.ETokenStatus etkStatus) = _eTokens.tryGet(eToken);
     require(found && etkStatus == DataTypes.ETokenStatus.active, "eToken is not active");
-    // _currency.safeTransferFrom(msg.sender, address(this), amount);
-    _safeTransferFrom(msg.sender, amount);
+    _currency.safeTransferFrom(msg.sender, address(this), amount);
     eToken.deposit(msg.sender, amount);
-  }
-
-  function _safeTransferFrom(address sender, uint256 amount) internal {
-    require(_currency.transferFrom(sender, address(this), amount), "ERC20: transferFrom failed");
   }
 
   function withdraw(IEToken eToken, uint256 amount)
@@ -255,13 +252,11 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     IRiskModule rm = policy_.riskModule;
     require(address(rm) == msg.sender, "Only the RM can create new policies");
     _config.checkAcceptsNewPolicy(rm);
-    // _currency.safeTransferFrom(customer, address(this), policy_.premium);
-    _safeTransferFrom(customer, policy_.premium);
+    _currency.safeTransferFrom(customer, address(this), policy_.premium);
     uint256 policyId = _policyNFT.safeMint(customer);
     Policy.PolicyData storage policy = _policies[policyId] = policy_;
     policy.id = policyId;
-    // if (policy.rmScr() > 0) _currency.safeTransferFrom(rm.wallet(), address(this), policy.rmScr());
-    if (policy.rmScr() > 0) _safeTransferFrom(rm.wallet(), policy.rmScr());
+    if (policy.rmScr() > 0) _currency.safeTransferFrom(rm.wallet(), address(this), policy.rmScr());
     _activePurePremiums += policy.purePremium;
     _activePremiums += policy.premium;
     _lockScr(policy);
@@ -327,8 +322,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     if (_config.insolvencyHook() != IInsolvencyHook(address(0)) && _balance() < amount) {
       _config.insolvencyHook().outOfCash(amount - _balance());
     }
-    // _currency.safeTransfer(destination, amount);
-    require(_currency.transfer(destination, amount), "ERC20 transfer failed");
+    _currency.safeTransfer(destination, amount);
   }
 
   function _payFromPool(uint256 toPay) internal returns (uint256) {
@@ -571,8 +565,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
    *
    */
   function receiveGrant(uint256 amount) external override {
-    // _currency.safeTransferFrom(msg.sender, address(this), amount);
-    _safeTransferFrom(msg.sender, amount);
+    _currency.safeTransferFrom(msg.sender, address(this), amount);
     _storePurePremiumWon(amount);
     emit WonPremiumsInOut(true, amount);
   }

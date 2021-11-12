@@ -19,6 +19,25 @@ function _R(value) {
   return _BN(value).mul(RAY);
 }
 
+async function etherscanEndpoints(hre) {
+  try{
+    return await hre.run("verify:get-etherscan-endpoint", {
+      provider: hre.network.provider, networkName: hre.network.name
+    });
+  } catch (error) {
+    return {};
+  }
+}
+
+async function logContractCreated(hre, contractName, address) {
+  const browserUrl = (await etherscanEndpoints(hre)).browserURL;
+  if (browserUrl) {
+    console.log(`${contractName} deployed to: ${browserUrl}address/${address}`);
+  } else {
+    console.log(`${contractName} deployed to: ${address}`);
+  }
+}
+
 async function verifyContract(hre, contract, isProxy, constructorArguments) {
   if (isProxy === undefined)
     isProxy = false;
@@ -32,10 +51,11 @@ async function verifyContract(hre, contract, isProxy, constructorArguments) {
       address: address,
       constructorArguments: constructorArguments,
     });
-    if (isProxy) {
+    const etherscanURL = (await etherscanEndpoints(hre)).browserURL;
+    if (isProxy && etherscanURL) {
       console.log(
         "Contract successfully verified, you should verify the proxy at " +
-        `https://mumbai.polygonscan.com/proxyContractChecker?a=${contract.address}`
+        `${etherscanURL}proxyContractChecker?a=${contract.address}`
       );
     }
   } catch (error) {
@@ -59,7 +79,7 @@ async function deployTestCurrency({verify, currName, currSymbol, initialSupply},
   const TestCurrency = await hre.ethers.getContractFactory("TestCurrency");
   const currency = await TestCurrency.deploy(currName, currSymbol, _W(initialSupply));
   await currency.deployed();
-  console.log("TestCurrency deployed to:", currency.address);
+  await logContractCreated(hre, "TestCurrency", currency.address);
   if (verify)
     await verifyContract(hre, currency, false, [currName, currSymbol, _W(initialSupply)]);
   return currency.address;
@@ -73,7 +93,7 @@ async function deployPolicyNFT({verify, nftName, nftSymbol, policyPoolDetAddress
     {kind: 'uups'}
   );
   await policyNFT.deployed();
-  console.log("PolicyNFT deployed to:", policyNFT.address);
+  await logContractCreated(hre, "PolicyNFT", policyNFT.address);
   if (verify)
     await verifyContract(hre, policyNFT, true);
   return policyNFT.address;
@@ -87,7 +107,7 @@ async function deployPolicyPoolConfig({verify, treasuryAddress, policyPoolDetAdd
   ], {kind: 'uups'});
 
   await policyPoolConfig.deployed();
-  console.log("PolicyPoolConfig deployed to:", policyPoolConfig.address);
+  await logContractCreated(hre, "PolicyPoolConfig", policyPoolConfig.address);
   if (verify)
     await verifyContract(hre, policyPoolConfig, true);
   return policyPoolConfig.address;
@@ -102,12 +122,12 @@ async function deployPolicyPool({verify, configAddress, nftAddress, currencyAddr
   const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
   const policyPool = await hre.upgrades.deployProxy(PolicyPool, [], {
     constructorArgs: [configAddress, nftAddress, currencyAddress],
-    kind: 'uups'
+    kind: 'uups',
+    unsafeAllow: ["delegatecall"],
   });
 
   await policyPool.deployed();
-  console.log("PolicyPool deployed to:", policyPool.address);
-  console.log("PolicyPool's config is:", await policyPool.config());
+  await logContractCreated(hre, "PolicyPool", policyPool.address);
 
   if (verify)
     await verifyContract(hre, policyPool, true, [configAddress, nftAddress, currencyAddress]);
@@ -135,7 +155,7 @@ async function deployEToken({
   });
 
   await etoken.deployed();
-  console.log("EToken ", etkName, " deployed to:", etoken.address);
+  await logContractCreated(hre, `EToken ${etkName}`, etoken.address);
   if (verify)
     await verifyContract(hre, etoken, true, [poolAddress]);
   const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
@@ -165,13 +185,68 @@ async function deployRiskModule({
   });
 
   await rm.deployed();
-  console.log("RiskModule ", rmClass, rmName, " deployed to:", rm.address);
+  await logContractCreated(hre, `${rmClass} ${rmName}`, rm.address);
   if (verify)
     await verifyContract(hre, rm, true, [poolAddress]);
   const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
   const policyPoolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await policyPool.config());
   await policyPoolConfig.addRiskModule(rm.address);
   return rm.address;
+}
+
+async function deployFlightDelayRM(opts, hre) {
+  opts.extraArgs = [
+    opts.linkToken,
+    [opts.oracle, opts.delayTime, _W(opts.oracleFee), opts.dataJobId, opts.sleepJobId]
+  ];
+  return deployRiskModule(opts, hre);
+}
+
+async function deployAssetManager({
+      verify, amClass, poolAddress, liquidityMin, liquidityMiddle, liquidityMax,
+      extraConstructorArgs, extraArgs}, hre) {
+  extraArgs = extraArgs || [];
+  extraConstructorArgs = extraConstructorArgs || [];
+  const AssetManager = await hre.ethers.getContractFactory(amClass);
+  const am = await hre.upgrades.deployProxy(AssetManager, [
+    _W(liquidityMin),
+    _W(liquidityMiddle),
+    _W(liquidityMax),
+    ...extraArgs
+  ], {
+    kind: 'uups',
+    unsafeAllow: ["delegatecall"],
+    constructorArgs: [poolAddress, ...extraConstructorArgs]
+  });
+
+  await am.deployed();
+  await logContractCreated(hre, `${amClass}`, am.address);
+  if (verify)
+    await verifyContract(hre, am, true, [poolAddress, ...extraConstructorArgs]);
+  const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
+  const policyPoolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await policyPool.config());
+  await policyPoolConfig.setAssetManager(am.address);
+  return am.address;
+}
+
+async function deployFixedIntestRateAssetManager(opts, hre) {
+  opts.extraArgs = [
+    _R(opts.interestRate)
+  ];
+  return deployAssetManager(opts, hre);
+}
+
+async function deployAaveAssetManager(opts, hre) {
+  opts.extraArgs = [
+    _W(opts.claimRewardsMin),
+    _W(opts.reinvestRewardsMin),
+    _W(opts.maxSlippage),
+  ];
+  opts.extraConstructorArgs = [
+    opts.aaveAddrProv,
+    opts.swapRouter,
+  ]
+  return deployAssetManager(opts, hre);
 }
 
 async function trustfullPolicy({rmAddress, payout, premium, lossProb, expiration, customer}, hre) {
@@ -280,7 +355,6 @@ function add_task() {
         taskArgs.configAddress = await deployPolicyPoolConfig(taskArgs, hre);
       }
       let policyPoolAddress = await deployPolicyPool(taskArgs, hre);
-      console.log("Deploy task called ", taskArgs, " policyPool", policyPoolAddress);
     });
 
   task("deploy:testCurrency", "Deploys the Test Currency")
@@ -335,6 +409,61 @@ function add_task() {
     .addOptionalParam("sharedCoverageMinPercentage", "Shared coverage minimum percentage", 0.0, types.float)
     .setAction(deployRiskModule);
 
+  task("deploy:fdRiskModule", "Deploys and injects a Flight Delay RiskModule")
+    .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
+    .addParam("poolAddress", "PolicyPool Address", types.address)
+    .addOptionalParam("rmClass", "RiskModule contract", "FlightDelayRiskModule", types.str)
+    .addOptionalParam("rmName", "Name of the RM", "Flight Delay Risk Module", types.str)
+    .addOptionalParam("scrPercentage", "SCR Percentage", 1.0, types.float)
+    .addOptionalParam("premiumShare", "Share of the premium for RM", 0, types.float)
+    .addOptionalParam("ensuroShare", "Ensuro Share", 0.02, types.float)
+    .addOptionalParam("maxScrPerPolicy", "Max SCR Per policy", 10000, types.float)
+    .addOptionalParam("scrLimit", "Total SCR for the RM", 1e6, types.float)
+    .addParam("wallet", "RM address", types.address)
+    .addOptionalParam("sharedCoverageMinPercentage", "Shared coverage minimum percentage", 0.0, types.float)
+    .addParam("linkToken", "LINK address", types.address)
+    .addParam("oracle", "Oracle address", types.address)
+    .addOptionalParam("oracleFee", "Oracle Fee", 0.1, types.float)
+    .addOptionalParam("delayTime", "Delay time", 120, types.int)
+    .addOptionalParam("dataJobId", "Data JobId", "2fb0c3a36f924e4ab43040291e14e0b7", types.str)
+    .addOptionalParam("sleepJobId", "Sleep JobId", "4241bd0288324bf8a2c683833d0b824f", types.str)
+    .setAction(deployFlightDelayRM);
+
+  task("deploy:assetManager", "Deploys a AssetManager and assigns it to the pool")
+    .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
+    .addParam("poolAddress", "PolicyPool Address", types.address)
+    .addOptionalParam("rmClass", "AssetManager contract", "FixedRateAssetManager", types.str)
+    .addOptionalParam("liquidityMin", "liquidityMin", 100, types.float)
+    .addOptionalParam("liquidityMiddle", "liquidityMiddle", 150, types.float)
+    .addOptionalParam("liquidityMax", "liquidityMax", 200, types.float)
+    .setAction(deployAssetManager);
+
+  task("deploy:fixedInterestAssetManager", "Deploys a FixedRateAssetManager")
+    .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
+    .addParam("poolAddress", "PolicyPool Address", types.address)
+    .addOptionalParam("amClass", "AssetManager contract", "FixedRateAssetManager", types.str)
+    .addOptionalParam("liquidityMin", "liquidityMin", 100, types.float)
+    .addOptionalParam("liquidityMiddle", "liquidityMiddle", 150, types.float)
+    .addOptionalParam("liquidityMax", "liquidityMax", 200, types.float)
+    .addOptionalParam("interestRate", "interestRate", 0.10, types.float)
+    .setAction(deployFixedIntestRateAssetManager);
+
+  task("deploy:aaveAssetManager", "Deploys a AaveAssetManager")
+    .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
+    .addParam("poolAddress", "PolicyPool Address", types.address)
+    .addOptionalParam("amClass", "AssetManager contract", "AaveAssetManager", types.str)
+    .addOptionalParam("liquidityMin", "liquidityMin", 100, types.float)
+    .addOptionalParam("liquidityMiddle", "liquidityMiddle", 150, types.float)
+    .addOptionalParam("liquidityMax", "liquidityMax", 200, types.float)
+    .addOptionalParam("claimRewardsMin", "claimRewardsMin", 10, types.float)
+    .addOptionalParam("reinvestRewardsMin", "reinvestRewardsMin", 20, types.float)
+    .addOptionalParam("maxSlippage", "maxSlippage", 0.02, types.float)
+    .addOptionalParam("aaveAddrProv", "AAVE Address Provider",
+                      "0xd05e3E715d945B59290df0ae8eF85c1BdB684744", types.address)
+    .addOptionalParam("swapRouter", "Uniswap Router Address",
+                      "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506", types.address)
+    .setAction(deployAaveAssetManager);
+
   task("ens:trustfullPolicy", "Creates a TrustfulRiskModule Policy")
     .addParam("rmAddress", "RiskModule address", types.address)
     .addParam("payout", "Payout for customer in case policy is triggered", undefined, types.int)
@@ -351,7 +480,7 @@ function add_task() {
     .addOptionalParam("fullPayout", "Full payout or not", undefined, types.boolean)
     .setAction(resolvePolicy);
 
-  task("ens:flightDelayPolicy", "Creates a Flyion Policy")
+  task("ens:flightDelayPolicy", "Creates a Flight Delay Policy")
     .addParam("rmAddress", "RiskModule address", types.address)
     .addParam("flight", "Flight Number as String (ex: NAX105)", types.str)
     .addParam("departure", "Departure in epoch seconds (ex: 1631817600)", undefined, types.int)

@@ -17,6 +17,7 @@ contract FixedRateAssetManager is BaseAssetManager {
   uint256 public interestRate;
   uint256 public lastMintBurn;
 
+  /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
   constructor(IPolicyPool policyPool_) BaseAssetManager(policyPool_) {}
 

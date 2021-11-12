@@ -25,7 +25,9 @@ contract AaveAssetManager is BaseAssetManager {
 
   bytes32 public constant SWAP_REWARDS_ROLE = keccak256("SWAP_REWARDS_ROLE");
 
+  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   ILendingPoolAddressesProvider internal immutable _aaveAddrProv;
+  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IUniswapV2Router02 internal immutable _swapRouter; // We will use SushiSwap in Polygon
   uint256 internal _claimRewardsMin;
   uint256 internal _reinvestRewardsMin;
@@ -38,6 +40,7 @@ contract AaveAssetManager is BaseAssetManager {
 
   event RewardSwapped(uint256 rewardIn, uint256 currencyOut);
 
+  /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(
     IPolicyPool policyPool_,
     ILendingPoolAddressesProvider aaveAddrProv_,
