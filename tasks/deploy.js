@@ -164,7 +164,7 @@ async function deployEToken({
 }
 
 async function deployRiskModule({
-      verify, rmClass, rmName, poolAddress, scrPercentage, premiumShare, ensuroShare, maxScrPerPolicy,
+      verify, rmClass, rmName, poolAddress, scrPercentage, scrInterestRate, ensuroFee, maxScrPerPolicy,
       scrLimit, wallet, sharedCoverageMinPercentage, extraArgs
   }, hre) {
   extraArgs = extraArgs || [];
@@ -172,8 +172,8 @@ async function deployRiskModule({
   const rm = await hre.upgrades.deployProxy(RiskModule, [
     rmName,
     _R(scrPercentage),
-    _R(premiumShare),
-    _R(ensuroShare),
+    _R(ensuroFee),
+    _R(scrInterestRate),
     _W(maxScrPerPolicy),
     _W(scrLimit),
     wallet,
@@ -401,8 +401,8 @@ function add_task() {
     .addOptionalParam("rmClass", "RiskModule contract", "TrustfulRiskModule", types.str)
     .addOptionalParam("rmName", "Name of the RM", "Test RM", types.str)
     .addOptionalParam("scrPercentage", "SCR Percentage", 1.0, types.float)
-    .addOptionalParam("premiumShare", "Share of the premium for RM", 0, types.float)
-    .addOptionalParam("ensuroShare", "Ensuro Share", 0.02, types.float)
+    .addOptionalParam("ensuroFee", "Ensuro Fee", 0.02, types.float)
+    .addOptionalParam("scrInterestRate", "Interest Rate for RM", 0.05, types.float)
     .addOptionalParam("maxScrPerPolicy", "Max SCR Per policy", 10000, types.float)
     .addOptionalParam("scrLimit", "Total SCR for the RM", 1e6, types.float)
     .addParam("wallet", "RM address", types.address)
@@ -415,8 +415,8 @@ function add_task() {
     .addOptionalParam("rmClass", "RiskModule contract", "FlightDelayRiskModule", types.str)
     .addOptionalParam("rmName", "Name of the RM", "Flight Delay Risk Module", types.str)
     .addOptionalParam("scrPercentage", "SCR Percentage", 1.0, types.float)
-    .addOptionalParam("premiumShare", "Share of the premium for RM", 0, types.float)
-    .addOptionalParam("ensuroShare", "Ensuro Share", 0.02, types.float)
+    .addOptionalParam("ensuroFee", "Ensuro Fee", 0.02, types.float)
+    .addOptionalParam("scrInterestRate", "Interest Rate for RM", 0.05, types.float)
     .addOptionalParam("maxScrPerPolicy", "Max SCR Per policy", 10000, types.float)
     .addOptionalParam("scrLimit", "Total SCR for the RM", 1e6, types.float)
     .addParam("wallet", "RM address", types.address)

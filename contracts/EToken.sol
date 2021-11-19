@@ -104,7 +104,7 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
     uint256 liquidityRequirement_,
     uint256 maxUtilizationRate_,
     uint256 poolLoanInterestRate_
-  ) public initializer {
+  ) internal initializer {
     _name = name_;
     _symbol = symbol_;
     _expirationPeriod = expirationPeriod;

@@ -50,7 +50,7 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
     uint256 liquidityMin_,
     uint256 liquidityMiddle_,
     uint256 liquidityMax_
-  ) public initializer {
+  ) internal initializer {
     __PolicyPoolComponent_init();
     __BaseAssetManager_init_unchained(liquidityMin_, liquidityMiddle_, liquidityMax_);
   }
@@ -60,7 +60,7 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
     uint256 liquidityMin_,
     uint256 liquidityMiddle_,
     uint256 liquidityMax_
-  ) public initializer {
+  ) internal initializer {
     /*
     _cashBalance = 0;
     _lastInvestmentValue = 0;

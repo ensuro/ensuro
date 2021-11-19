@@ -52,10 +52,8 @@ library Policy {
     policy.payout = payout;
     policy.rmCoverage = payout.wadToRay().rayMul(riskModule.sharedCoveragePercentage()).rayToWad();
     policy.lossProb = lossProb;
-    uint256 ensPremium = policy.premium.wadMul(policy.payout - policy.rmCoverage).wadDiv(
-      policy.payout
-    );
-    uint256 rmPremium = policy.premium - ensPremium;
+    uint256 ensPremium = premium.wadMul(payout - policy.rmCoverage).wadDiv(payout);
+    uint256 rmPremium = premium - ensPremium;
     policy.scr = (payout - ensPremium - policy.rmCoverage).wadMul(
       riskModule.scrPercentage().rayToWad()
     );
