@@ -30,7 +30,7 @@
     "@aave/protocol-v2": "git+https://github.com/gnarvaja/protocol-v2.git",
     "@chainlink/contracts": "^0.2.2",
     "@openzeppelin/contracts": "^4.3.3",
-    "@openzeppelin/contracts-upgradeable": "^4.3.2",
+    "@openzeppelin/contracts-upgradeable": "^4.3.3",
     "@uniswap/v2-periphery": "^1.1.0-beta.0"
   }
 }
