@@ -19,6 +19,17 @@ import {WadRayMath} from "./WadRayMath.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {DataTypes} from "./DataTypes.sol";
 
+/**
+ * @title Ensuro PolicyPool contract
+ * @dev This is the main contract of the protocol, it stores the eTokens (liquidity pools) and has the operations
+ *      to interact with them. This is also the contract that receives and sends the underlying asset.
+ *      Also this contract keeps track of accumulated premiums in different stages:
+ *      - activePremiums / activePurePremiums
+ *      - wonPurePremiums (surplus)
+ *      - borrowedActivePP (deficit borrowed from activePurePremiums)
+ * @custom:security-contact security@ensuro.co
+ * @author Ensuro
+ */
 // #invariant_disabled {:msg "Borrow up to activePurePremiums"} _borrowedActivePP <= _activePurePremiums;
 // #invariant_disabled {:msg "Can't borrow if not exhausted before won"} (_borrowedActivePP > 0) ==> _wonPurePremiums == 0;
 contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {

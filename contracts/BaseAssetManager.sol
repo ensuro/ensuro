@@ -13,13 +13,17 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 /**
  * @title Ensuro Asset Manager base contract
- * @dev Base class for asset managers that implement
+ * @dev Base class for asset managers that reinvest the assets of the protocol to get additional returns.
+ *      The specific asset management strategy needs to be implemented by child contracts.
+ *      Settings liquidityMin, liquidityMiddle, liquidityMax are the thresholds used to define how much liquidity
+ *      to keep in the PolicyPool and when to invest/deinvest. Every invest/deinvest operation tries to leave the
+ *      PolicyPool at liquidityMiddle.
+ * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
 abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
   using WadRayMath for uint256;
 
-  int256 internal _cashBalance;
   uint256 internal _liquidityMin;
   uint256 internal _liquidityMiddle;
   uint256 internal _liquidityMax;
@@ -62,7 +66,6 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
     uint256 liquidityMax_
   ) internal initializer {
     /*
-    _cashBalance = 0;
     _lastInvestmentValue = 0;
     */
     _liquidityMin = liquidityMin_;
@@ -170,14 +173,12 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
   }
 
   function _invest(uint256 amount) internal virtual {
-    _cashBalance += int256(amount);
     _lastInvestmentValue += amount;
     emit MoneyInvested(amount);
     // must be reimplemented do the actual cash movement
   }
 
   function _deinvest(uint256 amount) internal virtual {
-    _cashBalance -= int256(amount);
     _lastInvestmentValue -= Math.min(_lastInvestmentValue, amount);
     emit MoneyDeinvested(amount);
     // must be reimplemented do the actual cash movement

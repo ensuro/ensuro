@@ -9,6 +9,14 @@ import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {IPolicyNFT} from "../interfaces/IPolicyNFT.sol";
 
+/**
+ * @title PolicyNFT - NFT that keeps track of issued policies and its owners
+ * @dev Every time a new policy is accepted by the PolicyPool, a new NFT is minted generating a new
+ *      policyId owned by the customer. Only the PolicyPool can mint NFTs.
+ *      After creation, NFTs can be transferred in the ERC721 standard way and that changes the policy holder.
+ * @custom:security-contact security@ensuro.co
+ * @author Ensuro
+ */
 contract PolicyNFT is UUPSUpgradeable, ERC721Upgradeable, PausableUpgradeable, IPolicyNFT {
   using CountersUpgradeable for CountersUpgradeable.Counter;
 
@@ -61,6 +69,10 @@ contract PolicyNFT is UUPSUpgradeable, ERC721Upgradeable, PausableUpgradeable, I
     _unpause();
   }
 
+  /**
+   * @dev This function can be called only once in contract's lifetime. It links the NFT with the
+   *      PolicyPool contract. It's called in PolicyPool initialization.
+   */
   function connect() external override {
     require(
       address(_policyPool) == address(0) || address(_policyPool) == _msgSender(),

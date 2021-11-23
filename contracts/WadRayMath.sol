@@ -4,7 +4,9 @@ pragma solidity ^0.8.0;
 /**
  * @title WadRayMath library
  * @author Aave / Ensuro
- * @dev Provides mul and div function for wads (decimal numbers with 18 digits precision) and rays (decimals with 27 digits)
+ * @dev Provides mul and div function for wads (decimal numbers with 18 digits precision) and rays
+ *      (decimals with 27 digits)
+ * @custom:security-contact security@ensuro.co
  **/
 
 library WadRayMath {

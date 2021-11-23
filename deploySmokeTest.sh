@@ -55,6 +55,11 @@ npx hardhat --network $NETWORK deploy:fixedInterestAssetManager $VERIFY \
 npx hardhat --network $NETWORK deploy:aaveAssetManager $VERIFY \
     --pool-address $POOL || die "Error deploying AaveAssetManager"
 
+# Whitelist
+npx hardhat --network $NETWORK deploy:whitelist $VERIFY \
+    --pool-address $POOL
+dieOnError "Error deploying Whitelist"
+
 if [ ! -z $GANACHE_PID ]; then
     kill $GANACHE_PID
 fi

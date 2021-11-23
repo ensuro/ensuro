@@ -5,6 +5,14 @@ pragma solidity ^0.8.0;
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {IEToken} from "../interfaces/IEToken.sol";
 
+/**
+ * @title DataTypes library
+ * @dev Library with two EnumerableSet:
+ *      - ETokenToWadMap: enumerable mapping(EToken ==> amount)
+ *      - ETokenStatusMap: enumerable mapping(EToken ==> ETokenStatus)
+ * @custom:security-contact security@ensuro.co
+ * @author Ensuro
+ */
 library DataTypes {
   using EnumerableSet for EnumerableSet.AddressSet;
 

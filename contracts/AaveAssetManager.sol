@@ -16,7 +16,14 @@ import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUn
 
 /**
  * @title AssetManager that reinvests the capital in AAVE
- * @dev Deposits and withdraw from AAVE, also converts the rewards
+ * @dev Deposits and withdraw from AAVE, also converts the rewards.
+ *      Invest into AAVE AToken for the underlying asset (ex. USDC) getting lending interests.
+ *      When needs to deinvest, first deinvest from AAVE, but also can liquidate the rewards
+ *      (AAVE in mainnet or MATIC in Polygon) using a DEX.
+ *      Above a given threshold, the rewards are claimed. Also, above a given threshold they are also reinvested
+ *      to accrue additional interests and rewards.
+ *      An authorized user (SWAP_REWARDS_ROLE) can force the swap of the rewards for the pool's currency.
+ * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
 contract AaveAssetManager is BaseAssetManager {
@@ -29,8 +36,8 @@ contract AaveAssetManager is BaseAssetManager {
   ILendingPoolAddressesProvider internal immutable _aaveAddrProv;
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IUniswapV2Router02 internal immutable _swapRouter; // We will use SushiSwap in Polygon
-  uint256 internal _claimRewardsMin;
-  uint256 internal _reinvestRewardsMin;
+  uint256 internal _claimRewardsMin; // Minimum amount of rewards accumulated to claim
+  uint256 internal _reinvestRewardsMin; // Minimum amount of rewards to reinvest into AAVE
   uint256 internal _maxSlippage; // Maximum slippage in WAD
 
   bytes32 internal constant DATA_PROVIDER_ID =

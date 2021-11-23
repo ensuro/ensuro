@@ -51,6 +51,12 @@ On the policy side, the policies are injected into the protocol by *Risk Modules
 </dl>
 
 
+## Governance
+
+The protocol uses three levels of access control, plus a guardian role. The roles are managed by the PolicyPoolConfig smart contract.
+
+More info about governance in https://docs.google.com/spreadsheets/d/1LqlogRn8AlnLq1rPTd5UT7CJI3uc31PdBaxj4pX3mtE/edit?usp=sharing
+
 ## Development
 
 For coding the smart contracts the approach we took was prototyping initially in Python (see folder `prototype`), and later we coded in Solidity. The tests run the same test case both on the Python prototype code and the Solidity code. To adapt the Solidity code that is called using [brownie](https://eth-brownie.readthedocs.io/en/stable/), we have some glue code implemented in `tests/wrappers.py`.
