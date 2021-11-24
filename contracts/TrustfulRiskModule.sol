@@ -8,6 +8,7 @@ import {RiskModule} from "./RiskModule.sol";
  * @title Trustful Risk Module
  * @dev Risk Module without any validation, just the newPolicy and resolvePolicy need to be called by
         authorized users
+ * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
 

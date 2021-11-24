@@ -12,6 +12,7 @@ import {Policy} from "./Policy.sol";
 /**
  * @title Ensuro Risk Module base contract
  * @dev Risk Module that keeps the configuration and is responsible for pricing and policy resolution
+ * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
 abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoolComponent {

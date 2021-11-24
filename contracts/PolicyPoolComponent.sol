@@ -11,7 +11,16 @@ import {WadRayMath} from "./WadRayMath.sol";
 
 /**
  * @title Base class for PolicyPool components
- * @dev
+ * @dev This is the base class of all the components of the protocol that are linked to the PolicyPool and created
+ *      after it.
+ *      Holds the reference to _policyPool as immutable, also provides access to common admin roles:
+ *      - LEVEL1_ROLE: High impact changes like upgrades or other critical operations
+ *      - LEVEL2_ROLE: Mid-impact changes like adding new risk modules or changing some parameters
+ *      - LEVEL3_ROLE: Low-impact changes like changing some parameters up to given percentage (tweaks)
+ *      - GUARDIAN_ROLE: For emergency operations oriented to protect the protocol in case of attacks or hacking.
+ *
+ *      This contract also keeps track of the tweaks to avoid two tweaks of the same type are done in a short period.
+ * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
 abstract contract PolicyPoolComponent is

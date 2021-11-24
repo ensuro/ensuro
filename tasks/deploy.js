@@ -66,13 +66,18 @@ async function verifyContract(hre, contract, isProxy, constructorArguments) {
 async function grantRole(hre, contract, role, user) {
   if (user === undefined)
     user = await _getDefaultSigner(hre);
-  const roleHex = await contract[role]();
+  const roleHex = await contract[role]();  // TODO: compute roleHex without using the contract
   if (!await contract.hasRole(roleHex, user.address)) {
     await contract.grantRole(roleHex, user.address);
     console.log(`Role ${role} (${roleHex}) granted to ${user.address}`);
   } else {
     console.log(`Role ${role} (${roleHex}) already granted to ${user.address}`);
   }
+}
+
+async function grantRoleTask({contractAddress, role, account}, hre) {
+  const contract = await hre.ethers.getContractAt("PolicyPoolConfig", contractAddress);
+  await grantRole(hre, contract, role, account);
 }
 
 async function deployTestCurrency({verify, currName, currSymbol, initialSupply}, hre) {
@@ -165,7 +170,7 @@ async function deployEToken({
 
 async function deployRiskModule({
       verify, rmClass, rmName, poolAddress, scrPercentage, scrInterestRate, ensuroFee, maxScrPerPolicy,
-      scrLimit, wallet, sharedCoverageMinPercentage, extraArgs
+      scrLimit, moc, wallet, sharedCoverageMinPercentage, extraArgs
   }, hre) {
   extraArgs = extraArgs || [];
   const RiskModule = await hre.ethers.getContractFactory(rmClass);
@@ -188,6 +193,11 @@ async function deployRiskModule({
   await logContractCreated(hre, `${rmClass} ${rmName}`, rm.address);
   if (verify)
     await verifyContract(hre, rm, true, [poolAddress]);
+
+  if (moc != 1.0) {
+    moc = _R(moc);
+    await rm.setMoc(moc);
+  }
   const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
   const policyPoolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await policyPool.config());
   await policyPoolConfig.addRiskModule(rm.address);
@@ -247,6 +257,28 @@ async function deployAaveAssetManager(opts, hre) {
     opts.swapRouter,
   ]
   return deployAssetManager(opts, hre);
+}
+
+async function deployWhitelist({verify, wlClass, poolAddress, extraConstructorArgs, extraArgs}, hre) {
+  extraArgs = extraArgs || [];
+  extraConstructorArgs = extraConstructorArgs || [];
+  const Whitelist = await hre.ethers.getContractFactory(wlClass);
+  const wl = await hre.upgrades.deployProxy(Whitelist, [
+    ...extraArgs
+  ], {
+    kind: 'uups',
+    unsafeAllow: ["delegatecall"],
+    constructorArgs: [poolAddress, ...extraConstructorArgs]
+  });
+
+  await wl.deployed();
+  await logContractCreated(hre, `${wlClass}`, wl.address);
+  if (verify)
+    await verifyContract(hre, wl, true, [poolAddress, ...extraConstructorArgs]);
+  const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
+  const policyPoolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await policyPool.config());
+  await policyPoolConfig.setLPWhitelist(wl.address);
+  return wl.address;
 }
 
 async function trustfullPolicy({rmAddress, payout, premium, lossProb, expiration, customer}, hre) {
@@ -405,6 +437,7 @@ function add_task() {
     .addOptionalParam("scrInterestRate", "Interest Rate for RM", 0.05, types.float)
     .addOptionalParam("maxScrPerPolicy", "Max SCR Per policy", 10000, types.float)
     .addOptionalParam("scrLimit", "Total SCR for the RM", 1e6, types.float)
+    .addOptionalParam("moc", "Margin of Conservativism", 1.0, types.float)
     .addParam("wallet", "RM address", types.address)
     .addOptionalParam("sharedCoverageMinPercentage", "Shared coverage minimum percentage", 0.0, types.float)
     .setAction(deployRiskModule);
@@ -419,6 +452,7 @@ function add_task() {
     .addOptionalParam("scrInterestRate", "Interest Rate for RM", 0.05, types.float)
     .addOptionalParam("maxScrPerPolicy", "Max SCR Per policy", 10000, types.float)
     .addOptionalParam("scrLimit", "Total SCR for the RM", 1e6, types.float)
+    .addOptionalParam("moc", "Margin of Conservativism", 1.0, types.float)
     .addParam("wallet", "RM address", types.address)
     .addOptionalParam("sharedCoverageMinPercentage", "Shared coverage minimum percentage", 0.0, types.float)
     .addParam("linkToken", "LINK address", types.address)
@@ -464,6 +498,12 @@ function add_task() {
                       "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506", types.address)
     .setAction(deployAaveAssetManager);
 
+  task("deploy:whitelist", "Deploys a Whitelisting contract")
+    .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
+    .addOptionalParam("wlClass", "Whitelisting contract", "LPManualWhitelist", types.str)
+    .addParam("poolAddress", "PolicyPool Address", types.address)
+    .setAction(deployWhitelist);
+
   task("ens:trustfullPolicy", "Creates a TrustfulRiskModule Policy")
     .addParam("rmAddress", "RiskModule address", types.address)
     .addParam("payout", "Payout for customer in case policy is triggered", undefined, types.int)
@@ -502,6 +542,12 @@ function add_task() {
     .addParam("etkAddress", "EToken address", types.address)
     .addParam("amount", "Amount to Deposit", undefined, types.int)
     .setAction(deposit);
+
+  task("ens:grantRole", "Grants a given role")
+    .addParam("contractAddress", "Contract", undefined, types.address)
+    .addParam("role", "Role", types.str)
+    .addParam("account", "Account", undefined, types.address)
+    .setAction(grantRoleTask);
 }
 
 module.exports = {add_task};

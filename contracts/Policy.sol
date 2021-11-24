@@ -7,6 +7,7 @@ import {IRiskModule} from "../interfaces/IRiskModule.sol";
  * @title Policy library
  * @dev Library for PolicyData struct. This struct represents an active policy, how the premium is
  *      distributed, the probability of payout, duration and how the capital is locked.
+ * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
 library Policy {

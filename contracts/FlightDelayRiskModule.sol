@@ -9,6 +9,7 @@ import {ChainlinkClientUpgradeable} from "./dependencies/ChainlinkClientUpgradea
 /**
  * @title Flight Delay Risk Module
  * @dev Risk Module that resolves policy based in actualarrivaldate of flight
+ * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
 contract FlightDelayRiskModule is RiskModule, ChainlinkClientUpgradeable {

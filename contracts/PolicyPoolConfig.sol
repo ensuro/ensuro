@@ -14,8 +14,9 @@ import {IPolicyPoolComponent} from "../interfaces/IPolicyPoolComponent.sol";
 import {WadRayMath} from "./WadRayMath.sol";
 
 /**
- * @title PolicyPool Access roles
- * @dev Contract that holds the access roles for PolicyPool and other components of the protocol
+ * @title PolicyPoolConfig - Protocol access roles and other settings/components
+ * @dev Contract that holds the access roles for PolicyPool and other components of the protocol.
+ * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
 contract PolicyPoolConfig is
@@ -76,6 +77,10 @@ contract PolicyPoolConfig is
     _treasury = treasury_;
   }
 
+  /**
+   * @dev This function can be called only once in contract's lifetime. It links the PolicyPoolConfig with the
+   *      PolicyPool contract. It's called in PolicyPool initialization.
+   */
   function connect() external override {
     require(
       address(_policyPool) == address(0) || address(_policyPool) == _msgSender(),

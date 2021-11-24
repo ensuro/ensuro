@@ -9,6 +9,7 @@ import {IEToken} from "../interfaces/IEToken.sol";
 /**
  * @title Manual Whitelisting contract
  * @dev LP addresses are whitelisted (and un-whitelisted) manually with transactions by user with given role
+ * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
 contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
@@ -18,6 +19,7 @@ contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
 
   event LPWhitelisted(address provider, bool whitelisted);
 
+  /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
   constructor(IPolicyPool policyPool_) PolicyPoolComponent(policyPool_) {}
 

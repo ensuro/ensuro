@@ -10,8 +10,13 @@ import {IInsolvencyHook} from "../interfaces/IInsolvencyHook.sol";
 import {WadRayMath} from "./WadRayMath.sol";
 
 /**
- * @title Ensuro ERC20 EToken
- * @dev Implementation of the interest/earnings bearing token for the Ensuro protocol
+ * @title Ensuro ERC20 EToken - interest-bearing token
+ * @dev Implementation of the interest/earnings bearing token for the Ensuro protocol.
+ *      The _scaleFactor scales the balances stored in _balances. _scaleFactor grows continuoulsly at
+ *      _tokenInterestRate.
+ *      Every operation that changes the utilization rate (_scr/totalSupply) or the _scrInterestRate, updates
+ *      first the _scaleFactor accumulating the interest accrued since _lastScaleUpdate.
+ * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
 contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
@@ -24,22 +29,22 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
   // Attributes taken from ERC20
   mapping(address => uint256) private _balances;
   mapping(address => mapping(address => uint256)) private _allowances;
-  uint256 private _totalSupply;
+  uint256 private _totalSupply; // non-scaled totalSupply
 
   string private _name;
   string private _symbol;
 
-  uint40 internal _expirationPeriod;
+  uint40 internal _expirationPeriod; // in seconds, the maximum duration of policies this eToken can back up
   uint256 internal _scaleFactor; // in Ray
   uint40 internal _lastScaleUpdate;
 
-  uint256 internal _scr; // in Wad
-  uint256 internal _scrInterestRate; // in Ray
-  uint256 internal _tokenInterestRate; // in Ray
+  uint256 internal _scr; // in Wad - Capital locked as Solvency Capital Requirement of backed up policies
+  uint256 internal _scrInterestRate; // in Ray - Interest rate received in exchange of solvency capital
+  uint256 internal _tokenInterestRate; // in Ray - Overall interest rate of the token
   uint256 internal _liquidityRequirement; // in Ray - Liquidity requirement to lock more than SCR
   uint256 internal _maxUtilizationRate; // in Ray - Maximum SCR/totalSupply rate for backup up new policies
 
-  uint256 internal _poolLoan; // in Wad
+  uint256 internal _poolLoan; // in Wad - Capital that was used to pay defaults of the premium pool. Took as a loan.
   uint256 internal _poolLoanInterestRate; // in Ray
   uint256 internal _poolLoanScale; // in Ray
   uint40 internal _poolLoanLastUpdate;
