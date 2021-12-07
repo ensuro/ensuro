@@ -452,6 +452,10 @@ class EToken(ERC20Token):
     def set_max_utilization_rate(self, new_rate):
         self.max_utilization_rate = new_rate
 
+    @property
+    def utilization_rate(self):
+        return (self.scr // self.total_supply()).to_ray()
+
     def get_investable(self):
         return self.scr + self.ocean + self.get_pool_loan()
 

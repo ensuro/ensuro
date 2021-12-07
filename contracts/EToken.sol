@@ -495,6 +495,10 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
     return _maxUtilizationRate;
   }
 
+  function utilizationRate() public view returns (uint256) {
+    return _scr.wadDiv(this.totalSupply()).rayToWad();
+  }
+
   function lockScr(uint256 policyInterestRate, uint256 scrAmount) external override onlyPolicyPool {
     require(scrAmount <= this.ocean(), "Not enought OCEAN to cover the SCR");
     _updateCurrentScale();
