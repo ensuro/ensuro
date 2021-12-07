@@ -1427,6 +1427,61 @@ def test_expire_policy(tenv):
 
     return locals()
 
+def test_expire_policy_payout(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Flight Insurance
+        scr_percentage: "0.1"
+        ensuro_fee: "0.05"
+        scr_interest_rate: "0.01"
+        wallet: "MGA"
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 6000
+        initial_balances:
+        - user: LP1
+          amount: 1000
+        - user: LP2
+          amount: 1000
+        - user: LP3
+          amount: 1000
+        - user: CUST1
+          amount: 100
+    etokens:
+      - name: eUSD1YEAR
+        expiration_period: 31536000
+    """
+
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    etk = pool.etokens["eUSD1YEAR"]
+    USD = pool.currency
+    rm = pool.config.risk_modules["Flight Insurance"]
+    rm.grant_role("PRICER_ROLE", rm.owner)
+    rm.grant_role("RESOLVER_ROLE", rm.owner)
+    pool.config.grant_role("LEVEL2_ROLE", rm.owner)  # For setting moc
+
+    with rm.as_(rm.owner):
+        rm.moc = _R("1.1")
+
+    pool.currency.approve("LP1", pool.contract_id, _W(1000))
+
+    assert pool.deposit("eUSD1YEAR", "LP1", _W(1000)) == _W(1000)
+
+    pool.currency.approve("CUST1", pool.contract_id, _W(100))
+    policy = rm.new_policy(
+        payout=_W(2100), premium=_W(100), customer="CUST1",
+        loss_prob=_R("0.03"), expiration=timecontrol.now + 10 * DAY
+    )
+
+    timecontrol.fast_forward(12 * DAY)
+    with pytest.raises(RevertError, match="Can't pay expired policy"):
+        rm.resolve_policy(policy.id, True)
+
+    rm.resolve_policy(policy.id, False)
+
+
 
 def test_withdraw_won_premiums(tenv):
     if is_brownie_coverage_enabled(tenv):

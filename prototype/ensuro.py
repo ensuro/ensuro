@@ -682,6 +682,8 @@ class PolicyPool(AccessControlContract):
 
         customer_won = payout > Wad(0)
 
+        require(payout == 0 or policy.expiration > time_control.now, "Can't pay expired policy")
+
         self.active_premiums -= policy.premium
         self.active_pure_premiums -= policy.pure_premium
 
