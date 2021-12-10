@@ -444,13 +444,21 @@ def test_max_utilization_rate(tenv):
         with etk.thru_policy_pool():
             etk.lock_scr(policy, policy.scr)
 
-    with etk.thru_policy_pool():
-        etk.deposit("LP1", _W(1000))
-
     policy = tenv.policy_factory(scr=_W(600), interest_rate=_R("0.0365"),
                                  expiration=tenv.time_control.now + WEEK)
     with etk.thru_policy_pool():
         etk.lock_scr(policy, policy.scr)
+
+    etk.utilization_rate.assert_equal(_R("0.6"))
+    with etk.thru_policy_pool():
+        etk.deposit("LP1", _W(1000))
+    
+    etk.utilization_rate.assert_equal(_R("0.3"))
+
+    expected_balance = _W(2000) - _W("600") * _W("1.0365")
+    with etk.thru_policy_pool():
+        etk.withdraw("LP1", _W(1400)).assert_equal(expected_balance)
+
 
 
 def test_unlock_scr(tenv):
