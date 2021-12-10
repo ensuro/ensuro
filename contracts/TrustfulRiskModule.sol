@@ -66,7 +66,7 @@ contract TrustfulRiskModule is RiskModule {
     onlyRole(RESOLVER_ROLE)
     whenNotPaused
   {
-    return _policyPool.resolvePolicy(policyId, payout);
+    return _resolvePolicy(policyId, payout);
   }
 
   function resolvePolicyFullPayout(uint256 policyId, bool customerWon)
@@ -74,6 +74,6 @@ contract TrustfulRiskModule is RiskModule {
     onlyRole(RESOLVER_ROLE)
     whenNotPaused
   {
-    return _policyPool.resolvePolicyFullPayout(policyId, customerWon);
+    return _resolvePolicyFullPayout(policyId, customerWon);
   }
 }

@@ -12,6 +12,8 @@ import {Policy} from "../Policy.sol";
 import {ForwardProxy} from "./ForwardProxy.sol";
 
 contract PolicyPoolMock is IPolicyPool {
+  using Policy for Policy.PolicyData;
+
   uint256 public constant MAX_INT =
     0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
 
@@ -21,8 +23,9 @@ contract PolicyPoolMock is IPolicyPool {
   uint256 public policyCount;
   uint256 internal _totalETokenSupply;
   mapping(uint256 => Policy.PolicyData) internal policies;
+  mapping(uint256 => bytes32) internal policyHashes;
 
-  event NewPolicy(IRiskModule indexed riskModule, uint256 policyId);
+  event NewPolicy(IRiskModule indexed riskModule, Policy.PolicyData policy);
   event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, uint256 payout);
 
   constructor(IERC20Metadata currency_, IPolicyPoolConfig config_) {
@@ -81,37 +84,44 @@ contract PolicyPoolMock is IPolicyPool {
     address /* customer */
   ) external override returns (uint256) {
     policyCount++;
+    policy.id = policyCount;
     policies[policyCount] = policy;
     policies[policyCount].id = policyCount;
-    emit NewPolicy(IRiskModule(msg.sender), policyCount);
+    policyHashes[policyCount] = policy.hash();
+    emit NewPolicy(IRiskModule(msg.sender), policy);
     return policyCount;
   }
 
-  function getPolicy(uint256 policyId) external view override returns (Policy.PolicyData memory) {
+  /*  function getPolicy(uint256 policyId) external view override returns (Policy.PolicyData memory) {
     return policies[policyId];
   }
+*/
 
-  function _resolvePolicy(uint256 policyId, uint256 payout) internal {
-    Policy.PolicyData storage policy = policies[policyId];
+  function _resolvePolicy(Policy.PolicyData memory policy, uint256 payout) internal {
     require(policy.id != 0, "Policy not found");
+    require(policy.hash() == policyHashes[policy.id], "Hash doesn't match");
     require(
       msg.sender == address(policy.riskModule),
       "Only riskModule is authorized to resolve the policy"
     );
-    delete policies[policyId];
-    emit PolicyResolved(IRiskModule(msg.sender), policyId, payout);
+    delete policies[policy.id];
+    delete policyHashes[policy.id];
+    emit PolicyResolved(IRiskModule(msg.sender), policy.id, payout);
   }
 
   function receiveGrant(uint256) external pure override {
     revert("Not Implemented");
   }
 
-  function resolvePolicy(uint256 policyId, uint256 payout) external override {
-    _resolvePolicy(policyId, payout);
+  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external override {
+    _resolvePolicy(policy, payout);
   }
 
-  function resolvePolicyFullPayout(uint256 policyId, bool customerWon) external override {
-    return _resolvePolicy(policyId, customerWon ? policies[policyId].payout : 0);
+  function resolvePolicyFullPayout(Policy.PolicyData calldata policy, bool customerWon)
+    external
+    override
+  {
+    return _resolvePolicy(policy, customerWon ? policy.payout : 0);
   }
 
   function deposit(IEToken, uint256) external pure override {

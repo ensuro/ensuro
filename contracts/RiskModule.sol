@@ -35,6 +35,8 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
 
   address internal _wallet; // Address of the RiskModule provider
 
+  mapping(uint256 => Policy.PolicyData) private _policies;
+
   modifier validateParamsAfterChange() {
     _;
     _validateParameters();
@@ -292,6 +294,17 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     _totalScr += policy.scr;
     require(_totalScr <= _scrLimit, "RiskModule: SCR limit exceeded");
     uint256 policyId = _policyPool.newPolicy(policy, customer);
+    policy.id = policyId;
+    require(policy.id == policyId, "Error policy.id not set");
+    _policies[policyId] = policy;
     return policyId;
+  }
+
+  function _resolvePolicy(uint256 policyId, uint256 payout) internal {
+    _policyPool.resolvePolicy(_policies[policyId], payout);
+  }
+
+  function _resolvePolicyFullPayout(uint256 policyId, bool customerWon) internal {
+    _policyPool.resolvePolicyFullPayout(_policies[policyId], customerWon);
   }
 }

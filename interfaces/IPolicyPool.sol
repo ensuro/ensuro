@@ -18,13 +18,13 @@ interface IPolicyPool {
 
   function newPolicy(Policy.PolicyData memory policy, address customer) external returns (uint256);
 
-  function resolvePolicy(uint256 policyId, uint256 payout) external;
+  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external;
 
-  function resolvePolicyFullPayout(uint256 policyId, bool customerWon) external;
+  function resolvePolicyFullPayout(Policy.PolicyData calldata policy, bool customerWon) external;
 
   function receiveGrant(uint256 amount) external;
 
-  function getPolicy(uint256 policyId) external view returns (Policy.PolicyData memory);
+  // function getPolicy(uint256 policyId) external view returns (Policy.PolicyData memory);
 
   function getInvestable() external view returns (uint256);
 

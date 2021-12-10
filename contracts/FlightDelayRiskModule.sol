@@ -192,6 +192,6 @@ contract FlightDelayRiskModule is RiskModule, ChainlinkClientUpgradeable {
     bool customerWon = (actualArrivalDate <= 0 || // cancelled
       uint256(actualArrivalDate) > uint256(policy.expectedArrival + policy.tolerance)); // arrived after tolerance
 
-    _policyPool.resolvePolicyFullPayout(policyId, customerWon);
+    _resolvePolicyFullPayout(policyId, customerWon);
   }
 }
