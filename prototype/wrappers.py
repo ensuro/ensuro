@@ -184,7 +184,7 @@ class EToken(IERC20):
 
 class Policy:
 
-    def __init__(self, id, payout, premium, scr, rm_coverage, loss_prob,
+    def __init__(self, id, payout, premium, scr, loss_prob,
                  pure_premium, premium_for_ensuro, premium_for_rm, premium_for_lps,
                  risk_module, start, expiration, address_book):
         self.id = id
@@ -192,7 +192,6 @@ class Policy:
         self.payout = Wad(payout)
         self.premium = Wad(premium)
         self.scr = Wad(scr)
-        self.rm_coverage = Wad(rm_coverage)
         self.loss_prob = Ray(loss_prob)
         self.start = start
         self.expiration = expiration
@@ -200,16 +199,6 @@ class Policy:
         self.premium_for_ensuro = Wad(premium_for_ensuro)
         self.premium_for_rm = Wad(premium_for_rm)
         self.premium_for_lps = Wad(premium_for_lps)
-
-    def _coverage_premium_split(self):
-        ens_premium = self.premium * (self.payout - self.rm_coverage) // self.payout
-        rm_premium = self.premium - ens_premium
-        return ens_premium, rm_premium
-
-    @property
-    def rm_scr(self):
-        ens_premium, rm_premium = self._coverage_premium_split()
-        return self.rm_coverage - rm_premium
 
     def premium_split(self):
         return self.pure_premium, self.premium_for_ensuro, self.premium_for_rm, self.premium_for_lps
@@ -236,21 +225,20 @@ class RiskModule(ETHWrapper):
     initialize_args = (
         ("name", "string"), ("scr_percentage", "ray"), ("ensuro_fee", "ray"),
         ("scr_interest_rate", "ray"), ("max_scr_per_policy", "amount"), ("scr_limit", "amount"),
-        ("wallet", "address"), ("shared_coverage_min_percentage", "ray")
+        ("wallet", "address")
     )
 
     def __init__(self, name, policy_pool, scr_percentage=_R(1), ensuro_fee=_R(0),
                  scr_interest_rate=_R(0), max_scr_per_policy=_W(1000000), scr_limit=_W(1000000),
-                 wallet="RM", shared_coverage_min_percentage=_R(0), owner="owner"):
+                 wallet="RM", owner="owner"):
         scr_percentage = _R(scr_percentage)
         ensuro_fee = _R(ensuro_fee)
         scr_interest_rate = _R(scr_interest_rate)
         max_scr_per_policy = _W(max_scr_per_policy)
         scr_limit = _W(scr_limit)
-        shared_coverage_min_percentage = _R(shared_coverage_min_percentage)
         super().__init__(owner, policy_pool.contract, name, scr_percentage, ensuro_fee,
                          scr_interest_rate,
-                         max_scr_per_policy, scr_limit, wallet, shared_coverage_min_percentage)
+                         max_scr_per_policy, scr_limit, wallet)
         self.policy_pool = policy_pool
         self._auto_from = self.owner
 
@@ -263,8 +251,6 @@ class RiskModule(ETHWrapper):
     scr_limit = MethodAdapter((), "amount", is_property=True)
     total_scr = MethodAdapter((), "amount", is_property=True)
     wallet = MethodAdapter((), "address", is_property=True)
-    shared_coverage_min_percentage = MethodAdapter((), "ray", is_property=True)
-    shared_coverage_percentage = MethodAdapter((), "ray", is_property=True)
 
     def new_policy(self, *args, **kwargs):
         receipt = self.new_policy_(*args, **kwargs)
@@ -316,18 +302,17 @@ class FlightDelayRiskModule(RiskModule):
 
     def __init__(self, name, policy_pool, scr_percentage=_R(1), ensuro_fee=_R(0),
                  scr_interest_rate=_R(0), max_scr_per_policy=_W(1000000), scr_limit=_W(1000000),
-                 wallet="RM", shared_coverage_min_percentage=_R(0), owner="owner",
+                 wallet="RM", owner="owner",
                  link_token=None, oracle_params=None):
         scr_percentage = _R(scr_percentage)
         ensuro_fee = _R(ensuro_fee)
         scr_interest_rate = _R(scr_interest_rate)
         max_scr_per_policy = _W(max_scr_per_policy)
         scr_limit = _W(scr_limit)
-        shared_coverage_min_percentage = _R(shared_coverage_min_percentage)
         super(RiskModule, self).__init__(
             owner, policy_pool.contract, name, scr_percentage, ensuro_fee,
             scr_interest_rate,
-            max_scr_per_policy, scr_limit, wallet, shared_coverage_min_percentage,
+            max_scr_per_policy, scr_limit, wallet,
             link_token, oracle_params
         )
         self.policy_pool = policy_pool

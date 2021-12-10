@@ -23,11 +23,5 @@ interface IRiskModule {
 
   function totalScr() external view returns (uint256);
 
-  function sharedCoverageMinPercentage() external view returns (uint256);
-
-  function sharedCoveragePercentage() external view returns (uint256);
-
-  function sharedCoverageScr() external view returns (uint256);
-
   function wallet() external view returns (address);
 }

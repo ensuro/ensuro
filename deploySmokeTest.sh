@@ -5,6 +5,12 @@ die() {
     exit 1
 }
 
+dieOnError() {
+    if [ $? -ne 0 ]; then
+        die $1
+    fi
+}
+
 NETWORK=${NETWORK:-localhost}
 
 if [ $NETWORK == "localhost" ]; then

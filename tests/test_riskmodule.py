@@ -61,7 +61,7 @@ def test_getset_rm_parameters(tenv):
         name="Roulette", scr_percentage=_R(1), ensuro_fee=_R("0.03"),
         scr_interest_rate=_R("0.02"),
         max_scr_per_policy=_W(1000), scr_limit=_W(1000000),
-        wallet="CASINO", shared_coverage_min_percentage=_R("0.5")
+        wallet="CASINO"
     )
     assert rm.name == "Roulette"
     assert rm.scr_percentage == _R(1)
@@ -70,8 +70,6 @@ def test_getset_rm_parameters(tenv):
     assert rm.max_scr_per_policy == _W(1000)
     assert rm.scr_limit == _W(1000000)
     assert rm.wallet == "CASINO"
-    rm.shared_coverage_min_percentage.assert_equal(_R(1/2))
-    rm.shared_coverage_percentage.assert_equal(_R(1/2))
 
     rm.grant_role("RM_PROVIDER_ROLE", "CASINO")  # Grant the role to the casino owner
     tenv.pool_config.grant_role("LEVEL2_ROLE", "L2_USER")  # Grant the role to the casino owner
@@ -85,8 +83,6 @@ def test_getset_rm_parameters(tenv):
         ("max_scr_per_policy", "L2_USER", _W(2000)),
         ("scr_limit", "L2_USER", _W(10000000)),
         ("wallet", "CASINO", "CASINO_POCKET"),
-        ("shared_coverage_min_percentage", "L2_USER", _R("0.3")),
-        ("shared_coverage_percentage", "CASINO", _R("0.35")),
     ]
 
     for attr_name, authorized_user, new_value in test_attributes:
@@ -102,18 +98,9 @@ def test_getset_rm_parameters(tenv):
 
         assert getattr(rm, attr_name) == new_value
 
-    with rm.as_("CASINO"), pytest.raises(RevertError, match="less than minimum"):
-        rm.shared_coverage_percentage = _R("0.25")  # Should be reverted because < 0.3 min_percentage
-
     if tenv.kind == "ethereum":
         with rm.as_("CASINO"), pytest.raises(RevertError):
             rm.wallet = None
-
-    with rm.as_("CASINO"):
-        rm.shared_coverage_percentage = _R("0.45")
-
-    rm.shared_coverage_percentage == _R("0.45")
-    rm.shared_coverage_min_percentage == _R("0.3")
 
 
 def test_getset_rm_parameters_tweaks(tenv):
@@ -123,7 +110,7 @@ def test_getset_rm_parameters_tweaks(tenv):
         name="Roulette", scr_percentage=_R(1), ensuro_fee=_R("0.03"),
         scr_interest_rate=_R("0.02"),
         max_scr_per_policy=_W(1000), scr_limit=_W(1e6),  # 1m
-        wallet="CASINO", shared_coverage_min_percentage=_R("0.5")
+        wallet="CASINO"
     )
     tenv.pool_config.grant_role("LEVEL1_ROLE", "L1_USER")
     tenv.pool_config.grant_role("LEVEL2_ROLE", "L2_USER")
@@ -144,7 +131,6 @@ def test_getset_rm_parameters_tweaks(tenv):
         ("moc", _R("2.1")),  # [0.5, 2]
         ("ensuro_fee", _R("1.01")),  # <= 1
         ("scr_interest_rate", _R("1.01")),  # <= 1
-        ("shared_coverage_min_percentage", _R("1.01")),  # <= 1
     ]
 
     for attr_name, attr_value in test_validations:
@@ -159,7 +145,6 @@ def test_getset_rm_parameters_tweaks(tenv):
         ("ensuro_fee", _R("0.05")),  # 30% allowed
         ("scr_limit", _W(2e6)),  # 10% allowed - previous 1e6
         ("max_scr_per_policy", _W(1400)),  # 30% allowed
-        ("shared_coverage_min_percentage", _R("0.25")),  # 30% allowed
     ]
 
     for attr_name, attr_value in test_exceeded_tweaks:
@@ -167,8 +152,6 @@ def test_getset_rm_parameters_tweaks(tenv):
             setattr(rm, attr_name, attr_value)
 
     rm.grant_role("RM_PROVIDER_ROLE", "CASINO")  # Grant the role to the casino owner
-    with rm.as_("CASINO"):
-        rm.shared_coverage_percentage = _R("0.8")  # To avoid min_percentage validation error
 
     assert rm.moc == _R("1")
 
@@ -180,7 +163,6 @@ def test_getset_rm_parameters_tweaks(tenv):
         ("ensuro_fee", _R("0.025")),  # 30% allowed - previous 3%
         ("scr_limit", _W(1.05e6)),  # 10% allowed - previous 1.05e6
         ("max_scr_per_policy", _W(1299)),  # 30% allowed - previous 1000
-        ("shared_coverage_min_percentage", _R("0.6")),  # 30% allowed - previous 50%
     ]
 
     for attr_name, attr_value in test_ok_tweaks:
@@ -196,8 +178,6 @@ def test_getset_rm_parameters_tweaks(tenv):
         ("ensuro_fee", _R("0.01")),
         ("scr_limit", _W(3e6)),
         ("max_scr_per_policy", _W(500)),
-        ("shared_coverage_min_percentage", _R(0)),
-        ("shared_coverage_min_percentage", _R("0.1")),
     ]
 
     for attr_name, attr_value in test_ok_l2_changes:
@@ -238,7 +218,7 @@ def test_avoid_repeated_tweaks(tenv):
         name="Roulette", scr_percentage=_R(1), ensuro_fee=_R("0.03"),
         scr_interest_rate=_R("0.02"),
         max_scr_per_policy=_W(1000), scr_limit=_W(1e6),  # 1m
-        wallet="CASINO", shared_coverage_min_percentage=_R("0.5")
+        wallet="CASINO"
     )
     tenv.pool_config.grant_role("LEVEL3_ROLE", "L3_USER")
 
@@ -268,7 +248,7 @@ def test_new_policy(tenv):
         name="Roulette", scr_percentage=_R(1), ensuro_fee=_R("0.02"),
         scr_interest_rate=_R("0.01"),
         max_scr_per_policy=_W(1000), scr_limit=_W(1000000),
-        wallet="CASINO", shared_coverage_min_percentage=_R("0.6")
+        wallet="CASINO"
     )
     assert rm.name == "Roulette"
     tenv.currency.transfer(tenv.currency.owner, "CUST1", _W(1))
@@ -286,11 +266,10 @@ def test_new_policy(tenv):
     policy.premium.assert_equal(_W(1))
     policy.payout.assert_equal(_W(36))
     policy.loss_prob.assert_equal(_R(1/37))
-    policy.rm_coverage.assert_equal(_W(36 * .6))
-    policy.scr.assert_equal(_W(35 * .4))
+    policy.scr.assert_equal(_W(35))
     assert policy.expiration == expiration
     assert (tenv.time_control.now - policy.start) < 60  # Must be now, giving 60 seconds tolerance
-    policy.pure_premium.assert_equal(_W(36 * .4 * 1/37))
+    policy.pure_premium.assert_equal(_W(36 * 1/37))
     policy.premium_for_ensuro.assert_equal(policy.pure_premium * _W("0.02"))
     policy.premium_for_lps.assert_equal(policy.scr * _W("0.01") * _W(7/365))
     policy.premium_for_rm.assert_equal(
@@ -312,7 +291,7 @@ def test_moc(tenv):
         name="Roulette", scr_percentage=_R(1), ensuro_fee=_R("0.01"),
         scr_interest_rate=_R(0),
         max_scr_per_policy=_W(1000), scr_limit=_W(1000000),
-        wallet="CASINO", shared_coverage_min_percentage=_R("0.6")
+        wallet="CASINO"
     )
     tenv.currency.transfer(tenv.currency.owner, "CUST1", _W(1))
     tenv.currency.approve("CUST1", rm.policy_pool, _W(1))
@@ -324,8 +303,8 @@ def test_moc(tenv):
 
     policy.premium.assert_equal(_W(1))
     policy.loss_prob.assert_equal(_R(1/37))
-    policy.pure_premium.assert_equal(_W(36 * .4 * 1/37))
-    policy.premium_for_ensuro.assert_equal(_W(36 * .4 * 1/37 * 0.01))
+    policy.pure_premium.assert_equal(_W(36 * 1/37))
+    policy.premium_for_ensuro.assert_equal(_W(36 * 1/37 * 0.01))
 
     with pytest.raises(RevertError, match="missing role"):
         rm.moc = _R("1.01")
@@ -341,7 +320,7 @@ def test_moc(tenv):
 
     policy2.premium.assert_equal(_W(1))
     policy2.loss_prob.assert_equal(_R(1/37))
-    policy2.pure_premium.assert_equal(_W(36 * .4 * 1/37) * _W("1.01"))
-    policy2.premium_for_ensuro.assert_equal(_W(36 * .4 * 1/37 * 0.01) * _W("1.01"))
+    policy2.pure_premium.assert_equal(_W(36 * 1/37) * _W("1.01"))
+    policy2.premium_for_ensuro.assert_equal(_W(36 * 1/37 * 0.01) * _W("1.01"))
 
 # TODO: further tests on _newPolicy validations

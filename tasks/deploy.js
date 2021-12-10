@@ -170,7 +170,7 @@ async function deployEToken({
 
 async function deployRiskModule({
       verify, rmClass, rmName, poolAddress, scrPercentage, scrInterestRate, ensuroFee, maxScrPerPolicy,
-      scrLimit, moc, wallet, sharedCoverageMinPercentage, extraArgs
+      scrLimit, moc, wallet, extraArgs
   }, hre) {
   extraArgs = extraArgs || [];
   const RiskModule = await hre.ethers.getContractFactory(rmClass);
@@ -182,7 +182,6 @@ async function deployRiskModule({
     _W(maxScrPerPolicy),
     _W(scrLimit),
     wallet,
-    _R(sharedCoverageMinPercentage),
     ...extraArgs
   ], {
     kind: 'uups',
@@ -439,7 +438,6 @@ function add_task() {
     .addOptionalParam("scrLimit", "Total SCR for the RM", 1e6, types.float)
     .addOptionalParam("moc", "Margin of Conservativism", 1.0, types.float)
     .addParam("wallet", "RM address", types.address)
-    .addOptionalParam("sharedCoverageMinPercentage", "Shared coverage minimum percentage", 0.0, types.float)
     .setAction(deployRiskModule);
 
   task("deploy:fdRiskModule", "Deploys and injects a Flight Delay RiskModule")
@@ -454,7 +452,6 @@ function add_task() {
     .addOptionalParam("scrLimit", "Total SCR for the RM", 1e6, types.float)
     .addOptionalParam("moc", "Margin of Conservativism", 1.0, types.float)
     .addParam("wallet", "RM address", types.address)
-    .addOptionalParam("sharedCoverageMinPercentage", "Shared coverage minimum percentage", 0.0, types.float)
     .addParam("linkToken", "LINK address", types.address)
     .addParam("oracle", "Oracle address", types.address)
     .addOptionalParam("oracleFee", "Oracle Fee", 0.1, types.float)
