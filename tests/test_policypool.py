@@ -1,4 +1,3 @@
-import sys
 from collections import namedtuple
 from io import StringIO
 import pytest
@@ -323,82 +322,6 @@ def test_not_accept_rm(tenv):
     eUSD1MONTH.scr.assert_equal(policy.scr * _W(1/4), decimals=1)
     eUSD1WEEK.scr.assert_equal(policy.scr * _W(1/4), decimals=1)
     total_scr.assert_equal(policy.scr)
-
-
-def test_risk_module_shared_coverage(tenv):
-    YAML_SETUP = """
-    risk_modules:
-      - name: Roulette
-        scr_percentage: 1
-        ensuro_fee: 0.01
-        max_scr_per_policy: 1000
-        scr_limit: 1200
-        shared_coverage_min_percentage: .25
-    currency:
-        name: USD
-        symbol: $
-        initial_supply: 20000
-        initial_balances:
-        - user: LP1
-          amount: 10000
-        - user: RM
-          amount: 5000
-        - user: CUST1
-          amount: 200
-    etokens:
-      - name: eUSD1YEAR
-        expiration_period: 31536000
-    """
-
-    pool = load_config(StringIO(YAML_SETUP), tenv.module)
-    timecontrol = tenv.time_control
-    rm = pool.config.risk_modules["Roulette"]
-    rm.grant_role("PRICER_ROLE", rm.owner)
-    rm.grant_role("RESOLVER_ROLE", rm.owner)
-
-    USD = pool.currency
-
-    USD.approve("LP1", pool.contract_id, _W(10000))
-    assert pool.deposit("eUSD1YEAR", "LP1", _W(10000)) == _W(10000)
-
-    USD.approve("CUST1", pool.contract_id, _W(200))
-
-    # Should fail if more than max for policy
-    with pytest.raises(RevertError, match="maximum per policy"):
-        policy = rm.new_policy(
-            payout=_W(2100), premium=_W(100), customer="CUST1",
-            loss_prob=_R("0.02"), expiration=timecontrol.now + 10 * DAY
-        )
-
-    USD.approve("RM", pool.contract_id, _W(1000))
-    policy = rm.new_policy(
-        payout=_W(1100), premium=_W(100), customer="CUST1",
-        loss_prob=_R("0.02"), expiration=timecontrol.now + 10 * DAY
-    )
-    policy.rm_coverage.assert_equal(_W(1100) * _W("0.25"))
-    USD.balance_of("RM").assert_equal(_W(4750))  # 250 locked in the pool
-
-    policy.scr.assert_equal(_W(750))
-    pure_premium, for_ensuro, for_rm, for_lps = policy.premium_split()
-
-    pure_premium.assert_equal(_W(1100) * _W("0.75") * _W("0.02"))
-    rm_shared_premium = _W(100) * _W("0.25")
-    for_ensuro.assert_equal(pure_premium * _W("0.01"))
-    for_lps.assert_equal(_W(0))
-    for_rm.assert_equal(rm_shared_premium + _W(75) - pure_premium - for_ensuro)
-    assert (pure_premium + for_ensuro + for_rm + for_lps) == policy.premium
-
-    # Another policy with the same parameters fails because of SCR limit
-    with pytest.raises(RevertError, match="SCR limit exceeded"):
-        policy = rm.new_policy(
-            payout=_W(1100), premium=_W(100), customer="CUST1",
-            loss_prob=_R("0.02"), expiration=timecontrol.now + 10 * DAY
-        )
-
-    rm.resolve_policy(policy.id, False)
-
-    USD.balance_of("RM").assert_equal(_W(5000) + for_rm)  # received back the SCR + part of premium
-    USD.balance_of("ENS").assert_equal(for_ensuro)
 
 
 def _calculate_shares(balances, total_supply):
@@ -848,102 +771,10 @@ def test_partial_payout(tenv):
         _W(1800) + _W(100/37)
     )  # The pool owes the loss + the capital gain
 
-
-def test_partial_payout_shared_coverage(tenv):
-    YAML_SETUP = """
-    risk_modules:
-      - name: Roulette
-        scr_percentage: "0.8"
-        ensuro_fee: "0.01"
-        shared_coverage_min_percentage: ".25"
-        scr_interest_rate: "0.05"
-    currency:
-        name: USD
-        symbol: $
-        initial_supply: 10000
-        initial_balances:
-        - user: LP1
-          amount: 3500
-        - user: RM
-          amount: 5000
-        - user: CUST1
-          amount: 100
-    etokens:
-      - name: eUSD1WEEK
-        expiration_period: 604800
-      - name: eUSD1MONTH
-        expiration_period: 2592000
-      - name: eUSD1YEAR
-        expiration_period: 31536000
-    """
-
-    pool = load_config(StringIO(YAML_SETUP), tenv.module)
-    timecontrol = tenv.time_control
-    rm = pool.config.risk_modules["Roulette"]
-    rm.grant_role("PRICER_ROLE", rm.owner)
-    rm.grant_role("RESOLVER_ROLE", rm.owner)
-
-    usd = pool.currency
-
-    usd.approve("LP1", pool.contract_id, _W(3500))
-
-    assert pool.deposit("eUSD1YEAR", "LP1", _W(3500)) == _W(3500)
-
-    usd.approve("CUST1", pool.contract_id, _W(100))
-    usd.approve("RM", pool.contract_id, _W(1250))
-    policy = rm.new_policy(
-        payout=_W(5100), premium=_W(100), customer="CUST1",
-        loss_prob=_R(1/60), expiration=timecontrol.now + WEEK
-    )
-    assert usd.balance_of("CUST1") == _W(0)
-    assert usd.balance_of("RM") == _W(5000 - 1250)
-    policy.pure_premium.assert_equal(_W(5100) * _W("0.75") * _W(1/60))
-    policy.rm_coverage.assert_equal(_W(5100) * _W("0.25"))
-    policy.scr.assert_equal(_W(5100 - 100) * _W("0.75") * _W("0.8"))
-    policy.premium_for_lps.assert_equal(policy.scr * _W("0.05") * _W(7/365))
-    policy.premium_for_ensuro.assert_equal(policy.pure_premium * _W("0.01"))
-    policy.premium_for_rm.assert_equal(
-        _W(25) + _W(75) - policy.premium_for_lps - policy.premium_for_ensuro - policy.pure_premium
-    )
-
-    assert pool.etokens["eUSD1YEAR"].ocean == _W(500)
-    assert pool.etokens["eUSD1YEAR"].scr == _W(3000)
-    timecontrol.fast_forward(WEEK)
-
-    rm.resolve_policy(policy.id, _W(3000))
-    assert usd.balance_of("CUST1") == _W(3000)
-    usd.balance_of("RM").assert_equal(
-        _W(5000) - (_W(3000) - (_W(100) - policy.premium_for_lps)) * _W("0.25")
-    )
-    p1_net_for_rm = (_W(3000) - (_W(100) - policy.premium_for_lps)) * _W("0.25")
-
-    pool.etokens["eUSD1YEAR"].scr.assert_equal(_W(0))
-    pool.etokens["eUSD1YEAR"].get_pool_loan().assert_equal(
-         (
-             _W(3000) - policy.pure_premium - policy.premium_for_ensuro - policy.premium_for_rm
-         ) * _W("0.75")
-    )  # The pool owes the loss + the capital gain
-    pool.etokens["eUSD1YEAR"].ocean.assert_equal(
-        _W(3500) - pool.etokens["eUSD1YEAR"].get_pool_loan() + policy.premium_for_lps
-    )
-
-    # Test another policy with actual payout less than non-capital-premiums
-    usd.approve("CUST1", pool.contract_id, _W(100))
-    usd.approve("RM", pool.contract_id, _W(500))
-    policy = rm.new_policy(
-        payout=_W(2100), premium=_W(100), customer="CUST1",
-        loss_prob=_R(1/60), expiration=timecontrol.now + WEEK
-    )
-
-    assert pool.won_pure_premiums == _W(0)
-
-    usd.balance_of("RM").assert_equal(_W(5000) - p1_net_for_rm - _W(500))
-    assert usd.balance_of("CUST1") == _W(2900)
-    rm.resolve_policy(policy.id, _W(50))
-    timecontrol.fast_forward(WEEK)
-
-    pool.won_pure_premiums.assert_equal((policy.premium - policy.premium_for_lps) - _W(50))
-    usd.balance_of("RM").assert_equal(_W(5000) - p1_net_for_rm)  # Same as before policy
+# TODO: more test cases of partial payout
+# - when payout < premium and payout > (premium - policy.premium_for_lps)
+# - when payout < premium and payout > (policy.pure_premium)
+# - when payout < premium and payout <= (policy.pure_premium)
 
 
 @set_precision(Wad, 3)

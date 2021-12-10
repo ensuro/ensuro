@@ -33,10 +33,6 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
   uint256 internal _scrLimit; // in wad - Max SCR to be allocated to this module
   uint256 internal _totalScr; // in wad - Current SCR allocated to this module
 
-  uint256 internal _sharedCoverageMinPercentage; // in ray - minimal % of SCR that must be covered by the RM
-  uint256 internal _sharedCoveragePercentage; // in ray - current % of SCR that will be covered by the RM.
-  // Always >= _sharedCoverageMinPercentage
-  uint256 internal _sharedCoverageScr; // in wad - Current SCR covered by the Risk Module
   address internal _wallet; // Address of the RiskModule provider
 
   modifier validateParamsAfterChange() {
@@ -58,7 +54,6 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
    * @param maxScrPerPolicy_ Max SCR to be allocated to this module (in wad)
    * @param scrLimit_ Max SCR to be allocated to this module (in wad)
    * @param wallet_ Address of the RiskModule provider
-   * @param sharedCoverageMinPercentage_ minimal % of SCR that must be covered by the RM
    */
   // solhint-disable-next-line func-name-mixedcase
   function __RiskModule_init(
@@ -68,8 +63,7 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     uint256 scrInterestRate_,
     uint256 maxScrPerPolicy_,
     uint256 scrLimit_,
-    address wallet_,
-    uint256 sharedCoverageMinPercentage_
+    address wallet_
   ) internal initializer {
     __AccessControl_init();
     __PolicyPoolComponent_init();
@@ -80,8 +74,7 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
       scrInterestRate_,
       maxScrPerPolicy_,
       scrLimit_,
-      wallet_,
-      sharedCoverageMinPercentage_
+      wallet_
     );
   }
 
@@ -93,8 +86,7 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     uint256 scrInterestRate_,
     uint256 maxScrPerPolicy_,
     uint256 scrLimit_,
-    address wallet_,
-    uint256 sharedCoverageMinPercentage_
+    address wallet_
   ) internal initializer {
     _name = name_;
     _scrPercentage = scrPercentage_;
@@ -105,9 +97,6 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     _scrLimit = scrLimit_;
     _totalScr = 0;
     _wallet = wallet_;
-    _sharedCoverageMinPercentage = sharedCoverageMinPercentage_;
-    _sharedCoveragePercentage = sharedCoverageMinPercentage_;
-    _sharedCoverageScr = 0;
     _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
     _validateParameters();
   }
@@ -126,18 +115,6 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     require(_scrInterestRate <= WadRayMath.RAY, "Validation: scrInterestRate must be <= 1 (100%)");
     // _maxScrPerPolicy no limits
     require(_scrLimit >= _totalScr, "Validation: scrLimit can't be less than actual totalScr");
-    require(
-      _sharedCoverageMinPercentage <= WadRayMath.RAY,
-      "Validation: sharedCoverageMinPercentage <= 1"
-    );
-    require(
-      _sharedCoveragePercentage <= WadRayMath.RAY,
-      "Validation: sharedCoveragePercentage <= 1"
-    );
-    require(
-      _sharedCoveragePercentage >= _sharedCoverageMinPercentage,
-      "Validation: sharedCoveragePercentage must be >= sharedCoverageMinPercentage"
-    );
     require(_wallet != address(0), "Validation: Wallet can't be zero address");
   }
 
@@ -171,18 +148,6 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
 
   function totalScr() public view override returns (uint256) {
     return _totalScr;
-  }
-
-  function sharedCoverageMinPercentage() public view override returns (uint256) {
-    return _sharedCoverageMinPercentage;
-  }
-
-  function sharedCoveragePercentage() public view override returns (uint256) {
-    return _sharedCoveragePercentage;
-  }
-
-  function sharedCoverageScr() public view override returns (uint256) {
-    return _sharedCoverageScr;
   }
 
   function wallet() public view override returns (address) {
@@ -289,42 +254,6 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setScrLimit, newScrLimit, tweak);
   }
 
-  function setSharedCoverageMinPercentage(uint256 newSCMP)
-    external
-    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-    validateParamsAfterChange
-  {
-    bool tweak = !hasPoolRole(LEVEL2_ROLE);
-    require(
-      !tweak || _isTweakRay(_sharedCoverageMinPercentage, newSCMP, 3e26),
-      "Tweak exceeded: sharedCoverageMinPercentage tweaks only up to 30%"
-    );
-    _sharedCoverageMinPercentage = newSCMP;
-    if (newSCMP > _sharedCoveragePercentage) _sharedCoveragePercentage = newSCMP;
-    _parameterChanged(
-      IPolicyPoolConfig.GovernanceActions.setSharedCoverageMinPercentage,
-      newSCMP,
-      tweak
-    );
-  }
-
-  function setSharedCoveragePercentage(uint256 newSCP)
-    external
-    onlyRole(RM_PROVIDER_ROLE)
-    validateParamsAfterChange
-  {
-    require(
-      newSCP >= _sharedCoverageMinPercentage,
-      "Can't set shared coverage perc. less than minimum"
-    );
-    _sharedCoveragePercentage = newSCP;
-    _parameterChanged(
-      IPolicyPoolConfig.GovernanceActions.setSharedCoverageMinPercentage,
-      newSCP,
-      false
-    );
-  }
-
   function setWallet(address wallet_)
     external
     onlyRole(RM_PROVIDER_ROLE)
@@ -362,7 +291,6 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     require(policy.scr <= _maxScrPerPolicy, "RiskModule: SCR is more than maximum per policy");
     _totalScr += policy.scr;
     require(_totalScr <= _scrLimit, "RiskModule: SCR limit exceeded");
-    _sharedCoverageScr += policy.rmCoverage;
     uint256 policyId = _policyPool.newPolicy(policy, customer);
     return policyId;
   }

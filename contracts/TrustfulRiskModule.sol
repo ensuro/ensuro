@@ -30,7 +30,6 @@ contract TrustfulRiskModule is RiskModule {
    * @param maxScrPerPolicy_ Max SCR to be allocated to this module (in wad)
    * @param scrLimit_ Max SCR to be allocated to this module (in wad)
    * @param wallet_ Address of the RiskModule provider
-   * @param sharedCoverageMinPercentage_ minimal % of SCR that must be covered by the RM
    */
   function initialize(
     string memory name_,
@@ -39,8 +38,7 @@ contract TrustfulRiskModule is RiskModule {
     uint256 scrInterestRate_,
     uint256 maxScrPerPolicy_,
     uint256 scrLimit_,
-    address wallet_,
-    uint256 sharedCoverageMinPercentage_
+    address wallet_
   ) public initializer {
     __RiskModule_init(
       name_,
@@ -49,8 +47,7 @@ contract TrustfulRiskModule is RiskModule {
       scrInterestRate_,
       maxScrPerPolicy_,
       scrLimit_,
-      wallet_,
-      sharedCoverageMinPercentage_
+      wallet_
     );
   }
 

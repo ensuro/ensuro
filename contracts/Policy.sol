@@ -22,7 +22,6 @@ library Policy {
     uint256 payout;
     uint256 premium;
     uint256 scr;
-    uint256 rmCoverage; // amount of the payout covered by risk_module
     uint256 lossProb; // original loss probability (in ray)
     uint256 purePremium; // share of the premium that covers expected losses
     // equal to payout * lossProb * riskModule.moc
@@ -51,20 +50,12 @@ library Policy {
     policy.riskModule = riskModule;
     policy.premium = premium;
     policy.payout = payout;
-    policy.rmCoverage = payout.wadToRay().rayMul(riskModule.sharedCoveragePercentage()).rayToWad();
     policy.lossProb = lossProb;
-    uint256 ensPremium = premium.wadMul(payout - policy.rmCoverage).wadDiv(payout);
-    uint256 rmPremium = premium - ensPremium;
-    policy.scr = (payout - ensPremium - policy.rmCoverage).wadMul(
-      riskModule.scrPercentage().rayToWad()
-    );
+    policy.scr = (payout - premium).wadMul(riskModule.scrPercentage().rayToWad());
     require(policy.scr != 0, "SCR can't be zero");
     policy.start = uint40(block.timestamp);
     policy.expiration = expiration;
-    policy.purePremium = (payout - policy.rmCoverage)
-      .wadToRay()
-      .rayMul(lossProb.rayMul(riskModule.moc()))
-      .rayToWad();
+    policy.purePremium = payout.wadToRay().rayMul(lossProb.rayMul(riskModule.moc())).rayToWad();
     policy.premiumForEnsuro = policy.purePremium.wadMul(riskModule.ensuroFee().rayToWad());
     policy.premiumForLps = policy.scr.wadMul(
       (
@@ -74,43 +65,28 @@ library Policy {
       ).rayToWad()
     );
     require(
-      policy.purePremium + policy.premiumForEnsuro + policy.premiumForLps <= ensPremium,
+      policy.purePremium + policy.premiumForEnsuro + policy.premiumForLps <= premium,
       "Premium less than minimum"
     );
     policy.premiumForRm =
-      rmPremium +
-      ensPremium -
+      premium -
       policy.purePremium -
       policy.premiumForLps -
       policy.premiumForEnsuro;
     return policy;
   }
 
-  function rmScr(PolicyData storage policy) internal view returns (uint256) {
-    uint256 ensPremium = policy.premium.wadMul(policy.payout - policy.rmCoverage).wadDiv(
-      policy.payout
-    );
-    return policy.rmCoverage - (policy.premium - ensPremium);
-  }
-
   function splitPayout(PolicyData storage policy, uint256 payout)
     internal
     view
-    returns (
-      uint256,
-      uint256,
-      uint256
-    )
+    returns (uint256 toBePaidWithPool, uint256 premiumsWon)
   {
-    // returns (toBePaid_with_pool, premiumsWon, toReturnToRM)
     uint256 nonCapitalPremiums = policy.purePremium + policy.premiumForRm + policy.premiumForEnsuro;
-    if (payout == policy.payout) return (payout - nonCapitalPremiums, 0, 0);
     if (nonCapitalPremiums >= payout) {
-      return (0, nonCapitalPremiums - payout, rmScr(policy));
+      return (0, nonCapitalPremiums - payout); // paid with premiums and accrue the rest
+    } else {
+      return (payout - nonCapitalPremiums, 0); // pay from pool all except nonCapitalPremiums
     }
-    payout -= nonCapitalPremiums;
-    uint256 rmPayout = policy.rmCoverage.wadMul(payout).wadDiv(policy.payout);
-    return (payout - rmPayout, 0, rmScr(policy) - rmPayout);
   }
 
   function interestRate(PolicyData storage policy) internal view returns (uint256) {

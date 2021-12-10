@@ -54,7 +54,6 @@ contract FlightDelayRiskModule is RiskModule, ChainlinkClientUpgradeable {
    * @param maxScrPerPolicy_ Max SCR to be allocated to this module (in wad)
    * @param scrLimit_ Max SCR to be allocated to this module (in wad)
    * @param wallet_ Address of the RiskModule provider
-   * @param sharedCoverageMinPercentage_ minimal % of SCR that must be covered by the RM
    * @param linkToken_ Address of ChainLink LINK token
    * @param oracleParams_ Parameters of the Oracle
    */
@@ -66,7 +65,6 @@ contract FlightDelayRiskModule is RiskModule, ChainlinkClientUpgradeable {
     uint256 maxScrPerPolicy_,
     uint256 scrLimit_,
     address wallet_,
-    uint256 sharedCoverageMinPercentage_,
     address linkToken_,
     OracleParams memory oracleParams_
   ) public initializer {
@@ -77,8 +75,7 @@ contract FlightDelayRiskModule is RiskModule, ChainlinkClientUpgradeable {
       scrInterestRate_,
       maxScrPerPolicy_,
       scrLimit_,
-      wallet_,
-      sharedCoverageMinPercentage_
+      wallet_
     );
     __ChainlinkClient_init();
     __FlightDelayRiskModule_init_unchained(linkToken_, oracleParams_);

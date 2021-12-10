@@ -267,7 +267,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     uint256 policyId = _policyNFT.safeMint(customer);
     Policy.PolicyData storage policy = _policies[policyId] = policy_;
     policy.id = policyId;
-    if (policy.rmScr() > 0) _currency.safeTransferFrom(rm.wallet(), address(this), policy.rmScr());
     _activePurePremiums += policy.purePremium;
     _activePremiums += policy.premium;
     _lockScr(policy);
@@ -383,13 +382,11 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
 
     if (customerWon) {
       _transferTo(_policyNFT.ownerOf(policy.id), payout);
-      uint256 returnToRm;
-      (aux, purePremiumWon, returnToRm) = policy.splitPayout(payout);
-      if (returnToRm > 0) _transferTo(policy.riskModule.wallet(), returnToRm);
+      (aux, purePremiumWon) = policy.splitPayout(payout);
       borrowFromScr = _payFromPool(aux);
     } else {
       // Pay RM and Ensuro
-      _transferTo(policy.riskModule.wallet(), policy.premiumForRm + policy.rmScr());
+      _transferTo(policy.riskModule.wallet(), policy.premiumForRm);
       _transferTo(_config.treasury(), policy.premiumForEnsuro);
       purePremiumWon = policy.purePremium;
       // cover first _borrowedActivePP

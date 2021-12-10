@@ -41,13 +41,9 @@ class RiskModule(AccessControlContract):
     total_scr = WadField(default=_W(0))
 
     wallet = AddressField(default="RM")
-    shared_coverage_percentage = RayField(default=Ray(0))
-    shared_coverage_min_percentage = RayField(default=Ray(0))
-    shared_coverage_scr = WadField(default=_W(0))
 
     set_attr_roles = {
         "wallet": "RM_PROVIDER_ROLE",
-        "shared_coverage_percentage": "RM_PROVIDER_ROLE",
     }
 
     pool_set_attr_roles = {
@@ -57,14 +53,7 @@ class RiskModule(AccessControlContract):
         "scr_interest_rate": "LEVEL2_ROLE",
         "max_scr_per_policy": "LEVEL2_ROLE",
         "scr_limit": "LEVEL2_ROLE",
-        "shared_coverage_min_percentage": "LEVEL2_ROLE",
     }
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        if self.shared_coverage_percentage < self.shared_coverage_min_percentage:
-            with self._disable_role_validation():
-                self.shared_coverage_percentage = self.shared_coverage_min_percentage
 
     def _validate_setattr(self, attr_name, value):
         if attr_name in self.pool_set_attr_roles:
@@ -73,9 +62,6 @@ class RiskModule(AccessControlContract):
                 f"AccessControl: AccessControl: account {self._running_as} is missing role "
                 f"'{self.pool_set_attr_roles[attr_name]}'"
             )
-        if attr_name == "shared_coverage_percentage":
-            require(value >= self.shared_coverage_min_percentage,
-                    "RiskModule: shared_coverage_percentage can't be less than minimum")
         return super()._validate_setattr(attr_name, value)
 
     @external
@@ -91,7 +77,6 @@ class RiskModule(AccessControlContract):
         total_scr = self.total_scr + policy.scr
         require(total_scr <= self.scr_limit, "RiskModule: SCR limit exceeded")
         self.total_scr = total_scr
-        self.shared_coverage_scr += policy.rm_scr
 
         policy.id = self.policy_pool.new_policy(policy, customer)
         assert policy.id > 0
@@ -100,7 +85,6 @@ class RiskModule(AccessControlContract):
     @external
     def remove_policy(self, policy):
         self.total_scr -= policy.scr
-        self.shared_coverage_scr -= policy.rm_scr
 
 
 class TrustfulRiskModule(RiskModule):
@@ -121,7 +105,6 @@ class Policy(Model):
     payout = WadField()
     premium = WadField()
     scr = WadField(default=Wad(0))
-    rm_coverage = WadField(default=Wad(0))
     loss_prob = RayField()
     start = IntField()
     expiration = IntField()
@@ -133,33 +116,19 @@ class Policy(Model):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.rm_coverage = self.risk_module.shared_coverage_percentage.to_wad() * self.payout
-        ens_premium, rm_premium = self._coverage_premium_split()
-        self.scr = (self.payout - ens_premium - self.rm_coverage) * self.risk_module.scr_percentage.to_wad()
+        self.scr = (self.payout - self.premium) * self.risk_module.scr_percentage.to_wad()
         self._do_premium_split()
 
-    def _coverage_premium_split(self):
-        ens_premium = self.premium * (self.payout - self.rm_coverage) // self.payout
-        rm_premium = self.premium - ens_premium
-        return ens_premium, rm_premium
-
-    @property
-    def rm_scr(self):
-        ens_premium, rm_premium = self._coverage_premium_split()
-        return self.rm_coverage - rm_premium
-
     def _do_premium_split(self):
-        ens_premium, rm_premium = self._coverage_premium_split()
-        payout = self.payout - self.rm_coverage
-        self.pure_premium = (payout.to_ray() * self.loss_prob * self.risk_module.moc).to_wad()
+        self.pure_premium = (self.payout.to_ray() * self.loss_prob * self.risk_module.moc).to_wad()
         self.premium_for_lps = self.scr * (
             self.risk_module.scr_interest_rate * _R(self.expiration - self.start) // _R(SECONDS_IN_YEAR)
         ).to_wad()
         self.premium_for_ensuro = self.risk_module.ensuro_fee.to_wad() * self.pure_premium
-        require(ens_premium >= (self.pure_premium + self.premium_for_lps + self.premium_for_ensuro),
+        require(self.premium >= (self.pure_premium + self.premium_for_lps + self.premium_for_ensuro),
                 "Premium less than minimum")
         self.premium_for_rm = (
-            rm_premium + ens_premium - self.pure_premium - self.premium_for_lps - self.premium_for_ensuro
+            self.premium - self.pure_premium - self.premium_for_lps - self.premium_for_ensuro
         )
         self.interest_rate.assert_equal(self.risk_module.scr_interest_rate)
 
@@ -167,15 +136,12 @@ class Policy(Model):
         return self.pure_premium, self.premium_for_ensuro, self.premium_for_rm, self.premium_for_lps
 
     def split_payout(self, payout):
-        # returns (toBePaid_with_pool, premiumsWon, toReturnToRM)
+        # returns (toBePaid_with_pool, premiumsWon)
         non_capital_premiums = self.pure_premium + self.premium_for_rm + self.premium_for_ensuro
-        if payout == self.payout:
-            return payout - non_capital_premiums, Wad(0), Wad(0)
         if non_capital_premiums >= payout:
-            return Wad(0), non_capital_premiums - payout, self.rm_scr
-        payout -= non_capital_premiums
-        rm_payout = self.rm_coverage * payout // self.payout
-        return payout - rm_payout, Wad(0), self.rm_scr - rm_payout
+            return Wad(0), non_capital_premiums - payout
+        else:
+            return payout - non_capital_premiums, Wad(0)
 
     @property
     def interest_rate(self):
@@ -558,12 +524,8 @@ class PolicyPool(AccessControlContract):
 
     @external
     def new_policy(self, policy, customer):
-        rm = policy.risk_module
         self.currency.transfer_from(self.contract_id, customer, self.contract_id, policy.premium)
         policy.id = self.policy_nft.safeMint(customer)
-
-        if policy.rm_scr:
-            self.currency.transfer_from(self.contract_id, rm.wallet, self.contract_id, policy.rm_scr)
 
         assert policy.interest_rate >= 0
 
@@ -687,13 +649,11 @@ class PolicyPool(AccessControlContract):
         if customer_won:
             policy_owner = self.policy_nft.owner_of(policy.id)
             self._transfer_to(policy_owner, payout)
-            to_pay_from_pool, pure_premium_won, return_to_rm = policy.split_payout(payout)
-            if return_to_rm:
-                self._transfer_to(policy.risk_module.wallet, return_to_rm)
+            to_pay_from_pool, pure_premium_won = policy.split_payout(payout)
             borrow_from_scr = self._pay_from_pool(to_pay_from_pool)
         else:
             # Pay Ensuro and RM
-            self._transfer_to(policy.risk_module.wallet, for_rm + policy.rm_scr)
+            self._transfer_to(policy.risk_module.wallet, for_rm)
             self._transfer_to(self.config.treasury, for_ensuro)
             pure_premium_won = pure_premium
             # Cover first borrowed_active_pp
