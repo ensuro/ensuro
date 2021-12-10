@@ -81,9 +81,10 @@ library Policy {
     view
     returns (uint256 toBePaidWithPool, uint256 premiumsWon)
   {
-    uint256 nonCapitalPremiums = policy.purePremium + policy.premiumForRm + policy.premiumForEnsuro;
+    uint256 nonCapitalPremiums = policy.premium - policy.premiumForLps;
     if (nonCapitalPremiums >= payout) {
-      return (0, nonCapitalPremiums - payout); // paid with premiums and accrue the rest
+      // paid with premiums and accrue the rest even when it's premiumForEnsuro and premiumForRm
+      return (0, nonCapitalPremiums - payout);
     } else {
       return (payout - nonCapitalPremiums, 0); // pay from pool all except nonCapitalPremiums
     }

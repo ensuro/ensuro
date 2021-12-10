@@ -773,8 +773,12 @@ def test_partial_payout(tenv):
 
 # TODO: more test cases of partial payout
 # - when payout < premium and payout > (premium - policy.premium_for_lps)
+#     - should take as pool loan (if the only policy) payout - (premium - premium_for_lps)
 # - when payout < premium and payout > (policy.pure_premium)
+#     - should increase won_pure_premiums with payout - (premium - premium_for_lps)
 # - when payout < premium and payout <= (policy.pure_premium)
+#     - should increase won_pure_premiums with payout - (premium - premium_for_lps)
+# TODO: define later if partial payouts pay to ensuro_fee and premium_for_rm if possible
 
 
 @set_precision(Wad, 3)
@@ -1287,8 +1291,8 @@ def test_expire_policy_payout(tenv):
 
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
-    etk = pool.etokens["eUSD1YEAR"]
-    USD = pool.currency
+    etk = pool.etokens["eUSD1YEAR"]  # noqa
+    USD = pool.currency  # noqa
     rm = pool.config.risk_modules["Flight Insurance"]
     rm.grant_role("PRICER_ROLE", rm.owner)
     rm.grant_role("RESOLVER_ROLE", rm.owner)
