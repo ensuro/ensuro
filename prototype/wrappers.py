@@ -77,6 +77,7 @@ class EToken(IERC20):
         pool_loan_interest_rate = _R(pool_loan_interest_rate)
         liquidity_requirement = _R(liquidity_requirement)
         max_utilization_rate = _R(max_utilization_rate)
+        
         super().__init__(
             owner, policy_pool,
             name, symbol, expiration_period, liquidity_requirement,
@@ -106,6 +107,7 @@ class EToken(IERC20):
     pool_loan_interest_rate = MethodAdapter((), "ray", is_property=True)
     liquidity_requirement = MethodAdapter((), "ray", is_property=True)
     max_utilization_rate = MethodAdapter((), "ray", is_property=True)
+    utilization_rate = MethodAdapter((), "ray", is_property=True)
     set_pool_loan_interest_rate = MethodAdapter((("new_rate", "ray"), ))
     set_max_utilization_rate = MethodAdapter((("new_rate", "ray"), ))
 

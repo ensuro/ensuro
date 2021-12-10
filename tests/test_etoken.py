@@ -437,6 +437,52 @@ def test_max_utilization_rate(tenv):
 
     assert etk.ocean_for_new_scr == _W(950)
 
+    policy = tenv.policy_factory(scr=_W(1100), interest_rate=_R("0.04"),
+                                expiration=tenv.time_control.now + WEEK)
+                                
+    with pytest.raises(RevertError, match="Not enought OCEAN to cover the SCR"):
+        with etk.thru_policy_pool():
+            etk.lock_scr(policy, policy.scr)
+
+    policy = tenv.policy_factory(scr=_W(600), interest_rate=_R("0.0365"),
+                                 expiration=tenv.time_control.now + WEEK)
+    with etk.thru_policy_pool():
+        etk.lock_scr(policy, policy.scr)
+
+    etk.utilization_rate.assert_equal(_R("0.6"))
+    with etk.thru_policy_pool():
+        etk.deposit("LP1", _W(1000))
+    
+    etk.utilization_rate.assert_equal(_R("0.3"))
+
+    expected_balance = _W(2000) - _W("600") * _W("1.0365")
+    with etk.thru_policy_pool():
+        etk.withdraw("LP1", _W(1400)).assert_equal(expected_balance)
+
+
+
+def test_unlock_scr(tenv):
+    etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
+    with etk.thru_policy_pool():
+        assert etk.deposit("LP1", _W(1000)) == _W(1000)
+    assert etk.ocean == _W(1000)
+    policy = tenv.policy_factory(scr=_W(600), interest_rate=_R("0.0365"),
+                                 expiration=tenv.time_control.now + WEEK)
+    with etk.thru_policy_pool():
+        etk.lock_scr(policy, policy.scr)
+    assert etk.scr == _W(600)
+    assert etk.scr_interest_rate == _R("0.0365")
+    etk.token_interest_rate.assert_equal(_R("0.0365") * _R(600/1000))
+    etk.ocean.assert_equal(_W(400))
+
+    tenv.time_control.fast_forward(2 * DAY)
+    etk.balance_of("LP1").assert_equal(_W(1000) + _W("0.06") * _W(2))
+    tenv.time_control.fast_forward(3 * DAY)
+    etk.balance_of("LP1").assert_equal(_W(1000) + _W("0.06") * _W(5))
+
+    with etk.thru_policy_pool():
+        etk.unlock_scr(policy, policy.scr)
+
 
 def test_getset_etk_parameters_tweaks(tenv):
     if tenv.kind != "ethereum":

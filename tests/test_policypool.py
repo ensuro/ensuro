@@ -4,7 +4,7 @@ import pytest
 from ethproto.contracts import RevertError
 from ethproto.wadray import _W, _R, set_precision, Wad
 from ethproto.wrappers import get_provider
-from prototype.utils import load_config, WEEK, DAY
+from prototype.utils import load_config, WEEK, DAY, HOUR
 from . import extract_vars, is_brownie_coverage_enabled
 
 TEnv = namedtuple("TEnv", "time_control module kind")
@@ -89,11 +89,11 @@ def test_transfers(tenv):
     etoken.balance_of("LP2").assert_equal(lp1_balance // _W(3))
     etoken.balance_of("LP3").assert_equal(lp1_balance // _W(3))
 
-    timecontrol.fast_forward(4 * DAY)
+    timecontrol.fast_forward(2 * DAY)
 
-    etoken.balance_of("LP1").assert_equal(lp1_balance // _W(3) + interest * _W(4/7) // _W(3))
-    etoken.balance_of("LP2").assert_equal(lp1_balance // _W(3) + interest * _W(4/7) // _W(3))
-    etoken.balance_of("LP3").assert_equal(lp1_balance // _W(3) + interest * _W(4/7) // _W(3))
+    etoken.balance_of("LP1").assert_equal(lp1_balance // _W(3) + interest * _W(2/7) // _W(3))
+    etoken.balance_of("LP2").assert_equal(lp1_balance // _W(3) + interest * _W(2/7) // _W(3))
+    etoken.balance_of("LP3").assert_equal(lp1_balance // _W(3) + interest * _W(2/7) // _W(3))
 
     rm.resolve_policy(policy.id, True)
     etoken.balance_of("LP1").assert_equal(_W(0))
@@ -582,7 +582,7 @@ def test_walkthrough(tenv):
         )
         customer_won = day % 37 == 36
         for p in list(policies):
-            if p.expiration > timecontrol.now:
+            if p.expiration > (timecontrol.now + DAY):
                 break
             if customer_won:
                 won_count += 1
@@ -629,31 +629,31 @@ def test_walkthrough(tenv):
         pool_loan = eUSD1YEAR.get_pool_loan()
 
     assert eUSD1YEAR.get_pool_loan() == _W(0)
-    assert pool.pure_premiums.equal(_W("21.21943222506249692"))  # from jypiter prints
+    pool.pure_premiums.assert_equal(_W("21.21943222506249692"), decimals=2)  # from jypiter prints
 
     assert USD.balance_of(pool.contract_id).equal(
         _W(1000 + 2000 + 2 - 35 + 2 * 65 - 72 * won_count) +
-        _W(2000) - _W("1977.98534")
+        _W(2000) - _W("1977.98534"), decimals=2
     )
 
     pool.withdraw("eUSD1YEAR", "LP1", None).assert_equal(
-        _W("1023.42788568762743449")
+        _W("1023.42788568762743449"), decimals=2
     )
     pool.withdraw("eUSD1WEEK", "LP3", None).assert_equal(
-        _W("500.587288338126130735")
+        _W("500.587288338126130735"), decimals=2
     )
     pool.withdraw("eUSD1MONTH", "LP3", None).assert_equal(
-        _W("1501.780045569056425935")
+        _W("1501.780045569056425935"), decimals=2
     )
     USD.balance_of(pool.contract_id).assert_equal(
-        _W("21.219432")
+        _W("21.219432"), decimals=2
     )
 
     USD.balance_of("LP1").assert_equal(
-        _W("1023.42788568762743449")
+        _W("1023.42788568762743449"), decimals=2
     )
     USD.balance_of("LP3").assert_equal(
-        _W("500.587288338126130735") + _W("1501.780045569056425935")
+        _W("500.587288338126130735") + _W("1501.780045569056425935"), decimals=2
     )
     USD.balance_of("CUST3").assert_equal(_W(72))
 
@@ -709,7 +709,7 @@ def test_nfts(tenv):
 
     nft.transfer_from("CUST1", "CUST1", "CUST2", policy.id)
 
-    timecontrol.fast_forward(WEEK)
+    timecontrol.fast_forward(WEEK - DAY)
     rm.resolve_policy(policy.id, True)
     assert usd.balance_of("CUST1") == _W(0)
     assert usd.balance_of("CUST2") == _W(3600)
@@ -762,7 +762,7 @@ def test_partial_payout(tenv):
 
     assert pool.etokens["eUSD1YEAR"].ocean == _W(700)
     assert pool.etokens["eUSD1YEAR"].scr == _W(2800)
-    timecontrol.fast_forward(WEEK)
+    timecontrol.fast_forward(WEEK - HOUR)
     rm.resolve_policy(policy.id, _W(1900))
     assert usd.balance_of("CUST1") == _W(1900)
     pool.etokens["eUSD1YEAR"].ocean.assert_equal(_W(1700))
@@ -841,16 +841,18 @@ def test_asset_manager(tenv):
     pool.get_investable().assert_equal(_W(200))
     etk.get_investable().assert_equal(lp1_balance)
 
-    timecontrol.fast_forward(365 * DAY // 2)
+    timecontrol.fast_forward(365 * DAY // 2 - 60)
     pool.get_investable().assert_equal(_W(200))
-    etk.get_investable().assert_equal(lp1_balance + for_lps)
+    etk.get_investable().assert_equal(lp1_balance + for_lps, decimals=2)
 
     pool_share = _W(200) // asset_manager.total_investable()
     etk_share = etk.get_investable() // asset_manager.total_investable()
     asset_manager.checkpoint()
 
     pool.won_pure_premiums.assert_equal(_W(8500) * _W("0.025") * pool_share)
-    etk.balance_of("LP1").assert_equal(lp1_balance + for_lps + _W(8500) * _W("0.025") * etk_share)
+    etk.balance_of("LP1").assert_equal(
+        lp1_balance + for_lps + _W(8500) * _W("0.025") * etk_share, decimals=2
+    )
 
     rm.resolve_policy(policy.id, True)
     assert USD.balance_of(pool.contract_id) == _W(1500)  # balance back to middle
@@ -918,7 +920,7 @@ def test_insolvency_without_hook(tenv):
 
     assert USD.balance_of(pool.contract_id) == _W(1000 + 200)
 
-    timecontrol.fast_forward(365 * DAY // 2)
+    timecontrol.fast_forward(365 * DAY // 2 - 60)
 
     with pytest.raises(RevertError, match="ERC20: transfer amount exceeds balance"):
         rm.resolve_policy(policy.id, True)
@@ -948,7 +950,7 @@ def test_lp_insolvency_hook(tenv):
     ins_hook.cash_deposited.assert_equal(_W(8000))
     etk.ocean.assert_equal(_W(0))
     etk.scr.assert_equal(_W(0))
-    etk.get_pool_loan().assert_equal(_W(9000) + for_lps)
+    etk.get_pool_loan().assert_equal(_W(9000) + for_lps, decimals=2)
 
     etk.balance_of("LP1").assert_equal(_W(0))
     etk.balance_of(ins_hook).assert_equal(_W(0))
@@ -971,7 +973,7 @@ def test_lp_insolvency_hook_negative_ocean(tenv):
     ins_hook = tenv.module.LPInsolvencyHook(pool=pool, etoken="eUSD1YEAR")
     pool.config.set_insolvency_hook(ins_hook)
 
-    etk.total_supply().assert_equal(_W(1000) + for_lps)
+    etk.total_supply().assert_equal(_W(1000) + for_lps, decimals=2)
 
     USD.approve("LP3", pool.contract_id, _W(8000))
     pool.deposit("eUSD1YEAR", "LP3", _W(8000)).assert_equal(_W(8000))
@@ -1015,7 +1017,7 @@ def test_lp_insolvency_hook_cover_etoken(tenv):
     ins_hook = tenv.module.LPInsolvencyHook(pool=pool, etoken="eUSD1YEAR", cover_etoken=1)
     pool.config.set_insolvency_hook(ins_hook)
 
-    etk.total_supply().assert_equal(_W(1000) + for_lps)
+    etk.total_supply().assert_equal(_W(1000) + for_lps, decimals=2)
 
     USD.approve("LP3", pool.contract_id, _W(8000))
     pool.deposit("eUSD1YEAR", "LP3", _W(8000)).assert_equal(_W(8000))
@@ -1255,6 +1257,61 @@ def test_expire_policy(tenv):
     pool.won_pure_premiums.assert_equal(pure_premium)
 
     return locals()
+
+
+def test_expire_policy_payout(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Flight Insurance
+        scr_percentage: "0.1"
+        ensuro_fee: "0.05"
+        scr_interest_rate: "0.01"
+        wallet: "MGA"
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 6000
+        initial_balances:
+        - user: LP1
+          amount: 1000
+        - user: LP2
+          amount: 1000
+        - user: LP3
+          amount: 1000
+        - user: CUST1
+          amount: 100
+    etokens:
+      - name: eUSD1YEAR
+        expiration_period: 31536000
+    """
+
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    etk = pool.etokens["eUSD1YEAR"]
+    USD = pool.currency
+    rm = pool.config.risk_modules["Flight Insurance"]
+    rm.grant_role("PRICER_ROLE", rm.owner)
+    rm.grant_role("RESOLVER_ROLE", rm.owner)
+    pool.config.grant_role("LEVEL2_ROLE", rm.owner)  # For setting moc
+
+    with rm.as_(rm.owner):
+        rm.moc = _R("1.1")
+
+    pool.currency.approve("LP1", pool.contract_id, _W(1000))
+
+    assert pool.deposit("eUSD1YEAR", "LP1", _W(1000)) == _W(1000)
+
+    pool.currency.approve("CUST1", pool.contract_id, _W(100))
+    policy = rm.new_policy(
+        payout=_W(2100), premium=_W(100), customer="CUST1",
+        loss_prob=_R("0.03"), expiration=timecontrol.now + 10 * DAY
+    )
+
+    timecontrol.fast_forward(12 * DAY)
+    with pytest.raises(RevertError, match="Can't pay expired policy"):
+        rm.resolve_policy(policy.id, True)
+
+    rm.resolve_policy(policy.id, False)
 
 
 def test_withdraw_won_premiums(tenv):
