@@ -452,6 +452,10 @@ class EToken(ERC20Token):
     def set_max_utilization_rate(self, new_rate):
         self.max_utilization_rate = new_rate
 
+    @property
+    def utilization_rate(self):
+        return (self.scr // self.total_supply()).to_ray()
+
     def get_investable(self):
         return self.scr + self.ocean + self.get_pool_loan()
 
@@ -677,6 +681,8 @@ class PolicyPool(AccessControlContract):
             payout = policy.payout if payout is True else Wad(0)
 
         customer_won = payout > Wad(0)
+
+        require(payout == 0 or policy.expiration > time_control.now, "Can't pay expired policy")
 
         self.active_premiums -= policy.premium
         self.active_pure_premiums -= policy.pure_premium

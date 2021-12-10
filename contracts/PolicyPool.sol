@@ -430,8 +430,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     require(policy.id == policyId && policyId != 0, "Policy not found");
     IRiskModule rm = policy.riskModule;
     require(expired || address(rm) == msg.sender, "Only the RM can resolve policies");
+    require(payout == 0 || policy.expiration > block.timestamp, "Can't pay expired policy");
     _config.checkAcceptsResolvePolicy(rm);
-    require(payout <= policy.payout, "Actual payout can't be more than policy payout");
+    require(payout <= policy.payout, "payout > policy.payout");
 
     bool customerWon = payout > 0;
 
