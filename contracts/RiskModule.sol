@@ -35,8 +35,6 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
 
   address internal _wallet; // Address of the RiskModule provider
 
-  mapping(uint256 => Policy.PolicyData) private _policies;
-
   modifier validateParamsAfterChange() {
     _;
     _validateParameters();
@@ -275,7 +273,7 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     uint256 lossProb,
     uint40 expiration,
     address customer
-  ) internal whenNotPaused returns (uint256) {
+  ) internal whenNotPaused returns (Policy.PolicyData memory) {
     require(premium < payout, "Premium must be less than payout");
     require(expiration > uint40(block.timestamp), "Expiration must be in the future");
     require(customer != address(0), "Customer can't be zero address");
@@ -295,16 +293,6 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     require(_totalScr <= _scrLimit, "RiskModule: SCR limit exceeded");
     uint256 policyId = _policyPool.newPolicy(policy, customer);
     policy.id = policyId;
-    require(policy.id == policyId, "Error policy.id not set");
-    _policies[policyId] = policy;
-    return policyId;
-  }
-
-  function _resolvePolicy(uint256 policyId, uint256 payout) internal {
-    _policyPool.resolvePolicy(_policies[policyId], payout);
-  }
-
-  function _resolvePolicyFullPayout(uint256 policyId, bool customerWon) internal {
-    _policyPool.resolvePolicyFullPayout(_policies[policyId], customerWon);
+    return policy;
   }
 }

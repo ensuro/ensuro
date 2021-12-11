@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
+import {Policy} from "./Policy.sol";
 import {RiskModule} from "./RiskModule.sol";
 import {Chainlink} from "@chainlink/contracts/src/v0.8/Chainlink.sol";
 import {ChainlinkClientUpgradeable} from "./dependencies/ChainlinkClientUpgradeable.sol";
@@ -21,6 +22,7 @@ contract FlightDelayRiskModule is RiskModule, ChainlinkClientUpgradeable {
   uint40 public constant DELAY_EXPIRATION_TIMES = 5;
 
   struct PolicyData {
+    Policy.PolicyData ensuroPolicy;
     string flight;
     uint40 departure;
     uint40 expectedArrival;
@@ -125,16 +127,23 @@ contract FlightDelayRiskModule is RiskModule, ChainlinkClientUpgradeable {
       tolerance +
       uint40(_oracleParams.delayTime) *
       DELAY_EXPIRATION_TIMES;
-    uint256 policyId = _newPolicy(payout, premium, lossProb, expiration, customer);
-    PolicyData storage policy = _policies[policyId];
+    Policy.PolicyData memory ensuroPolicy = _newPolicy(
+      payout,
+      premium,
+      lossProb,
+      expiration,
+      customer
+    );
+    PolicyData storage policy = _policies[ensuroPolicy.id];
+    policy.ensuroPolicy = ensuroPolicy;
     policy.flight = flight;
     policy.departure = departure;
     policy.expectedArrival = expectedArrival;
     policy.tolerance = tolerance;
 
     uint256 until = expectedArrival + tolerance + uint256(_oracleParams.delayTime);
-    _chainlinkRequest(policyId, policy, until);
-    return policyId;
+    _chainlinkRequest(ensuroPolicy.id, policy, until);
+    return ensuroPolicy.id;
   }
 
   function _chainlinkRequest(
@@ -192,6 +201,6 @@ contract FlightDelayRiskModule is RiskModule, ChainlinkClientUpgradeable {
     bool customerWon = (actualArrivalDate <= 0 || // cancelled
       uint256(actualArrivalDate) > uint256(policy.expectedArrival + policy.tolerance)); // arrived after tolerance
 
-    _resolvePolicyFullPayout(policyId, customerWon);
+    _policyPool.resolvePolicyFullPayout(policy.ensuroPolicy, customerWon);
   }
 }

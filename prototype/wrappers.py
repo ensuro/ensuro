@@ -294,14 +294,16 @@ class TrustfulRiskModule(RiskModule):
         ("customer", "address")
     ), "receipt")
 
-    resolve_policy_full_payout = MethodAdapter((("policy_id", "int"), ("customer_won", "bool")))
-    resolve_policy_ = MethodAdapter((("policy_id", "int"), ("payout", "amount")))
+    resolve_policy_full_payout = MethodAdapter((("policy", "tuple"), ("customer_won", "bool")))
+    resolve_policy_ = MethodAdapter((("policy", "tuple"), ("payout", "amount")))
 
     def resolve_policy(self, policy_id, customer_won_or_amount):
+        global policy_db
+        policy = policy_db.get_policy(self.policy_pool.contract.address, policy_id)
         if customer_won_or_amount is True or customer_won_or_amount is False:
-            return self.resolve_policy_full_payout(policy_id,  customer_won_or_amount)
+            return self.resolve_policy_full_payout(policy.as_tuple(),  customer_won_or_amount)
         else:
-            return self.resolve_policy_(policy_id,  customer_won_or_amount)
+            return self.resolve_policy_(policy.as_tuple(), customer_won_or_amount)
 
 
 class FlightDelayRiskModule(RiskModule):
