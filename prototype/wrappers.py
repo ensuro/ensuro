@@ -15,8 +15,9 @@ class TestCurrency(IERC20):
     eth_contract = "TestCurrency"
     __test__ = False
 
-    def __init__(self, owner="owner", name="Test Currency", symbol="TEST", initial_supply=Wad(0)):
-        super().__init__(owner, name, symbol, initial_supply)
+    def __init__(self, owner="owner", name="Test Currency", symbol="TEST", initial_supply=Wad(0),
+                 decimals=18):
+        super().__init__(owner, name, symbol, initial_supply, decimals)
 
     mint = MethodAdapter((("recipient", "address"), ("amount", "amount")))
     burn = MethodAdapter((("recipient", "address"), ("amount", "amount")))
