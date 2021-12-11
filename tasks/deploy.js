@@ -19,6 +19,21 @@ function _R(value) {
   return _BN(value).mul(RAY);
 }
 
+function amountDecimals() {
+  let decimals = Number.parseInt(process.env.AMOUNT_DECIMALS);
+  assert (decimals >= 6);
+  return decimals;
+}
+
+function _A(value) {
+  // Decimals must be at least 6
+  if (typeof value === 'string' || value instanceof String) {
+    return _BN(value).mul(_BN(Math.pow(10, amountDecimals())));
+  } else {
+    return _BN(value * 1e6).mul(_BN(Math.pow(10, amountDecimals() - 6)));
+  }
+}
+
 async function etherscanEndpoints(hre) {
   try{
     return await hre.run("verify:get-etherscan-endpoint", {
@@ -82,11 +97,15 @@ async function grantRoleTask({contractAddress, role, account}, hre) {
 
 async function deployTestCurrency({verify, currName, currSymbol, initialSupply}, hre) {
   const TestCurrency = await hre.ethers.getContractFactory("TestCurrency");
-  const currency = await TestCurrency.deploy(currName, currSymbol, _W(initialSupply));
+  const currency = await TestCurrency.deploy(
+    currName, currSymbol, _A(initialSupply), amountDecimals()
+  );
   await currency.deployed();
   await logContractCreated(hre, "TestCurrency", currency.address);
   if (verify)
-    await verifyContract(hre, currency, false, [currName, currSymbol, _W(initialSupply)]);
+    await verifyContract(hre, currency, false, [
+      currName, currSymbol, _A(initialSupply), amountDecimals()
+    ]);
   return currency.address;
 }
 
@@ -179,8 +198,8 @@ async function deployRiskModule({
     _R(scrPercentage),
     _R(ensuroFee),
     _R(scrInterestRate),
-    _W(maxScrPerPolicy),
-    _W(scrLimit),
+    _A(maxScrPerPolicy),
+    _A(scrLimit),
     wallet,
     ...extraArgs
   ], {
@@ -206,7 +225,7 @@ async function deployRiskModule({
 async function deployFlightDelayRM(opts, hre) {
   opts.extraArgs = [
     opts.linkToken,
-    [opts.oracle, opts.delayTime, _W(opts.oracleFee), opts.dataJobId, opts.sleepJobId]
+    [opts.oracle, opts.delayTime, _A(opts.oracleFee), opts.dataJobId, opts.sleepJobId]
   ];
   return deployRiskModule(opts, hre);
 }
@@ -218,9 +237,9 @@ async function deployAssetManager({
   extraConstructorArgs = extraConstructorArgs || [];
   const AssetManager = await hre.ethers.getContractFactory(amClass);
   const am = await hre.upgrades.deployProxy(AssetManager, [
-    _W(liquidityMin),
-    _W(liquidityMiddle),
-    _W(liquidityMax),
+    _A(liquidityMin),
+    _A(liquidityMiddle),
+    _A(liquidityMax),
     ...extraArgs
   ], {
     kind: 'uups',
@@ -247,9 +266,9 @@ async function deployFixedIntestRateAssetManager(opts, hre) {
 
 async function deployAaveAssetManager(opts, hre) {
   opts.extraArgs = [
-    _W(opts.claimRewardsMin),
-    _W(opts.reinvestRewardsMin),
-    _W(opts.maxSlippage),
+    _A(opts.claimRewardsMin),
+    _A(opts.reinvestRewardsMin),
+    _A(opts.maxSlippage),
   ];
   opts.extraConstructorArgs = [
     opts.aaveAddrProv,
@@ -287,7 +306,7 @@ async function trustfullPolicy({rmAddress, payout, premium, lossProb, expiration
   await grantRole(hre, rm, "PRICER_ROLE");
 
   customer = customer || await _getDefaultSigner(hre);
-  premium = _W(premium);
+  premium = _A(premium);
 
   await currency.approve(policyPool.address, premium);
   lossProb = _R(lossProb);
@@ -297,7 +316,7 @@ async function trustfullPolicy({rmAddress, payout, premium, lossProb, expiration
   if (expiration < 1600000000) {
     expiration = Math.round((new Date()).getTime() / 1000) + expiration;
   }
-  payout = _W(payout);
+  payout = _A(payout);
 
   const tx = await rm.newPolicy(payout, premium, lossProb, expiration, customer.address, {gasLimit: 999999});
   console.log(tx);
@@ -310,7 +329,7 @@ async function resolvePolicy({rmAddress, payout, fullPayout, policyId}, hre) {
   let tx;
 
   if (fullPayout === undefined) {
-    payout = _W(payout);
+    payout = _A(payout);
     tx = await rm.resolvePolicy(policyId, payout);
   } else {
     tx = await rm.resolvePolicyFullPayout(policyId, fullPayout);
@@ -326,11 +345,11 @@ async function flightDelayPolicy({rmAddress, flight, departure, expectedArrival,
 
   await grantRole(hre, rm, "PRICER_ROLE");
   customer = customer || await _getDefaultSigner(hre);
-  premium = _W(premium);
+  premium = _A(premium);
 
   await currency.approve(policyPool.address, premium);
   lossProb = _R(lossProb);
-  payout = _W(payout);
+  payout = _A(payout);
 
   const tx = await rm.newPolicy(
     flight, departure, expectedArrival, tolerance, payout,
@@ -357,7 +376,7 @@ async function deposit({etkAddress, amount}, hre) {
   const etk = await hre.ethers.getContractAt("EToken", etkAddress);
   const policyPool = await hre.ethers.getContractAt("PolicyPool", await etk.policyPool());
   const currency = await hre.ethers.getContractAt("IERC20Metadata", await policyPool.currency());
-  amount = _W(amount);
+  amount = _A(amount);
   await currency.approve(policyPool.address, amount);
   const tx = await policyPool.deposit(etk.address, amount, {gasLimit: 999999});
   console.log(tx);

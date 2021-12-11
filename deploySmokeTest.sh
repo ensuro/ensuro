@@ -11,6 +11,8 @@ dieOnError() {
     fi
 }
 
+export AMOUNT_DECIMALS=6
+
 NETWORK=${NETWORK:-localhost}
 
 if [ $NETWORK == "localhost" ]; then
