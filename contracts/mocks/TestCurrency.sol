@@ -8,7 +8,7 @@ import {IMintableERC20} from "./IMintableERC20.sol";
 
 contract TestCurrency is ERC20, IMintableERC20 {
   address private _owner;
-  uint8 immutable internal _decimals;
+  uint8 internal immutable _decimals;
 
   constructor(
     string memory name_,
@@ -22,7 +22,7 @@ contract TestCurrency is ERC20, IMintableERC20 {
   }
 
   function decimals() public view virtual override returns (uint8) {
-      return _decimals;
+    return _decimals;
   }
 
   function mint(address recipient, uint256 amount) external override {
