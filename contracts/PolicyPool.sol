@@ -70,7 +70,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   uint256 internal _borrowedActivePP; // amount borrowed from active pure premiums to pay defaulted policies
   uint256 internal _wonPurePremiums; // amount of pure premiums won from non-defaulted policies
 
-  // event NewPolicy(IRiskModule indexed riskModule, uint256 policyId);
   event NewPolicy(IRiskModule indexed riskModule, Policy.PolicyData policy);
   event PolicyRebalanced(IRiskModule indexed riskModule, uint256 indexed policyId);
   event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, uint256 payout);
@@ -688,10 +687,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
       _payFromPool(amount); // return value should be 0 if not, losses are more than capital available
     }
   }
-
-  /*  function getPolicy(uint256 policyId) external view override returns (Policy.PolicyData memory) {
-    return _policies[policyId];
-  }*/
 
   function getPolicyFundCount(uint256 policyId) external view returns (uint256) {
     return _policiesFunds[policyId].length();
