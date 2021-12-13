@@ -771,13 +771,170 @@ def test_partial_payout(tenv):
         _W(1800) + _W(100/37)
     )  # The pool owes the loss + the capital gain
 
-# TODO: more test cases of partial payout
-# - when payout < premium and payout > (premium - policy.premium_for_lps)
-#     - should take as pool loan (if the only policy) payout - (premium - premium_for_lps)
-# - when payout < premium and payout > (policy.pure_premium)
-#     - should increase won_pure_premiums with payout - (premium - premium_for_lps)
-# - when payout < premium and payout <= (policy.pure_premium)
-#     - should increase won_pure_premiums with payout - (premium - premium_for_lps)
+
+def test_pool_loan_partial_payout(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        scr_percentage: "0.8"
+        ensuro_fee: 0
+        scr_interest_rate: "0.050330943"  # interest rate to make premium_for_rm=0
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 6000
+        initial_balances:
+        - user: LP1
+          amount: 3500
+        - user: CUST1
+          amount: 2000
+    etokens:
+      - name: eUSD1WEEK
+        expiration_period: 604800
+      - name: eUSD1MONTH
+        expiration_period: 2592000
+      - name: eUSD1YEAR
+        expiration_period: 31536000
+    """
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    rm = pool.config.risk_modules["Roulette"]
+    rm.grant_role("PRICER_ROLE", rm.owner)
+    rm.grant_role("RESOLVER_ROLE", rm.owner)
+
+    usd = pool.currency
+    usd.approve("LP1", pool.contract_id, _W(3500))
+
+    assert pool.deposit("eUSD1YEAR", "LP1", _W(3500)) == _W(3500)
+    usd.approve("CUST1", pool.contract_id, _W(2000))
+    policy = rm.new_policy(
+        payout=_W(3600), premium=_W(2000), customer="CUST1",
+        loss_prob=_R(1/37), expiration=timecontrol.now + WEEK
+    )
+
+    eUSD1YEAR = pool.etokens["eUSD1YEAR"]
+    pool.won_pure_premiums.assert_equal(_W(0))
+    eUSD1YEAR.get_pool_loan().assert_equal(_W(0))
+
+    assert eUSD1YEAR.ocean == _W(2220)
+    assert eUSD1YEAR.scr == _W(1280)
+    timecontrol.fast_forward(WEEK - HOUR)
+    rm.resolve_policy(policy.id, _W(1999))
+    assert usd.balance_of("CUST1") == _W(1999)
+
+    eUSD1YEAR.get_pool_loan().assert_equal(_W(1999) - (policy.premium - policy.premium_for_lps))
+    assert pool.pure_premiums == _W(0)
+
+
+def test_increase_won_pure_premiums(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        scr_percentage: "0.8"
+        ensuro_fee: 0
+        scr_interest_rate: "0.050330943"  # interest rate to make premium_for_rm=0
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 6000
+        initial_balances:
+        - user: LP1
+          amount: 3500
+        - user: CUST1
+          amount: 2000
+    etokens:
+      - name: eUSD1WEEK
+        expiration_period: 604800
+      - name: eUSD1MONTH
+        expiration_period: 2592000
+      - name: eUSD1YEAR
+        expiration_period: 31536000
+    """
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    rm = pool.config.risk_modules["Roulette"]
+    rm.grant_role("PRICER_ROLE", rm.owner)
+    rm.grant_role("RESOLVER_ROLE", rm.owner)
+
+    usd = pool.currency
+    usd.approve("LP1", pool.contract_id, _W(3500))
+
+    assert pool.deposit("eUSD1YEAR", "LP1", _W(3500)) == _W(3500)
+    usd.approve("CUST1", pool.contract_id, _W(2000))
+    policy = rm.new_policy(
+        payout=_W(3600), premium=_W(2000), customer="CUST1",
+        loss_prob=_R(1/37), expiration=timecontrol.now + WEEK
+    )
+
+    eUSD1YEAR = pool.etokens["eUSD1YEAR"]
+    pool.won_pure_premiums.assert_equal(_W(0))
+    eUSD1YEAR.get_pool_loan().assert_equal(_W(0))
+
+    assert eUSD1YEAR.ocean == _W(2220)
+    assert eUSD1YEAR.scr == _W(1280)
+    timecontrol.fast_forward(WEEK - HOUR)
+    rm.resolve_policy(policy.id, _W(60))
+    assert usd.balance_of("CUST1") == _W(60)
+
+    assert _W(60) < policy.pure_premium
+
+    pool.won_pure_premiums.assert_equal((policy.premium - policy.premium_for_lps) - _W(60))
+
+
+def test_payout_bigger_than_pure_premium(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        scr_percentage: "0.8"
+        ensuro_fee: 0
+        scr_interest_rate: "0.050330943"  # interest rate to make premium_for_rm=0
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 6000
+        initial_balances:
+        - user: LP1
+          amount: 3500
+        - user: CUST1
+          amount: 2000
+    etokens:
+      - name: eUSD1WEEK
+        expiration_period: 604800
+      - name: eUSD1MONTH
+        expiration_period: 2592000
+      - name: eUSD1YEAR
+        expiration_period: 31536000
+    """
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    rm = pool.config.risk_modules["Roulette"]
+    rm.grant_role("PRICER_ROLE", rm.owner)
+    rm.grant_role("RESOLVER_ROLE", rm.owner)
+
+    usd = pool.currency
+    usd.approve("LP1", pool.contract_id, _W(3500))
+
+    assert pool.deposit("eUSD1YEAR", "LP1", _W(3500)) == _W(3500)
+    usd.approve("CUST1", pool.contract_id, _W(2000))
+    policy = rm.new_policy(
+        payout=_W(3600), premium=_W(2000), customer="CUST1",
+        loss_prob=_R(1/37), expiration=timecontrol.now + WEEK
+    )
+
+    eUSD1YEAR = pool.etokens["eUSD1YEAR"]
+    pool.won_pure_premiums.assert_equal(_W(0))
+    eUSD1YEAR.get_pool_loan().assert_equal(_W(0))
+
+    assert eUSD1YEAR.ocean == _W(2220)
+    assert eUSD1YEAR.scr == _W(1280)
+    timecontrol.fast_forward(WEEK - HOUR)
+    rm.resolve_policy(policy.id, _W(100))
+    assert usd.balance_of("CUST1") == _W(100)
+    pool.won_pure_premiums.assert_equal(
+        (policy.premium - policy.premium_for_lps) - _W(100)
+    )
+
+
 # TODO: define later if partial payouts pay to ensuro_fee and premium_for_rm if possible
 
 
