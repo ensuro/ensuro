@@ -795,7 +795,7 @@ def test_pool_loan_partial_payout(tenv):
         expiration_period: 2592000
       - name: eUSD1YEAR
         expiration_period: 31536000
-    """                     
+    """
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
     rm = pool.config.risk_modules["Roulette"]
@@ -822,7 +822,8 @@ def test_pool_loan_partial_payout(tenv):
     rm.resolve_policy(policy.id, _W(1999))
     assert usd.balance_of("CUST1") == _W(1999)
 
-    eUSD1YEAR.get_pool_loan().assert_equal(_W(1999) - (policy.premium - policy.premium_for_lps) )
+    eUSD1YEAR.get_pool_loan().assert_equal(_W(1999) - (policy.premium - policy.premium_for_lps))
+    assert pool.pure_premiums == _W(0)
 
 
 def test_increase_won_pure_premiums(tenv):
@@ -848,7 +849,7 @@ def test_increase_won_pure_premiums(tenv):
         expiration_period: 2592000
       - name: eUSD1YEAR
         expiration_period: 31536000
-    """                     
+    """
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
     rm = pool.config.risk_modules["Roulette"]
@@ -872,11 +873,13 @@ def test_increase_won_pure_premiums(tenv):
     assert eUSD1YEAR.ocean == _W(2220)
     assert eUSD1YEAR.scr == _W(1280)
     timecontrol.fast_forward(WEEK - HOUR)
-    rm.resolve_policy(policy.id, _W(1000))
-    assert usd.balance_of("CUST1") == _W(1000)
+    rm.resolve_policy(policy.id, _W(60))
+    assert usd.balance_of("CUST1") == _W(60)
 
-    assert _W(1000) <= (policy.pure_premium)
-    pool.won_pure_premiums.assert_equal( (policy.premium - policy.premium_for_lps) - _W(1000) )  
+    assert _W(60) < policy.pure_premium
+
+    pool.won_pure_premiums.assert_equal((policy.premium - policy.premium_for_lps) - _W(60))
+
 
 def test_payout_bigger_than_pure_premium(tenv):
     YAML_SETUP = """
@@ -901,7 +904,7 @@ def test_payout_bigger_than_pure_premium(tenv):
         expiration_period: 2592000
       - name: eUSD1YEAR
         expiration_period: 31536000
-    """                     
+    """
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
     rm = pool.config.risk_modules["Roulette"]
@@ -925,10 +928,12 @@ def test_payout_bigger_than_pure_premium(tenv):
     assert eUSD1YEAR.ocean == _W(2220)
     assert eUSD1YEAR.scr == _W(1280)
     timecontrol.fast_forward(WEEK - HOUR)
-    rm.resolve_policy(policy.id, _W(10))
-    assert usd.balance_of("CUST1") == _W(10)
-    pool.won_pure_premiums.assert_equal( (policy.premium - policy.premium_for_lps) - _W(10) )  
-    
+    rm.resolve_policy(policy.id, _W(100))
+    assert usd.balance_of("CUST1") == _W(100)
+    pool.won_pure_premiums.assert_equal(
+        (policy.premium - policy.premium_for_lps) - _W(100)
+    )
+
 
 # TODO: define later if partial payouts pay to ensuro_fee and premium_for_rm if possible
 
