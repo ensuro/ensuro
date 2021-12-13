@@ -15,13 +15,13 @@ function _W(value) {
 
 function _R(value) {
   if (!Number.isInteger(value))
-    return _BN(value * 1e9).mul(WAD);
+    return _BN(Math.round(value * 1e9)).mul(WAD);
   return _BN(value).mul(RAY);
 }
 
 function amountDecimals() {
   let decimals = Number.parseInt(process.env.AMOUNT_DECIMALS);
-  assert (decimals >= 6);
+  console.assert(decimals >= 6);
   return decimals;
 }
 
@@ -30,7 +30,7 @@ function _A(value) {
   if (typeof value === 'string' || value instanceof String) {
     return _BN(value).mul(_BN(Math.pow(10, amountDecimals())));
   } else {
-    return _BN(value * 1e6).mul(_BN(Math.pow(10, amountDecimals() - 6)));
+    return _BN(Math.round(value * 1e6)).mul(_BN(Math.pow(10, amountDecimals() - 6)));
   }
 }
 
@@ -79,14 +79,19 @@ async function verifyContract(hre, contract, isProxy, constructorArguments) {
 }
 
 async function grantRole(hre, contract, role, user) {
-  if (user === undefined)
+  let userAddress;
+  if (user === undefined) {
     user = await _getDefaultSigner(hre);
-  const roleHex = await contract[role]();  // TODO: compute roleHex without using the contract
-  if (!await contract.hasRole(roleHex, user.address)) {
-    await contract.grantRole(roleHex, user.address);
-    console.log(`Role ${role} (${roleHex}) granted to ${user.address}`);
+    userAddress = user.address;
   } else {
-    console.log(`Role ${role} (${roleHex}) already granted to ${user.address}`);
+    userAddress = user;
+  }
+  const roleHex = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(role));
+  if (!await contract.hasRole(roleHex, userAddress)) {
+    await contract.grantRole(roleHex, userAddress);
+    console.log(`Role ${role} (${roleHex}) granted to ${userAddress}`);
+  } else {
+    console.log(`Role ${role} (${roleHex}) already granted to ${userAddress}`);
   }
 }
 
@@ -102,6 +107,7 @@ async function deployTestCurrency({verify, currName, currSymbol, initialSupply},
   );
   await currency.deployed();
   await logContractCreated(hre, "TestCurrency", currency.address);
+  console.log(`TestCurrency created with ${amountDecimals()} decimals`);
   if (verify)
     await verifyContract(hre, currency, false, [
       currName, currSymbol, _A(initialSupply), amountDecimals()
@@ -158,6 +164,8 @@ async function deployPolicyPool({verify, configAddress, nftAddress, currencyAddr
 
   const policyPoolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await policyPool.config());
   await grantRole(hre, policyPoolConfig, "LEVEL1_ROLE");
+  await grantRole(hre, policyPoolConfig, "LEVEL2_ROLE");
+  await grantRole(hre, policyPoolConfig, "LEVEL3_ROLE");
   return policyPool.address;
 }
 
