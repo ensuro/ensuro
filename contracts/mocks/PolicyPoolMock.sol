@@ -92,11 +92,6 @@ contract PolicyPoolMock is IPolicyPool {
     return policyCount;
   }
 
-  /*  function getPolicy(uint256 policyId) external view override returns (Policy.PolicyData memory) {
-    return policies[policyId];
-  }
-*/
-
   function _resolvePolicy(Policy.PolicyData memory policy, uint256 payout) internal {
     require(policy.id != 0, "Policy not found");
     require(policy.hash() == policyHashes[policy.id], "Hash doesn't match");

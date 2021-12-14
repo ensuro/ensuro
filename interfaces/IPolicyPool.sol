@@ -24,8 +24,6 @@ interface IPolicyPool {
 
   function receiveGrant(uint256 amount) external;
 
-  // function getPolicy(uint256 policyId) external view returns (Policy.PolicyData memory);
-
   function getInvestable() external view returns (uint256);
 
   function getETokenCount() external view returns (uint256);

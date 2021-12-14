@@ -61,7 +61,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
 
   DataTypes.ETokenStatusMap internal _eTokens;
 
-  // mapping(uint256 => Policy.PolicyData) internal _policies;
   mapping(uint256 => bytes32) internal _policies;
   mapping(uint256 => DataTypes.ETokenToWadMap) internal _policiesFunds;
 
