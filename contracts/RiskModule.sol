@@ -273,7 +273,7 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     uint256 lossProb,
     uint40 expiration,
     address customer
-  ) internal whenNotPaused returns (uint256) {
+  ) internal whenNotPaused returns (Policy.PolicyData memory) {
     require(premium < payout, "Premium must be less than payout");
     require(expiration > uint40(block.timestamp), "Expiration must be in the future");
     require(customer != address(0), "Customer can't be zero address");
@@ -292,6 +292,7 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     _totalScr += policy.scr;
     require(_totalScr <= _scrLimit, "RiskModule: SCR limit exceeded");
     uint256 policyId = _policyPool.newPolicy(policy, customer);
-    return policyId;
+    policy.id = policyId;
+    return policy;
   }
 }

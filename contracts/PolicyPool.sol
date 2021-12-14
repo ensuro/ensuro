@@ -61,7 +61,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
 
   DataTypes.ETokenStatusMap internal _eTokens;
 
-  mapping(uint256 => Policy.PolicyData) internal _policies;
+  mapping(uint256 => bytes32) internal _policies;
   mapping(uint256 => DataTypes.ETokenToWadMap) internal _policiesFunds;
 
   uint256 internal _activePremiums; // sum of premiums of active policies - In Wad
@@ -69,7 +69,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   uint256 internal _borrowedActivePP; // amount borrowed from active pure premiums to pay defaulted policies
   uint256 internal _wonPurePremiums; // amount of pure premiums won from non-defaulted policies
 
-  event NewPolicy(IRiskModule indexed riskModule, uint256 policyId);
+  event NewPolicy(IRiskModule indexed riskModule, Policy.PolicyData policy);
   event PolicyRebalanced(IRiskModule indexed riskModule, uint256 indexed policyId);
   event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, uint256 payout);
 
@@ -254,27 +254,27 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     return withdrawed;
   }
 
-  function newPolicy(Policy.PolicyData memory policy_, address customer)
+  function newPolicy(Policy.PolicyData memory policy, address customer)
     external
     override
     whenNotPaused
     returns (uint256)
   {
-    IRiskModule rm = policy_.riskModule;
+    IRiskModule rm = policy.riskModule;
     require(address(rm) == msg.sender, "Only the RM can create new policies");
     _config.checkAcceptsNewPolicy(rm);
-    _currency.safeTransferFrom(customer, address(this), policy_.premium);
+    _currency.safeTransferFrom(customer, address(this), policy.premium);
     uint256 policyId = _policyNFT.safeMint(customer);
-    Policy.PolicyData storage policy = _policies[policyId] = policy_;
     policy.id = policyId;
+    _policies[policyId] = policy.hash();
     _activePurePremiums += policy.purePremium;
     _activePremiums += policy.premium;
     _lockScr(policy);
-    emit NewPolicy(rm, policy.id);
+    emit NewPolicy(rm, policy);
     return policy.id;
   }
 
-  function _lockScr(Policy.PolicyData storage policy) internal {
+  function _lockScr(Policy.PolicyData memory policy) internal {
     uint256 ocean = 0;
     DataTypes.ETokenToWadMap storage policyFunds = _policiesFunds[policy.id];
 
@@ -372,7 +372,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   }
 
   function _processResolution(
-    Policy.PolicyData storage policy,
+    Policy.PolicyData memory policy,
     bool customerWon,
     uint256 payout
   ) internal returns (uint256, uint256) {
@@ -399,32 +399,37 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     return (borrowFromScr, purePremiumWon);
   }
 
-  function expirePolicy(uint256 policyId) external whenNotPaused {
-    Policy.PolicyData storage policy = _policies[policyId];
-    require(policy.id == policyId && policyId != 0, "Policy not found");
+  function _validatePolicy(Policy.PolicyData memory policy) internal view {
+    require(policy.id != 0 && policy.hash() == _policies[policy.id], "Policy not found");
+  }
+
+  function expirePolicy(Policy.PolicyData calldata policy) external whenNotPaused {
     require(policy.expiration <= block.timestamp, "Policy not expired yet");
-    return _resolvePolicy(policyId, 0, true);
+    return _resolvePolicy(policy, 0, true);
   }
 
-  function resolvePolicy(uint256 policyId, uint256 payout) external override whenNotPaused {
-    return _resolvePolicy(policyId, payout, false);
-  }
-
-  function resolvePolicyFullPayout(uint256 policyId, bool customerWon)
+  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout)
     external
     override
     whenNotPaused
   {
-    return _resolvePolicy(policyId, customerWon ? _policies[policyId].payout : 0, false);
+    return _resolvePolicy(policy, payout, false);
+  }
+
+  function resolvePolicyFullPayout(Policy.PolicyData calldata policy, bool customerWon)
+    external
+    override
+    whenNotPaused
+  {
+    return _resolvePolicy(policy, customerWon ? policy.payout : 0, false);
   }
 
   function _resolvePolicy(
-    uint256 policyId,
+    Policy.PolicyData memory policy,
     uint256 payout,
     bool expired
   ) internal {
-    Policy.PolicyData storage policy = _policies[policyId];
-    require(policy.id == policyId && policyId != 0, "Policy not found");
+    _validatePolicy(policy);
     IRiskModule rm = policy.riskModule;
     require(expired || address(rm) == msg.sender, "Only the RM can resolve policies");
     require(payout == 0 || policy.expiration > block.timestamp, "Can't pay expired policy");
@@ -462,7 +467,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     delete _policiesFunds[policy.id];
   }
 
-  function _interestAdjustment(Policy.PolicyData storage policy)
+  function _interestAdjustment(Policy.PolicyData memory policy)
     internal
     view
     returns (bool, uint256)
@@ -473,7 +478,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     else return (false, aux - policy.premiumForLps);
   }
 
-  function _updatePolicyFundsCustWon(Policy.PolicyData storage policy, uint256 borrowFromScr)
+  function _updatePolicyFundsCustWon(Policy.PolicyData memory policy, uint256 borrowFromScr)
     internal
     returns (uint256)
   {
@@ -499,7 +504,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   }
 
   // Almost duplicated code from _updatePolicyFundsCustWon but separated to avoid stack depth error
-  function _updatePolicyFundsCustLost(Policy.PolicyData storage policy, uint256 purePremiumWon)
+  function _updatePolicyFundsCustLost(Policy.PolicyData memory policy, uint256 purePremiumWon)
     internal
     returns (uint256)
   {
@@ -605,10 +610,13 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     return amount;
   }
 
-  function rebalancePolicy(uint256 policyId) external onlyRole(REBALANCE_ROLE) whenNotPaused {
-    Policy.PolicyData storage policy = _policies[policyId];
-    require(policy.id == policyId && policyId != 0, "Policy not found");
-    DataTypes.ETokenToWadMap storage policyFunds = _policiesFunds[policyId];
+  function rebalancePolicy(Policy.PolicyData calldata policy)
+    external
+    onlyRole(REBALANCE_ROLE)
+    whenNotPaused
+  {
+    _validatePolicy(policy);
+    DataTypes.ETokenToWadMap storage policyFunds = _policiesFunds[policy.id];
     uint256 ocean = 0;
 
     // Iterates all the tokens
@@ -677,10 +685,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
       // losses
       _payFromPool(amount); // return value should be 0 if not, losses are more than capital available
     }
-  }
-
-  function getPolicy(uint256 policyId) external view override returns (Policy.PolicyData memory) {
-    return _policies[policyId];
   }
 
   function getPolicyFundCount(uint256 policyId) external view returns (uint256) {

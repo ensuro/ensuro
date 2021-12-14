@@ -97,4 +97,8 @@ contract PolicyNFT is UUPSUpgradeable, ERC721Upgradeable, PausableUpgradeable, I
   ) internal override whenNotPaused {
     super._beforeTokenTransfer(from, to, tokenId);
   }
+
+  function nextId() external view returns (uint256) {
+    return _tokenIdCounter.current();
+  }
 }

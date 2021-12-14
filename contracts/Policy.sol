@@ -76,9 +76,9 @@ library Policy {
     return policy;
   }
 
-  function splitPayout(PolicyData storage policy, uint256 payout)
+  function splitPayout(PolicyData memory policy, uint256 payout)
     internal
-    view
+    pure
     returns (uint256 toBePaidWithPool, uint256 premiumsWon)
   {
     uint256 nonCapitalPremiums = policy.premium - policy.premiumForLps;
@@ -90,7 +90,7 @@ library Policy {
     }
   }
 
-  function interestRate(PolicyData storage policy) internal view returns (uint256) {
+  function interestRate(PolicyData memory policy) internal pure returns (uint256) {
     return
       policy
         .premiumForLps
@@ -99,7 +99,7 @@ library Policy {
         .wadToRay();
   }
 
-  function accruedInterest(PolicyData storage policy) internal view returns (uint256) {
+  function accruedInterest(PolicyData memory policy) internal view returns (uint256) {
     uint256 secs = block.timestamp - policy.start;
     return
       policy
@@ -108,5 +108,9 @@ library Policy {
         .rayMul(secs * interestRate(policy))
         .rayDiv(SECONDS_IN_YEAR_RAY)
         .rayToWad();
+  }
+
+  function hash(PolicyData memory policy) internal pure returns (bytes32) {
+    return keccak256(abi.encode(policy));
   }
 }

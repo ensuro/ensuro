@@ -17,5 +17,5 @@ jobs:
       - run: npx hardhat size-contracts
       - run: npm run solhint
       - run: SKIP_PROXY=1 brownie test -v --gas
-      - run: brownie test -v
+      - run: brownie test -v --gas
       - run: ./deploySmokeTest.sh

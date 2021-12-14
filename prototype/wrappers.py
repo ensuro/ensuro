@@ -78,7 +78,7 @@ class EToken(IERC20):
         pool_loan_interest_rate = _R(pool_loan_interest_rate)
         liquidity_requirement = _R(liquidity_requirement)
         max_utilization_rate = _R(max_utilization_rate)
-        
+
         super().__init__(
             owner, policy_pool,
             name, symbol, expiration_period, liquidity_requirement,
@@ -189,6 +189,7 @@ class Policy:
                  pure_premium, premium_for_ensuro, premium_for_rm, premium_for_lps,
                  risk_module, start, expiration, address_book):
         self.id = id
+        self._risk_module = risk_module
         self.risk_module = address_book.get_name(risk_module)
         self.payout = Wad(payout)
         self.premium = Wad(premium)
@@ -218,6 +219,27 @@ class Policy:
             self.scr.to_ray() * seconds * self.interest_rate //
             Ray.from_value(SECONDS_IN_YEAR)
         ).to_wad()
+
+    def as_tuple(self):
+        return (
+            self.id, self.payout, self.premium, self.scr, self.loss_prob,
+            self.pure_premium, self.premium_for_ensuro, self.premium_for_rm, self.premium_for_lps,
+            self._risk_module, self.start, self.expiration
+        )
+
+
+class PolicyDB:
+    def __init__(self):
+        self._policies = {}
+
+    def add_policy(self, pool_address, policy):
+        self._policies[(pool_address, policy.id)] = policy
+
+    def get_policy(self, pool_address, policy_id):
+        return self._policies[(pool_address, policy_id)]
+
+
+policy_db = PolicyDB()
 
 
 class RiskModule(ETHWrapper):
@@ -256,9 +278,10 @@ class RiskModule(ETHWrapper):
     def new_policy(self, *args, **kwargs):
         receipt = self.new_policy_(*args, **kwargs)
         if "NewPolicy" in receipt.events:
-            policy_id = receipt.events["NewPolicy"]["policyId"]
-            policy_data = self.policy_pool.contract.getPolicy(policy_id)
-            return Policy(*policy_data, address_book=self.provider.address_book)
+            policy_data = receipt.events["NewPolicy"]["policy"]
+            policy = Policy(*policy_data, address_book=self.provider.address_book)
+            policy_db.add_policy(self.policy_pool.contract.address, policy)
+            return policy
         else:
             return None
 
@@ -272,14 +295,16 @@ class TrustfulRiskModule(RiskModule):
         ("customer", "address")
     ), "receipt")
 
-    resolve_policy_full_payout = MethodAdapter((("policy_id", "int"), ("customer_won", "bool")))
-    resolve_policy_ = MethodAdapter((("policy_id", "int"), ("payout", "amount")))
+    resolve_policy_full_payout = MethodAdapter((("policy", "tuple"), ("customer_won", "bool")))
+    resolve_policy_ = MethodAdapter((("policy", "tuple"), ("payout", "amount")))
 
     def resolve_policy(self, policy_id, customer_won_or_amount):
+        global policy_db
+        policy = policy_db.get_policy(self.policy_pool.contract.address, policy_id)
         if customer_won_or_amount is True or customer_won_or_amount is False:
-            return self.resolve_policy_full_payout(policy_id,  customer_won_or_amount)
+            return self.resolve_policy_full_payout(policy.as_tuple(),  customer_won_or_amount)
         else:
-            return self.resolve_policy_(policy_id,  customer_won_or_amount)
+            return self.resolve_policy_(policy.as_tuple(), customer_won_or_amount)
 
 
 class FlightDelayRiskModule(RiskModule):
@@ -481,7 +506,27 @@ class PolicyPool(ETHWrapper):
 
     get_policy_fund_count = MethodAdapter((("policy_id", "int"), ), "int")
     get_policy_fund = MethodAdapter((("policy_id", "int"), ("etoken", "contract")), "amount")
-    rebalance_policy = MethodAdapter((("policy_id", "int"), ))
+    rebalance_policy_ = MethodAdapter((
+        ("policy_id", "int", ),
+        ("payout", "amount", ),
+        ("premium", "amount", ),
+        ("scr", "amount", ),
+        ("loss_prob", "ray", ),
+        ("purePremium", "amount", ),
+        ("premiumForEnsuro", "amount", ),
+        ("premiumForRm", "amount", ),
+        ("premiumForLps", "amount", ),
+        ("riskModule", "address", ),
+        ("start", "int", ),
+        ("expiration", "int", ),
+    ))
+    rebalance_policy_ = MethodAdapter((("policy", "tuple"), ))
+
+    def rebalance_policy(self, policy_id):
+        global policy_db
+        policy = policy_db.get_policy(self.contract.address, policy_id)
+        return self.rebalance_policy_(policy.as_tuple())
+
     get_investable = MethodAdapter((), "amount")
     receive_grant = MethodAdapter((("sender", "msg.sender"), ("amount", "amount")))
 
@@ -495,7 +540,12 @@ class PolicyPool(ETHWrapper):
         else:
             return Wad(0)
 
-    expire_policy = MethodAdapter((("policy_id", "int"), ))
+    expire_policy_ = MethodAdapter((("policy", "tuple"), ))
+
+    def expire_policy(self, policy_id):
+        global policy_db
+        policy = policy_db.get_policy(self.contract.address, policy_id)
+        return self.expire_policy_(policy.as_tuple())
 
 
 class BaseAssetManager(ETHWrapper):

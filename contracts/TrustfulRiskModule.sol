@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {RiskModule} from "./RiskModule.sol";
+import {Policy} from "./Policy.sol";
 
 /**
  * @title Trustful Risk Module
@@ -58,22 +59,22 @@ contract TrustfulRiskModule is RiskModule {
     uint40 expiration,
     address customer
   ) external onlyRole(PRICER_ROLE) returns (uint256) {
-    return _newPolicy(payout, premium, lossProb, expiration, customer);
+    return _newPolicy(payout, premium, lossProb, expiration, customer).id;
   }
 
-  function resolvePolicy(uint256 policyId, uint256 payout)
+  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout)
     external
     onlyRole(RESOLVER_ROLE)
     whenNotPaused
   {
-    return _policyPool.resolvePolicy(policyId, payout);
+    _policyPool.resolvePolicy(policy, payout);
   }
 
-  function resolvePolicyFullPayout(uint256 policyId, bool customerWon)
+  function resolvePolicyFullPayout(Policy.PolicyData calldata policy, bool customerWon)
     external
     onlyRole(RESOLVER_ROLE)
     whenNotPaused
   {
-    return _policyPool.resolvePolicyFullPayout(policyId, customerWon);
+    _policyPool.resolvePolicyFullPayout(policy, customerWon);
   }
 }
