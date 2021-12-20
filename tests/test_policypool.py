@@ -1029,7 +1029,7 @@ def test_asset_manager(tenv):
     )
 
 
-def test_fixed_asset_manager(tenv):
+def test_assets_under_liquidity_middle(tenv):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
@@ -1083,10 +1083,19 @@ def test_fixed_asset_manager(tenv):
         payout=_W(10), premium=_W(1.5), customer="CUST1",
         loss_prob=_R("0.105"), expiration=timecontrol.now + 365 * DAY // 2
     )
-    pure_premium, _, _, for_lps = policy.premium_split()
+    pure_premium, for_ensuro, for_rm, for_lps = policy.premium_split()
     etk.scr.assert_equal(_W(2.0808))
 
     asset_manager.checkpoint()
+    pure_premium.assert_equal(_W(1.349250))
+    for_ensuro.assert_equal(_W(0.043311))
+    # for_rm.assert_equal(_W(0.088323))
+    # for_lps.assert_equal(_W(0.019116))
+
+    pool.withdraw("eUSD1YEAR", "LP1", _W(80)).assert_equal(_W(80))
+    assert USD.balance_of(pool.contract_id) == _W(21.5)
+
+
 
 
 def test_insolvency_without_hook(tenv):
