@@ -1081,21 +1081,19 @@ def test_assets_under_liquidity_middle(tenv):
     USD.approve("CUST1", pool.contract_id, _W(100))
     policy = rm.new_policy(
         payout=_W(10), premium=_W(1.5), customer="CUST1",
-        loss_prob=_R("0.105"), expiration=timecontrol.now + 365 * DAY // 2
+        loss_prob=_R("0.105"), expiration=timecontrol.now + 45 * DAY
     )
     pure_premium, for_ensuro, for_rm, for_lps = policy.premium_split()
     etk.scr.assert_equal(_W(2.0808))
 
     asset_manager.checkpoint()
-    pure_premium.assert_equal(_W(1.349250))
-    for_ensuro.assert_equal(_W(0.043311))
-    # for_rm.assert_equal(_W(0.088323))
-    # for_lps.assert_equal(_W(0.019116))
+    pure_premium.assert_equal(_W("1.349250"))
+    for_ensuro.assert_equal(_W("0.043311"))
+    for_rm.assert_equal(_W("0.088323"), decimals=3)
+    for_lps.assert_equal(_W("0.019116"), decimals=3)
 
     pool.withdraw("eUSD1YEAR", "LP1", _W(80)).assert_equal(_W(80))
     assert USD.balance_of(pool.contract_id) == _W(21.5)
-
-
 
 
 def test_insolvency_without_hook(tenv):
