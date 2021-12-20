@@ -47,7 +47,7 @@ async function etherscanEndpoints(hre) {
 async function logContractCreated(hre, contractName, address) {
   const browserUrl = (await etherscanEndpoints(hre)).browserURL;
   if (browserUrl) {
-    console.log(`${contractName} deployed to: ${browserUrl}address/${address}`);
+    console.log(`${contractName} deployed to: ${browserUrl}/address/${address}`);
   } else {
     console.log(`${contractName} deployed to: ${address}`);
   }
@@ -70,7 +70,7 @@ async function verifyContract(hre, contract, isProxy, constructorArguments) {
     if (isProxy && etherscanURL) {
       console.log(
         "Contract successfully verified, you should verify the proxy at " +
-        `${etherscanURL}proxyContractChecker?a=${contract.address}`
+        `${etherscanURL}/proxyContractChecker?a=${contract.address}`
       );
     }
   } catch (error) {
