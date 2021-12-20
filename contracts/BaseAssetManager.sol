@@ -144,7 +144,10 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
     if (poolCash > _liquidityMax) {
       _invest(poolCash - _liquidityMiddle);
     } else if (poolCash < _liquidityMin) {
-      _deinvest(_liquidityMiddle - poolCash);
+      uint256 deinvestAmount = Math.min(getInvestmentValue(), _liquidityMiddle - poolCash);
+      if (deinvestAmount > 0) {
+        _deinvest(deinvestAmount);
+      }
     }
   }
 

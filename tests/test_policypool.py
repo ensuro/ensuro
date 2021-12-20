@@ -1063,14 +1063,14 @@ def test_fixed_asset_manager(tenv):
     rm = pool.config.risk_modules["Roulette"]
     rm.grant_role("PRICER_ROLE", rm.owner)
     rm.grant_role("RESOLVER_ROLE", rm.owner)
-    
+
     pool.config.grant_role("LEVEL2_ROLE", rm.owner)  # For setting moc
 
     with rm.as_(rm.owner):
-      rm.moc = _R("1.285")
+        rm.moc = _R("1.285")
 
     rm.moc.assert_equal(_R(1.285))
-      
+
     USD = pool.currency
     etk = pool.etokens["eUSD1YEAR"]
     asset_manager = pool.config.asset_manager
@@ -1086,8 +1086,7 @@ def test_fixed_asset_manager(tenv):
     pure_premium, _, _, for_lps = policy.premium_split()
     etk.scr.assert_equal(_W(2.0808))
 
-    # asset_manager.checkpoint()
-
+    asset_manager.checkpoint()
 
 
 def test_insolvency_without_hook(tenv):

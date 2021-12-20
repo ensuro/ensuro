@@ -794,7 +794,9 @@ class AssetManager(AccessControlContract):
         if pool_cash > self.liquidity_max:
             self._invest(pool_cash - self.liquidity_middle)
         elif pool_cash < self.liquidity_min:
-            self._deinvest(self.liquidity_middle - pool_cash)
+            deinvest_amount = min(self.liquidity_middle - pool_cash, self.get_investment_value())
+            if deinvest_amount > 0:
+                self._deinvest(deinvest_amount)
         # else:
             # pool_cash between [self.liquidity_min, self.liquidity_max]
             # No need to transfer
