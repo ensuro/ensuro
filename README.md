@@ -67,6 +67,9 @@ The development environment is prepared for running inside a docker container de
 
 Also the docker container is prepared to run [hardhat](https://hardhat.org/). This will be used probably for deployment scripts and perhaps some aditional tests.
 
+## Code Audits
+
+- Audit by [SlowMist](https://www.slowmist.com) - 2021-09-29: [AuditReport](audits/SlowMistAuditReport-Ensuro-2021-09-29.pdf)
 
 ## Contributing
 
