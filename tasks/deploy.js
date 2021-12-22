@@ -274,9 +274,9 @@ async function deployFixedIntestRateAssetManager(opts, hre) {
 
 async function deployAaveAssetManager(opts, hre) {
   opts.extraArgs = [
-    _A(opts.claimRewardsMin),
-    _A(opts.reinvestRewardsMin),
-    _A(opts.maxSlippage),
+    _W(opts.claimRewardsMin),
+    _W(opts.reinvestRewardsMin),
+    _W(opts.maxSlippage),
   ];
   opts.extraConstructorArgs = [
     opts.aaveAddrProv,
