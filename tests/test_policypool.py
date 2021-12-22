@@ -1029,6 +1029,86 @@ def test_asset_manager(tenv):
     )
 
 
+def test_assets_under_liquidity_middle(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        scr_percentage: "0.2448"
+        scr_interest_rate: "0.0729"
+        scr_limit: 250000
+        ensuro_fee: "0.0321"
+        max_scr_per_policy: 500
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 20000
+        initial_balances:
+        - user: LP1
+          amount: 10000
+        - user: LP2
+          amount: 1000
+        - user: CUST1
+          amount: 200
+    etokens:
+      - name: eUSD1YEAR
+        expiration_period: 31536000
+    asset_manager:
+        class: FixedRateAssetManager
+        liquidity_min: 1000
+        liquidity_middle: 1500
+        liquidity_max: 2000
+    """
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    rm = pool.config.risk_modules["Roulette"]
+    rm.grant_role("PRICER_ROLE", rm.owner)
+    rm.grant_role("RESOLVER_ROLE", rm.owner)
+
+    pool.config.grant_role("LEVEL2_ROLE", rm.owner)  # For setting moc
+
+    with rm.as_(rm.owner):
+        rm.moc = _R("1.285")
+
+    rm.moc.assert_equal(_R(1.285))
+
+    USD = pool.currency
+    etk = pool.etokens["eUSD1YEAR"]
+    asset_manager = pool.config.asset_manager
+
+    USD.approve("LP1", pool.contract_id, _W(100))
+    assert pool.deposit("eUSD1YEAR", "LP1", _W(100)) == _W(100)
+
+    USD.approve("CUST1", pool.contract_id, _W(100))
+    policy = rm.new_policy(
+        payout=_W(10), premium=_W(1.5), customer="CUST1",
+        loss_prob=_R("0.105"), expiration=timecontrol.now + 45 * DAY
+    )
+    pure_premium, for_ensuro, for_rm, for_lps = policy.premium_split()
+    etk.scr.assert_equal(_W(2.0808))
+
+    asset_manager.checkpoint()
+    pure_premium.assert_equal(_W("1.349250"))
+    for_ensuro.assert_equal(_W("0.043311"))
+    for_rm.assert_equal(_W("0.088323"), decimals=3)
+    for_lps.assert_equal(_W("0.019116"), decimals=3)
+
+    rm.resolve_policy(policy.id, False)
+
+    policy_2 = rm.new_policy(
+        payout=_W(5), premium=_W("0.75"), customer="CUST1",
+        loss_prob=_R("0.105"), expiration=timecontrol.now + 45 * DAY
+    )
+
+    pure_premium.assert_equal(_W("1.349250"))
+    for_ensuro.assert_equal(_W("0.043311"))
+    for_rm.assert_equal(_W("0.088323"), decimals=3)
+    for_lps.assert_equal(_W("0.019116"), decimals=3)
+
+    rm.resolve_policy(policy_2.id, _W(3))
+
+    pool.withdraw("eUSD1YEAR", "LP1", _W(80)).assert_equal(_W(80))
+
+
 def test_insolvency_without_hook(tenv):
     YAML_SETUP = """
     risk_modules:
