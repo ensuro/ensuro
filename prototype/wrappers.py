@@ -227,6 +227,8 @@ class Policy:
             self._risk_module, self.start, self.expiration
         )
 
+    FIELDS = "(int, amount, amount, amount, ray, amount, amount, amount, amount, address, int, int)"
+
 
 class PolicyDB:
     def __init__(self):
@@ -295,8 +297,8 @@ class TrustfulRiskModule(RiskModule):
         ("customer", "address")
     ), "receipt")
 
-    resolve_policy_full_payout = MethodAdapter((("policy", "tuple"), ("customer_won", "bool")))
-    resolve_policy_ = MethodAdapter((("policy", "tuple"), ("payout", "amount")))
+    resolve_policy_full_payout = MethodAdapter((("policy", Policy.FIELDS), ("customer_won", "bool")))
+    resolve_policy_ = MethodAdapter((("policy", Policy.FIELDS), ("payout", "amount")))
 
     def resolve_policy(self, policy_id, customer_won_or_amount):
         global policy_db
@@ -365,7 +367,16 @@ class PolicyPoolConfig(ETHWrapper):
 
     @classmethod
     def fetch_riskmodules(cls, wrapper):
-        raise NotImplementedError()  # TODO
+        events = wrapper.provider.get_events(wrapper, "RiskModuleStatusChanged")
+        risk_modules = {}
+        for evt in events:
+            rm_address = evt["args"]["riskModule"]
+            rm_status = evt["args"]["newStatus"]
+            if rm_status == 1:  # active
+                risk_modules[rm_address] = RiskModule.connect(rm_address)
+            elif rm_address in risk_modules:
+                risk_modules.pop(rm_address)
+        return risk_modules
 
     add_risk_module_ = MethodAdapter((("risk_module", "contract"), ))
 
