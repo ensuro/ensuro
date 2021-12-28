@@ -41,8 +41,13 @@ On the policy side, the policies are injected into the protocol by *Risk Modules
 </dl>
 
 <dl>
+<dt>LPWhitelist</dt>
+<dd>This is an optional component. If present it controls which Liquidity Providers can deposit or transfer their _eTokens_.</dd>
+</dl>
+
+<dl>
 <dt>InsolvencyHook</dt>
-<dd>This component of the protocol is the one responsible for handling situations where there is not enough money in the protocol to cover losses (something unluckily possible since we aren't fully collaterized). Possible implementations of this are trigger of reinsurance (excess loss) policy from another company, sell governance tokens or take a loan.</dd>
+<dd>This component of the protocol is the one responsible for handling situations where there is not enough money in the protocol to cover losses (something unlikely but possible, since we aren't fully collaterized). Possible implementations of this are trigger of reinsurance (excess loss) policy from another company, sell governance tokens or take a loan.</dd>
 </dl>
 
 <dl>
