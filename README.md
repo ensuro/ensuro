@@ -27,7 +27,7 @@ On the policy side, the policies are injected into the protocol by *Risk Modules
 
 <dl>
 <dt>EToken</dt>
-<dd>This is a ERC20 compatible contract that represents the capital of each liquidity provider in a given pool. The valuation is one-to-one with the underlyng stablecoin. The view `scr()` returns the amount of capital that's locked backing up policies. For this capital locked, the pool receives an interest (`scrInterestRate()` / `tokenInterestRate()`) that is continously accrued in the balance of eToken holders.</dd>
+<dd>This is a ERC20 compatible contract that represents the capital of each liquidity provider in a given pool. The valuation is one-to-one with the underlyng stablecoin. The view <pre>scr()</pre> returns the amount of capital that's locked backing up policies. For this capital locked, the pool receives an interest (<pre>scrInterestRate() / tokenInterestRate()</pre>) that is continously accrued in the balance of eToken holders.</dd>
 </dl>
 
 <dl>
@@ -42,7 +42,7 @@ On the policy side, the policies are injected into the protocol by *Risk Modules
 
 <dl>
 <dt>LPWhitelist</dt>
-<dd>This is an optional component. If present it controls which Liquidity Providers can deposit or transfer their _eTokens_.</dd>
+<dd>This is an optional component. If present it controls which Liquidity Providers can deposit or transfer their <i>eTokens</i>.</dd>
 </dl>
 
 <dl>
