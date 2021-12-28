@@ -102,7 +102,7 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
   /**
    * @dev Calculates asset earnings and distributes them updating accounting in PolicyPool and eTokens
    */
-  function distibuteEarnings() public virtual whenNotPaused {
+  function distributeEarnings() public virtual whenNotPaused {
     // TODO Check: Anyone can call this funcion. This could be a potencial surface of flash loan attack?
     uint256 investmentValue = getInvestmentValue();
     bool positive;
@@ -155,7 +155,7 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
    * @dev Function to be called automatically by a crontask - Distributes and rebalances
    */
   function checkpoint() external {
-    distibuteEarnings();
+    distributeEarnings();
     rebalance();
   }
 

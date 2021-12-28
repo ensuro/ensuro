@@ -1109,6 +1109,56 @@ def test_assets_under_liquidity_middle(tenv):
     pool.withdraw("eUSD1YEAR", "LP1", _W(80)).assert_equal(_W(80))
 
 
+def test_distribute_earnings(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        scr_percentage: "0.1"
+        scr_interest_rate: "0.02"
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 20000
+        initial_balances:
+        - user: LP1
+          amount: 5000
+        - user: LP2
+          amount: 3000
+        - user: CUST1
+          amount: 200
+    etokens:
+      - name: eUSD1YEAR
+        expiration_period: 31536000
+    asset_manager:
+        class: FixedRateAssetManager
+        liquidity_min: 1000
+        liquidity_middle: 1500
+        liquidity_max: 2000
+    """
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    USD = pool.currency
+    etk = pool.etokens["eUSD1YEAR"]
+    timecontrol = tenv.time_control
+    rm = pool.config.risk_modules["Roulette"]
+    rm.grant_role("PRICER_ROLE", rm.owner)
+    rm.grant_role("RESOLVER_ROLE", rm.owner)
+
+    asset_manager = pool.config.asset_manager
+
+    USD.approve("LP1", pool.contract_id, _W(1000))
+    assert pool.deposit("eUSD1YEAR", "LP1", _W(1000)) == _W(1000)
+
+    pool.etokens["eUSD1YEAR"].total_supply().assert_equal(_W(1000))
+
+    asset_manager.distribute_earnings()
+    asset_manager.total_investable().assert_equal(_W(1000))
+
+
+    # with etk.thru_policy_pool():
+    #     asset_manager.asset_earnings(_W(500))
+
+
+
 def test_insolvency_without_hook(tenv):
     YAML_SETUP = """
     risk_modules:
