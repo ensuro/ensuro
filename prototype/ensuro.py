@@ -834,6 +834,7 @@ class FixedRateAssetManager(AssetManager):
 
     interest_rate = RayField(default=_R("0.05"))
     last_mint_burn = IntField(default=time_control.now)
+    positive = bool
 
     def get_investment_value(self):
         balance = self.pool.currency.balance_of(self.contract_id)
@@ -841,7 +842,11 @@ class FixedRateAssetManager(AssetManager):
         if secs <= 0:
             return balance
         interest_rate = self.interest_rate * _R(secs) // _R(SECONDS_IN_YEAR)
-        return (balance.to_ray() * (_R(1) + interest_rate)).to_wad()
+        if (self.positive):
+            return (balance.to_ray() * (_R(1) + interest_rate)).to_wad()
+        else:
+            return (balance.to_ray() * (_R(1) - interest_rate)).to_wad()
+
 
     def _mint_burn(self):
         if self.last_mint_burn == time_control.now:

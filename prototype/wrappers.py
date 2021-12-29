@@ -569,6 +569,8 @@ class BaseAssetManager(ETHWrapper):
         ("liquidity_max", "amount")
     )
 
+    positive = MethodAdapter((), "bool", is_property=True)
+
     def __init__(self, owner, pool, liquidity_min, liquidity_middle, liquidity_max, *args):
         liquidity_min = _W(liquidity_min)
         liquidity_middle = _W(liquidity_middle)

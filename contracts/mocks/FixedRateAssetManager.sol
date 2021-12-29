@@ -43,10 +43,11 @@ contract FixedRateAssetManager is BaseAssetManager {
     if (lastMintBurn >= block.timestamp) return balance;
     uint256 secs = block.timestamp - lastMintBurn;
     uint256 scale;
-    if (positive)
+    if (positive) {
       scale = WadRayMath.ray() + (interestRate * secs) / SECONDS_PER_YEAR;
-    else
+    } else {
       scale = WadRayMath.ray() - (interestRate * secs) / SECONDS_PER_YEAR;
+    }
     return balance.wadMul(scale.rayToWad());
   }
 

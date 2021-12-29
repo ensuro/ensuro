@@ -1113,17 +1113,20 @@ def test_distribute_earnings(tenv):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
-        scr_percentage: "0.1"
-        scr_interest_rate: "0.02"
+        scr_percentage: "0.2448"
+        scr_interest_rate: "0.0729"
+        scr_limit: 250000
+        ensuro_fee: "0.0321"
+        max_scr_per_policy: 500
     currency:
         name: USD
         symbol: $
         initial_supply: 20000
         initial_balances:
         - user: LP1
-          amount: 5000
+          amount: 10000
         - user: LP2
-          amount: 3000
+          amount: 1000
         - user: CUST1
           amount: 200
     etokens:
@@ -1136,26 +1139,29 @@ def test_distribute_earnings(tenv):
         liquidity_max: 2000
     """
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
-    USD = pool.currency
-    etk = pool.etokens["eUSD1YEAR"]
     timecontrol = tenv.time_control
     rm = pool.config.risk_modules["Roulette"]
     rm.grant_role("PRICER_ROLE", rm.owner)
     rm.grant_role("RESOLVER_ROLE", rm.owner)
 
+    USD = pool.currency
+    etk = pool.etokens["eUSD1YEAR"]
     asset_manager = pool.config.asset_manager
 
-    USD.approve("LP1", pool.contract_id, _W(1000))
-    assert pool.deposit("eUSD1YEAR", "LP1", _W(1000)) == _W(1000)
-
-    pool.etokens["eUSD1YEAR"].total_supply().assert_equal(_W(1000))
+    USD.approve("LP1", pool.contract_id, _W(5000))
+    assert pool.deposit("eUSD1YEAR", "LP1", _W(5000)) == _W(5000)
+    asset_manager.rebalance()
+    timecontrol.fast_forward(365 * DAY)
+    asset_manager.get_investment_value().assert_equal(_W(3675))
 
     asset_manager.distribute_earnings()
-    asset_manager.total_investable().assert_equal(_W(1000))
+    timecontrol.fast_forward(365 * DAY)
+    asset_manager.get_investment_value().assert_equal(_W(3850),decimals=0)
 
-
-    # with etk.thru_policy_pool():
-    #     asset_manager.asset_earnings(_W(500))
+    asset_manager.positive = False
+    timecontrol.fast_forward(365 * DAY)
+    asset_manager.distribute_earnings()
+    asset_manager.get_investment_value().assert_equal(_W(2975))
 
 
 
