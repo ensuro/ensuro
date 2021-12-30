@@ -1109,7 +1109,7 @@ def test_assets_under_liquidity_middle(tenv):
     pool.withdraw("eUSD1YEAR", "LP1", _W(80)).assert_equal(_W(80))
 
 
-def test_distribute_earnings(tenv):
+def test_distribute_negative_earnings(tenv):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
@@ -1151,18 +1151,19 @@ def test_distribute_earnings(tenv):
     USD.approve("LP1", pool.contract_id, _W(5000))
     assert pool.deposit("eUSD1YEAR", "LP1", _W(5000)) == _W(5000)
     asset_manager.rebalance()
+    asset_manager.get_investment_value().assert_equal(_W(3500))
     timecontrol.fast_forward(365 * DAY)
     asset_manager.get_investment_value().assert_equal(_W(3675))
 
     asset_manager.distribute_earnings()
     timecontrol.fast_forward(365 * DAY)
-    asset_manager.get_investment_value().assert_equal(_W(3850),decimals=0)
+    asset_manager.get_investment_value().assert_equal(_W(3850), decimals=0)
 
+    # Now change the asset manager to negative interest rate
     asset_manager.positive = False
     timecontrol.fast_forward(365 * DAY)
     asset_manager.distribute_earnings()
     asset_manager.get_investment_value().assert_equal(_W(2975))
-
 
 
 def test_insolvency_without_hook(tenv):

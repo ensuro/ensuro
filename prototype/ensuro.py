@@ -847,7 +847,6 @@ class FixedRateAssetManager(AssetManager):
         else:
             return (balance.to_ray() * (_R(1) - interest_rate)).to_wad()
 
-
     def _mint_burn(self):
         if self.last_mint_burn == time_control.now:
             return
