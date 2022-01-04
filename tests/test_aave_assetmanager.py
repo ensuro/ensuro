@@ -91,7 +91,7 @@ def skip_if_not_fork(f):
     skip = False
     if "brownie" in sys.modules:
         from brownie._config import CONFIG
-        if "fork" in CONFIG.argv.get("network", None):
+        if "fork" in CONFIG.argv.get("network", ""):
             skip = True
 
     if skip:
