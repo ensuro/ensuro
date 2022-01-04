@@ -22,6 +22,11 @@ if [ $NETWORK == "localhost" ]; then
     fi
 fi
 
+if [ -z $ALCHEMY_URL ]; then
+    echo "Must set environment variable $ALCHEMY_URL"
+    exit 1
+fi
+
 if [ ! -z $START_HHNODE ]; then
     npx hardhat node --fork $ALCHEMY_URL >/dev/null &
 
