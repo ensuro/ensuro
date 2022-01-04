@@ -28,10 +28,11 @@ if [ -z $ALCHEMY_URL ]; then
 fi
 
 if [ ! -z $START_HHNODE ]; then
+    echo "Starting hardhat node"
     npx hardhat node --fork $ALCHEMY_URL >/dev/null &
 
     HHNODE_PID=$!
-    sleep 2
+    sleep 5
     kill -0 $HHNODE_PID || die "Error launching hardhat node localhost"
 fi
 
@@ -55,6 +56,6 @@ npx hardhat --network $NETWORK deploy:aaveAssetManager $VERIFY \
    --swap-router $SWAP_ROUTER \
     --pool-address $POOL || die "Error deploying AaveAssetManager"
 
-# if [ ! -z $HHNODE_PID ]; then
-#    kill $HHNODE_PID
-# fi
+if [ ! -z $HHNODE_PID ]; then
+   kill $HHNODE_PID
+fi
