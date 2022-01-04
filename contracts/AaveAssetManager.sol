@@ -35,6 +35,12 @@ contract AaveAssetManager is BaseAssetManager {
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   ILendingPoolAddressesProvider internal immutable _aaveAddrProv;
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+  IAToken internal immutable _aToken;
+  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+  IAToken internal immutable _rewardAToken;
+  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+  IERC20Metadata internal immutable _rewardToken;
+  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IUniswapV2Router02 internal immutable _swapRouter; // We will use SushiSwap in Polygon
   uint256 internal _claimRewardsMin; // Minimum amount of rewards accumulated to claim
   uint256 internal _reinvestRewardsMin; // Minimum amount of rewards to reinvest into AAVE
@@ -55,6 +61,15 @@ contract AaveAssetManager is BaseAssetManager {
   ) BaseAssetManager(policyPool_) {
     _aaveAddrProv = aaveAddrProv_;
     _swapRouter = swapRouter_;
+    AaveProtocolDataProvider dataProvider = AaveProtocolDataProvider(
+      aaveAddrProv_.getAddress(DATA_PROVIDER_ID)
+    );
+    (address aToken_, , ) = dataProvider.getReserveTokensAddresses(address(policyPool_.currency()));
+    _aToken = IAToken(aToken_);
+    address rewardToken_ = IAToken(aToken_).getIncentivesController().REWARD_TOKEN();
+    _rewardToken = IERC20Metadata(rewardToken_);
+    (address rewardAToken_, , ) = dataProvider.getReserveTokensAddresses(address(rewardToken_));
+    _rewardAToken = IAToken(rewardAToken_);
   }
 
   function initialize(
@@ -123,17 +138,15 @@ contract AaveAssetManager is BaseAssetManager {
   }
 
   function aToken() public view returns (IAToken) {
-    (address aToken_, , ) = _aaveDataProvider().getReserveTokensAddresses(address(currency()));
-    return IAToken(aToken_);
+    return _aToken;
   }
 
   function rewardToken() public view returns (IERC20Metadata) {
-    return IERC20Metadata(aToken().getIncentivesController().REWARD_TOKEN());
+    return _rewardToken;
   }
 
   function rewardAToken() public view returns (IAToken) {
-    (address aToken_, , ) = _aaveDataProvider().getReserveTokensAddresses(address(rewardToken()));
-    return IAToken(aToken_);
+    return _rewardAToken;
   }
 
   function _exchangePath() internal view returns (address[] memory) {
