@@ -99,8 +99,9 @@ contract AaveAssetManager is BaseAssetManager {
   function getInvestmentValue() public view override returns (uint256) {
     uint256 balance = aToken().balanceOf(address(this));
     uint256 rewardBalance = rewardToken().balanceOf(address(this)) +
-      rewardAToken().balanceOf(address(this)) +
-      unclaimedRewards();
+      rewardAToken().balanceOf(address(this));
+    // Don't count unclaimedRewards as part of investmentValue to save gas and because if doing that will
+    // also need to claim rewards as part of _deinvest process
     return balance + _rewardToCurrency(rewardBalance);
   }
 
@@ -113,8 +114,8 @@ contract AaveAssetManager is BaseAssetManager {
     return atk.getIncentivesController().getRewardsBalance(atks, address(this));
   }
 
-  function _claimRewards() internal returns (uint256) {
-    if (unclaimedRewards() > _claimRewardsMin) {
+  function _claimRewards(bool ignoreMin) internal returns (uint256) {
+    if (ignoreMin || unclaimedRewards() > _claimRewardsMin) {
       IAToken atk = aToken();
       address[] memory atks = new address[](2);
       atks[0] = address(atk);
@@ -220,7 +221,7 @@ contract AaveAssetManager is BaseAssetManager {
   }
 
   function rebalance() public virtual override whenNotPaused {
-    _claimRewards();
+    _claimRewards(false);
     super.rebalance();
     reinvestRewardToken();
   }
@@ -258,6 +259,26 @@ contract AaveAssetManager is BaseAssetManager {
       }
     }
     super._deinvest(amount - remainingAmount);
+  }
+
+  /**
+   * @dev Deinvest all the assets and return the cash back to the PolicyPool.
+   *      Called from PolicyPool when new asset manager is assigned
+   */
+  function deinvestAll() external virtual override onlyPolicyPool {
+    uint256 poolBalanceBefore = currency().balanceOf(address(_policyPool));
+    _claimRewards(true);
+    lendingPool().withdraw(
+      address(currency()),
+      type(uint256).max,
+      address(_policyPool) // Withdraw directly to _policyPool
+    );
+    // Withdraw all rewards
+    lendingPool().withdraw(address(_rewardToken), type(uint256).max, address(this));
+    _swapRewards(_rewardToken.balanceOf(address(this)), address(_policyPool));
+    uint256 poolBalanceAfter = currency().balanceOf(address(_policyPool));
+    _distributeEarnings(poolBalanceAfter - poolBalanceBefore);
+    super._deinvest(poolBalanceAfter - poolBalanceBefore);
   }
 
   // Contract parameters

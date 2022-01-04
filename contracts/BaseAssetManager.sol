@@ -102,9 +102,12 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
   /**
    * @dev Calculates asset earnings and distributes them updating accounting in PolicyPool and eTokens
    */
-  function distibuteEarnings() public virtual whenNotPaused {
+  function distributeEarnings() public virtual whenNotPaused {
     // TODO Check: Anyone can call this funcion. This could be a potencial surface of flash loan attack?
-    uint256 investmentValue = getInvestmentValue();
+    _distributeEarnings(getInvestmentValue());
+  }
+
+  function _distributeEarnings(uint256 investmentValue) internal virtual whenNotPaused {
     bool positive;
     uint256 earnings;
     if (investmentValue > _lastInvestmentValue) {
@@ -155,7 +158,7 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
    * @dev Function to be called automatically by a crontask - Distributes and rebalances
    */
   function checkpoint() external {
-    distibuteEarnings();
+    distributeEarnings();
     rebalance();
   }
 
@@ -212,6 +215,26 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
     onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
     validateParamsAfterChange
   {
+    _setLiquidityMin(newValue);
+  }
+
+  function setLiquidityMiddle(uint256 newValue)
+    external
+    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
+    validateParamsAfterChange
+  {
+    _setLiquidityMiddle(newValue);
+  }
+
+  function setLiquidityMax(uint256 newValue)
+    external
+    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
+    validateParamsAfterChange
+  {
+    _setLiquidityMax(newValue);
+  }
+
+  function _setLiquidityMin(uint256 newValue) internal {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
       !tweak || _isTweakRay(_liquidityMin, newValue, 3e26),
@@ -221,11 +244,7 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setLiquidityMin, newValue, tweak);
   }
 
-  function setLiquidityMiddle(uint256 newValue)
-    external
-    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-    validateParamsAfterChange
-  {
+  function _setLiquidityMiddle(uint256 newValue) internal {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
       !tweak || _isTweakRay(_liquidityMiddle, newValue, 3e26),
@@ -235,11 +254,7 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setLiquidityMiddle, newValue, tweak);
   }
 
-  function setLiquidityMax(uint256 newValue)
-    external
-    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-    validateParamsAfterChange
-  {
+  function _setLiquidityMax(uint256 newValue) internal {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
       !tweak || _isTweakRay(_liquidityMax, newValue, 3e26),
@@ -247,5 +262,15 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
     );
     _liquidityMax = newValue;
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setLiquidityMax, newValue, tweak);
+  }
+
+  function setLiquidityMultiple(
+    uint256 min,
+    uint256 middle,
+    uint256 max
+  ) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) validateParamsAfterChange {
+    if (min != type(uint256).max) _setLiquidityMin(min);
+    if (middle != type(uint256).max) _setLiquidityMiddle(middle);
+    if (max != type(uint256).max) _setLiquidityMax(max);
   }
 }
