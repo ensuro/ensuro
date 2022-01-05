@@ -22,3 +22,6 @@ jobs:
       - run: ./deploySmokeTest-fork.sh
         env:
           ALCHEMY_URL: ${{ secrets.ALCHEMY_URL }}
+      - run: npx hardhat test
+        env:
+          ALCHEMY_URL: ${{ secrets.ALCHEMY_URL }}
