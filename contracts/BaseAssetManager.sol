@@ -201,8 +201,15 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
    *      Called from PolicyPool when new asset manager is assigned
    */
   function deinvestAll() external virtual override onlyPolicyPool {
-    _deinvest(getInvestmentValue());
+    uint256 poolBalanceBefore = currency().balanceOf(address(_policyPool));
+    _liquidateAll();
+    uint256 poolBalanceAfter = currency().balanceOf(address(_policyPool));
+    _distributeEarnings(poolBalanceAfter - poolBalanceBefore);
+    _lastInvestmentValue = 0;
+    emit MoneyDeinvested(poolBalanceAfter - poolBalanceBefore);
   }
+
+  function _liquidateAll() internal virtual;
 
   function liquidityMin() external view returns (uint256) {
     return _liquidityMin;

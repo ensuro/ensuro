@@ -265,8 +265,7 @@ contract AaveAssetManager is BaseAssetManager {
    * @dev Deinvest all the assets and return the cash back to the PolicyPool.
    *      Called from PolicyPool when new asset manager is assigned
    */
-  function deinvestAll() external virtual override onlyPolicyPool {
-    uint256 poolBalanceBefore = currency().balanceOf(address(_policyPool));
+  function _liquidateAll() internal virtual override {
     _claimRewards(true);
     lendingPool().withdraw(
       address(currency()),
@@ -276,9 +275,6 @@ contract AaveAssetManager is BaseAssetManager {
     // Withdraw all rewards
     lendingPool().withdraw(address(_rewardToken), type(uint256).max, address(this));
     _swapRewards(_rewardToken.balanceOf(address(this)), address(_policyPool));
-    uint256 poolBalanceAfter = currency().balanceOf(address(_policyPool));
-    _distributeEarnings(poolBalanceAfter - poolBalanceBefore);
-    super._deinvest(poolBalanceAfter - poolBalanceBefore);
   }
 
   // Contract parameters
