@@ -123,11 +123,15 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
     (uint256 poolInvestable, uint256 etksInvestable) = _totalInvestable();
     uint256 totalInv = poolInvestable + etksInvestable;
 
-    _policyPool.assetEarnings(earnings.wadMul(poolInvestable).wadDiv(totalInv), positive);
+    uint256 aux = earnings.wadMul(poolInvestable).wadDiv(totalInv);
+    if (aux > 0)
+      _policyPool.assetEarnings(aux, positive);
 
     for (uint256 i = 0; i < _policyPool.getETokenCount(); i++) {
       IEToken etk = _policyPool.getETokenAt(i);
-      etk.assetEarnings(earnings.wadMul(etk.getInvestable()).wadDiv(totalInv), positive);
+      aux = earnings.wadMul(etk.getInvestable()).wadDiv(totalInv);
+      if (aux > 0)
+        etk.assetEarnings(aux, positive);
     }
     _lastInvestmentValue = investmentValue;
     emit EarningsDistributed(positive, earnings);
