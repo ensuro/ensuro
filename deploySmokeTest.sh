@@ -59,10 +59,6 @@ npx hardhat --network $NETWORK deploy:fdRiskModule $VERIFY --pool-address $POOL 
 npx hardhat --network $NETWORK deploy:fixedInterestAssetManager $VERIFY \
     --pool-address $POOL || die "Error deploying FixedRateAssetManager"
 
-# AaveAssetManager
-npx hardhat --network $NETWORK deploy:aaveAssetManager $VERIFY \
-    --pool-address $POOL || die "Error deploying AaveAssetManager"
-
 # Whitelist
 npx hardhat --network $NETWORK deploy:whitelist $VERIFY \
     --pool-address $POOL

@@ -177,6 +177,9 @@ contract PolicyPoolMockForward is ForwardProxy {
     }
   }
 
+  // solhint-disable-next-line no-empty-blocks
+  function assetEarnings(uint256 amount, bool positive) external {}
+
   function getInvestable() external view returns (uint256) {
     return _currency.balanceOf(address(this));
   }

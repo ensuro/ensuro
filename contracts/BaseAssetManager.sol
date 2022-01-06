@@ -84,27 +84,25 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
   /**
    * @dev Returns the total amount that is available to invest by the asset manager
    */
-  function totalInvestable() external view returns (uint256) {
-    (uint256 poolInvestable, uint256 etksInvestable) = _totalInvestable();
-    return poolInvestable + etksInvestable;
-  }
-
-  function _totalInvestable() internal view returns (uint256, uint256) {
+  function totalInvestable() public view returns (uint256) {
     uint256 poolInvestable = _policyPool.getInvestable();
     uint256 etksInvestable = 0;
     for (uint256 i = 0; i < _policyPool.getETokenCount(); i++) {
       IEToken etk = _policyPool.getETokenAt(i);
       etksInvestable += etk.getInvestable();
     }
-    return (poolInvestable, etksInvestable);
+    return poolInvestable + etksInvestable;
   }
 
   /**
    * @dev Calculates asset earnings and distributes them updating accounting in PolicyPool and eTokens
    */
-  function distibuteEarnings() public virtual whenNotPaused {
+  function distributeEarnings() public virtual whenNotPaused {
     // TODO Check: Anyone can call this funcion. This could be a potencial surface of flash loan attack?
-    uint256 investmentValue = getInvestmentValue();
+    _distributeEarnings(getInvestmentValue());
+  }
+
+  function _distributeEarnings(uint256 investmentValue) internal virtual whenNotPaused {
     bool positive;
     uint256 earnings;
     if (investmentValue > _lastInvestmentValue) {
@@ -117,15 +115,20 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
       return; // No earnings
     }
 
-    (uint256 poolInvestable, uint256 etksInvestable) = _totalInvestable();
-    uint256 totalInv = poolInvestable + etksInvestable;
+    uint256 totalInv = totalInvestable();
 
-    _policyPool.assetEarnings(earnings.wadMul(poolInvestable).wadDiv(totalInv), positive);
-
+    uint256 remaining = earnings;
     for (uint256 i = 0; i < _policyPool.getETokenCount(); i++) {
       IEToken etk = _policyPool.getETokenAt(i);
-      etk.assetEarnings(earnings.wadMul(etk.getInvestable()).wadDiv(totalInv), positive);
+      uint256 aux = earnings.wadMul(etk.getInvestable().wadDiv(totalInv));
+      if (aux > 0) {
+        etk.assetEarnings(aux, positive);
+        remaining -= aux;
+      }
     }
+
+    if (remaining > 0) _policyPool.assetEarnings(remaining, positive);
+
     _lastInvestmentValue = investmentValue;
     emit EarningsDistributed(positive, earnings);
   }
@@ -155,7 +158,7 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
    * @dev Function to be called automatically by a crontask - Distributes and rebalances
    */
   function checkpoint() external {
-    distibuteEarnings();
+    distributeEarnings();
     rebalance();
   }
 
@@ -192,8 +195,15 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
    *      Called from PolicyPool when new asset manager is assigned
    */
   function deinvestAll() external virtual override onlyPolicyPool {
-    _deinvest(getInvestmentValue());
+    uint256 poolBalanceBefore = currency().balanceOf(address(_policyPool));
+    _liquidateAll();
+    uint256 poolBalanceAfter = currency().balanceOf(address(_policyPool));
+    _distributeEarnings(poolBalanceAfter - poolBalanceBefore);
+    _lastInvestmentValue = 0;
+    emit MoneyDeinvested(poolBalanceAfter - poolBalanceBefore);
   }
+
+  function _liquidateAll() internal virtual;
 
   function liquidityMin() external view returns (uint256) {
     return _liquidityMin;
@@ -212,6 +222,26 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
     onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
     validateParamsAfterChange
   {
+    _setLiquidityMin(newValue);
+  }
+
+  function setLiquidityMiddle(uint256 newValue)
+    external
+    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
+    validateParamsAfterChange
+  {
+    _setLiquidityMiddle(newValue);
+  }
+
+  function setLiquidityMax(uint256 newValue)
+    external
+    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
+    validateParamsAfterChange
+  {
+    _setLiquidityMax(newValue);
+  }
+
+  function _setLiquidityMin(uint256 newValue) internal {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
       !tweak || _isTweakRay(_liquidityMin, newValue, 3e26),
@@ -221,11 +251,7 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setLiquidityMin, newValue, tweak);
   }
 
-  function setLiquidityMiddle(uint256 newValue)
-    external
-    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-    validateParamsAfterChange
-  {
+  function _setLiquidityMiddle(uint256 newValue) internal {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
       !tweak || _isTweakRay(_liquidityMiddle, newValue, 3e26),
@@ -235,11 +261,7 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setLiquidityMiddle, newValue, tweak);
   }
 
-  function setLiquidityMax(uint256 newValue)
-    external
-    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-    validateParamsAfterChange
-  {
+  function _setLiquidityMax(uint256 newValue) internal {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
       !tweak || _isTweakRay(_liquidityMax, newValue, 3e26),
@@ -247,5 +269,15 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
     );
     _liquidityMax = newValue;
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setLiquidityMax, newValue, tweak);
+  }
+
+  function setLiquidityMultiple(
+    uint256 min,
+    uint256 middle,
+    uint256 max
+  ) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) validateParamsAfterChange {
+    if (min != type(uint256).max) _setLiquidityMin(min);
+    if (middle != type(uint256).max) _setLiquidityMiddle(middle);
+    if (max != type(uint256).max) _setLiquidityMax(max);
   }
 }

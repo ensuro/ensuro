@@ -55,12 +55,17 @@ contract FixedRateAssetManager is BaseAssetManager {
   function _invest(uint256 amount) internal override {
     _mintBurn();
     super._invest(amount);
-    _policyPool.currency().safeTransferFrom(address(_policyPool), address(this), amount);
+    currency().safeTransferFrom(address(_policyPool), address(this), amount);
   }
 
   function _deinvest(uint256 amount) internal override {
     _mintBurn();
     super._deinvest(amount);
-    _policyPool.currency().safeTransfer(address(_policyPool), amount);
+    currency().safeTransfer(address(_policyPool), amount);
+  }
+
+  function _liquidateAll() internal override {
+    _mintBurn();
+    currency().safeTransfer(address(_policyPool), currency().balanceOf(address(this)));
   }
 }
