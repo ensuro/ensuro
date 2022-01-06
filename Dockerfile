@@ -2,7 +2,7 @@ FROM python:3.9
 
 RUN pip install --no-cache-dir m9g \
                                pyyaml \
-                               eth-brownie\<1.17 \
+                               eth-brownie \
                                eth-prototype[brownie]\>=0.2.0 \
                                environs
 
