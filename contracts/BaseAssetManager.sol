@@ -84,19 +84,14 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
   /**
    * @dev Returns the total amount that is available to invest by the asset manager
    */
-  function totalInvestable() external view returns (uint256) {
-    (uint256 poolInvestable, uint256 etksInvestable) = _totalInvestable();
-    return poolInvestable + etksInvestable;
-  }
-
-  function _totalInvestable() internal view returns (uint256, uint256) {
+  function totalInvestable() public view returns (uint256) {
     uint256 poolInvestable = _policyPool.getInvestable();
     uint256 etksInvestable = 0;
     for (uint256 i = 0; i < _policyPool.getETokenCount(); i++) {
       IEToken etk = _policyPool.getETokenAt(i);
       etksInvestable += etk.getInvestable();
     }
-    return (poolInvestable, etksInvestable);
+    return poolInvestable + etksInvestable;
   }
 
   /**
@@ -120,8 +115,7 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
       return; // No earnings
     }
 
-    (uint256 poolInvestable, uint256 etksInvestable) = _totalInvestable();
-    uint256 totalInv = poolInvestable + etksInvestable;
+    uint256 totalInv = totalInvestable();
 
     uint256 remaining = earnings;
     for (uint256 i = 0; i < _policyPool.getETokenCount(); i++) {
