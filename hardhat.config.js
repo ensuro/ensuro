@@ -77,13 +77,14 @@ module.exports = {
       url: "https://polygon-mainnet.infura.io/v3/" + process.env.WEB3_INFURA_PROJECT_ID,
       chainId: 137,
       accounts: readEnvAccounts("polygon"),
-      gasPrice: 8000000000,  // default is 'auto' which breaks chains without the london hardfork
+      gasPrice: "auto",
+      gasMultiplier: 1.3
     },
     polytest: {
       url: "https://polygon-mumbai.infura.io/v3/" + process.env.WEB3_INFURA_PROJECT_ID,
       chainId: 80001,
       accounts: readEnvAccounts("polytest"),
-      gasPrice: 8000000000,  // default is 'auto' which breaks chains without the london hardfork
+      gasPrice: "auto"
     },
     mainnet: {
       url: "https://mainnet.infura.io/v3/" + process.env.WEB3_INFURA_PROJECT_ID,
