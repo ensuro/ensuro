@@ -233,7 +233,7 @@ async function deployRiskModule({
 async function deployFlightDelayRM(opts, hre) {
   opts.extraArgs = [
     opts.linkToken,
-    [opts.oracle, opts.delayTime, _A(opts.oracleFee), opts.dataJobId, opts.sleepJobId]
+    [opts.oracle, opts.delayTime, _W(opts.oracleFee), opts.dataJobId, opts.sleepJobId]
   ];
   return deployRiskModule(opts, hre);
 }

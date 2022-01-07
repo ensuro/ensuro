@@ -51,3 +51,18 @@ exports.expected_change = async function(protocol_attribute, initial, change) {
   expect(actual_value.sub(initial)).to.equal(change);
   return actual_value;
 }
+
+exports.impersonate = async function(address, setBalanceTo) {
+  const ok = await hre.network.provider.request(
+    {method: "hardhat_impersonateAccount", params: [address]}
+  );
+  if (!ok)
+    throw "Error impersonatting " + address;
+
+  if (setBalanceTo !== undefined)
+    await hre.network.provider.request(
+      {method: "hardhat_setBalance", params: [address, setBalanceTo.toHexString()]}
+    );
+
+  return await ethers.getSigner(address);
+}

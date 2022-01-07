@@ -6,7 +6,7 @@ jobs:
     name: Ensuro Tests
     runs-on: ubuntu-latest
     container:
-      image: gnarvaja/eth-dev:ensuro-1.0.5
+      image: gnarvaja/eth-dev:ensuro-1.0.6
     timeout-minutes: 30
 
     steps:
@@ -19,3 +19,9 @@ jobs:
       - run: SKIP_PROXY=1 brownie test -v --gas
       - run: brownie test -v --gas
       - run: ./deploySmokeTest.sh
+      - run: ./deploySmokeTest-fork.sh
+        env:
+          ALCHEMY_URL: ${{ secrets.ALCHEMY_URL }}
+      - run: npx hardhat test
+        env:
+          ALCHEMY_URL: ${{ secrets.ALCHEMY_URL }}
