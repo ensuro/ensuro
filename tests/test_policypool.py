@@ -1165,6 +1165,78 @@ def test_distribute_negative_earnings(tenv):
     asset_manager.distribute_earnings()
     asset_manager.get_investment_value().assert_equal(_W(2975))
 
+def test_distribute_negative_earnings_with_policies(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        scr_percentage: "0.2448"
+        scr_interest_rate: "0.0729"
+        scr_limit: 250000
+        ensuro_fee: "0.0321"
+        max_scr_per_policy: 500
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 20000
+        initial_balances:
+        - user: LP1
+          amount: 10000
+        - user: LP2
+          amount: 1000
+        - user: CUST1
+          amount: 200
+    etokens:
+      - name: eUSD1YEAR
+        expiration_period: 31536000
+    asset_manager:
+        class: FixedRateAssetManager
+        liquidity_min: 1000
+        liquidity_middle: 1500
+        liquidity_max: 2000
+    """
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    rm = pool.config.risk_modules["Roulette"]
+    rm.grant_role("PRICER_ROLE", rm.owner)
+    rm.grant_role("RESOLVER_ROLE", rm.owner)
+
+    USD = pool.currency
+    etk = pool.etokens["eUSD1YEAR"]
+    asset_manager = pool.config.asset_manager
+
+    USD.approve("LP1", pool.contract_id, _W(5000))
+    assert pool.deposit("eUSD1YEAR", "LP1", _W(5000)) == _W(5000)
+
+    USD.approve("CUST1", pool.contract_id, _W(100))
+    policy = rm.new_policy(
+        payout=_W(10), premium=_W(1.5), customer="CUST1",
+        loss_prob=_R("0.105"), expiration=timecontrol.now + 45 * DAY
+    )
+
+    etk.get_pool_loan().assert_equal(_W(0))
+
+    asset_manager.rebalance()
+    asset_manager.get_investment_value().assert_equal(_W("3501.5"))
+    timecontrol.fast_forward(45 * DAY - HOUR)
+    rm.resolve_policy(policy.id, True)
+    etk.get_pool_loan().assert_equal(_W(10) - (policy.premium - policy.premium_for_lps))
+    asset_manager.get_investment_value().assert_equal(_W("3523.06"), decimals=2)
+
+    policy_2 = rm.new_policy(
+        payout=_W(5), premium=_W("0.75"), customer="CUST1",
+        loss_prob=_R("0.105"), expiration=timecontrol.now + 45 * DAY
+    )
+
+    asset_manager.distribute_earnings()
+    timecontrol.fast_forward(45 * DAY - HOUR)
+    asset_manager.get_investment_value().assert_equal(_W("3544.62"), decimals=2)
+
+    # Now change the asset manager to negative interest rate
+    asset_manager.positive = False
+    timecontrol.fast_forward(45 * DAY)
+    asset_manager.distribute_earnings()
+    asset_manager.get_investment_value().assert_equal(_W("3436.78"), decimals=2)
+
 
 def test_insolvency_without_hook(tenv):
     YAML_SETUP = """
