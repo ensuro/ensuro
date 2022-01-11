@@ -1,5 +1,4 @@
 from contextlib import contextmanager
-import sys
 from m9g import Model
 from m9g.fields import StringField, IntField, DictField, CompositeField
 from ethproto.contracts import AccessControlContract, ERC20Token, external, view, RayField, \
@@ -870,11 +869,11 @@ class FixedRateAssetManager(AssetManager):
         self.pool.currency.transfer(self.contract_id, self.pool.contract_id, amount)
 
     def set_liquidity_multiple(self, min, middle, max):
-        if min != sys.maxsize:
+        if min is not None:
             self.liquidity_min = min
-        if middle != sys.maxsize:
+        if middle is not None:
             self.liquidity_middle = middle
-        if max != sys.maxsize:
+        if max is not None:
             self.liquidity_max = max
 
 

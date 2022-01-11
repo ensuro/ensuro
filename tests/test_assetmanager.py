@@ -76,6 +76,28 @@ def test_getset_asm_parameters_tweaks(tenv):
     for attr_name, attr_value in test_validations:
         with asm.as_("L2_USER"), pytest.raises(RevertError, match="Validation: "):
             setattr(asm, attr_name, attr_value)
+
+    with asm.as_("L2_USER"):
+        asm.set_liquidity_multiple(_W(1500), _W(1700),_W(2700))
+
+    asm.liquidity_min.assert_equal(_W(1500))
+    asm.liquidity_middle.assert_equal(_W(1700))
+    asm.liquidity_max.assert_equal(_W(2700))
+
+    with asm.as_("L2_USER"):
+        asm.set_liquidity_multiple(2 ** 256 -1, _W(2700),_W(3700))
+
+    asm.liquidity_min.assert_equal(_W(1500))
+    asm.liquidity_middle.assert_equal(_W(2700))
+    asm.liquidity_max.assert_equal(_W(3700))
+
+    with asm.as_("L2_USER"), pytest.raises(RevertError, match="Validation: "):
+        asm.set_liquidity_multiple(_W(1200), _W(3700),_W(2700))
+
+    asm.liquidity_min.assert_equal(_W(1500))
+    asm.liquidity_middle.assert_equal(_W(2700))
+    asm.liquidity_max.assert_equal(_W(3700))
+
     return
     # Verifies exceeded tweaks
     test_exceeded_tweaks = [
