@@ -592,6 +592,7 @@ class BaseAssetManager(ETHWrapper):
     total_investable = MethodAdapter((), "amount")
     get_investment_value = MethodAdapter((), "amount")
     refill_wallet = MethodAdapter((("amount", "amount"),))
+    set_liquidity_multiple = MethodAdapter((("min", "amount"), ("middle", "amount"), ("max", "amount")))
 
     liquidity_min = MethodAdapter((), "amount", is_property=True)
     liquidity_middle = MethodAdapter((), "amount", is_property=True)
