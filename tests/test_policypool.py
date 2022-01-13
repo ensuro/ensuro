@@ -1223,6 +1223,7 @@ def test_distribute_negative_earnings_full_capital_from_etokens(tenv):
     rm.resolve_policy(policy.id, True)
     etk.get_pool_loan().assert_equal(_W(10) - (policy.premium - policy.premium_for_lps))
     asset_manager.get_investment_value().assert_equal(_W("3523.06"), decimals=2)
+    pre_investment_value = asset_manager.get_investment_value()
 
     USD.balance_of(pool.contract_id).assert_equal(_W(1490))
     etk.balance_of("LP1").assert_equal(_W(4991.5))
@@ -1234,10 +1235,12 @@ def test_distribute_negative_earnings_full_capital_from_etokens(tenv):
 
     asset_manager.distribute_earnings()
     timecontrol.fast_forward(45 * DAY - HOUR)
-    asset_manager.get_investment_value().assert_equal(_W("3544.62"), decimals=2)
+    post_investment_value = asset_manager.get_investment_value()
+    (post_investment_value - pre_investment_value).assert_equal(pre_investment_value * _W("0.05") * _W(45/365), decimals=0)
+    earnings = post_investment_value - pre_investment_value
 
     USD.balance_of(pool.contract_id).assert_equal(_W(1490.75))
-    etk.balance_of("LP1").assert_equal(_W(5013.07), decimals=2)
+    etk.balance_of("LP1").assert_equal(_W(4991.5) + earnings, decimals=2)
 
     # Now change the asset manager to negative interest rate
     asset_manager.positive = False
