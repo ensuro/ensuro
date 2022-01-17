@@ -569,6 +569,8 @@ class BaseAssetManager(ETHWrapper):
         ("liquidity_max", "amount")
     )
 
+    positive = MethodAdapter((), "bool", is_property=True)
+
     def __init__(self, owner, pool, liquidity_min, liquidity_middle, liquidity_max, *args):
         liquidity_min = _W(liquidity_min)
         liquidity_middle = _W(liquidity_middle)
@@ -590,6 +592,7 @@ class BaseAssetManager(ETHWrapper):
     total_investable = MethodAdapter((), "amount")
     get_investment_value = MethodAdapter((), "amount")
     refill_wallet = MethodAdapter((("amount", "amount"),))
+    set_liquidity_multiple = MethodAdapter((("min", "amount"), ("middle", "amount"), ("max", "amount")))
 
     liquidity_min = MethodAdapter((), "amount", is_property=True)
     liquidity_middle = MethodAdapter((), "amount", is_property=True)

@@ -16,6 +16,7 @@ contract FixedRateAssetManager is BaseAssetManager {
 
   uint256 public interestRate;
   uint256 public lastMintBurn;
+  bool public positive;
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
@@ -30,13 +31,23 @@ contract FixedRateAssetManager is BaseAssetManager {
     __BaseAssetManager_init(liquidityMin_, liquidityMiddle_, liquidityMax_);
     interestRate = interestRate_;
     lastMintBurn = block.timestamp;
+    positive = true;
+  }
+
+  function setPositive(bool positive_) external {
+    positive = positive_;
   }
 
   function getInvestmentValue() public view override returns (uint256) {
     uint256 balance = currency().balanceOf(address(this));
     if (lastMintBurn >= block.timestamp) return balance;
     uint256 secs = block.timestamp - lastMintBurn;
-    uint256 scale = WadRayMath.ray() + (interestRate * secs) / SECONDS_PER_YEAR;
+    uint256 scale;
+    if (positive) {
+      scale = WadRayMath.ray() + (interestRate * secs) / SECONDS_PER_YEAR;
+    } else {
+      scale = WadRayMath.ray() - (interestRate * secs) / SECONDS_PER_YEAR;
+    }
     return balance.wadMul(scale.rayToWad());
   }
 
