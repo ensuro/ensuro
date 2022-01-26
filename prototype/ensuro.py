@@ -116,7 +116,7 @@ class Policy(Model):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.scr = (self.payout - self.premium) * self.risk_module.scr_percentage.to_wad()
+        self.scr = (self.payout * self.risk_module.scr_percentage.to_wad()) - self.premium
         self._do_premium_split()
 
     def _do_premium_split(self):

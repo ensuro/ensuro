@@ -51,7 +51,7 @@ library Policy {
     policy.premium = premium;
     policy.payout = payout;
     policy.lossProb = lossProb;
-    policy.scr = (payout - premium).wadMul(riskModule.scrPercentage().rayToWad());
+    policy.scr = payout.wadMul(riskModule.scrPercentage().rayToWad()) - premium;
     require(policy.scr != 0, "SCR can't be zero");
     policy.start = uint40(block.timestamp);
     policy.expiration = expiration;

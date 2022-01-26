@@ -721,7 +721,7 @@ def test_partial_payout(tenv):
       - name: Roulette
         scr_percentage: "0.8"
         ensuro_fee: 0
-        scr_interest_rate: "0.050330943"  # interest rate to make premium_for_rm=0
+        scr_interest_rate: "0.050693036"  # interest rate to make premium_for_rm=0
     currency:
         name: USD
         symbol: $
@@ -760,8 +760,8 @@ def test_partial_payout(tenv):
 
     policy.premium_for_rm.assert_equal(_W(0))
 
-    assert pool.etokens["eUSD1YEAR"].ocean == _W(700)
-    assert pool.etokens["eUSD1YEAR"].scr == _W(2800)
+    assert pool.etokens["eUSD1YEAR"].ocean == _W(720)
+    assert pool.etokens["eUSD1YEAR"].scr == _W(2780)
     timecontrol.fast_forward(WEEK - HOUR)
     rm.resolve_policy(policy.id, _W(1900))
     assert usd.balance_of("CUST1") == _W(1900)
@@ -778,7 +778,7 @@ def test_pool_loan_partial_payout(tenv):
       - name: Roulette
         scr_percentage: "0.8"
         ensuro_fee: 0
-        scr_interest_rate: "0.050330943"  # interest rate to make premium_for_rm=0
+        scr_interest_rate: "0.050693036"  # interest rate to make premium_for_rm=0
     currency:
         name: USD
         symbol: $
@@ -809,16 +809,16 @@ def test_pool_loan_partial_payout(tenv):
     usd.approve("CUST1", pool.contract_id, _W(2000))
     policy = rm.new_policy(
         payout=_W(3600), premium=_W(2000), customer="CUST1",
-        loss_prob=_R(1/37), expiration=timecontrol.now + WEEK
+        loss_prob=_R(1/37), expiration=timecontrol.now + 2 * WEEK
     )
 
     eUSD1YEAR = pool.etokens["eUSD1YEAR"]
     pool.won_pure_premiums.assert_equal(_W(0))
     eUSD1YEAR.get_pool_loan().assert_equal(_W(0))
 
-    assert eUSD1YEAR.ocean == _W(2220)
-    assert eUSD1YEAR.scr == _W(1280)
-    timecontrol.fast_forward(WEEK - HOUR)
+    assert eUSD1YEAR.ocean == _W(2620)
+    assert eUSD1YEAR.scr == _W(880)
+    timecontrol.fast_forward(2 * WEEK - HOUR)
     rm.resolve_policy(policy.id, _W(1999))
     assert usd.balance_of("CUST1") == _W(1999)
 
@@ -832,7 +832,7 @@ def test_increase_won_pure_premiums(tenv):
       - name: Roulette
         scr_percentage: "0.8"
         ensuro_fee: 0
-        scr_interest_rate: "0.050330943"  # interest rate to make premium_for_rm=0
+        scr_interest_rate: "0.050693036"  # interest rate to make premium_for_rm=0
     currency:
         name: USD
         symbol: $
@@ -870,8 +870,8 @@ def test_increase_won_pure_premiums(tenv):
     pool.won_pure_premiums.assert_equal(_W(0))
     eUSD1YEAR.get_pool_loan().assert_equal(_W(0))
 
-    assert eUSD1YEAR.ocean == _W(2220)
-    assert eUSD1YEAR.scr == _W(1280)
+    assert eUSD1YEAR.ocean == _W(2620)
+    assert eUSD1YEAR.scr == _W(880)
     timecontrol.fast_forward(WEEK - HOUR)
     rm.resolve_policy(policy.id, _W(60))
     assert usd.balance_of("CUST1") == _W(60)
@@ -887,7 +887,7 @@ def test_payout_bigger_than_pure_premium(tenv):
       - name: Roulette
         scr_percentage: "0.8"
         ensuro_fee: 0
-        scr_interest_rate: "0.050330943"  # interest rate to make premium_for_rm=0
+        scr_interest_rate: "0.050693036"  # interest rate to make premium_for_rm=0
     currency:
         name: USD
         symbol: $
@@ -925,8 +925,8 @@ def test_payout_bigger_than_pure_premium(tenv):
     pool.won_pure_premiums.assert_equal(_W(0))
     eUSD1YEAR.get_pool_loan().assert_equal(_W(0))
 
-    assert eUSD1YEAR.ocean == _W(2220)
-    assert eUSD1YEAR.scr == _W(1280)
+    assert eUSD1YEAR.ocean == _W(2620)
+    assert eUSD1YEAR.scr == _W(880)
     timecontrol.fast_forward(WEEK - HOUR)
     rm.resolve_policy(policy.id, _W(100))
     assert usd.balance_of("CUST1") == _W(100)
@@ -1033,10 +1033,10 @@ def test_assets_under_liquidity_middle(tenv):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
-        scr_percentage: "0.2448"
-        scr_interest_rate: "0.0729"
+        scr_percentage: "0.3734"
+        scr_interest_rate: "0.1"
         scr_limit: 250000
-        ensuro_fee: "0.0321"
+        ensuro_fee: "0.0392"
         max_scr_per_policy: 500
     currency:
         name: USD
@@ -1080,29 +1080,30 @@ def test_assets_under_liquidity_middle(tenv):
 
     USD.approve("CUST1", pool.contract_id, _W(100))
     policy = rm.new_policy(
-        payout=_W(10), premium=_W(1.5), customer="CUST1",
-        loss_prob=_R("0.105"), expiration=timecontrol.now + 45 * DAY
+        payout=_W(10), premium=_W("1.4052"), customer="CUST1",
+        loss_prob=_R("0.103"), expiration=timecontrol.now + 45 * DAY
     )
     pure_premium, for_ensuro, for_rm, for_lps = policy.premium_split()
-    etk.scr.assert_equal(_W(2.0808))
+    etk.scr.assert_equal(_W("2.3288"))
 
     asset_manager.checkpoint()
-    pure_premium.assert_equal(_W("1.349250"))
-    for_ensuro.assert_equal(_W("0.043311"))
-    for_rm.assert_equal(_W("0.088323"), decimals=3)
-    for_lps.assert_equal(_W("0.019116"), decimals=3)
+    pure_premium.assert_equal(_W("1.3236"))
+    for_ensuro.assert_equal(_W("0.0519"))
+    for_rm.assert_equal(_W("0.001"), decimals=3)
+    for_lps.assert_equal(_W("0.0287"), decimals=4)
 
     rm.resolve_policy(policy.id, False)
 
     policy_2 = rm.new_policy(
-        payout=_W(5), premium=_W("0.75"), customer="CUST1",
-        loss_prob=_R("0.105"), expiration=timecontrol.now + 45 * DAY
+        payout=_W(5), premium=_W("0.7026"), customer="CUST1",
+        loss_prob=_R("0.103"), expiration=timecontrol.now + 45 * DAY
     )
 
-    pure_premium.assert_equal(_W("1.349250"))
-    for_ensuro.assert_equal(_W("0.043311"))
-    for_rm.assert_equal(_W("0.088323"), decimals=3)
-    for_lps.assert_equal(_W("0.019116"), decimals=3)
+    pure_premium, for_ensuro, for_rm, for_lps = policy_2.premium_split()
+    pure_premium.assert_equal(_W("0.6618"))
+    for_ensuro.assert_equal(_W("0.0259"))
+    for_rm.assert_equal(_W("0"), decimals=3)
+    for_lps.assert_equal(_W("0.0144"))
 
     rm.resolve_policy(policy_2.id, _W(3))
 
@@ -1371,7 +1372,7 @@ def test_insolvency_without_hook(tenv):
         loss_prob=_R("0.01"), expiration=timecontrol.now + 365 * DAY // 2
     )
     pure_premium, _, _, for_lps = policy.premium_split()
-    etk.scr.assert_equal(_W(900))
+    etk.scr.assert_equal(_W(720))
 
     assert USD.balance_of(pool.contract_id) == _W(1000 + 200)
 
@@ -1439,7 +1440,7 @@ def test_lp_insolvency_hook_negative_ocean(tenv):
         payout=_W(9200), premium=_W(200), customer="CUST2",
         loss_prob=_R("0.01"), expiration=timecontrol.now + 365 * DAY // 2
     )
-    etk.scr.assert_equal(_W(1800))
+    etk.scr.assert_equal(_W(1440))
 
     USD.balance_of(pool.contract_id).assert_equal(_W(9000 + 400))
 
@@ -1447,7 +1448,7 @@ def test_lp_insolvency_hook_negative_ocean(tenv):
 
     ins_hook.cash_deposited.assert_equal(_W(0))  # Not needed
     etk.ocean.assert_equal(_W(0))
-    etk.scr.assert_equal(_W(900))
+    etk.scr.assert_equal(_W(720))
     etk.get_pool_loan().assert_equal(
         _W(9200) - policy.premium_for_rm - policy.pure_premium - policy_2.pure_premium
     )
@@ -1483,27 +1484,27 @@ def test_lp_insolvency_hook_cover_etoken(tenv):
         payout=_W(9200), premium=_W(200), customer="CUST2",
         loss_prob=_R("0.01"), expiration=timecontrol.now + 365 * DAY // 2
     )
-    etk.scr.assert_equal(_W(1800))
-    etk.ocean.assert_equal(_W(9000-1800) + for_lps)
+    etk.scr.assert_equal(_W(1440))
+    etk.ocean.assert_equal(_W(9000-1440) + for_lps)
 
     USD.balance_of(pool.contract_id).assert_equal(_W(9000 + 400))
 
     rm.resolve_policy(policy.id, True)
 
     pool_loan = _W(9200) - policy.premium_for_rm - policy.pure_premium - policy_2.pure_premium
-    ins_hook.cash_deposited.assert_equal(_W(90) + _W(900) - policy_2.pure_premium)
-    etk.ocean.assert_equal(_W(90))  # The insolvency_hook leaves 10% of extra ocean
-    etk.scr.assert_equal(_W(900))
     etk.get_pool_loan().assert_equal(
         pool_loan
     )
 
-    etk.total_supply().assert_equal(_W(990))
+    ins_hook.cash_deposited.assert_equal(_W(72) + _W(720) - policy_2.pure_premium)
+    etk.ocean.assert_equal(_W(72))  # The insolvency_hook leaves 10% of extra ocean
+    etk.scr.assert_equal(_W(720))
+    etk.total_supply().assert_equal(_W(792))
     pool.borrowed_active_pp.assert_equal(policy_2.pure_premium)
 
     etk.balance_of("LP3").assert_equal(policy_2.pure_premium * lp3_share)
     etk.balance_of("LP1").assert_equal(policy_2.pure_premium * (_W(1) - lp3_share))
-    etk.balance_of(ins_hook).assert_equal(_W(90) + _W(900) - policy_2.pure_premium)
+    etk.balance_of(ins_hook).assert_equal(_W(72) + _W(720) - policy_2.pure_premium)
 
 
 @set_precision(Wad, 3)
@@ -1686,11 +1687,11 @@ def test_expire_policy(tenv):
         payout=_W(2100), premium=_W(100), customer="CUST1",
         loss_prob=_R("0.03"), expiration=timecontrol.now + 10 * DAY
     )
-    policy.scr.assert_equal(_W(200))
-    etk.scr.assert_equal(_W(200))
+    policy.scr.assert_equal(_W(110))
+    etk.scr.assert_equal(_W(110))
     pure_premium, for_ensuro, for_rm, for_lps = policy.premium_split()
 
-    for_lps.assert_equal(_W(200) * _W("0.01") * _W(10/365))
+    for_lps.assert_equal(_W(110) * _W("0.01") * _W(10/365))
     pure_premium.assert_equal(_W(2100) * _W("0.03") * _W("1.1"))
     for_ensuro.assert_equal(pure_premium * _W("0.05"))
     for_rm.assert_equal(_W(100) - for_lps - for_ensuro - pure_premium)
