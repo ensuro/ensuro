@@ -1109,6 +1109,220 @@ def test_assets_under_liquidity_middle(tenv):
     pool.withdraw("eUSD1YEAR", "LP1", _W(80)).assert_equal(_W(80))
 
 
+def test_distribute_negative_earnings(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        scr_percentage: "0.2448"
+        scr_interest_rate: "0.0729"
+        scr_limit: 250000
+        ensuro_fee: "0.0321"
+        max_scr_per_policy: 500
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 20000
+        initial_balances:
+        - user: LP1
+          amount: 10000
+        - user: LP2
+          amount: 1000
+        - user: CUST1
+          amount: 200
+    etokens:
+      - name: eUSD1YEAR
+        expiration_period: 31536000
+    asset_manager:
+        class: FixedRateAssetManager
+        liquidity_min: 1000
+        liquidity_middle: 1500
+        liquidity_max: 2000
+    """
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    rm = pool.config.risk_modules["Roulette"]
+    rm.grant_role("PRICER_ROLE", rm.owner)
+    rm.grant_role("RESOLVER_ROLE", rm.owner)
+
+    USD = pool.currency
+    etk = pool.etokens["eUSD1YEAR"]
+    asset_manager = pool.config.asset_manager
+
+    USD.approve("LP1", pool.contract_id, _W(5000))
+    assert pool.deposit("eUSD1YEAR", "LP1", _W(5000)) == _W(5000)
+    asset_manager.rebalance()
+    asset_manager.get_investment_value().assert_equal(_W(3500))
+    timecontrol.fast_forward(365 * DAY)
+    asset_manager.get_investment_value().assert_equal(_W(3675))
+
+    asset_manager.distribute_earnings()
+    timecontrol.fast_forward(365 * DAY)
+    asset_manager.get_investment_value().assert_equal(_W(3850), decimals=0)
+
+    # Now change the asset manager to negative interest rate
+    asset_manager.positive = False
+    timecontrol.fast_forward(365 * DAY)
+    asset_manager.distribute_earnings()
+    asset_manager.get_investment_value().assert_equal(_W(2975))
+
+def test_distribute_negative_earnings_full_capital_from_etokens(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        scr_percentage: "0.2448"
+        scr_interest_rate: "0.0729"
+        scr_limit: 250000
+        ensuro_fee: "0.0321"
+        max_scr_per_policy: 500
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 20000
+        initial_balances:
+        - user: LP1
+          amount: 10000
+        - user: LP2
+          amount: 1000
+        - user: CUST1
+          amount: 200
+    etokens:
+      - name: eUSD1YEAR
+        expiration_period: 31536000
+    asset_manager:
+        class: FixedRateAssetManager
+        liquidity_min: 1000
+        liquidity_middle: 1500
+        liquidity_max: 2000
+    """
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    rm = pool.config.risk_modules["Roulette"]
+    rm.grant_role("PRICER_ROLE", rm.owner)
+    rm.grant_role("RESOLVER_ROLE", rm.owner)
+
+    USD = pool.currency
+    etk = pool.etokens["eUSD1YEAR"]
+    asset_manager = pool.config.asset_manager
+    etk.balance_of("LP1").assert_equal(_W(0))
+
+    USD.approve("LP1", pool.contract_id, _W(5000))
+    assert pool.deposit("eUSD1YEAR", "LP1", _W(5000)) == _W(5000)
+    etk.balance_of("LP1").assert_equal(_W(5000))
+
+    USD.approve("CUST1", pool.contract_id, _W(100))
+    policy = rm.new_policy(
+        payout=_W(10), premium=_W(1.5), customer="CUST1",
+        loss_prob=_R("0.105"), expiration=timecontrol.now + 45 * DAY
+    )
+
+    etk.get_pool_loan().assert_equal(_W(0))
+
+    asset_manager.rebalance()
+    asset_manager.get_investment_value().assert_equal(_W(5000) - asset_manager.liquidity_middle + policy.premium)
+    timecontrol.fast_forward(45 * DAY - HOUR)
+    rm.resolve_policy(policy.id, True)
+    etk.get_pool_loan().assert_equal(_W(10) - (policy.premium - policy.premium_for_lps))
+    asset_manager.get_investment_value().assert_equal(_W("3523.06"), decimals=2)
+    pre_investment_value = asset_manager.get_investment_value()
+
+    USD.balance_of(pool.contract_id).assert_equal(_W(1490))
+    etk.balance_of("LP1").assert_equal(_W(4991.5))
+
+    policy_2 = rm.new_policy(
+        payout=_W(5), premium=_W("0.75"), customer="CUST1",
+        loss_prob=_R("0.105"), expiration=timecontrol.now + 45 * DAY
+    )
+
+    asset_manager.distribute_earnings()
+    timecontrol.fast_forward(45 * DAY - HOUR)
+    post_investment_value = asset_manager.get_investment_value()
+    (post_investment_value - pre_investment_value).assert_equal(pre_investment_value * _W("0.05") * _W(45/365), decimals=0)
+    earnings = post_investment_value - pre_investment_value
+
+    USD.balance_of(pool.contract_id).assert_equal(_W(1490.75))
+    etk.balance_of("LP1").assert_equal(_W(4991.5) + earnings, decimals=2)
+
+    # Now change the asset manager to negative interest rate
+    asset_manager.positive = False
+    timecontrol.fast_forward(45 * DAY)
+    asset_manager.distribute_earnings()
+    asset_manager.get_investment_value().assert_equal(_W("3436.78"), decimals=2)
+
+    USD.balance_of(pool.contract_id).assert_equal(_W(1490.75))
+    etk.balance_of("LP1").assert_equal(_W(4926.80), decimals=2)
+
+
+def test_distribute_negative_earnings_from_pool_and_etokens(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        scr_percentage: 1
+        scr_interest_rate: "0.02"
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 20000
+        initial_balances:
+        - user: LP1
+          amount: 10000
+        - user: CUST1
+          amount: 200
+    etokens:
+      - name: eUSD1YEAR
+        expiration_period: 31536000
+    asset_manager:
+        class: FixedRateAssetManager
+        liquidity_min: 1000
+        liquidity_middle: 1500
+        liquidity_max: 2000
+    """
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    rm = pool.config.risk_modules["Roulette"]
+    rm.grant_role("PRICER_ROLE", rm.owner)
+    rm.grant_role("RESOLVER_ROLE", rm.owner)
+
+    USD = pool.currency
+    etk = pool.etokens["eUSD1YEAR"]
+    asset_manager = pool.config.asset_manager
+
+    assert etk.balance_of("LP1") == _W(0)
+    USD.approve("LP1", pool.contract_id, _W(10000))
+    assert pool.deposit("eUSD1YEAR", "LP1", _W(10000)) == _W(10000)
+
+    assert USD.balance_of(asset_manager.contract_id) == _W(0)
+    assert etk.balance_of("LP1") == _W(10000)
+
+    USD.approve("CUST1", pool.contract_id, _W(200))
+    policy = rm.new_policy(
+        payout=_W(9200), premium=_W(200), customer="CUST1",
+        loss_prob=_R("0.01"), expiration=timecontrol.now + 365 * DAY // 2
+    )
+    pure_premium, _, _, for_lps = policy.premium_split()
+    etk.get_pool_loan().assert_equal(_W(0))
+
+    asset_manager.rebalance()
+    expected_investment_value = _W(10000) - asset_manager.liquidity_middle + policy.premium
+    asset_manager.get_investment_value().assert_equal(expected_investment_value)
+    timecontrol.fast_forward(365 * DAY)
+    expected_investment_value_with_interest = expected_investment_value * _W("1.05") # interest_rate=_R("0.05")
+    asset_manager.get_investment_value().assert_equal(expected_investment_value_with_interest)
+
+    asset_manager.distribute_earnings()
+    timecontrol.fast_forward(365 * DAY)
+
+    assert USD.balance_of(pool.contract_id) == _W(1500)
+    pool.get_investable().assert_equal(_W(208.38), decimals=2)
+    etk.get_investable().assert_equal(etk.ocean + etk.scr + etk.get_pool_loan())
+
+    asset_manager.positive = False
+    timecontrol.fast_forward(365 * DAY)
+    asset_manager.distribute_earnings()
+    pool.get_investable().assert_equal(_W(175.93), decimals=2)
+    etk.get_investable().assert_equal(etk.ocean + etk.scr + etk.get_pool_loan())
+    asset_manager.get_investment_value().assert_equal(_W(7395))
+
+
 def test_insolvency_without_hook(tenv):
     YAML_SETUP = """
     risk_modules:
