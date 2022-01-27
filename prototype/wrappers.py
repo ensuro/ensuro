@@ -276,6 +276,10 @@ class RiskModule(ETHWrapper):
     scr_limit = MethodAdapter((), "amount", is_property=True)
     total_scr = MethodAdapter((), "amount", is_property=True)
     wallet = MethodAdapter((), "address", is_property=True)
+    get_minimum_premium = MethodAdapter(
+        (("payout", "amount"), ("loss_prob", "ray"), ("expiration", "int")),
+        "amount"
+    )
 
     def new_policy(self, *args, **kwargs):
         receipt = self.new_policy_(*args, **kwargs)

@@ -323,4 +323,37 @@ def test_moc(tenv):
     policy2.pure_premium.assert_equal(_W(36 * 1/37) * _W("1.01"))
     policy2.premium_for_ensuro.assert_equal(_W(36 * 1/37 * 0.01) * _W("1.01"))
 
-# TODO: further tests on _newPolicy validations
+
+def test_minimum_premium(tenv):
+    rm = tenv.rm_class(
+        name="Roulette", scr_percentage=_R("0.2"), ensuro_fee=_R("0.01"),
+        scr_interest_rate=_R("0.10"),
+        max_scr_per_policy=_W(1000), scr_limit=_W(1000000),
+        wallet="CASINO"
+    )
+    tenv.pool_config.grant_role("LEVEL2_ROLE", "DAO")
+    with rm.as_("DAO"):
+        rm.moc = _R("1.3")
+
+    expiration = tenv.time_control.now + WEEK
+    rm.get_minimum_premium(_W(36), _R(1/37), expiration).assert_equal(
+        _W("1.2888499") * _W("1.0001")
+    )
+
+    tenv.currency.transfer(tenv.currency.owner, "CUST1", _W(2))
+    tenv.currency.approve("CUST1", rm.policy_pool, _W(2))
+
+    rm.grant_role("PRICER_ROLE", "JOHN_SELLER")
+    with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="less than minimum"):
+        policy = rm.new_policy(_W(36), _W("1.28"), _R(1/37), expiration, "CUST1")
+
+    with rm.as_("JOHN_SELLER"):
+        policy = rm.new_policy(
+            _W(36), rm.get_minimum_premium(_W(36), _R(1/37), expiration),
+            _R(1/37), expiration, "CUST1"
+        )
+
+    policy.premium.assert_equal(_W("1.2888499") * _W("1.0001"))
+    policy.loss_prob.assert_equal(_R(1/37))
+    policy.pure_premium.assert_equal(_W(36 * 1/37 * 1.3))
+    policy.premium_for_ensuro.assert_equal(policy.pure_premium * _W("0.01"))

@@ -19,6 +19,8 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
   using Policy for Policy.PolicyData;
   using WadRayMath for uint256;
 
+  uint256 internal constant SECONDS_IN_YEAR_RAY = 31536000e27; /* 365 * 24 * 3600 * 10e27 */
+
   // For parameters that can be changed by the risk module provider
   bytes32 public constant RM_PROVIDER_ROLE = keccak256("RM_PROVIDER_ROLE");
 
@@ -265,6 +267,26 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
       uint256(uint160(wallet_)),
       false
     );
+  }
+
+  function getMinimumPremium(
+    uint256 payout,
+    uint256 lossProb,
+    uint40 expiration
+  ) external view returns (uint256) {
+    uint256 purePremium = payout.wadToRay().rayMul(lossProb.rayMul(moc())).rayToWad();
+    uint256 premiumForEnsuro = purePremium.wadMul(ensuroFee().rayToWad());
+    uint256 scr = payout.wadMul(scrPercentage().rayToWad()) - purePremium - premiumForEnsuro;
+    // actually the scr will be a bit less, because the premiumForEnsuro (CoC) is also substracted
+    uint256 interestRate = (
+      (scrInterestRate() * (expiration - block.timestamp)).rayDiv(SECONDS_IN_YEAR_RAY)
+    ).rayToWad();
+    scr -= scr.wadMul(interestRate);
+    // Recalculate premiumForLps
+    uint256 premiumForLps = scr.wadMul(interestRate);
+    // Still inaccurate because the formula is recursive, but good enough. Multiply be 1.0001 to increase a bit
+    // and avoid premium less than minimum
+    return (purePremium + premiumForEnsuro + premiumForLps).wadMul(1.0001e18);
   }
 
   function _newPolicy(
