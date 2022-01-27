@@ -82,6 +82,17 @@ class RiskModule(AccessControlContract):
         assert policy.id > 0
         return policy
 
+    def get_minimum_premium(self, payout, loss_prob, expiration):
+        pure_premium = payout * (self.moc * loss_prob).to_wad()
+        premium_for_ensuro = pure_premium * self.ensuro_fee.to_wad()
+        scr = payout * self.scr_percentage.to_wad() - pure_premium - premium_for_ensuro
+        interest_rate = (
+            self.scr_interest_rate * _R(expiration - time_control.now) // _R(SECONDS_IN_YEAR)
+        ).to_wad()
+        scr -= scr * interest_rate
+        premium_for_lps = scr * interest_rate
+        return (pure_premium + premium_for_ensuro + premium_for_lps) * _W("1.0001")
+
     @external
     def remove_policy(self, policy):
         self.total_scr -= policy.scr
