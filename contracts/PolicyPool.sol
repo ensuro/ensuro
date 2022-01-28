@@ -40,7 +40,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   using DataTypes for DataTypes.ETokenStatusMap;
   using SafeERC20 for IERC20Metadata;
 
-  uint256 public constant NEGLIGIBLE_AMOUNT = 1e14; // "0.0001" in Wad
+  uint256 public constant NEGLIGIBLE_AMOUNT = 1e4; // 1e-14 in Wad - 0.01 if 6 decimals (like USCD)
 
   bytes32 public constant REBALANCE_ROLE = keccak256("REBALANCE_ROLE");
   bytes32 public constant WITHDRAW_WON_PREMIUMS_ROLE = keccak256("WITHDRAW_WON_PREMIUMS_ROLE");
