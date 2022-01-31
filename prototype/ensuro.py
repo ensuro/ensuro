@@ -91,7 +91,7 @@ class RiskModule(AccessControlContract):
         ).to_wad()
         scr -= scr * interest_rate
         premium_for_lps = scr * interest_rate
-        return (pure_premium + premium_for_ensuro + premium_for_lps) * _W("1.0001")
+        return (pure_premium + premium_for_ensuro + premium_for_lps) * _W("1.0005")
 
     @external
     def remove_policy(self, policy):
@@ -483,8 +483,6 @@ class PolicyPoolConfig(AccessControlContract):
 
 
 class PolicyPool(AccessControlContract):
-    NEGLIGIBLE_AMOUNT = _W("0.0001")
-
     config = ContractProxyField()
     policy_nft = ContractProxyField()
     currency = ContractProxyField()
@@ -498,6 +496,7 @@ class PolicyPool(AccessControlContract):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.config.connect(self)
+        self.NEGLIGIBLE_AMOUNT = Wad(10**(self.currency.decimals - 3))
 
     def has_role(self, role, account):
         return self.config.has_role(role, account)

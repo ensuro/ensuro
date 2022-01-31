@@ -40,7 +40,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   using DataTypes for DataTypes.ETokenStatusMap;
   using SafeERC20 for IERC20Metadata;
 
-  uint256 public constant NEGLIGIBLE_AMOUNT = 1e4; // 1e-14 in Wad - 0.01 if 6 decimals (like USCD)
+  // solhint-disable-next-line var-name-mixedcase
+  uint256 public immutable NEGLIGIBLE_AMOUNT; // init as 10**(decimals-3) == 0.001 USD
 
   bytes32 public constant REBALANCE_ROLE = keccak256("REBALANCE_ROLE");
   bytes32 public constant WITHDRAW_WON_PREMIUMS_ROLE = keccak256("WITHDRAW_WON_PREMIUMS_ROLE");
@@ -108,6 +109,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     _config = config_;
     _policyNFT = policyNFT_;
     _currency = currency_;
+    NEGLIGIBLE_AMOUNT = 10**(currency_.decimals() - 3);
   }
 
   function initialize() public initializer {

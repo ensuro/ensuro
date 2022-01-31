@@ -284,9 +284,9 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     scr -= scr.wadMul(interestRate);
     // Recalculate premiumForLps
     uint256 premiumForLps = scr.wadMul(interestRate);
-    // Still inaccurate because the formula is recursive, but good enough. Multiply be 1.0001 to increase a bit
+    // Still inaccurate because the formula is recursive, but good enough. Multiply be 1.0005 to increase a bit
     // and avoid premium less than minimum
-    return (purePremium + premiumForEnsuro + premiumForLps).wadMul(1.0001e18);
+    return (purePremium + premiumForEnsuro + premiumForLps).wadMul(1.0005e18);
   }
 
   function _newPolicy(

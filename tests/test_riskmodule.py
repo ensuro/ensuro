@@ -337,7 +337,7 @@ def test_minimum_premium(tenv):
 
     expiration = tenv.time_control.now + WEEK
     rm.get_minimum_premium(_W(36), _R(1/37), expiration).assert_equal(
-        _W("1.2888499") * _W("1.0001")
+        _W("1.2888499") * _W("1.0005")
     )
 
     tenv.currency.transfer(tenv.currency.owner, "CUST1", _W(2))
@@ -353,7 +353,7 @@ def test_minimum_premium(tenv):
             _R(1/37), expiration, "CUST1"
         )
 
-    policy.premium.assert_equal(_W("1.2888499") * _W("1.0001"))
+    policy.premium.assert_equal(_W("1.2888499") * _W("1.0005"))
     policy.loss_prob.assert_equal(_R(1/37))
     policy.pure_premium.assert_equal(_W(36 * 1/37 * 1.3))
     policy.premium_for_ensuro.assert_equal(policy.pure_premium * _W("0.01"))
