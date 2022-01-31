@@ -2,12 +2,15 @@ from collections import namedtuple
 from io import StringIO
 import pytest
 from ethproto.contracts import RevertError
-from ethproto.wadray import _W, _R, set_precision, Wad
+from ethproto.wadray import _W, _R, set_precision, Wad, make_integer_float
 from ethproto.wrappers import get_provider
 from prototype.utils import load_config, WEEK, DAY, HOUR
 from . import extract_vars, is_brownie_coverage_enabled
 
 TEnv = namedtuple("TEnv", "time_control module kind")
+
+USDC = make_integer_float(6, "USDC")
+_D = USDC.from_value
 
 
 @pytest.fixture(params=["prototype", "ethereum"])
@@ -78,6 +81,80 @@ def test_transfers(tenv):
 
     etoken.balance_of("LP1").assert_equal(
         _W(3500) + interest * _W(3/7)
+    )
+    lp1_balance = etoken.balance_of("LP1")
+
+    etoken.transfer("LP1", "LP2", lp1_balance // _W(3))
+    etoken.approve("LP1", "spender", lp1_balance // _W(3))
+    etoken.transfer_from("spender", "LP1", "LP3", lp1_balance // _W(3))
+
+    etoken.balance_of("LP1").assert_equal(lp1_balance // _W(3))
+    etoken.balance_of("LP2").assert_equal(lp1_balance // _W(3))
+    etoken.balance_of("LP3").assert_equal(lp1_balance // _W(3))
+
+    timecontrol.fast_forward(2 * DAY)
+
+    etoken.balance_of("LP1").assert_equal(lp1_balance // _W(3) + interest * _W(2/7) // _W(3))
+    etoken.balance_of("LP2").assert_equal(lp1_balance // _W(3) + interest * _W(2/7) // _W(3))
+    etoken.balance_of("LP3").assert_equal(lp1_balance // _W(3) + interest * _W(2/7) // _W(3))
+
+    rm.resolve_policy(policy.id, True)
+    etoken.balance_of("LP1").assert_equal(_W(0))
+    etoken.balance_of("LP2").assert_equal(_W(0))
+    etoken.balance_of("LP3").assert_equal(_W(0))
+
+
+def test_transfers_usdc(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        scr_percentage: 1
+        scr_interest_rate: "0.01"
+        ensuro_fee: 0
+    currency:
+        name: USD
+        decimals: 6
+        symbol: $
+        initial_supply: 6000
+        initial_balances:
+        - user: LP1
+          amount: 3500
+        - user: CUST1
+          amount: 100
+    etokens:
+      - name: eUSD1WEEK
+        expiration_period: 604800
+      - name: eUSD1MONTH
+        expiration_period: 2592000
+      - name: eUSD1YEAR
+        expiration_period: 31536000
+    """
+
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    rm = pool.config.risk_modules["Roulette"]
+
+    rm.grant_role("PRICER_ROLE", rm.owner)
+    rm.grant_role("RESOLVER_ROLE", rm.owner)
+
+    pool.currency.approve("LP1", pool.contract_id, Wad(_D(3500)))
+    etoken = pool.etokens["eUSD1YEAR"]
+
+    assert pool.deposit("eUSD1YEAR", "LP1", Wad(_D(3500))) == Wad(_D(3500))
+
+    pool.currency.approve("CUST1", pool.contract_id, Wad(_D(100)))
+    policy = rm.new_policy(
+        payout=Wad(_D(3600)), premium=Wad(_D(100)), customer="CUST1",
+        loss_prob=_R(1/37), expiration=timecontrol.now + WEEK
+    )
+
+    assert etoken.ocean == Wad(_D(0))
+    timecontrol.fast_forward(3 * DAY)
+
+    pure_premium, _, _, interest = policy.premium_split()
+
+    etoken.balance_of("LP1").assert_equal(
+        Wad(_D(3500)) + interest * _W(3/7)
     )
     lp1_balance = etoken.balance_of("LP1")
 

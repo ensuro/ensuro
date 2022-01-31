@@ -2,7 +2,7 @@ import re
 import importlib
 import yaml
 from environs import Env
-from ethproto.wadray import _W
+from ethproto.wadray import _W, make_integer_float, Wad
 
 env = Env()
 
@@ -64,13 +64,18 @@ def load_config(yaml_config=None, module=None):
         module = importlib.import_module(config["module"])
 
     currency_params = config.get("currency", {})
+    if currency_params.get("decimals", 18) == 18:
+        to_wad = _W
+    else:
+        def to_wad(x):
+            return Wad(make_integer_float(currency_params["decimals"]).from_value(x))
     currency_params["owner"] = currency_params.get("owner", "owner")
     if "initial_supply" in currency_params:
-        currency_params["initial_supply"] = _W(currency_params["initial_supply"])
+        currency_params["initial_supply"] = to_wad(currency_params["initial_supply"])
     initial_balances = currency_params.pop("initial_balances", {})
     currency = module.ERC20Token(**currency_params)
     for balance in initial_balances:
-        currency.transfer(currency.owner, balance["user"], _W(balance["amount"]))
+        currency.transfer(currency.owner, balance["user"], to_wad(balance["amount"]))
 
     nft_params = config.get("nft", {})
     nft_params.setdefault("owner", "owner")
