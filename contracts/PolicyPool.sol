@@ -40,6 +40,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   using DataTypes for DataTypes.ETokenStatusMap;
   using SafeERC20 for IERC20Metadata;
 
+  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   // solhint-disable-next-line var-name-mixedcase
   uint256 public immutable NEGLIGIBLE_AMOUNT; // init as 10**(decimals-3) == 0.001 USD
 
