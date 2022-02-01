@@ -245,6 +245,7 @@ policy_db = PolicyDB()
 
 
 class RiskModule(ETHWrapper):
+    eth_contract = "IRiskModule"
 
     constructor_args = (("pool", "address"), )
     initialize_args = (
