@@ -559,6 +559,8 @@ class PolicyPool(ETHWrapper):
     expire_policy_ = MethodAdapter((("policy", "tuple"), ))
 
     def expire_policy(self, policy_id):
+        if type(policy_id) == tuple:
+            return self.expire_policy_(policy_id)
         global policy_db
         policy = policy_db.get_policy(self.contract.address, policy_id)
         return self.expire_policy_(policy.as_tuple())
