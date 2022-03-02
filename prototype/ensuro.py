@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from hashlib import md5
 from m9g import Model
 from m9g.fields import StringField, IntField, DictField, CompositeField
 from ethproto.contracts import AccessControlContract, ERC20Token, external, view, RayField, \
@@ -64,8 +65,12 @@ class RiskModule(AccessControlContract):
             )
         return super()._validate_setattr(attr_name, value)
 
+    def make_policy_id(self, internal_id):
+        prefix = md5(self.contract_id.encode("utf-8")).hexdigest()
+        return (int(prefix, 16) << 96) + internal_id
+
     @external
-    def new_policy(self, payout, premium, loss_prob, expiration, customer):
+    def new_policy(self, payout, premium, loss_prob, expiration, customer, internal_id):
         start = time_control.now
         require(self.policy_pool.currency.allowance(customer, self.policy_pool.contract_id) >= premium,
                 "You must allow ENSURO to transfer the premium")
@@ -78,7 +83,7 @@ class RiskModule(AccessControlContract):
         require(total_scr <= self.scr_limit, "RiskModule: SCR limit exceeded")
         self.total_scr = total_scr
 
-        policy.id = self.policy_pool.new_policy(policy, customer)
+        policy.id = self.policy_pool.new_policy(policy, customer, internal_id)
         assert policy.id > 0
         return policy
 
@@ -444,12 +449,9 @@ class EToken(ERC20Token):
 
 
 class PolicyNFT(ERC721Token):
-    policy_count = IntField(default=0)
-
-    def safeMint(self, customer):
-        self.policy_count += 1
-        self.mint(customer, self.policy_count)
-        return self.policy_count
+    def safeMint(self, customer, policy_id):
+        self.mint(customer, policy_id)
+        return policy_id
 
 
 class PolicyPoolConfig(AccessControlContract):
@@ -537,9 +539,10 @@ class PolicyPool(AccessControlContract):
         return time_control.now
 
     @external
-    def new_policy(self, policy, customer):
+    def new_policy(self, policy, customer, internal_id):
         self.currency.transfer_from(self.contract_id, customer, self.contract_id, policy.premium)
-        policy.id = self.policy_nft.safeMint(customer)
+        policy.id = policy.risk_module.make_policy_id(internal_id)
+        self.policy_nft.safeMint(customer, policy.id)
 
         assert policy.interest_rate >= 0
 

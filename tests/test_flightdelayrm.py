@@ -118,6 +118,7 @@ def test_flightdelay_new_policy_resolved_payout0(tenv):
     new_policy_params = (
         "AR 1234", now + 3600, expected_arrival, 1800,  # flight, departure, expectedArrival, tolerance
         _W(1000), _W(100), _R("0.1"), "CUST1",  # payout, premium, loss_prob, cust
+        123
     )
 
     with pytest.raises(RevertError, match="AccessControl"):
@@ -129,7 +130,7 @@ def test_flightdelay_new_policy_resolved_payout0(tenv):
     assert tenv.link_token.last_transfer_to == mock_oracle.address
     assert tenv.link_token.last_transfer_value == _W("0.1")
     assert tenv.link_token.last_transfer_data
-    assert policy.id == 1
+    assert policy.id == rm.make_policy_id(123)
 
     assert "ChainlinkRequested" in rm.last_receipt.events
     query_id = rm.last_receipt.events["ChainlinkRequested"]["id"]
@@ -140,7 +141,7 @@ def test_flightdelay_new_policy_resolved_payout0(tenv):
     assert "ChainlinkFulfilled" in receipt.events and "PolicyResolved" in receipt.events
     assert receipt.events["ChainlinkFulfilled"]["id"] == query_id
     assert receipt.events["PolicyResolved"]["payout"] == 0
-    assert receipt.events["PolicyResolved"]["policyId"] == 1
+    assert receipt.events["PolicyResolved"]["policyId"] == rm.make_policy_id(123)
 
 
 def test_flightdelay_new_policy_resolved_payout_full(tenv):
@@ -154,6 +155,7 @@ def test_flightdelay_new_policy_resolved_payout_full(tenv):
     new_policy_params = (
         "AR 1234", now + 3600, expected_arrival, 1800,  # flight, departure, expectedArrival, tolerance
         _W(1000), _W(100), _R("0.1"), "CUST1",  # payout, premium, loss_prob, cust
+        111
     )
 
     with rm.as_("BACKEND"):
@@ -182,6 +184,7 @@ def test_flightdelay_new_policy_flight_cancelled(tenv):
     new_policy_params = (
         "AR 1234", now + 3600, expected_arrival, 1800,  # flight, departure, expectedArrival, tolerance
         _W(1000), _W(100), _R("0.1"), "CUST1",  # payout, premium, loss_prob, cust
+        1122
     )
 
     with rm.as_("BACKEND"):
@@ -210,6 +213,7 @@ def test_flightdelay_zero_arrival_date(tenv):
     new_policy_params = (
         "AR 1234", now + 3600, expected_arrival, 1800,  # flight, departure, expectedArrival, tolerance
         _W(1000), _W(100), _R("0.1"), "CUST1",  # payout, premium, loss_prob, cust
+        2323
     )
 
     with rm.as_("BACKEND"):
@@ -257,6 +261,7 @@ def test_flightdelay_resolve_manual_cancelled(tenv):
     new_policy_params = (
         "AR 1234", now + 3600, expected_arrival, 1800,  # flight, departure, expectedArrival, tolerance
         _W(1000), _W(100), _R("0.1"), "CUST1",  # payout, premium, loss_prob, cust
+        333
     )
 
     with rm.as_("BACKEND"):
@@ -293,6 +298,7 @@ def test_flightdelay_resolve_manual_on_time(tenv):
     new_policy_params = (
         "AR 1234", now + 3600, expected_arrival, 1800,  # flight, departure, expectedArrival, tolerance
         _W(1000), _W(100), _R("0.1"), "CUST1",  # payout, premium, loss_prob, cust
+        2121
     )
 
     with rm.as_("BACKEND"):
