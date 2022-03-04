@@ -11,7 +11,7 @@ dieOnError() {
     fi
 }
 
-export AMOUNT_DECIMALS=6
+export DEPLOY_AMOUNT_DECIMALS=6
 
 NETWORK=${NETWORK:-localhost}
 

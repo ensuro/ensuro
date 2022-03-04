@@ -20,7 +20,7 @@ function _R(value) {
 }
 
 function amountDecimals() {
-  let decimals = Number.parseInt(process.env.AMOUNT_DECIMALS);
+  let decimals = Number.parseInt(process.env.DEPLOY_AMOUNT_DECIMALS);
   console.assert(decimals >= 6);
   return decimals;
 }
