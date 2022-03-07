@@ -20,7 +20,6 @@ contract PolicyPoolMock is IPolicyPool {
   IERC20Metadata internal _currency;
   IPolicyPoolConfig internal _config;
 
-  uint256 public policyCount;
   uint256 internal _totalETokenSupply;
   mapping(uint256 => Policy.PolicyData) internal policies;
   mapping(uint256 => bytes32) internal policyHashes;
@@ -30,7 +29,6 @@ contract PolicyPoolMock is IPolicyPool {
 
   constructor(IERC20Metadata currency_, IPolicyPoolConfig config_) {
     _currency = currency_;
-    policyCount = 0;
     _config = config_;
     _config.connect();
     require(
@@ -81,15 +79,13 @@ contract PolicyPoolMock is IPolicyPool {
 
   function newPolicy(
     Policy.PolicyData memory policy,
-    address /* customer */
+    address, /* customer */
+    uint96 internalId
   ) external override returns (uint256) {
-    policyCount++;
-    policy.id = policyCount;
-    policies[policyCount] = policy;
-    policies[policyCount].id = policyCount;
-    policyHashes[policyCount] = policy.hash();
+    policy.id = (uint256(uint160(address(policy.riskModule))) << 96) + internalId;
+    policyHashes[policy.id] = policy.hash();
     emit NewPolicy(IRiskModule(msg.sender), policy);
-    return policyCount;
+    return policy.id;
   }
 
   function _resolvePolicy(Policy.PolicyData memory policy, uint256 payout) internal {

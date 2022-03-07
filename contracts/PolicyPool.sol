@@ -257,19 +257,18 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     return withdrawed;
   }
 
-  function newPolicy(Policy.PolicyData memory policy, address customer)
-    external
-    override
-    whenNotPaused
-    returns (uint256)
-  {
+  function newPolicy(
+    Policy.PolicyData memory policy,
+    address customer,
+    uint96 internalId
+  ) external override whenNotPaused returns (uint256) {
     IRiskModule rm = policy.riskModule;
     require(address(rm) == msg.sender, "Only the RM can create new policies");
     _config.checkAcceptsNewPolicy(rm);
     _currency.safeTransferFrom(customer, address(this), policy.premium);
-    uint256 policyId = _policyNFT.safeMint(customer);
-    policy.id = policyId;
-    _policies[policyId] = policy.hash();
+    policy.id = (uint256(uint160(address(rm))) << 96) + internalId;
+    _policyNFT.safeMint(customer, policy.id);
+    _policies[policy.id] = policy.hash();
     _activePurePremiums += policy.purePremium;
     _activePremiums += policy.premium;
     _lockScr(policy);

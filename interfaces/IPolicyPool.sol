@@ -16,7 +16,11 @@ interface IPolicyPool {
 
   function setAssetManager(IAssetManager newAssetManager) external;
 
-  function newPolicy(Policy.PolicyData memory policy, address customer) external returns (uint256);
+  function newPolicy(
+    Policy.PolicyData memory policy,
+    address customer,
+    uint96 internalId
+  ) external returns (uint256);
 
   function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external;
 

@@ -9,7 +9,7 @@ import {IERC721Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC7
  * @author Ensuro
  */
 interface IPolicyNFT is IERC721Upgradeable {
-  function safeMint(address to) external returns (uint256);
+  function safeMint(address to, uint256 policyId) external;
 
   function connect() external;
 }

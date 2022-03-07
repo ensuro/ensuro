@@ -292,6 +292,10 @@ class RiskModule(ETHWrapper):
         else:
             return None
 
+    def make_policy_id(self, internal_id):
+        rm_addr = self.contract.address
+        return (int(rm_addr, 16) << 96) + internal_id
+
 
 class TrustfulRiskModule(RiskModule):
     eth_contract = "TrustfulRiskModule"
@@ -299,7 +303,7 @@ class TrustfulRiskModule(RiskModule):
 
     new_policy_ = MethodAdapter((
         ("payout", "amount"), ("premium", "amount"), ("loss_prob", "ray"), ("expiration", "int"),
-        ("customer", "address")
+        ("customer", "address"), ("internal_id", "int"),
     ), "receipt")
 
     resolve_policy_full_payout = MethodAdapter((("policy", Policy.FIELDS), ("customer_won", "bool")))
@@ -324,7 +328,8 @@ class FlightDelayRiskModule(RiskModule):
 
     new_policy_ = MethodAdapter((
         ("flight", "string"), ("departure", "int"), ("expectedArrival", "int"), ("tolerance", "int"),
-        ("payout", "amount"), ("premium", "amount"), ("loss_prob", "ray"), ("customer", "address")
+        ("payout", "amount"), ("premium", "amount"), ("loss_prob", "ray"), ("customer", "address"),
+        ("internal_id", "int"),
     ), "receipt")
 
     resolve_policy = MethodAdapter((("policy_id", "int"), ))

@@ -3,7 +3,7 @@
 from functools import partial
 from collections import namedtuple
 import pytest
-from ethproto.contracts import RevertError, Contract, IntField, ERC20Token, ContractProxyField
+from ethproto.contracts import RevertError, Contract, ERC20Token, ContractProxyField
 from ethproto.wrappers import get_provider
 from prototype import ensuro
 from ethproto.wadray import _W, _R, Wad
@@ -21,12 +21,10 @@ def tenv(request):
 
         class PolicyPoolMock(Contract):
             currency = ContractProxyField()
-            policy_count = IntField(default=0)
             config = pool_config
 
-            def new_policy(self, policy, customer):
-                self.policy_count += 1
-                return self.policy_count
+            def new_policy(self, policy, customer, internal_id):
+                return policy.risk_module.make_policy_id(internal_id)
 
             def resolve_policy(self, policy_id, customer_won):
                 pass
@@ -257,16 +255,17 @@ def test_new_policy(tenv):
     expiration = tenv.time_control.now + WEEK
 
     with rm.as_("JOHN_DOE"), pytest.raises(RevertError, match="is missing role"):
-        policy = rm.new_policy(_W(36), _W(1), _R(1/37), expiration, "CUST1")
+        policy = rm.new_policy(_W(36), _W(1), _R(1/37), expiration, "CUST1", 123)
 
     rm.grant_role("PRICER_ROLE", "JOHN_SELLER")
     with rm.as_("JOHN_SELLER"):
-        policy = rm.new_policy(_W(36), _W(1), _R(1/37), expiration, "CUST1")
+        policy = rm.new_policy(_W(36), _W(1), _R(1/37), expiration, "CUST1", 123)
 
     policy.premium.assert_equal(_W(1))
     policy.payout.assert_equal(_W(36))
     policy.loss_prob.assert_equal(_R(1/37))
     policy.scr.assert_equal(_W(35))
+    assert policy.id == rm.make_policy_id(123)
     assert policy.expiration == expiration
     assert (tenv.time_control.now - policy.start) < 60  # Must be now, giving 60 seconds tolerance
     policy.pure_premium.assert_equal(_W(36 * 1/37))
@@ -299,12 +298,13 @@ def test_moc(tenv):
 
     rm.grant_role("PRICER_ROLE", "JOHN_SELLER")
     with rm.as_("JOHN_SELLER"):
-        policy = rm.new_policy(_W(36), _W(1), _R(1/37), expiration, "CUST1")
+        policy = rm.new_policy(_W(36), _W(1), _R(1/37), expiration, "CUST1", 111)
 
     policy.premium.assert_equal(_W(1))
     policy.loss_prob.assert_equal(_R(1/37))
     policy.pure_premium.assert_equal(_W(36 * 1/37))
     policy.premium_for_ensuro.assert_equal(_W(36 * 1/37 * 0.01))
+    assert policy.id == rm.make_policy_id(111)
 
     with pytest.raises(RevertError, match="missing role"):
         rm.moc = _R("1.01")
@@ -316,9 +316,10 @@ def test_moc(tenv):
     assert rm.moc == _R("1.01")
 
     with rm.as_("JOHN_SELLER"):
-        policy2 = rm.new_policy(_W(36), _W(1), _R(1/37), expiration, "CUST1")
+        policy2 = rm.new_policy(_W(36), _W(1), _R(1/37), expiration, "CUST1", 112)
 
     policy2.premium.assert_equal(_W(1))
+    assert policy2.id == rm.make_policy_id(112)
     policy2.loss_prob.assert_equal(_R(1/37))
     policy2.pure_premium.assert_equal(_W(36 * 1/37) * _W("1.01"))
     policy2.premium_for_ensuro.assert_equal(_W(36 * 1/37 * 0.01) * _W("1.01"))
@@ -345,12 +346,12 @@ def test_minimum_premium(tenv):
 
     rm.grant_role("PRICER_ROLE", "JOHN_SELLER")
     with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="less than minimum"):
-        policy = rm.new_policy(_W(36), _W("1.28"), _R(1/37), expiration, "CUST1")
+        policy = rm.new_policy(_W(36), _W("1.28"), _R(1/37), expiration, "CUST1", 222)
 
     with rm.as_("JOHN_SELLER"):
         policy = rm.new_policy(
             _W(36), rm.get_minimum_premium(_W(36), _R(1/37), expiration),
-            _R(1/37), expiration, "CUST1"
+            _R(1/37), expiration, "CUST1", 222
         )
 
     policy.premium.assert_equal(_W("1.2888499") * _W("1.0005"))

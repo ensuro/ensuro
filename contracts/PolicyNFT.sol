@@ -3,7 +3,6 @@ pragma solidity ^0.8.2;
 
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ERC721Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
-import {CountersUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/CountersUpgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
@@ -18,12 +17,9 @@ import {IPolicyNFT} from "../interfaces/IPolicyNFT.sol";
  * @author Ensuro
  */
 contract PolicyNFT is UUPSUpgradeable, ERC721Upgradeable, PausableUpgradeable, IPolicyNFT {
-  using CountersUpgradeable for CountersUpgradeable.Counter;
-
   bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
   bytes32 public constant LEVEL1_ROLE = keccak256("LEVEL1_ROLE");
 
-  CountersUpgradeable.Counter private _tokenIdCounter;
   IPolicyPool internal _policyPool;
 
   modifier onlyPolicyPool() {
@@ -55,7 +51,6 @@ contract PolicyNFT is UUPSUpgradeable, ERC721Upgradeable, PausableUpgradeable, I
   // solhint-disable-next-line func-name-mixedcase
   function __PolicyNFT_init_unchained(IPolicyPool policyPool_) internal initializer {
     _policyPool = policyPool_;
-    _tokenIdCounter.increment(); // I don't want _tokenId==0
   }
 
   // solhint-disable-next-line no-empty-blocks
@@ -83,11 +78,8 @@ contract PolicyNFT is UUPSUpgradeable, ERC721Upgradeable, PausableUpgradeable, I
     // require(_policyPool.policyNFT() == address(this), "PolicyPool not connected to this config");
   }
 
-  function safeMint(address to) external override onlyPolicyPool whenNotPaused returns (uint256) {
-    uint256 tokenId = _tokenIdCounter.current();
-    _safeMint(to, tokenId);
-    _tokenIdCounter.increment();
-    return tokenId;
+  function safeMint(address to, uint256 policyId) external override onlyPolicyPool whenNotPaused {
+    _safeMint(to, policyId, "");
   }
 
   function _beforeTokenTransfer(
@@ -96,9 +88,5 @@ contract PolicyNFT is UUPSUpgradeable, ERC721Upgradeable, PausableUpgradeable, I
     uint256 tokenId
   ) internal override whenNotPaused {
     super._beforeTokenTransfer(from, to, tokenId);
-  }
-
-  function nextId() external view returns (uint256) {
-    return _tokenIdCounter.current();
   }
 }

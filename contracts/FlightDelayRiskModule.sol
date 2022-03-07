@@ -119,7 +119,8 @@ contract FlightDelayRiskModule is RiskModule, ChainlinkClientUpgradeable {
     uint256 payout,
     uint256 premium,
     uint256 lossProb,
-    address customer
+    address customer,
+    uint96 internalId
   ) external onlyRole(PRICER_ROLE) returns (uint256) {
     require(expectedArrival > block.timestamp, "expectedArrival can't be in the past");
     require(departure != 0 && expectedArrival > departure, "expectedArrival <= departure!");
@@ -132,7 +133,8 @@ contract FlightDelayRiskModule is RiskModule, ChainlinkClientUpgradeable {
       premium,
       lossProb,
       expiration,
-      customer
+      customer,
+      internalId
     );
     PolicyData storage policy = _policies[ensuroPolicy.id];
     policy.ensuroPolicy = ensuroPolicy;
