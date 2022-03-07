@@ -461,7 +461,7 @@ def test_walkthrough(tenv):
     rm.grant_role("RESOLVER_ROLE", rm.owner)
     pool.config.grant_role("LEVEL2_ROLE", rm.owner)  # For setting scr_interest_rate
 
-    with pytest.raises(RevertError, match="transfer amount exceeds allowance"):
+    with pytest.raises(RevertError, match="transfer amount exceeds allowance|insufficient allowance"):
         pool.deposit("eUSD1YEAR", "LP1", _W(1000))
 
     assert pool.currency.balance_of("LP1") == _W(1000)  # unchanged
