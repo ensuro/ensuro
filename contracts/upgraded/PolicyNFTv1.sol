@@ -83,7 +83,14 @@ contract PolicyNFTv1 is UUPSUpgradeable, ERC721Upgradeable, PausableUpgradeable,
     // require(_policyPool.policyNFT() == address(this), "PolicyPool not connected to this config");
   }
 
-  function safeMint(address to) external virtual override onlyPolicyPool whenNotPaused returns (uint256) {
+  function safeMint(address to)
+    external
+    virtual
+    override
+    onlyPolicyPool
+    whenNotPaused
+    returns (uint256)
+  {
     uint256 tokenId = _tokenIdCounter.current();
     _safeMint(to, tokenId);
     _tokenIdCounter.increment();
@@ -103,6 +110,7 @@ contract PolicyNFTv1 is UUPSUpgradeable, ERC721Upgradeable, PausableUpgradeable,
   }
 }
 
+// solhint-disable-next-line contract-name-camelcase
 contract PolicyNFTv1_Upgrade is PolicyNFTv1 {
   function safeMint(address to, uint256 policyId) external onlyPolicyPool whenNotPaused {
     _safeMint(to, policyId, "");
