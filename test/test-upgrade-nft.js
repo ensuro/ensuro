@@ -14,14 +14,15 @@ describe("Test PolicyNFT Upgrade - run at block 25737706", function() {
   let poolSigner;
   let PolicyNFT;
   let PolicyNFTv1_Upgrade;
-  let PolicyNFTv1;
   let nft;
+  let rm;
   const ADDRESSES = {
     usdc: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
     pool: "0xF7ED72430bEA07D8dB6eC264603811381F5af8e0",
     // adminsMultisig: "0x9F764e042D8a370131F0D148da0607EA699b2Bb3",
     adminsMultisig: "0xCfcd29CD20B6c64A4C0EB56e29E5ce3CD69336D2",
     custTreasury: "0xd01587ecd64504851e181b36153ef4d93c2bf939",
+    riskModule: "0x02D158f550dd434526E0BC4a65F7DD50DDB9afEE",
   };
   let adminsMultisig;
   const _E = ethers.utils.parseEther;
@@ -40,6 +41,7 @@ describe("Test PolicyNFT Upgrade - run at block 25737706", function() {
     });
     pool = await ethers.getContractAt("PolicyPool", ADDRESSES.pool);
     nft = await ethers.getContractAt("PolicyNFTv1", await pool.policyNFT());
+    rm = await ethers.getContractAt("TrustfulRiskModule", ADDRESSES.riskModule);
     USDC = await ethers.getContractAt("IERC20Metadata", ADDRESSES.usdc);
     await hre.network.provider.request(
       {method: "hardhat_impersonateAccount", params: [ADDRESSES.adminsMultisig]}
@@ -47,8 +49,9 @@ describe("Test PolicyNFT Upgrade - run at block 25737706", function() {
     adminsMultisig = await impersonate(ADDRESSES.adminsMultisig, _E("10"));
     poolSigner = await impersonate(ADDRESSES.pool, _E("10"));
     PolicyNFT = await ethers.getContractFactory("PolicyNFT");
-    PolicyNFTv1 = await ethers.getContractFactory("PolicyNFTv1");
     PolicyNFTv1_Upgrade = await ethers.getContractFactory("PolicyNFTv1_Upgrade");
+    PolicyPool = await ethers.getContractFactory("PolicyPool");
+    TrustfulRiskModule = await ethers.getContractFactory("TrustfulRiskModule");
   });
 
   it("Should fail with the new contract", async function() {
@@ -75,5 +78,36 @@ describe("Test PolicyNFT Upgrade - run at block 25737706", function() {
     await expect(
       nft.connect(poolSigner).functions["safeMint(address,uint256)"](ADDRESSES.custTreasury, 567)
     ).to.be.revertedWith("ERC721: token already minted");
+  });
+
+  const deployUpgrade = async function () {
+    // Deploy and upgrade new PolicyPool implementation
+    const purePremiums = await pool.purePremiums();
+    const newPoolImpl = await PolicyPool.deploy(
+      await pool.config(),
+      await pool.policyNFT(),
+      await pool.currency(),
+    );
+    await expect(pool.upgradeTo(newPoolImpl.address)).to.be.reverted;
+    tx = await pool.connect(adminsMultisig).upgradeTo(newPoolImpl.address);
+    expect(await pool.purePremiums()).to.equal(purePremiums);  // Pure Premiums didn't changed
+
+    // Deploy and upgrade new PolicyNFT implementation
+    const newNFTImpl = await PolicyNFTv1_Upgrade.deploy();
+    await nft.connect(adminsMultisig).upgradeTo(newNFTImpl.address);
+    nft = await ethers.getContractAt("PolicyNFTv1_Upgrade", nft.address);
+    expect(await nft.policyPool()).to.equal(ADDRESSES.pool);
+
+    // Deploy and upgrade new RiskModule implementation
+    const totalScr = await rm.totalScr();
+    const newRMImpl = await TrustfulRiskModule.deploy(pool.address);
+    await expect(rm.upgradeTo(newRMImpl.address)).to.be.reverted;
+    tx = await rm.connect(adminsMultisig).upgradeTo(newRMImpl.address);
+    expect(await rm.policyPool()).to.equal(ADDRESSES.pool);
+    expect(await rm.totalScr()).to.equal(totalScr);
+  };
+
+  it("Should be upgrade all the different components", async function() {
+    deployUpgrade();
   });
 });

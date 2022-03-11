@@ -116,7 +116,7 @@ contract PolicyNFTv1_Upgrade is PolicyNFTv1 {
     _safeMint(to, policyId, "");
   }
 
-  function safeMint(address) external override onlyPolicyPool whenNotPaused returns (uint256) {
+  function safeMint(address) external view override onlyPolicyPool whenNotPaused returns (uint256) {
     revert("Not supported anymore");
   }
 

@@ -24,4 +24,6 @@ interface IRiskModule {
   function totalScr() external view returns (uint256);
 
   function wallet() external view returns (address);
+
+  function releaseScr(uint256 scrAmount) external;
 }
