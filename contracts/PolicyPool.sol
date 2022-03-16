@@ -463,6 +463,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     }
 
     _storePurePremiumWon(purePremiumWon); // it's possible in some cases purePremiumWon > 0 && customerWon
+    rm.releaseScr(policy.scr);
 
     emit PolicyResolved(policy.riskModule, policy.id, payout);
     delete _policies[policy.id];

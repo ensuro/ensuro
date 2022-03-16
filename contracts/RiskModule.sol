@@ -318,4 +318,11 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     policy.id = policyId;
     return policy;
   }
+
+  function releaseScr(uint256 scrAmount) external override onlyPolicyPool {
+    // In the Python protype this function is called `remove_policy` and receives
+    // all the policy. Since we just need the amount, for performance reasons
+    // we just send the amount and the method is called releaseScr
+    _totalScr -= scrAmount;
+  }
 }

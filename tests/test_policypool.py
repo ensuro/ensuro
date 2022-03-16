@@ -1805,6 +1805,7 @@ def test_expire_policy(tenv):
     )
     policy.scr.assert_equal(_W(110))
     etk.scr.assert_equal(_W(110))
+    rm.total_scr.assert_equal(policy.scr)
     pure_premium, for_ensuro, for_rm, for_lps = policy.premium_split()
 
     for_lps.assert_equal(_W(110) * _W("0.01") * _W(10/365))
@@ -1827,6 +1828,7 @@ def test_expire_policy(tenv):
     USD.balance_of("MGA").assert_equal(for_rm)
     USD.balance_of("CUST1").assert_equal(_W(0))
     pool.won_pure_premiums.assert_equal(pure_premium)
+    rm.total_scr.assert_equal(_W(0))
 
     return locals()
 
