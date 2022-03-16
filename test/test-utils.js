@@ -1,5 +1,6 @@
 const { expect } = require("chai");
-const { BigNumber } = require("ethers");
+const { BigNumber, utils } = require("ethers");
+const {LogDescription} = require("ethers/lib/utils");
 exports.WEEK = 3600 * 24 * 7;
 exports.DAY = 3600 * 24;
 
@@ -65,4 +66,28 @@ exports.impersonate = async function(address, setBalanceTo) {
     );
 
   return await ethers.getSigner(address);
+}
+
+
+/**
+* Finds an event in the receipt
+* @param {Interface} interface The interface of the contract that contains the requested event
+* @param {TransactionReceipt} receipt Transaction receipt containing the events in the logs
+* @param {String} eventName The name of the event we are interested in
+* @returns {LogDescription}
+*/
+exports.getTransactionEvent = function(interface, receipt, eventName) {
+  // for each log in the transaction receipt
+  for (const log of receipt.events) {
+    let parsedLog;
+    try {
+      parsedLog = interface.parseLog(log);
+    } catch (error) {
+      continue;
+    }
+    if (parsedLog.name == eventName) {
+      return parsedLog;
+    }
+  }
+  return null;  // not found
 }

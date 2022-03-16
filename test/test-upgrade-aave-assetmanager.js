@@ -1,6 +1,5 @@
 const { expect } = require("chai");
-const { DAY, WEEK, init_currency, approve_multiple, check_balances,
-        now, add_risk_module, expected_change, impersonate } = require("./test-utils");
+const { impersonate } = require("./test-utils");
 
 
 /*fit = it;
@@ -10,7 +9,6 @@ fit = function() {};
 
 describe("Test AaveAssetManager Upgrade - run at block 23237626", function() {
   let USDC;
-  let poolConfig;
   let pool;
   let etk;
   let poolSigner;
@@ -53,7 +51,6 @@ describe("Test AaveAssetManager Upgrade - run at block 23237626", function() {
   });
 
   it("Should reduce gas cost after upgrade", async function() {
-    const [anon] = await ethers.getSigners();
     let tx = await assetMgr.checkpoint();
     let receipt = await tx.wait();
     let initialGas = receipt.gasUsed;
@@ -72,7 +69,6 @@ describe("Test AaveAssetManager Upgrade - run at block 23237626", function() {
   });
 
   it("Should distribute earnings in deinvestAll - no upgrade", async function() {
-    const [anon] = await ethers.getSigners();
     const balanceBefore = await USDC.balanceOf(ADDRESSES.pool);
     const investmentValueBefore = await assetMgr.getInvestmentValue();
     expect(balanceBefore).to.equal(2000e6);
@@ -92,7 +88,6 @@ describe("Test AaveAssetManager Upgrade - run at block 23237626", function() {
   });
 
   it("Should distribute earnings in deinvestAll", async function() {
-    const [anon] = await ethers.getSigners();
     const balanceBefore = await USDC.balanceOf(ADDRESSES.pool);
     await assetMgr.checkpoint();
     const investmentValueBefore = await assetMgr.getInvestmentValue();
@@ -116,6 +111,4 @@ describe("Test AaveAssetManager Upgrade - run at block 23237626", function() {
       investmentValueBefore.add(etkMoneyAfter).sub(etkMoneyBefore)
     );
   });
-
 });
-
