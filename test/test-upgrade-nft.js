@@ -2,11 +2,6 @@ const { expect } = require("chai");
 const { impersonate, getTransactionEvent } = require("./test-utils");
 
 
-/*fit = it;
-it = function() {}*/
-
-fit = function() {};
-
 describe("Test PolicyNFT Upgrade - run at block 25737706", function() {
   let pool;
   let poolSigner;

@@ -2,11 +2,6 @@ const { expect } = require("chai");
 const { impersonate } = require("./test-utils");
 
 
-/*fit = it;
-it = function() {}*/
-
-fit = function() {};
-
 describe("Test AaveAssetManager Upgrade - run at block 23237626", function() {
   let USDC;
   let pool;
