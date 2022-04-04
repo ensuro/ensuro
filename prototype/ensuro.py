@@ -89,14 +89,13 @@ class RiskModule(AccessControlContract):
 
     def get_minimum_premium(self, payout, loss_prob, expiration):
         pure_premium = payout * (self.moc * loss_prob).to_wad()
-        premium_for_ensuro = pure_premium * self.ensuro_fee.to_wad()
-        scr = payout * self.scr_percentage.to_wad() - pure_premium - premium_for_ensuro
+        scr = payout * self.scr_percentage.to_wad() - pure_premium
         interest_rate = (
             self.scr_interest_rate * _R(expiration - time_control.now) // _R(SECONDS_IN_YEAR)
         ).to_wad()
-        scr -= scr * interest_rate
         premium_for_lps = scr * interest_rate
-        return (pure_premium + premium_for_ensuro + premium_for_lps) * _W("1.0005")
+        premium_for_ensuro = (pure_premium + premium_for_lps) * self.ensuro_fee.to_wad()
+        return (pure_premium + premium_for_ensuro + premium_for_lps)
 
     @external
     def remove_policy(self, policy):
@@ -132,15 +131,17 @@ class Policy(Model):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.scr = (self.payout * self.risk_module.scr_percentage.to_wad()) - self.premium
         self._do_premium_split()
 
     def _do_premium_split(self):
         self.pure_premium = (self.payout.to_ray() * self.loss_prob * self.risk_module.moc).to_wad()
+        self.scr = (self.payout * self.risk_module.scr_percentage.to_wad()) - self.pure_premium
         self.premium_for_lps = self.scr * (
             self.risk_module.scr_interest_rate * _R(self.expiration - self.start) // _R(SECONDS_IN_YEAR)
         ).to_wad()
-        self.premium_for_ensuro = self.risk_module.ensuro_fee.to_wad() * self.pure_premium
+        self.premium_for_ensuro = (
+            self.pure_premium + self.premium_for_lps
+        ) * self.risk_module.ensuro_fee.to_wad()
         require(self.premium >= (self.pure_premium + self.premium_for_lps + self.premium_for_ensuro),
                 "Premium less than minimum")
         self.premium_for_rm = (
@@ -152,12 +153,10 @@ class Policy(Model):
         return self.pure_premium, self.premium_for_ensuro, self.premium_for_rm, self.premium_for_lps
 
     def split_payout(self, payout):
-        # returns (toBePaid_with_pool, premiumsWon)
-        non_capital_premiums = self.pure_premium + self.premium_for_rm + self.premium_for_ensuro
-        if non_capital_premiums >= payout:
-            return Wad(0), non_capital_premiums - payout
+        if self.pure_premium >= payout:
+            return Wad(0), self.pure_premium - payout
         else:
-            return payout - non_capital_premiums, Wad(0)
+            return payout - self.pure_premium, Wad(0)
 
     @property
     def interest_rate(self):
@@ -490,7 +489,6 @@ class PolicyPool(AccessControlContract):
     currency = ContractProxyField()
     etokens = DictField(StringField(), ContractProxyField(), default={})
     policies = DictField(IntField(), CompositeField(Policy), default={})
-    active_premiums = WadField(default=Wad(0))
     active_pure_premiums = WadField(default=Wad(0))
     borrowed_active_pp = WadField(default=Wad(0))
     won_pure_premiums = WadField(default=Wad(0))
@@ -540,18 +538,29 @@ class PolicyPool(AccessControlContract):
 
     @external
     def new_policy(self, policy, customer, internal_id):
-        self.currency.transfer_from(self.contract_id, customer, self.contract_id, policy.premium)
         policy.id = policy.risk_module.make_policy_id(internal_id)
         self.policy_nft.safeMint(customer, policy.id)
 
         assert policy.interest_rate >= 0
 
         self.active_pure_premiums += policy.pure_premium
-        self.active_premiums += policy.premium
 
         self._lock_scr(policy)
 
         self.policies[policy.id] = policy
+        self.currency.transfer_from(
+            self.contract_id, customer,
+            self.contract_id, policy.pure_premium + policy.premium_for_lps
+        )
+        self.currency.transfer_from(
+            self.contract_id, customer,
+            self.config.treasury, policy.premium_for_ensuro
+        )
+        if policy.premium_for_rm and policy.risk_module.wallet != customer:
+            self.currency.transfer_from(
+                self.contract_id, customer,
+                policy.risk_module.wallet, policy.premium_for_rm
+            )
         return policy.id
 
     def _lock_scr(self, policy):
@@ -659,7 +668,6 @@ class PolicyPool(AccessControlContract):
 
         require(payout == 0 or policy.expiration > time_control.now, "Can't pay expired policy")
 
-        self.active_premiums -= policy.premium
         self.active_pure_premiums -= policy.pure_premium
 
         pure_premium, for_ensuro, for_rm, for_lps = policy.premium_split()
@@ -668,12 +676,14 @@ class PolicyPool(AccessControlContract):
         if customer_won:
             policy_owner = self.policy_nft.owner_of(policy.id)
             self._transfer_to(policy_owner, payout)
-            to_pay_from_pool, pure_premium_won = policy.split_payout(payout)
-            borrow_from_scr = self._pay_from_pool(to_pay_from_pool)
+            if policy.pure_premium >= payout:
+                pure_premium_won = policy.pure_premium - payout
+                borrow_from_scr = Wad(0)
+            else:
+                pure_premium_won = Wad(0)
+                borrow_from_scr = self._pay_from_pool(payout - policy.pure_premium)
         else:
             # Pay Ensuro and RM
-            self._transfer_to(policy.risk_module.wallet, for_rm)
-            self._transfer_to(self.config.treasury, for_ensuro)
             pure_premium_won = pure_premium
             # Cover first borrowed_active_pp
             if self.borrowed_active_pp > self.active_pure_premiums:
@@ -731,10 +741,7 @@ class PolicyPool(AccessControlContract):
 
     def get_investable(self):
         borrowed_from_etk = sum((etk.get_pool_loan() for etk in self.etokens.values()), Wad(0))
-        return max(
-            self.active_premiums + self.won_pure_premiums - self.borrowed_active_pp - borrowed_from_etk,
-            Wad(0)
-        )
+        return max(self.pure_premiums - borrowed_from_etk, Wad(0))
 
     def asset_earnings(self, amount):
         if amount > 0:
@@ -847,7 +854,16 @@ class FixedRateAssetManager(AssetManager):
 
     interest_rate = RayField(default=_R("0.05"))
     last_mint_burn = IntField(default=time_control.now)
-    positive = bool
+    _positive = IntField(default=1)
+
+    def _get_positive(self):
+        return bool(self._positive)
+
+    def _set_positive(self, new_value):
+        self._mint_burn()
+        self._positive = int(new_value)
+
+    positive = property(_get_positive, _set_positive)
 
     def get_investment_value(self):
         balance = self.pool.currency.balance_of(self.contract_id)
