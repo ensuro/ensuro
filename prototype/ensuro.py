@@ -88,12 +88,11 @@ class RiskModule(AccessControlContract):
         return policy
 
     def get_minimum_premium(self, payout, loss_prob, expiration):
-        pure_premium = payout * (self.moc * loss_prob).to_wad()
+        pure_premium = (payout.to_ray() * loss_prob * self.moc).to_wad()
         scr = payout * self.scr_percentage.to_wad() - pure_premium
-        interest_rate = (
+        premium_for_lps = scr * (
             self.scr_interest_rate * _R(expiration - time_control.now) // _R(SECONDS_IN_YEAR)
         ).to_wad()
-        premium_for_lps = scr * interest_rate
         premium_for_ensuro = (pure_premium + premium_for_lps) * self.ensuro_fee.to_wad()
         return (pure_premium + premium_for_ensuro + premium_for_lps)
 
@@ -151,12 +150,6 @@ class Policy(Model):
 
     def premium_split(self):
         return self.pure_premium, self.premium_for_ensuro, self.premium_for_rm, self.premium_for_lps
-
-    def split_payout(self, payout):
-        if self.pure_premium >= payout:
-            return Wad(0), self.pure_premium - payout
-        else:
-            return payout - self.pure_premium, Wad(0)
 
     @property
     def interest_rate(self):

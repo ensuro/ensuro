@@ -766,10 +766,10 @@ def test_nfts(tenv):
     currency:
         name: USD
         symbol: $
-        initial_supply: 6000
+        initial_supply: 9000
         initial_balances:
         - user: LP1
-          amount: 3503
+          amount: 7006
         - user: CUST1
           amount: 200
     etokens:
@@ -811,10 +811,11 @@ def test_nfts(tenv):
     assert usd.balance_of("CUST1") == _W(100)
     assert usd.balance_of("CUST2") == _W(3600)
 
+    _deposit(pool, "eUSD1YEAR", "LP1", _W(3503), assert_deposit=False)
     usd.approve("CUST1", pool.contract_id, _W(100))
     with pytest.raises(RevertError, match="Already exists|token already minted"):
         policy = rm.new_policy(
-            payout=_W(3600), premium=_W(100), customer="CUST1",
+            payout=_W(1800), premium=_W(50), customer="CUST1",
             loss_prob=_R(1/37), expiration=timecontrol.now + WEEK,
             internal_id=2**96 - 1
         )
