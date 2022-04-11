@@ -273,7 +273,7 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     uint256 payout,
     uint256 lossProb,
     uint40 expiration
-  ) external view returns (uint256) {
+  ) public view returns (uint256) {
     uint256 purePremium = payout.wadToRay().rayMul(lossProb.rayMul(moc())).rayToWad();
     uint256 scr = payout.wadMul(scrPercentage().rayToWad()) - purePremium;
     uint256 interestRate = (

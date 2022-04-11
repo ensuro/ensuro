@@ -158,7 +158,6 @@ contract AaveAssetManager is BaseAssetManager {
   }
 
   function _rewardToCurrency(uint256 amount) internal view returns (uint256) {
-    // TODO Check: this is safe? Or I should use IPriceOracle instead
     IPriceOracle oracle = priceOracle();
     IERC20Metadata from_ = rewardToken();
     IERC20Metadata to_ = currency();
