@@ -35,6 +35,7 @@ contract FixedRateAssetManager is BaseAssetManager {
   }
 
   function setPositive(bool positive_) external {
+    _mintBurn();
     positive = positive_;
   }
 
