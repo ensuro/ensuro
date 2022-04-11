@@ -275,18 +275,13 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     uint40 expiration
   ) external view returns (uint256) {
     uint256 purePremium = payout.wadToRay().rayMul(lossProb.rayMul(moc())).rayToWad();
-    uint256 premiumForEnsuro = purePremium.wadMul(ensuroFee().rayToWad());
-    uint256 scr = payout.wadMul(scrPercentage().rayToWad()) - purePremium - premiumForEnsuro;
-    // actually the scr will be a bit less, because the premiumForEnsuro (CoC) is also substracted
+    uint256 scr = payout.wadMul(scrPercentage().rayToWad()) - purePremium;
     uint256 interestRate = (
       (scrInterestRate() * (expiration - block.timestamp)).rayDiv(SECONDS_IN_YEAR_RAY)
     ).rayToWad();
-    scr -= scr.wadMul(interestRate);
-    // Recalculate premiumForLps
     uint256 premiumForLps = scr.wadMul(interestRate);
-    // Still inaccurate because the formula is recursive, but good enough. Multiply be 1.0005 to increase a bit
-    // and avoid premium less than minimum
-    return (purePremium + premiumForEnsuro + premiumForLps).wadMul(1.0005e18);
+    uint256 premiumForEnsuro = (purePremium + premiumForLps).wadMul(ensuroFee().rayToWad());
+    return purePremium + premiumForEnsuro + premiumForLps;
   }
 
   function _newPolicy(
@@ -317,5 +312,12 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     uint256 policyId = _policyPool.newPolicy(policy, customer, internalId);
     policy.id = policyId;
     return policy;
+  }
+
+  function releaseScr(uint256 scrAmount) external override onlyPolicyPool {
+    // In the Python protype this function is called `remove_policy` and receives
+    // all the policy. Since we just need the amount, for performance reasons
+    // we just send the amount and the method is called releaseScr
+    _totalScr -= scrAmount;
   }
 }

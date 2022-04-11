@@ -264,13 +264,13 @@ def test_new_policy(tenv):
     policy.premium.assert_equal(_W(1))
     policy.payout.assert_equal(_W(36))
     policy.loss_prob.assert_equal(_R(1/37))
-    policy.scr.assert_equal(_W(35))
+    policy.pure_premium.assert_equal(_W(36 * 1/37))
+    policy.scr.assert_equal(_W(36) - policy.pure_premium)
     assert policy.id == rm.make_policy_id(123)
     assert policy.expiration == expiration
     assert (tenv.time_control.now - policy.start) < 60  # Must be now, giving 60 seconds tolerance
-    policy.pure_premium.assert_equal(_W(36 * 1/37))
-    policy.premium_for_ensuro.assert_equal(policy.pure_premium * _W("0.02"))
     policy.premium_for_lps.assert_equal(policy.scr * _W("0.01") * _W(7/365))
+    policy.premium_for_ensuro.assert_equal((policy.pure_premium + policy.premium_for_lps) * _W("0.02"))
     policy.premium_for_rm.assert_equal(
         _W(1) - policy.pure_premium - policy.premium_for_lps - policy.premium_for_ensuro
     )
@@ -337,9 +337,12 @@ def test_minimum_premium(tenv):
         rm.moc = _R("1.3")
 
     expiration = tenv.time_control.now + WEEK
+    pure_premium = _W(36/37) * _W("1.3")
+    scr = _W(36) * _W("0.2") - pure_premium
     rm.get_minimum_premium(_W(36), _R(1/37), expiration).assert_equal(
-        _W("1.2888499") * _W("1.0005")
+        (pure_premium + scr * _W(7/365) * _W("0.10")) * _W("1.01")
     )
+    minimum_premium = rm.get_minimum_premium(_W(36), _R(1/37), expiration)
 
     tenv.currency.transfer(tenv.currency.owner, "CUST1", _W(2))
     tenv.currency.approve("CUST1", rm.policy_pool, _W(2))
@@ -354,7 +357,7 @@ def test_minimum_premium(tenv):
             _R(1/37), expiration, "CUST1", 222
         )
 
-    policy.premium.assert_equal(_W("1.2888499") * _W("1.0005"))
+    policy.premium.assert_equal(minimum_premium, decimals=3)
     policy.loss_prob.assert_equal(_R(1/37))
     policy.pure_premium.assert_equal(_W(36 * 1/37 * 1.3))
-    policy.premium_for_ensuro.assert_equal(policy.pure_premium * _W("0.01"))
+    policy.premium_for_ensuro.assert_equal((policy.pure_premium + policy.premium_for_lps) * _W("0.01"))

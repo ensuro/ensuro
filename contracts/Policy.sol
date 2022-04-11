@@ -51,18 +51,20 @@ library Policy {
     policy.premium = premium;
     policy.payout = payout;
     policy.lossProb = lossProb;
-    policy.scr = payout.wadMul(riskModule.scrPercentage().rayToWad()) - premium;
+    policy.purePremium = payout.wadToRay().rayMul(lossProb.rayMul(riskModule.moc())).rayToWad();
+    policy.scr = payout.wadMul(riskModule.scrPercentage().rayToWad()) - policy.purePremium;
     require(policy.scr != 0, "SCR can't be zero");
     policy.start = uint40(block.timestamp);
     policy.expiration = expiration;
-    policy.purePremium = payout.wadToRay().rayMul(lossProb.rayMul(riskModule.moc())).rayToWad();
-    policy.premiumForEnsuro = policy.purePremium.wadMul(riskModule.ensuroFee().rayToWad());
     policy.premiumForLps = policy.scr.wadMul(
       (
         (riskModule.scrInterestRate() * (policy.expiration - policy.start)).rayDiv(
           SECONDS_IN_YEAR_RAY
         )
       ).rayToWad()
+    );
+    policy.premiumForEnsuro = (policy.purePremium + policy.premiumForLps).wadMul(
+      riskModule.ensuroFee().rayToWad()
     );
     require(
       policy.purePremium + policy.premiumForEnsuro + policy.premiumForLps <= premium,
@@ -74,20 +76,6 @@ library Policy {
       policy.premiumForLps -
       policy.premiumForEnsuro;
     return policy;
-  }
-
-  function splitPayout(PolicyData memory policy, uint256 payout)
-    internal
-    pure
-    returns (uint256 toBePaidWithPool, uint256 premiumsWon)
-  {
-    uint256 nonCapitalPremiums = policy.premium - policy.premiumForLps;
-    if (nonCapitalPremiums >= payout) {
-      // paid with premiums and accrue the rest even when it's premiumForEnsuro and premiumForRm
-      return (0, nonCapitalPremiums - payout);
-    } else {
-      return (payout - nonCapitalPremiums, 0); // pay from pool all except nonCapitalPremiums
-    }
   }
 
   function interestRate(PolicyData memory policy) internal pure returns (uint256) {

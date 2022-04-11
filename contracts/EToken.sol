@@ -75,7 +75,7 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
 
   /**
    * @dev Initializes the eToken
-   * @param expirationPeriod Maximum expirationPeriod (from block.timestamp) of policies to be accepted
+   * @param expirationPeriod_ Maximum expirationPeriod (from block.timestamp) of policies to be accepted
    * @param liquidityRequirement_ Liquidity requirement to allow withdrawal (in Ray - default=1 Ray)
    * @param maxUtilizationRate_ Max utilization rate (scr/totalSupply) (in Ray - default=1 Ray)
    * @param poolLoanInterestRate_ Rate of loans givencrto the policy pool (in Ray)
@@ -85,7 +85,7 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
   function initialize(
     string memory name_,
     string memory symbol_,
-    uint40 expirationPeriod,
+    uint40 expirationPeriod_,
     uint256 liquidityRequirement_,
     uint256 maxUtilizationRate_,
     uint256 poolLoanInterestRate_
@@ -94,7 +94,7 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
     __EToken_init_unchained(
       name_,
       symbol_,
-      expirationPeriod,
+      expirationPeriod_,
       liquidityRequirement_,
       maxUtilizationRate_,
       poolLoanInterestRate_
@@ -105,14 +105,14 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
   function __EToken_init_unchained(
     string memory name_,
     string memory symbol_,
-    uint40 expirationPeriod,
+    uint40 expirationPeriod_,
     uint256 liquidityRequirement_,
     uint256 maxUtilizationRate_,
     uint256 poolLoanInterestRate_
   ) internal initializer {
     _name = name_;
     _symbol = symbol_;
-    _expirationPeriod = expirationPeriod;
+    _expirationPeriod = expirationPeriod_;
     _scaleFactor = WadRayMath.ray();
     _lastScaleUpdate = uint40(block.timestamp);
     _scr = 0;
@@ -493,6 +493,10 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
 
   function maxUtilizationRate() public view returns (uint256) {
     return _maxUtilizationRate;
+  }
+
+  function expirationPeriod() public view returns (uint40) {
+    return _expirationPeriod;
   }
 
   function utilizationRate() public view returns (uint256) {

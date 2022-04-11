@@ -24,7 +24,7 @@ import {DataTypes} from "./DataTypes.sol";
  * @dev This is the main contract of the protocol, it stores the eTokens (liquidity pools) and has the operations
  *      to interact with them. This is also the contract that receives and sends the underlying asset.
  *      Also this contract keeps track of accumulated premiums in different stages:
- *      - activePremiums / activePurePremiums
+ *      - activePurePremiums
  *      - wonPurePremiums (surplus)
  *      - borrowedActivePP (deficit borrowed from activePurePremiums)
  * @custom:security-contact security@ensuro.co
@@ -66,7 +66,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   mapping(uint256 => bytes32) internal _policies;
   mapping(uint256 => DataTypes.ETokenToWadMap) internal _policiesFunds;
 
-  uint256 internal _activePremiums; // sum of premiums of active policies - In Wad
   uint256 internal _activePurePremiums; // sum of pure-premiums of active policies - In Wad
   uint256 internal _borrowedActivePP; // amount borrowed from active pure premiums to pay defaulted policies
   uint256 internal _wonPurePremiums; // amount of pure premiums won from non-defaulted policies
@@ -129,7 +128,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     _policyNFT.connect();
     /*
     _activePurePremiums = 0;
-    _activePremiums = 0;
     _borrowedActivePP = 0;
     _wonPurePremiums = 0;
     */
@@ -158,12 +156,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     return address(_policyNFT);
   }
 
-  function purePremiums() external view returns (uint256) {
+  function purePremiums() public view returns (uint256) {
     return _activePurePremiums + _wonPurePremiums - _borrowedActivePP;
-  }
-
-  function activePremiums() external view returns (uint256) {
-    return _activePremiums;
   }
 
   function activePurePremiums() external view returns (uint256) {
@@ -265,13 +259,15 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     IRiskModule rm = policy.riskModule;
     require(address(rm) == msg.sender, "Only the RM can create new policies");
     _config.checkAcceptsNewPolicy(rm);
-    _currency.safeTransferFrom(customer, address(this), policy.premium);
     policy.id = (uint256(uint160(address(rm))) << 96) + internalId;
-    _policyNFT.safeMint(customer, policy.id);
     _policies[policy.id] = policy.hash();
     _activePurePremiums += policy.purePremium;
-    _activePremiums += policy.premium;
     _lockScr(policy);
+    _policyNFT.safeMint(customer, policy.id);
+    _currency.safeTransferFrom(customer, address(this), policy.purePremium + policy.premiumForLps);
+    _currency.safeTransferFrom(customer, _config.treasury(), policy.premiumForEnsuro);
+    if (policy.premiumForRm > 0 && customer != rm.wallet())
+      _currency.safeTransferFrom(customer, rm.wallet(), policy.premiumForRm);
     emit NewPolicy(rm, policy);
     return policy.id;
   }
@@ -378,18 +374,19 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     bool customerWon,
     uint256 payout
   ) internal returns (uint256, uint256) {
-    uint256 borrowFromScr = 0;
-    uint256 purePremiumWon;
+    uint256 borrowFromScr; // = 0
+    uint256 purePremiumWon; // = 0
     uint256 aux;
 
     if (customerWon) {
       _transferTo(_policyNFT.ownerOf(policy.id), payout);
-      (aux, purePremiumWon) = policy.splitPayout(payout);
-      borrowFromScr = _payFromPool(aux);
+      if (policy.purePremium > payout) {
+        purePremiumWon = policy.purePremium - payout;
+      } else {
+        borrowFromScr = _payFromPool(payout - policy.purePremium);
+      }
     } else {
       // Pay RM and Ensuro
-      _transferTo(policy.riskModule.wallet(), policy.premiumForRm);
-      _transferTo(_config.treasury(), policy.premiumForEnsuro);
       purePremiumWon = policy.purePremium;
       // cover first _borrowedActivePP
       if (_borrowedActivePP > _activePurePremiums) {
@@ -440,7 +437,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
 
     bool customerWon = payout > 0;
 
-    _activePremiums -= policy.premium;
     _activePurePremiums -= policy.purePremium;
 
     (uint256 borrowFromScr, uint256 purePremiumWon) = _processResolution(
@@ -463,6 +459,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     }
 
     _storePurePremiumWon(purePremiumWon); // it's possible in some cases purePremiumWon > 0 && customerWon
+    rm.releaseScr(policy.scr);
 
     emit PolicyResolved(policy.riskModule, policy.id, payout);
     delete _policies[policy.id];
@@ -656,7 +653,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
       // TODO: define if not active are investable or not
       borrowedFromEtk += etk.getPoolLoan();
     }
-    uint256 premiums = _activePremiums + _wonPurePremiums - _borrowedActivePP;
+    uint256 premiums = purePremiums();
     if (premiums > borrowedFromEtk) return premiums - borrowedFromEtk;
     else return 0;
   }
