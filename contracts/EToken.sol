@@ -64,11 +64,6 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
     _;
   }
 
-  modifier validateParamsAfterChange() {
-    _;
-    _validateParameters();
-  }
-
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
   constructor(IPolicyPool policyPool_) PolicyPoolComponent(policyPool_) {}
@@ -130,7 +125,7 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
   }
 
   // runs validation on EToken parameters
-  function _validateParameters() internal view {
+  function _validateParameters() internal override view {
     require(
       _liquidityRequirement >= 8e26 && _liquidityRequirement <= 13e26,
       "Validation: liquidityRequirement must be [0.8, 1.3]"
@@ -703,7 +698,6 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
   function setPoolLoanInterestRate(uint256 newRate)
     external
     onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-    validateParamsAfterChange
   {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
@@ -718,7 +712,6 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
   function setLiquidityRequirement(uint256 newRate)
     external
     onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-    validateParamsAfterChange
   {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
@@ -732,7 +725,6 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
   function setMaxUtilizationRate(uint256 newRate)
     external
     onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-    validateParamsAfterChange
   {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
@@ -746,7 +738,6 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
   function setAcceptAllRMs(bool acceptAllRMs_)
     external
     onlyPoolRole(LEVEL2_ROLE)
-    validateParamsAfterChange
   {
     _acceptAllRMs = acceptAllRMs_;
     _parameterChanged(
@@ -759,7 +750,6 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
   function setAcceptException(address riskModule, bool isException)
     external
     onlyPoolRole(LEVEL2_ROLE)
-    validateParamsAfterChange
   {
     _acceptExceptions[riskModule] = isException;
     uint256 value = uint160(riskModule);

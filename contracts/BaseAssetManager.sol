@@ -34,11 +34,6 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
   event MoneyDeinvested(uint256 amount);
   event EarningsDistributed(bool positive, uint256 amount);
 
-  modifier validateParamsAfterChange() {
-    _;
-    _validateParameters();
-  }
-
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
   constructor(IPolicyPool policyPool_) PolicyPoolComponent(policyPool_) {}
@@ -74,7 +69,7 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
     _validateParameters();
   }
 
-  function _validateParameters() internal view {
+  function _validateParameters() internal override view {
     require(
       _liquidityMin <= _liquidityMiddle && _liquidityMiddle <= _liquidityMax,
       "Validation: Liquidity limits are invalid"
@@ -220,7 +215,6 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
   function setLiquidityMin(uint256 newValue)
     external
     onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-    validateParamsAfterChange
   {
     _setLiquidityMin(newValue);
   }
@@ -228,7 +222,6 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
   function setLiquidityMiddle(uint256 newValue)
     external
     onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-    validateParamsAfterChange
   {
     _setLiquidityMiddle(newValue);
   }
@@ -236,7 +229,6 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
   function setLiquidityMax(uint256 newValue)
     external
     onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-    validateParamsAfterChange
   {
     _setLiquidityMax(newValue);
   }
@@ -275,7 +267,7 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
     uint256 min,
     uint256 middle,
     uint256 max
-  ) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) validateParamsAfterChange {
+  ) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
     if (min != type(uint256).max) _setLiquidityMin(min);
     if (middle != type(uint256).max) _setLiquidityMiddle(middle);
     if (max != type(uint256).max) _setLiquidityMax(max);

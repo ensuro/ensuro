@@ -134,11 +134,15 @@ abstract contract PolicyPoolComponent is
     }
   }
 
+  // solhint-disable-next-line no-empty-blocks
+  function _validateParameters() internal virtual view {}  // Must be reimplemented with specific validations
+
   function _parameterChanged(
     IPolicyPoolConfig.GovernanceActions action,
     uint256 value,
     bool tweak
   ) internal {
+    _validateParameters();
     if (tweak) _registerTweak(action);
     emit GovernanceAction(action, value);
   }
