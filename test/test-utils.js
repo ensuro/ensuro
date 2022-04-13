@@ -91,3 +91,67 @@ exports.getTransactionEvent = function(interface, receipt, eventName) {
   }
   return null;  // not found
 }
+
+exports.deployPool = async function(hre, options) {
+  const PolicyPool = await ethers.getContractFactory("PolicyPool");
+  const PolicyPoolConfig = await ethers.getContractFactory("PolicyPoolConfig");
+  const PolicyNFT = await ethers.getContractFactory("PolicyNFT");
+
+  // Deploy PolicyNFT
+  const policyNFT = await hre.upgrades.deployProxy(
+    PolicyNFT,
+    [
+      options.nftName || "Policy NFT",
+      options.nftSymbol || "EPOL",
+      options.policyPoolDetAddress || ethers.constants.AddressZero
+    ],
+    {kind: 'uups'}
+  );
+  await policyNFT.deployed();
+
+  // Deploy PolicyPoolConfig
+  const policyPoolConfig = await hre.upgrades.deployProxy(PolicyPoolConfig, [
+    options.policyPoolDetAddress || ethers.constants.AddressZero,
+    options.treasuryAddress || ethers.constants.AddressZero
+  ], {kind: 'uups'});
+
+  await policyPoolConfig.deployed();
+
+  const policyPool = await hre.upgrades.deployProxy(PolicyPool, [], {
+    constructorArgs: [policyPoolConfig.address, policyNFT.address, options.currency],
+    kind: 'uups',
+    unsafeAllow: ["delegatecall"],
+  });
+
+  await policyPool.deployed();
+
+  for (const role of (options.grantRoles || [])) {
+    await grantRole(hre, policyPoolConfig, role);
+  }
+
+  await grantRole(hre, policyPoolConfig, "LEVEL1_ROLE");
+  await grantRole(hre, policyPoolConfig, "LEVEL2_ROLE");
+  await grantRole(hre, policyPoolConfig, "LEVEL3_ROLE");
+  return policyPool;
+}
+
+async function _getDefaultSigner(hre) {
+  const signers = await hre.ethers.getSigners();
+  return signers[0];
+}
+
+async function grantRole(hre, contract, role, user) {
+  let userAddress;
+  if (user === undefined) {
+    user = await _getDefaultSigner(hre);
+    userAddress = user.address;
+  } else {
+    userAddress = user;
+  }
+  const roleHex = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(role));
+  if (!await contract.hasRole(roleHex, userAddress)) {
+    await contract.grantRole(roleHex, userAddress);
+  }
+}
+
+exports.grantRole = grantRole;
