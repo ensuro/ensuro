@@ -647,26 +647,25 @@ class AaveAssetManager(BaseAssetManager):
     eth_contract = "AaveAssetManager"
 
     constructor_args = BaseAssetManager.constructor_args + (
-        ("aave_address_provider", "address"), ("swap_router", "address")
+        ("aave_address_provider", "address"),
     )
     initialize_args = BaseAssetManager.initialize_args + (
-        ("claim_rewards_min", "amount"), ("reinvest_rewards_min", "amount"), ("max_slippage", "amount")
+        ("claim_rewards_min", "amount"), ("reinvest_rewards_min", "amount"),
     )
 
     def __init__(self, owner, pool, liquidity_min, liquidity_middle, liquidity_max,
-                 aave_address_provider, swap_router, claim_rewards_min=_W(0),
-                 reinvest_rewards_min=_W(0), max_slippage=_W("0.01")):
+                 aave_address_provider, claim_rewards_min=_W(0),
+                 reinvest_rewards_min=_W(0)):
         liquidity_min = _W(liquidity_min)
         liquidity_max = _W(liquidity_max)
         liquidity_middle = _W(liquidity_middle)
         claim_rewards_min = _W(claim_rewards_min)
         reinvest_rewards_min = _W(reinvest_rewards_min)
-        max_slippage = _W(max_slippage)
         super(BaseAssetManager, self).__init__(
             owner,
-            pool, aave_address_provider, swap_router,  # constructor_args
+            pool, aave_address_provider,  # constructor_args
             liquidity_min, liquidity_middle, liquidity_max,
-            claim_rewards_min, reinvest_rewards_min, max_slippage
+            claim_rewards_min, reinvest_rewards_min
         )
         if isinstance(pool, ETHWrapper):
             self._policy_pool = pool.contract
@@ -701,9 +700,35 @@ class AaveAssetManager(BaseAssetManager):
         else:
             return Wad(0)
 
-    max_slippage = MethodAdapter((), "amount", is_property=True)
     claim_rewards_min = MethodAdapter((), "amount", is_property=True)
     reinvest_rewards_min = MethodAdapter((), "amount", is_property=True)
+
+
+class Exchange(ETHWrapper):
+    eth_contract = "Exchange"
+    proxy_kind = "uups"
+
+    constructor_args = (("pool", "address"), )
+    initialize_args = (
+        ("oracle", "address"), ("swap_router", "address"),
+        ("max_slippage", "wad")
+    )
+
+    max_slippage = MethodAdapter((), "wad", is_property=True)
+
+    def __init__(self, owner, pool, oracle, swap_router, max_slippage=_W("0.01")):
+        max_slippage = _W(max_slippage)
+        super(Exchange, self).__init__(
+            owner,
+            pool,  # constructor_args
+            oracle, swap_router, max_slippage,
+        )
+        if isinstance(pool, ETHWrapper):
+            self._policy_pool = pool.contract
+        else:  # is just an address or raw contract - for tests
+            self._policy_pool = self._get_account(pool)
+
+        self._auto_from = self.owner
 
 
 class FreeGrantInsolvencyHook(ETHWrapper):

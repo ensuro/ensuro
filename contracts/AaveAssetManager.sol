@@ -182,6 +182,8 @@ contract AaveAssetManager is BaseAssetManager {
       outAddr,
       block.timestamp
     );
+
+    // solhint-disable-next-line avoid-low-level-calls
     (bool success, bytes memory response) = swapRouter.call(swapCall);
     require(success, "Swap operation failed");
     uint256 swapOut = _exchange().decodeSwapOut(response);
