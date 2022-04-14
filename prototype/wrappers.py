@@ -407,6 +407,19 @@ class PolicyPoolConfig(ETHWrapper):
             return self._asset_manager
         return BaseAssetManager.connect(am, self.owner)
 
+    set_exchange_ = MethodAdapter((("exchange", "contract"), ))
+
+    def set_exchange(self, exchange):
+        self.set_exchange_(exchange)
+        self._exchange = exchange
+
+    @property
+    def exchange(self):
+        ex = eth_call(self, "exchange")
+        if getattr(self, "_exchange") and self._exchange.contract.address == ex:
+            return self._exchange
+        return Exchange.connect(ex, self.owner)
+
     set_insolvency_hook_ = MethodAdapter((("insolvency_hook", "contract"), ))
 
     def set_insolvency_hook(self, insolvency_hook):

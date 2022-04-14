@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
+import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
 import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
 import {IExchange, IPriceOracle} from "../interfaces/IExchange.sol";
 import {WadRayMath} from "./WadRayMath.sol";
@@ -120,5 +121,20 @@ contract Exchange is IExchange, PolicyPoolComponent {
 
   function decodeSwapOut(bytes memory responseData) external pure override returns (uint256) {
     return abi.decode(responseData, (uint256[]))[1];
+  }
+
+  function maxSlippage() external view returns (uint256) {
+    return _maxSlippage;
+  }
+
+  function setMaxSlippage(uint256 newValue) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
+    require(newValue <= 1e17, "maxSlippage can't be more than 10%");
+    bool tweak = !hasPoolRole(LEVEL2_ROLE);
+    require(
+      !tweak || _isTweakWad(_maxSlippage, newValue, 3e26),
+      "Tweak exceeded: maxSlippage tweaks only up to 30%"
+    );
+    _maxSlippage = newValue;
+    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setMaxSlippage, newValue, tweak);
   }
 }

@@ -253,6 +253,7 @@ contract AaveLiquidationProtection is RiskModule {
     return policyId;
   }
 
+  /*
   function triggerPolicy(uint256 policyId) external whenNotPaused {
     PolicyData storage policy = _policies[policyId];
     uint256 currentHF = _getHealthFactor(policy.customer);
@@ -289,6 +290,8 @@ contract AaveLiquidationProtection is RiskModule {
     }
     _aave.deposit(address(_collateralAsset), collateralPayout, policy.customer, 0);
   }
+  DISABLED TEMPORARILY TO AVOID CONTRACT SIZE ERROR
+  */
 
   function setPDF(uint40 duration, uint256[PRICE_SLOTS] calldata pdf)
     external

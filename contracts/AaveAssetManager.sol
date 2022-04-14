@@ -42,7 +42,6 @@ contract AaveAssetManager is BaseAssetManager {
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   uint256 internal _claimRewardsMin; // Minimum amount of rewards accumulated to claim
   uint256 internal _reinvestRewardsMin; // Minimum amount of rewards to reinvest into AAVE
-  uint256 internal _maxSlippage; // Maximum slippage in WAD
 
   bytes32 internal constant DATA_PROVIDER_ID =
     0x0100000000000000000000000000000000000000000000000000000000000000;
@@ -274,10 +273,6 @@ contract AaveAssetManager is BaseAssetManager {
     return _reinvestRewardsMin;
   }
 
-  function maxSlippage() external view returns (uint256) {
-    return _maxSlippage;
-  }
-
   function setClaimRewardsMin(uint256 newValue) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
@@ -299,16 +294,5 @@ contract AaveAssetManager is BaseAssetManager {
     );
     _reinvestRewardsMin = newValue;
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setReinvestRewardsMin, newValue, tweak);
-  }
-
-  function setMaxSlippage(uint256 newValue) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
-    require(newValue <= 1e17, "maxSlippage can't be more than 10%");
-    bool tweak = !hasPoolRole(LEVEL2_ROLE);
-    require(
-      !tweak || _isTweakWad(_maxSlippage, newValue, 3e26),
-      "Tweak exceeded: maxSlippage tweaks only up to 30%"
-    );
-    _maxSlippage = newValue;
-    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setMaxSlippage, newValue, tweak);
   }
 }
