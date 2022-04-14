@@ -69,7 +69,7 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
     _validateParameters();
   }
 
-  function _validateParameters() internal override view {
+  function _validateParameters() internal view override {
     require(
       _liquidityMin <= _liquidityMiddle && _liquidityMiddle <= _liquidityMax,
       "Validation: Liquidity limits are invalid"
@@ -212,24 +212,15 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
     return _liquidityMax;
   }
 
-  function setLiquidityMin(uint256 newValue)
-    external
-    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-  {
+  function setLiquidityMin(uint256 newValue) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
     _setLiquidityMin(newValue);
   }
 
-  function setLiquidityMiddle(uint256 newValue)
-    external
-    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-  {
+  function setLiquidityMiddle(uint256 newValue) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
     _setLiquidityMiddle(newValue);
   }
 
-  function setLiquidityMax(uint256 newValue)
-    external
-    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-  {
+  function setLiquidityMax(uint256 newValue) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
     _setLiquidityMax(newValue);
   }
 

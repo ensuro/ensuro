@@ -39,6 +39,7 @@ fi
 USDC=0x2791bca1f2de4661ed88a30c99a7a9449aa84174
 AAVE_ADDR_PROV=0xd05e3E715d945B59290df0ae8eF85c1BdB684744  # Polygon Aave
 SWAP_ROUTER=0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506  # Polygon SushiSwap
+PRICE_ORACLE=0x0229f777b0fab107f9591a41d5f02e4e98db6f2d  # Polygon Price Oracle of AAVE
 
 POOL=`npx hardhat --network $NETWORK deploy $VERIFY --currency-address $USDC |
     egrep -o  "^PolicyPool deployed to: (https?://.*/)?0x[0-9a-fA-F]+" |
@@ -50,10 +51,15 @@ fi
 
 echo "PolicyPool = $POOL"
 
+# Exchange
+npx hardhat --network $NETWORK deploy:exchange $VERIFY \
+   --swap-router $SWAP_ROUTER \
+   --price-oracle $PRICE_ORACLE \
+    --pool-address $POOL || die "Error deploying Exchange"
+
 # AaveAssetManager
 npx hardhat --network $NETWORK deploy:aaveAssetManager $VERIFY \
    --aave-addr-prov $AAVE_ADDR_PROV \
-   --swap-router $SWAP_ROUTER \
     --pool-address $POOL || die "Error deploying AaveAssetManager"
 
 if [ ! -z $HHNODE_PID ]; then

@@ -52,10 +52,9 @@ contract AaveAssetManager is BaseAssetManager {
   event RewardSwapped(uint256 rewardIn, uint256 currencyOut);
 
   /// @custom:oz-upgrades-unsafe-allow constructor
-  constructor(
-    IPolicyPool policyPool_,
-    ILendingPoolAddressesProvider aaveAddrProv_
-  ) BaseAssetManager(policyPool_) {
+  constructor(IPolicyPool policyPool_, ILendingPoolAddressesProvider aaveAddrProv_)
+    BaseAssetManager(policyPool_)
+  {
     _aaveAddrProv = aaveAddrProv_;
     AaveProtocolDataProvider dataProvider = AaveProtocolDataProvider(
       aaveAddrProv_.getAddress(DATA_PROVIDER_ID)
@@ -80,10 +79,10 @@ contract AaveAssetManager is BaseAssetManager {
   }
 
   // solhint-disable-next-line func-name-mixedcase
-  function __AaveAssetManager_init(
-    uint256 claimRewardsMin_,
-    uint256 reinvestRewardsMin_
-  ) internal initializer {
+  function __AaveAssetManager_init(uint256 claimRewardsMin_, uint256 reinvestRewardsMin_)
+    internal
+    initializer
+  {
     _claimRewardsMin = claimRewardsMin_;
     _reinvestRewardsMin = reinvestRewardsMin_;
   }
@@ -150,11 +149,7 @@ contract AaveAssetManager is BaseAssetManager {
   }
 
   function _rewardToCurrency(uint256 amount) internal view returns (uint256) {
-    return _exchange().convert(
-      address(rewardToken()),
-      address(currency()),
-      amount
-    );
+    return _exchange().convert(address(rewardToken()), address(currency()), amount);
   }
 
   function reinvestRewardToken() public {
@@ -237,7 +232,11 @@ contract AaveAssetManager is BaseAssetManager {
       // In this case, it's safe using getAmountsIn to compute how many rewards are needed to swap
       // but then, when I do the swap I validate the slippage with the market price (given by AAVE's Oracle)
       // is acceptable
-      uint256 requiredRewards = _exchange().getAmountIn(address(rewardToken()), address(currency()), remainingAmount);
+      uint256 requiredRewards = _exchange().getAmountIn(
+        address(rewardToken()),
+        address(currency()),
+        remainingAmount
+      );
       (, uint256 currencyOut) = _swapRewards(requiredRewards, address(_policyPool));
       if (currencyOut < remainingAmount) {
         remainingAmount -= currencyOut;

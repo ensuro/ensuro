@@ -53,13 +53,17 @@ contract Exchange is IExchange, PolicyPoolComponent {
     _validateParameters();
   }
 
-  function _validateParameters() internal override view {
+  function _validateParameters() internal view override {
     require(_maxSlippage <= 1e17, "maxSlippage can't be more than 10%");
     require(address(_oracle) != address(0), "I need a price oracle");
     require(address(_swapRouter) != address(0), "I need a swap router");
   }
 
-  function convert(address assetFrom, address assetTo, uint256 amount) public override view returns (uint256) {
+  function convert(
+    address assetFrom,
+    address assetTo,
+    uint256 amount
+  ) public view override returns (uint256) {
     uint256 exchangeRate = _oracle.getAssetPrice(assetFrom).wadDiv(_oracle.getAssetPrice(assetTo));
     uint8 decFrom = IERC20Metadata(assetFrom).decimals();
     uint8 decTo = IERC20Metadata(assetTo).decimals();
@@ -71,36 +75,50 @@ contract Exchange is IExchange, PolicyPoolComponent {
     return amount.wadMul(exchangeRate);
   }
 
-  function getAmountIn(address assetIn, address assetOut, uint256 amountOut) external override view returns (uint256) {
+  function getAmountIn(
+    address assetIn,
+    address assetOut,
+    uint256 amountOut
+  ) external view override returns (uint256) {
     return _swapRouter.getAmountsIn(amountOut, _exchangePath(assetIn, assetOut))[0];
   }
 
-  function getSwapRouter() external override view returns (address) {
+  function getSwapRouter() external view override returns (address) {
     return address(_swapRouter);
   }
 
-  function _exchangePath(address assetIn, address assetOut) internal pure returns (address[] memory) {
+  function _exchangePath(address assetIn, address assetOut)
+    internal
+    pure
+    returns (address[] memory)
+  {
     address[] memory path = new address[](2);
     path[0] = assetIn;
     path[1] = assetOut;
     return path;
   }
 
-  function sell(address assetIn, address assetOut, uint256 amountInExact, address outAddr, uint256 deadline) external override view
-  returns (bytes memory) {
+  function sell(
+    address assetIn,
+    address assetOut,
+    uint256 amountInExact,
+    address outAddr,
+    uint256 deadline
+  ) external view override returns (bytes memory) {
     uint256 amountOutMin = convert(assetIn, assetOut, amountInExact).wadMul(1e18 - _maxSlippage);
 
-    return abi.encodeWithSignature(
-      "swapExactTokensForTokens(uint256,uint256,address[],address,uint256)",
-      amountInExact,
-      amountOutMin,
-      _exchangePath(assetIn, assetOut),
-      outAddr,
-      deadline
-    );
+    return
+      abi.encodeWithSignature(
+        "swapExactTokensForTokens(uint256,uint256,address[],address,uint256)",
+        amountInExact,
+        amountOutMin,
+        _exchangePath(assetIn, assetOut),
+        outAddr,
+        deadline
+      );
   }
 
-  function decodeSwapOut(bytes memory responseData) external override pure returns (uint256) {
+  function decodeSwapOut(bytes memory responseData) external pure override returns (uint256) {
     return abi.decode(responseData, (uint256[]))[1];
   }
 }

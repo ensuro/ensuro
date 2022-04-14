@@ -125,7 +125,7 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
   }
 
   // runs validation on EToken parameters
-  function _validateParameters() internal override view {
+  function _validateParameters() internal view override {
     require(
       _liquidityRequirement >= 8e26 && _liquidityRequirement <= 13e26,
       "Validation: liquidityRequirement must be [0.8, 1.3]"
@@ -722,10 +722,7 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setLiquidityRequirement, newRate, tweak);
   }
 
-  function setMaxUtilizationRate(uint256 newRate)
-    external
-    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-  {
+  function setMaxUtilizationRate(uint256 newRate) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
       !tweak || _isTweakRay(_maxUtilizationRate, newRate, 3e26),
@@ -735,10 +732,7 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setMaxUtilizationRate, newRate, tweak);
   }
 
-  function setAcceptAllRMs(bool acceptAllRMs_)
-    external
-    onlyPoolRole(LEVEL2_ROLE)
-  {
+  function setAcceptAllRMs(bool acceptAllRMs_) external onlyPoolRole(LEVEL2_ROLE) {
     _acceptAllRMs = acceptAllRMs_;
     _parameterChanged(
       IPolicyPoolConfig.GovernanceActions.setAcceptAllRMs,

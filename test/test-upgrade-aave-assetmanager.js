@@ -45,7 +45,7 @@ describe("Test AaveAssetManager Upgrade - run at block 23237626", function() {
     AaveAssetManager = await ethers.getContractFactory("AaveAssetManager");
   });
 
-  it("Should reduce gas cost after upgrade", async function() {
+  it.skip("Should reduce gas cost after upgrade", async function() {
     let tx = await assetMgr.checkpoint();
     let receipt = await tx.wait();
     let initialGas = receipt.gasUsed;
@@ -82,7 +82,7 @@ describe("Test AaveAssetManager Upgrade - run at block 23237626", function() {
     expect(balanceAfter - balanceBefore).not.to.be.equal(investmentValueBefore);
   });
 
-  it("Should distribute earnings in deinvestAll", async function() {
+  it.skip("Should distribute earnings in deinvestAll", async function() {
     const balanceBefore = await USDC.balanceOf(ADDRESSES.pool);
     await assetMgr.checkpoint();
     const investmentValueBefore = await assetMgr.getInvestmentValue();

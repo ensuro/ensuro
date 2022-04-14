@@ -60,7 +60,12 @@ contract AaveLiquidationProtection is RiskModule {
 
   uint96 internal _internalId;
 
-  event NewProtection(address indexed customer, uint256 policyId, uint256 triggerHF, uint256 payoutHF);
+  event NewProtection(
+    address indexed customer,
+    uint256 policyId,
+    uint256 triggerHF,
+    uint256 payoutHF
+  );
 
   /**
    * @dev Constructs the LiquidationProtectionRiskModule
@@ -182,8 +187,12 @@ contract AaveLiquidationProtection is RiskModule {
     }
   }
 
-  function _collateralToCurrency(IPriceOracle oracle, IERC20Metadata from_, IERC20Metadata to_, uint256 amount) internal
-  view returns (uint256) {
+  function _collateralToCurrency(
+    IPriceOracle oracle,
+    IERC20Metadata from_,
+    IERC20Metadata to_,
+    uint256 amount
+  ) internal view returns (uint256) {
     uint256 exchangeRate = oracle.getAssetPrice(address(from_)).wadDiv(
       _priceOracle.getAssetPrice(address(to_))
     );
@@ -195,10 +204,15 @@ contract AaveLiquidationProtection is RiskModule {
     return amount.wadMul(exchangeRate);
   }
 
-  function _requiredCollateral(address user, uint256 fromHF, uint256 toHF) internal view returns (uint256) {
-    return IERC20Metadata(_aave.getReserveData(address(_collateralAsset)).aTokenAddress).balanceOf(user).wadMul(
-      toHF.wadDiv(fromHF) - WadRayMath.wad()
-    );
+  function _requiredCollateral(
+    address user,
+    uint256 fromHF,
+    uint256 toHF
+  ) internal view returns (uint256) {
+    return
+      IERC20Metadata(_aave.getReserveData(address(_collateralAsset)).aTokenAddress)
+        .balanceOf(user)
+        .wadMul(toHF.wadDiv(fromHF) - WadRayMath.wad());
   }
 
   function newPolicy(
@@ -246,7 +260,12 @@ contract AaveLiquidationProtection is RiskModule {
 
     // Compute collateral we need to acquire and amount of money required
     uint256 collateralPayout = _requiredCollateral(policy.customer, currentHF, policy.payoutHF);
-    uint256 requiredMoney = _collateralToCurrency(_priceOracle, _collateralAsset, currency(), collateralPayout);
+    uint256 requiredMoney = _collateralToCurrency(
+      _priceOracle,
+      _collateralAsset,
+      currency(),
+      collateralPayout
+    );
 
     // Resolve the policy with full payout - Money comes to address(this)
     // .wallet() will keep the change if less money required
@@ -271,11 +290,15 @@ contract AaveLiquidationProtection is RiskModule {
     _aave.deposit(address(_collateralAsset), collateralPayout, policy.customer, 0);
   }
 
-  function setPDF(uint40 duration, uint256[PRICE_SLOTS] calldata pdf) external onlyRole(PRICER_ROLE) whenNotPaused {
+  function setPDF(uint40 duration, uint256[PRICE_SLOTS] calldata pdf)
+    external
+    onlyRole(PRICER_ROLE)
+    whenNotPaused
+  {
     _pdf[duration] = pdf;
   }
 
-/*  function maxSlippage() external view returns (uint256) {
+  /*  function maxSlippage() external view returns (uint256) {
     return _maxSlippage;
   }
 

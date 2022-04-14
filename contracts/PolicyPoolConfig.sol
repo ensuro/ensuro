@@ -170,10 +170,7 @@ contract PolicyPoolConfig is
     return _lpWhitelist;
   }
 
-  function setExchange(IExchange exchange_)
-    external
-    onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
-  {
+  function setExchange(IExchange exchange_) external onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {
     require(
       address(exchange_) == address(0) ||
         IPolicyPoolComponent(address(exchange_)).policyPool() == _policyPool,
