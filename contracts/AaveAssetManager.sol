@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
+import {AddressUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {BaseAssetManager} from "./BaseAssetManager.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -28,6 +29,7 @@ import {AaveProtocolDataProvider} from "@aave/protocol-v2/contracts/misc/AavePro
 contract AaveAssetManager is BaseAssetManager {
   using SafeERC20 for IERC20Metadata;
   using WadRayMath for uint256;
+  using AddressUpgradeable for address;
 
   bytes32 public constant SWAP_REWARDS_ROLE = keccak256("SWAP_REWARDS_ROLE");
 
@@ -182,9 +184,7 @@ contract AaveAssetManager is BaseAssetManager {
       block.timestamp
     );
 
-    // solhint-disable-next-line avoid-low-level-calls
-    (bool success, bytes memory response) = swapRouter.call(swapCall);
-    require(success, "Swap operation failed");
+    bytes memory response = swapRouter.functionCall(swapCall, "Swap operation failed");
     uint256 swapOut = _exchange().decodeSwapOut(response);
     emit RewardSwapped(swapIn, swapOut);
     return (swapIn, swapOut);

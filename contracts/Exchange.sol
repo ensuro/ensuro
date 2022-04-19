@@ -57,7 +57,6 @@ contract Exchange is IExchange, PolicyPoolComponent {
   function _validateParameters() internal view override {
     require(_maxSlippage <= 1e17, "maxSlippage can't be more than 10%");
     require(address(_oracle) != address(0), "I need a price oracle");
-    require(address(_swapRouter) != address(0), "I need a swap router");
   }
 
   function convert(

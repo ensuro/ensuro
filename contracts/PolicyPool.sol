@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {AddressUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
@@ -464,6 +465,18 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     emit PolicyResolved(policy.riskModule, policy.id, payout);
     delete _policies[policy.id];
     delete _policiesFunds[policy.id];
+    if (payout > 0) {
+      address customer = _policyNFT.ownerOf(policy.id);
+      if (AddressUpgradeable.isContract(customer)) {
+        // If it's a contract, call callback function to allow on-chain reaction
+        // TODO: Should we use gasLimit?
+        // TODO: Should have a reentrancy guard?
+        // solhint-disable-next-line avoid-low-level-calls
+        customer.call(
+          abi.encodeWithSignature("ensuroPayoutCallback(uint256,uint256)", policy.id, payout)
+        );
+      }
+    }
   }
 
   function _interestAdjustment(Policy.PolicyData memory policy)
