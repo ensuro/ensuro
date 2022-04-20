@@ -163,6 +163,7 @@ contract PriceRiskModule is RiskModule {
     }
 
     uint8 downPerc = uint8((priceJump + _slotSize / 2) / _slotSize);
+
     if (downPerc >= PRICE_SLOTS) {
       return pdf[PRICE_SLOTS - 1];
     } else {
@@ -199,11 +200,11 @@ contract PriceRiskModule is RiskModule {
     PolicyData storage policy = _policies[policyId];
     uint256 currentPrice = _getCurrentPrice();
     require(
-      policy.lower && currentPrice <= policy.triggerPrice,
+      !policy.lower || currentPrice <= policy.triggerPrice,
       "Condition not met CurrentPrice > triggerPrice"
     );
     require(
-      !policy.lower && currentPrice >= policy.triggerPrice,
+      policy.lower || currentPrice >= policy.triggerPrice,
       "Condition not met CurrentPrice < triggerPrice"
     );
 
@@ -224,7 +225,7 @@ contract PriceRiskModule is RiskModule {
     _cdf[duration] = cdf;
   }
 
-  function getCDF(int40 duration) external view returns (uint256[PRICE_SLOTS]) {
+  function getCDF(int40 duration) external view returns (uint256[PRICE_SLOTS] memory) {
     return _cdf[duration];
   }
 }
