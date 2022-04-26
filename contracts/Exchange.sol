@@ -21,7 +21,6 @@ contract Exchange is IExchange, PolicyPoolComponent {
   IPriceOracle internal _oracle;
   IUniswapV2Router02 internal _swapRouter; // We will use SushiSwap in Polygon
   uint256 internal _maxSlippage; // Maximum slippage in WAD
-  uint256 internal _foo;
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
@@ -85,6 +84,10 @@ contract Exchange is IExchange, PolicyPoolComponent {
 
   function getSwapRouter() external view override returns (address) {
     return address(_swapRouter);
+  }
+
+  function getPriceOracle() external view override returns (IPriceOracle) {
+    return IPriceOracle(_oracle);
   }
 
   function _exchangePath(address assetIn, address assetOut)

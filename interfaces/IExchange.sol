@@ -33,6 +33,8 @@ interface IExchange {
 
   function getSwapRouter() external view returns (address);
 
+  function getPriceOracle() external view returns (IPriceOracle);
+
   function sell(
     address assetIn,
     address assetOut,

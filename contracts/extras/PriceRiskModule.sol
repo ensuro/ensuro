@@ -8,6 +8,7 @@ import {IPolicyPoolConfig} from "../../interfaces/IPolicyPoolConfig.sol";
 import {RiskModule} from "../RiskModule.sol";
 import {Policy} from "../Policy.sol";
 import {WadRayMath} from "../WadRayMath.sol";
+import {IPriceRiskModule} from "./IPriceRiskModule.sol";
 
 /**
  * @title PriceRiskModule
@@ -15,7 +16,7 @@ import {WadRayMath} from "../WadRayMath.sol";
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
-contract PriceRiskModule is RiskModule {
+contract PriceRiskModule is RiskModule, IPriceRiskModule {
   using SafeERC20 for IERC20Metadata;
   using WadRayMath for uint256;
 
@@ -27,7 +28,7 @@ contract PriceRiskModule is RiskModule {
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IERC20Metadata internal immutable _asset;
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
-  IERC20Metadata internal immutable _currency;
+  IERC20Metadata internal immutable _referenceCurrency;
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   uint256 internal immutable _slotSize;
 
@@ -59,18 +60,18 @@ contract PriceRiskModule is RiskModule {
    * @dev Constructs the LiquidationProtectionRiskModule
    * @param policyPool_ The policyPool
    * @param asset_ Address of the asset which price want to protect
-   * @param currency_ Address of the comparison asset (price will be price(asset)/price(currency))
+   * @param referenceCurrency_ Address of the comparison asset (price will be price(asset)/price(currency))
    * @param slotSize_ Size of each percentage slot in the pdf function (in wad)
    */
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(
     IPolicyPool policyPool_,
     IERC20Metadata asset_,
-    IERC20Metadata currency_,
+    IERC20Metadata referenceCurrency_,
     uint256 slotSize_
   ) RiskModule(policyPool_) {
     _asset = asset_;
-    _currency = currency_;
+    _referenceCurrency = referenceCurrency_;
     _slotSize = slotSize_;
   }
 
@@ -78,7 +79,7 @@ contract PriceRiskModule is RiskModule {
    * @dev Initializes the RiskModule
    * @param name_ Name of the Risk Module
    * @param scrPercentage_ Solvency Capital Requirement percentage, to calculate
-                          capital requirement as % of (payout - premium)  (in ray)
+   *                       capital requirement as % of (payout - premium)  (in ray)
    * @param ensuroFee_ % of premium that will go for Ensuro treasury (in ray)
    * @param scrInterestRate_ cost of capital (in ray)
    * @param maxScrPerPolicy_ Max SCR to be allocated to this module (in wad)
@@ -109,7 +110,7 @@ contract PriceRiskModule is RiskModule {
   function _getCurrentPrice() internal view returns (uint256) {
     uint256 ret = policyPool().config().exchange().convert(
       address(_asset),
-      address(_currency),
+      address(_referenceCurrency),
       10**_asset.decimals()
     );
     require(ret != 0, "Price not available");
@@ -118,7 +119,7 @@ contract PriceRiskModule is RiskModule {
 
   /**
    * @dev Returns the premium and lossProb of the policy
-   * @param triggerPrice Price of the asset_ that will trigger the policy (expressed in _currency)
+   * @param triggerPrice Price of the asset_ that will trigger the policy (expressed in _referenceCurrency)
    * @param lower If true -> triggers if the price is lower, If false -> triggers if the price is higher
    * @param payout Expressed in policyPool.currency()
    * @param expiration Expiration of the policy
@@ -130,7 +131,7 @@ contract PriceRiskModule is RiskModule {
     bool lower,
     uint256 payout,
     uint40 expiration
-  ) public view returns (uint256 premium, uint256 lossProb) {
+  ) public view override returns (uint256 premium, uint256 lossProb) {
     uint256 currentPrice = _getCurrentPrice();
     require(!lower || currentPrice > triggerPrice, "Price already under trigger value");
     require(lower || currentPrice < triggerPrice, "Price already above trigger value");
@@ -151,7 +152,7 @@ contract PriceRiskModule is RiskModule {
     require(pdf[0] != 0 || pdf[PRICE_SLOTS - 1] != 0, "Duration or up/down not supported!");
     // Calculate the jump percentage as integer with simetric rounding
     uint256 priceJump;
-    uint256 decimalConv = 10**(18 - _currency.decimals());
+    uint256 decimalConv = 10**(18 - _referenceCurrency.decimals());
     if (currentPrice > triggerPrice) {
       priceJump =
         WadRayMath.wad() -
@@ -176,7 +177,7 @@ contract PriceRiskModule is RiskModule {
     bool lower,
     uint256 payout,
     uint40 expiration
-  ) external returns (uint256) {
+  ) external override returns (uint256) {
     (uint256 premium, uint256 lossProb) = pricePolicy(triggerPrice, lower, payout, expiration);
     uint256 policyId = (uint256(uint160(address(this))) << 96) + _internalId;
     PolicyData storage priceRiskPolicy = _policies[policyId];
@@ -196,7 +197,7 @@ contract PriceRiskModule is RiskModule {
     return policyId;
   }
 
-  function triggerPolicy(uint256 policyId) external whenNotPaused {
+  function triggerPolicy(uint256 policyId) external override whenNotPaused {
     PolicyData storage policy = _policies[policyId];
     uint256 currentPrice = _getCurrentPrice();
     require(
@@ -227,5 +228,13 @@ contract PriceRiskModule is RiskModule {
 
   function getCDF(int40 duration) external view returns (uint256[PRICE_SLOTS] memory) {
     return _cdf[duration];
+  }
+
+  function referenceCurrency() external view override returns (IERC20Metadata) {
+    return _referenceCurrency;
+  }
+
+  function asset() external view override returns (IERC20Metadata) {
+    return _asset;
   }
 }
