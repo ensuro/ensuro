@@ -133,10 +133,11 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     uint40 expiration
   ) public view override returns (uint256 premium, uint256 lossProb) {
     uint256 currentPrice = _getCurrentPrice();
-    require(!lower || currentPrice > triggerPrice, "Price already under trigger value");
-    require(lower || currentPrice < triggerPrice, "Price already above trigger value");
+    require((lower && currentPrice > triggerPrice) || (!lower && currentPrice < triggerPrice),
+            "Price already at trigger value");
     lossProb = _computeLossProb(currentPrice, triggerPrice, expiration - uint40(block.timestamp));
-    require(lossProb != 0, "Price variation not supported");
+    if (lossProb == 0)
+      return (0, 0);
     premium = getMinimumPremium(payout, lossProb, expiration); // TODO: extra fee for RiskModule?
     return (premium, lossProb);
   }
@@ -149,10 +150,9 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     uint256[PRICE_SLOTS] storage pdf = _cdf[
       int40((duration + 1800) / 3600) * (currentPrice > triggerPrice ? int40(1) : int40(-1))
     ];
-    require(pdf[0] != 0 || pdf[PRICE_SLOTS - 1] != 0, "Duration or up/down not supported!");
-    // Calculate the jump percentage as integer with simetric rounding
     uint256 priceJump;
     uint256 decimalConv = 10**(18 - _referenceCurrency.decimals());
+    // Calculate the jump percentage as integer with simetric rounding
     if (currentPrice > triggerPrice) {
       priceJump =
         WadRayMath.wad() -
@@ -179,6 +179,8 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     uint40 expiration
   ) external override returns (uint256) {
     (uint256 premium, uint256 lossProb) = pricePolicy(triggerPrice, lower, payout, expiration);
+    require(premium > 0, "Either duration or percentage jump not supported");
+
     uint256 policyId = (uint256(uint160(address(this))) << 96) + _internalId;
     PolicyData storage priceRiskPolicy = _policies[policyId];
     address customer = _msgSender();

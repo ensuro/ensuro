@@ -6,6 +6,7 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {ILendingPoolAddressesProvider} from "@aave/protocol-v2/contracts/interfaces/ILendingPoolAddressesProvider.sol";
 import {ILendingPool} from "@aave/protocol-v2/contracts/interfaces/ILendingPool.sol";
 import {IPriceOracle} from "@aave/protocol-v2/contracts/interfaces/IPriceOracle.sol";
@@ -15,13 +16,13 @@ import {Policy} from "../Policy.sol";
 import {WadRayMath} from "../WadRayMath.sol";
 
 /**
- * @title Trustful Risk Module
- * @dev Risk Module without any validation, just the newPolicy and resolvePolicy need to be called by
-        authorized users
+ * @title AaveHodlerVault
+ * @dev Contract that manages the given collateral, invested into Aave, protected of the risk of liquidation,
+ *      that borrows stable and reinvests them into another protocol (offering better yield)
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
-abstract contract AaveLiquidationProtection is Initializable, OwnableUpgradeable, UUPSUpgradeable {
+abstract contract AaveHodlerVault is Initializable, OwnableUpgradeable, UUPSUpgradeable {
   using SafeERC20 for IERC20Metadata;
   using WadRayMath for uint256;
   using PercentageMath for uint256;
@@ -29,6 +30,7 @@ abstract contract AaveLiquidationProtection is Initializable, OwnableUpgradeable
   uint256 private constant PAYOUT_BUFFER = 2e16; // 2%
   uint256 private constant LIQUIDATION_THRESHOLD_MASK = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF0000FFFF; // prettier-ignore
   uint256 private constant LIQUIDATION_THRESHOLD_START_BIT_POSITION = 16;
+  uint256 private constant BORROW_RATE_MODE = 2; // variable
 
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   ILendingPool internal immutable _aave;
@@ -53,7 +55,7 @@ abstract contract AaveLiquidationProtection is Initializable, OwnableUpgradeable
   uint40 internal _activePolicyExpiration;
 
   /**
-   * @dev Constructs the AaveLiquidationProtection
+   * @dev Constructs the AaveHodlerVault
    * @param priceInsurance_ The Price Risk Module
    * @param aaveAddrProv_ AAVE address provider, the index to access AAVE's contracts
    */
@@ -71,14 +73,14 @@ abstract contract AaveLiquidationProtection is Initializable, OwnableUpgradeable
    * @param params_ Investment / insurance parameters
    */
   // solhint-disable-next-line func-name-mixedcase
-  function __AaveLiquidationProtection_init(Parameters memory params_) internal initializer {
+  function __AaveHodlerVault_init(Parameters memory params_) internal initializer {
     __Ownable_init();
     __UUPSUpgradeable_init();
-    __AaveLiquidationProtection_init_unchained(params_);
+    __AaveHodlerVault_init_unchained(params_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
-  function __AaveLiquidationProtection_init_unchained(Parameters memory params_)
+  function __AaveHodlerVault_init_unchained(Parameters memory params_)
     internal
     initializer
   {
@@ -163,29 +165,56 @@ abstract contract AaveLiquidationProtection is Initializable, OwnableUpgradeable
   }
 
   function _borrow(uint256 targetHF) internal {
-    IPriceOracle oracle = IPriceOracle(_aave.getAddressesProvider().getPriceOracle());
-    IERC20Metadata variableDebtToken = IERC20Metadata(
-      _aave.getReserveData(address(_borrowAsset)).variableDebtTokenAddress
-    );
-    uint256 currentDebt = variableDebtToken.balanceOf(address(this));
-    uint256 collateralInEth = (IERC20Metadata(
-      _aave.getReserveData(address(_collAsset)).aTokenAddress
-    ).balanceOf(address(this)) * oracle.getAssetPrice(address(_collAsset))) /
-      10**_collAsset.decimals();
-    uint256 targetDebt = collateralInEth.percentMul(_liqThreshold()).wadDiv(targetHF);
-    if (targetDebt < currentDebt)
-      _aave.borrow(address(_collAsset), targetDebt - currentDebt, 2, 0, address(this));
+    (uint256 currentDebt, uint256 targetDebt) = _calculateTargetDebt(targetHF);
+    if (targetDebt > currentDebt)
+      _aave.borrow(address(_borrowAsset), targetDebt - currentDebt, BORROW_RATE_MODE, 0, address(this));
   }
 
   // solhint-disable-next-line no-empty-blocks
-  function _insure() internal {}
+  function _repay(uint256 targetHF) internal {
+    (uint256 currentDebt, uint256 targetDebt) = _calculateTargetDebt(targetHF);
+    if (targetDebt < currentDebt) {
+      uint256 requiredCash = currentDebt - targetDebt;
+      requiredCash -= Math.min(requiredCash, _borrowAsset.balanceOf(address(this)));
+      _deinvest(requiredCash);
+      // As the amount I send _borrowAsset.balanceOf(this) because perhaps _deinvest deinvests more or less than
+      // required
+      _aave.repay(address(_borrowAsset), _borrowAsset.balanceOf(address(this)), BORROW_RATE_MODE, address(this));
+    }
+  }
 
   // solhint-disable-next-line no-empty-blocks
-  function _repay(uint256 targetHF) internal {}
+  function _insure() internal {
+    if (_activePolicyExpiration > (block.timestamp + _params.policyDuration / 1000))
+      return; // Active policy not yet expired - _params.policyDuration is to allow "some" overlap (<90 secs in 1 day)
+    uint256 currentHF = _getHealthFactor();
+    if (currentHF <= _params.safeHF)
+      return; // I can't insure because it's already in the target health - _deinvest recommended at this point
+    uint256 triggerPrice = _collPriceInBorrowAsset().wadMul(currentHF.wadDiv(_params.triggerHF));
+    // This triggerPrice doesn't take into account the interest rate of the borrowAsset neither the deposit interest
+    // rate of the collateral. Can be improved in the future, but with a triggerHF at 1.01 we shouldn't be at
+    // liquidation risk
+
+    uint256 payout = triggerPrice.wadMul(_collAsset.balanceOf(address(this))).wadMul(
+      _params.safeHF.wadDiv(_params.triggerHF) - WadRayMath.wad()
+    );
+    (uint256 policyPrice, ) = _priceInsurance.pricePolicy(
+      triggerPrice, true, payout, uint40(block.timestamp) + _params.policyDuration
+    );
+    // TODO: if policyPrice > expected return in _params.policyDuration (invest rate - _borrowAsset rate) then
+    // reduce the price scaling the payout. It won't take you to safeHF but at least will take you out of triggerHF
+
+    if (policyPrice == 0)
+      return;  // Duration / Price jump not supported - What to do in this case?
+    _activePolicyId = _priceInsurance.newPolicy(
+      triggerPrice, true, payout, uint40(block.timestamp) + _params.policyDuration
+    );
+    _activePolicyExpiration = uint40(block.timestamp) + _params.policyDuration;
+ }
 
   function _invest() internal virtual;
 
-  function _deinvest(uint256 amount) internal virtual;
+  function _deinvest(uint256 amount) internal virtual returns (uint256);
 
   function _liqThreshold() internal view returns (uint256) {
     return
@@ -193,108 +222,32 @@ abstract contract AaveLiquidationProtection is Initializable, OwnableUpgradeable
         ~LIQUIDATION_THRESHOLD_MASK) >> LIQUIDATION_THRESHOLD_START_BIT_POSITION;
   }
 
-  /**
-   * @dev Returns the payout, premium and lossProb of the policy
-   * @param customer Address of the user that has assets in AAVE
-   * @param triggerHF Health factor from which the payout can be triggered (in wad)
-   * @param payoutHF Target health factor to take the account after the payout (in wad)
-   * @param expiration Expiration of the policy
-   * @return payout Maximum payout in USDC
-   * @return premium Premium that needs to be paid
-   * @return lossProb Probability of paying the maximum payout
-  function pricePolicy(
-    address customer,
-    uint256 triggerHF,
-    uint256 payoutHF,
-    uint40 expiration
-  )
-    public
-    view
-    returns (
-      uint256 payout,
-      uint256 premium,
-      uint256 lossProb
-    )
-  {
-    uint256 currentHF = _getHealthFactor(customer);
-    require(currentHF > triggerHF, "HF already under trigger value");
-    uint256 downJump = WadRayMath.wad() - triggerHF.wadDiv(currentHF);
-    lossProb = _computeLossProb(downJump, expiration - uint40(block.timestamp));
-    payout = _collateralToCurrency(
-      _priceOracle,
-      _collateralAsset,
-      currency(),
-      _requiredCollateral(customer, triggerHF, payoutHF)
-    ).wadMul(downJump + PAYOUT_BUFFER);
-    premium = getMinimumPremium(payout, lossProb, expiration);
-    return (payout, premium, lossProb);
-  }
-   */
-  /*
-  function _collateralToCurrency(
-    IPriceOracle oracle,
-    IERC20Metadata from_,
-    IERC20Metadata to_,
-    uint256 amount
-  ) internal view returns (uint256) {
-    uint256 exchangeRate = oracle.getAssetPrice(address(from_)).wadDiv(
-      _priceOracle.getAssetPrice(address(to_))
+  function _calculateTargetDebt(uint256 targetHF) internal view returns (uint256 currentDebt, uint256 targetDebt) {
+    IPriceOracle oracle = IPriceOracle(_aave.getAddressesProvider().getPriceOracle());
+    IERC20Metadata variableDebtToken = IERC20Metadata(
+      _aave.getReserveData(address(_borrowAsset)).variableDebtTokenAddress
     );
-    if (from_.decimals() > to_.decimals()) {
-      exchangeRate /= 10**(from_.decimals() - to_.decimals());
+    currentDebt = variableDebtToken.balanceOf(address(this));
+    uint256 collateralInEth = (IERC20Metadata(
+      _aave.getReserveData(address(_collAsset)).aTokenAddress
+    ).balanceOf(address(this)) * oracle.getAssetPrice(address(_collAsset))) /
+      10**_collAsset.decimals();
+    targetDebt = collateralInEth.percentMul(_liqThreshold()).wadDiv(targetHF);
+    return (currentDebt, targetDebt);
+  }
+
+  function _collPriceInBorrowAsset() internal view returns (uint256) {
+    IPriceOracle oracle = IPriceOracle(_aave.getAddressesProvider().getPriceOracle());
+    uint256 exchangeRate = oracle.getAssetPrice(address(_collAsset)).wadDiv(
+      oracle.getAssetPrice(address(_borrowAsset))
+    );
+    uint8 decFrom = _collAsset.decimals();
+    uint8 decTo = _borrowAsset.decimals();
+    if (decFrom > decTo) {
+      exchangeRate /= 10**(decFrom - decTo);
     } else {
-      exchangeRate *= 10**(from_.decimals() - to_.decimals());
+      exchangeRate *= 10**(decTo - decFrom);
     }
-    return amount.wadMul(exchangeRate);
+    return exchangeRate;
   }
-
-  function _requiredCollateral(
-    address user,
-    uint256 fromHF,
-    uint256 toHF
-  ) internal view returns (uint256) {
-    return
-      IERC20Metadata(_aave.getReserveData(address(_collateralAsset)).aTokenAddress)
-        .balanceOf(user)
-        .wadMul(toHF.wadDiv(fromHF) - WadRayMath.wad());
-  }
-
-  function triggerPolicy(uint256 policyId) external whenNotPaused {
-    PolicyData storage policy = _policies[policyId];
-    uint256 currentHF = _getHealthFactor(policy.customer);
-    require(currentHF <= policy.triggerHF, "Trigger condition not met HF > triggerHF");
-
-    // Compute collateral we need to acquire and amount of money required
-    uint256 collateralPayout = _requiredCollateral(policy.customer, currentHF, policy.payoutHF);
-    uint256 requiredMoney = _collateralToCurrency(
-      _priceOracle,
-      _collateralAsset,
-      currency(),
-      collateralPayout
-    );
-
-    // Resolve the policy with full payout - Money comes to address(this)
-    // .wallet() will keep the change if less money required
-    _policyPool.resolvePolicy(policy.ensuroPolicy, policy.ensuroPolicy.payout);
-
-    // Acquire the collateral - required money might be less or more than payout
-    // If MORE, the transaction will probably fail, unless some charitative soul
-    // sends some money to address(this) to have a buffer for these situations
-    address[] memory path = new address[](2);
-    path[0] = address(currency());
-    path[1] = address(_collateralAsset);
-    uint256[] memory amounts = _swapRouter.swapTokensForExactTokens(
-      requiredMoney.wadMul(_maxSlippage),
-      collateralPayout,
-      path,
-      address(this),
-      block.timestamp
-    );
-    if (amounts[0] < policy.ensuroPolicy.payout) {
-      currency().safeTransfer(wallet(), policy.ensuroPolicy.payout - amounts[0]);
-    }
-    _aave.deposit(address(_collateralAsset), collateralPayout, policy.customer, 0);
-  }
-  DISABLED TEMPORARILY TO AVOID CONTRACT SIZE ERROR
-*/
 }

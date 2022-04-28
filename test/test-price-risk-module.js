@@ -78,18 +78,19 @@ describe("Test PriceRiskModule contract", function() {
     ).to.be.revertedWith("Price not available");
 
     await priceOracle.setAssetPrice(wmatic.address, _E("0.0005")); // 1 ETH = 2000 WMATIC
+    // 1 WMATIC = 1.5 USDC
 
     await expect(
       rm.pricePolicy(_A(2), true, _A(1000), start + 3600)
-    ).to.be.revertedWith("Price already under trigger value");
+    ).to.be.revertedWith("Price already at trigger value");
 
     await expect(
       rm.pricePolicy(_A(1), false, _A(1000), start + 3600)
-    ).to.be.revertedWith("Price already above trigger value");
+    ).to.be.revertedWith("Price already at trigger value");
 
-    await expect(
-      rm.pricePolicy(_A(1.1), true, _A(1000), start + 3600)
-    ).to.be.revertedWith("Duration or up/down not supported!");
+    let [price0, lossProb0] = await rm.pricePolicy(_A(1.1), true, _A(1000), start + 3600);
+    expect(price0).to.equal(0);
+    expect(lossProb0).to.equal(0);
 
     grantRole(hre, rm, "PRICER_ROLE", owner.address);
 
@@ -101,9 +102,9 @@ describe("Test PriceRiskModule contract", function() {
     cdf[priceSlots - 1] = _R("0.1");
     await rm.connect(owner).setCDF(1, cdf);
 
-    await expect(
-      rm.pricePolicy(_A(1.1), true, _A(1000), start + 3600)
-    ).to.be.revertedWith("Price variation not supported");
+    [price0, lossProb0] = await rm.pricePolicy(_A(1.1), true, _A(1000), start + 3600);
+    expect(price0).to.equal(0);
+    expect(lossProb0).to.equal(0);
 
     const [premium, lossProb] = await rm.pricePolicy(_A(0.8), true, _A(1000), start + 3600);
     expect(lossProb).to.be.equal(_R("0.1"));
@@ -131,6 +132,10 @@ describe("Test PriceRiskModule contract", function() {
     cdf[21] = _R("0.05");
     cdf[priceSlots - 1] = _R("0.1");
     await rm.connect(owner).setCDF(1, cdf);
+
+    await expect(
+      rm.connect(cust).newPolicy(_A(1.2), true, _A(1000), start + 3600)
+    ).to.be.revertedWith("Either duration or percentage jump not supported");
 
     const [premium, lossProb] = await rm.pricePolicy(_A(1.1), true, _A(1000), start + 3600);
     expect(lossProb).to.be.equal(_R("0.05"));
