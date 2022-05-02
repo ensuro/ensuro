@@ -80,10 +80,7 @@ abstract contract AaveHodlerVault is Initializable, OwnableUpgradeable, UUPSUpgr
   }
 
   // solhint-disable-next-line func-name-mixedcase
-  function __AaveHodlerVault_init_unchained(Parameters memory params_)
-    internal
-    initializer
-  {
+  function __AaveHodlerVault_init_unchained(Parameters memory params_) internal initializer {
     _params = params_;
     _collAsset.approve(address(_aave), type(uint256).max);
     _borrowAsset.approve(address(_aave), type(uint256).max);
@@ -167,7 +164,13 @@ abstract contract AaveHodlerVault is Initializable, OwnableUpgradeable, UUPSUpgr
   function _borrow(uint256 targetHF) internal {
     (uint256 currentDebt, uint256 targetDebt) = _calculateTargetDebt(targetHF);
     if (targetDebt > currentDebt)
-      _aave.borrow(address(_borrowAsset), targetDebt - currentDebt, BORROW_RATE_MODE, 0, address(this));
+      _aave.borrow(
+        address(_borrowAsset),
+        targetDebt - currentDebt,
+        BORROW_RATE_MODE,
+        0,
+        address(this)
+      );
   }
 
   // solhint-disable-next-line no-empty-blocks
@@ -179,17 +182,26 @@ abstract contract AaveHodlerVault is Initializable, OwnableUpgradeable, UUPSUpgr
       _deinvest(requiredCash);
       // As the amount I send _borrowAsset.balanceOf(this) because perhaps _deinvest deinvests more or less than
       // required
-      _aave.repay(address(_borrowAsset), _borrowAsset.balanceOf(address(this)), BORROW_RATE_MODE, address(this));
+      _aave.repay(
+        address(_borrowAsset),
+        _borrowAsset.balanceOf(address(this)),
+        BORROW_RATE_MODE,
+        address(this)
+      );
     }
   }
 
   // solhint-disable-next-line no-empty-blocks
   function _insure() internal {
-    if (_activePolicyExpiration > (block.timestamp + _params.policyDuration / 1000))
-      return; // Active policy not yet expired - _params.policyDuration is to allow "some" overlap (<90 secs in 1 day)
+    if (_activePolicyExpiration > (block.timestamp + _params.policyDuration / 1000)) {
+      // Active policy not yet expired - _params.policyDuration is to allow "some" overlap (<90 secs in 1 day)
+      return;
+    }
     uint256 currentHF = _getHealthFactor();
-    if (currentHF <= _params.safeHF)
-      return; // I can't insure because it's already in the target health - _deinvest recommended at this point
+    if (currentHF <= _params.safeHF) {
+      // I can't insure because it's already in the target health - _deinvest recommended at this point
+      return;
+    }
     uint256 triggerPrice = _collPriceInBorrowAsset().wadMul(currentHF.wadDiv(_params.triggerHF));
     // This triggerPrice doesn't take into account the interest rate of the borrowAsset neither the deposit interest
     // rate of the collateral. Can be improved in the future, but with a triggerHF at 1.01 we shouldn't be at
@@ -199,18 +211,23 @@ abstract contract AaveHodlerVault is Initializable, OwnableUpgradeable, UUPSUpgr
       _params.safeHF.wadDiv(_params.triggerHF) - WadRayMath.wad()
     );
     (uint256 policyPrice, ) = _priceInsurance.pricePolicy(
-      triggerPrice, true, payout, uint40(block.timestamp) + _params.policyDuration
+      triggerPrice,
+      true,
+      payout,
+      uint40(block.timestamp) + _params.policyDuration
     );
     // TODO: if policyPrice > expected return in _params.policyDuration (invest rate - _borrowAsset rate) then
     // reduce the price scaling the payout. It won't take you to safeHF but at least will take you out of triggerHF
 
-    if (policyPrice == 0)
-      return;  // Duration / Price jump not supported - What to do in this case?
+    if (policyPrice == 0) return; // Duration / Price jump not supported - What to do in this case?
     _activePolicyId = _priceInsurance.newPolicy(
-      triggerPrice, true, payout, uint40(block.timestamp) + _params.policyDuration
+      triggerPrice,
+      true,
+      payout,
+      uint40(block.timestamp) + _params.policyDuration
     );
     _activePolicyExpiration = uint40(block.timestamp) + _params.policyDuration;
- }
+  }
 
   function _invest() internal virtual;
 
@@ -222,7 +239,11 @@ abstract contract AaveHodlerVault is Initializable, OwnableUpgradeable, UUPSUpgr
         ~LIQUIDATION_THRESHOLD_MASK) >> LIQUIDATION_THRESHOLD_START_BIT_POSITION;
   }
 
-  function _calculateTargetDebt(uint256 targetHF) internal view returns (uint256 currentDebt, uint256 targetDebt) {
+  function _calculateTargetDebt(uint256 targetHF)
+    internal
+    view
+    returns (uint256 currentDebt, uint256 targetDebt)
+  {
     IPriceOracle oracle = IPriceOracle(_aave.getAddressesProvider().getPriceOracle());
     IERC20Metadata variableDebtToken = IERC20Metadata(
       _aave.getReserveData(address(_borrowAsset)).variableDebtTokenAddress

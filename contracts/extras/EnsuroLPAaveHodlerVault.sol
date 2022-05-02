@@ -15,7 +15,6 @@ import {IPriceRiskModule} from "./IPriceRiskModule.sol";
  * @author Ensuro
  */
 contract EnsuroLPAaveHodlerVault is AaveHodlerVault {
-
   IPolicyPoolComponent internal _eToken;
 
   /**
@@ -25,21 +24,21 @@ contract EnsuroLPAaveHodlerVault is AaveHodlerVault {
    */
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(IPriceRiskModule priceInsurance_, ILendingPoolAddressesProvider aaveAddrProv_)
-  AaveHodlerVault(priceInsurance_, aaveAddrProv_) {}
+    AaveHodlerVault(priceInsurance_, aaveAddrProv_)
+  {} // solhint-disable-line no-empty-blocks
 
   /**
    * @dev Initializes the RiskModule
    * @param params_ Investment / insurance parameters
    * @param eToken_ EToken where the liquidity will be deployed
    */
-  function initialize(
-    Parameters memory params_,
-    IPolicyPoolComponent eToken_
-  ) public initializer {
+  function initialize(Parameters memory params_, IPolicyPoolComponent eToken_) public initializer {
     __AaveHodlerVault_init(params_);
     _eToken = eToken_;
-    require(eToken_.policyPool().currency() == _borrowAsset,
-            "The borrow asset must be the same as in the liquidity pool");
+    require(
+      eToken_.policyPool().currency() == _borrowAsset,
+      "The borrow asset must be the same as in the liquidity pool"
+    );
     _borrowAsset.approve(address(eToken_.policyPool()), type(uint256).max);
   }
 

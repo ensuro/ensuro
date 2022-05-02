@@ -133,11 +133,12 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     uint40 expiration
   ) public view override returns (uint256 premium, uint256 lossProb) {
     uint256 currentPrice = _getCurrentPrice();
-    require((lower && currentPrice > triggerPrice) || (!lower && currentPrice < triggerPrice),
-            "Price already at trigger value");
+    require(
+      (lower && currentPrice > triggerPrice) || (!lower && currentPrice < triggerPrice),
+      "Price already at trigger value"
+    );
     lossProb = _computeLossProb(currentPrice, triggerPrice, expiration - uint40(block.timestamp));
-    if (lossProb == 0)
-      return (0, 0);
+    if (lossProb == 0) return (0, 0);
     premium = getMinimumPremium(payout, lossProb, expiration); // TODO: extra fee for RiskModule?
     return (premium, lossProb);
   }
