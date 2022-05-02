@@ -403,7 +403,7 @@ class PolicyPoolConfig(ETHWrapper):
     @property
     def asset_manager(self):
         am = eth_call(self, "assetManager")
-        if getattr(self, "_asset_manager") and self._asset_manager.contract.address == am:
+        if getattr(self, "_asset_manager", None) and self._asset_manager.contract.address == am:
             return self._asset_manager
         return BaseAssetManager.connect(am, self.owner)
 
@@ -416,7 +416,7 @@ class PolicyPoolConfig(ETHWrapper):
     @property
     def exchange(self):
         ex = eth_call(self, "exchange")
-        if getattr(self, "_exchange") and self._exchange.contract.address == ex:
+        if getattr(self, "_exchange", None) and self._exchange.contract.address == ex:
             return self._exchange
         return Exchange.connect(ex, self.owner)
 
@@ -429,7 +429,7 @@ class PolicyPoolConfig(ETHWrapper):
     @property
     def insolvency_hook(self):
         ih = eth_call(self, "insolvencyHook")
-        if getattr(self, "_insolvency_hook") and self._insolvency_hook.contract.address == ih:
+        if getattr(self, "_insolvency_hook", None) and self._insolvency_hook.contract.address == ih:
             return self._insolvency_hook
         return FreeGrantInsolvencyHook.connect(ih, self.owner)
 
