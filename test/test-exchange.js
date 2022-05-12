@@ -130,25 +130,4 @@ describe("Test Exchange contract - run at https://polygonscan.com/block/27090801
     expect(await USDC.balanceOf(usrUSDC.address)).to.be.equal(initialBalances.usrUSDC.sub(_BN(250e6)));
     expect(await WMATIC.balanceOf(pool.address)).to.be.closeTo(_E("106.69"), _E("1"));
   });
-
-/*  it("Should set foo", async function() {
-    const Exchange = await ethers.getContractFactory("Exchange");
-    const exchange = await hre.upgrades.deployProxy(Exchange, [
-      ADDRESSES.oracle,
-      ADDRESSES.sushi,
-      _E("0.02")
-      ],
-      {constructorArgs: [pool.address], kind: 'uups'}
-    );
-    let setFooCall = await exchange.getSetFoo([ADDRESSES.oracle, ADDRESSES.usdc]);
-    console.log(setFooCall);
-    console.log(exchange.setFoo);
-    const [sig1] = await ethers.getSigners();
-
-    const tx = await sig1.sendTransaction({
-      to: exchange.address, data: setFooCall,
-    });
-    console.log(tx);
-    console.log(await exchange.foo());
-  });*/
 });
