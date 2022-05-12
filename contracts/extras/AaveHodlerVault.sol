@@ -106,7 +106,7 @@ abstract contract AaveHodlerVault is Initializable, OwnableUpgradeable, UUPSUpgr
    * @param amount Amount to transfer from sender's address
    * @param doCheckpoint Boolean, indicates if calling checkpoint after the deposit
    */
-  function depositCollateral(uint256 amount, bool doCheckpoint) external {
+  function depositCollateral(uint256 amount, bool doCheckpoint) external onlyOwner {
     _collAsset.safeTransferFrom(msg.sender, address(this), amount);
     _aave.deposit(address(_collAsset), _collAsset.balanceOf(address(this)), address(this), 0);
     if (doCheckpoint) {

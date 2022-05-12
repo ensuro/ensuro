@@ -216,7 +216,7 @@ const _W = function(value) {
   if (value === undefined)
     return undefined;
   if (!Number.isInteger(value))
-    return _BN(value * 1e10).mul(_BN(1e8));
+    return _BN(Math.round(value * 1e9)).mul(_BN(1e9));
   return _BN(value).mul(WAD);
 }
 
