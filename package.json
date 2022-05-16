@@ -1,8 +1,7 @@
 {
   "name": "ensuro",
-  "version": "0.1.0",
-  "description": "Ensuro - Decentralized underwriting protocol",
-  "main": "index.js",
+  "version": "1.2.0",
+  "description": "Ensuro - Decentralized insurance protocol",
   "scripts": {
     "prettier": "prettier --write 'contracts/**/*.sol' 'interfaces/**/*.sol'",
     "solhint": "solhint 'contracts/**/*.sol' 'interfaces/**/*.sol'"

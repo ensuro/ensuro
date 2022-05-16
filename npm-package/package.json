@@ -1,0 +1,30 @@
+{
+  "name": "@ensuro/core",
+  "description": "Ensuro - Decentralized insurance protocol",
+  "version": "1.2.0",
+  "files": [
+    "**/*.sol",
+    "/build/contracts/*.json",
+    "/build/interfaces/*.json",
+    "!/mocks/**/*"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:ensuro/ensuro.git"
+  },
+  "keywords": [
+    "solidity",
+    "ethereum",
+    "smart",
+    "contracts",
+    "decentralized",
+    "insurance",
+    "ensuro"
+  ],
+  "author": "Ensuro <guillermo@ensuro.co>",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/ensuro/ensuro/issues"
+  },
+  "homepage": "https://ensuro.co/"
+}
