@@ -718,6 +718,107 @@ def test_nfts(tenv):
         )
 
 
+def test_policy_holder_contract(tenv):
+    if tenv.kind != "ethereum":
+        return
+
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        scr_percentage: 1
+        ensuro_fee: 0
+    nft:
+        name: Ensuro Policy NFT
+        symbol: EPOL
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 9000
+        initial_balances:
+        - user: LP1
+          amount: 7006
+        - user: CUST1
+          amount: 200
+    etokens:
+      - name: eUSD1WEEK
+        expiration_period: 604800
+      - name: eUSD1MONTH
+        expiration_period: 2592000
+      - name: eUSD1YEAR
+        expiration_period: 31536000
+    """
+
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    nft = pool.policy_nft
+    timecontrol = tenv.time_control
+    rm = pool.config.risk_modules["Roulette"]
+    rm.grant_role("PRICER_ROLE", rm.owner)
+    rm.grant_role("RESOLVER_ROLE", rm.owner)
+
+    PolicyHolderMock = get_provider().get_contract_factory("PolicyHolderMock")
+    ph_mock = PolicyHolderMock.deploy(True, {"from": rm.owner})
+
+    assert ph_mock.policyId() == 0
+
+    usd = pool.currency
+
+    _deposit(pool, "eUSD1YEAR", "LP1", _W(3503))
+
+    usd.approve("CUST1", pool.contract_id, _W(100))
+    policy = rm.new_policy(
+        payout=_W(3600), premium=_W(100), customer="CUST1",
+        loss_prob=_R(1/37), expiration=timecontrol.now + WEEK,
+        internal_id=2**96 - 1
+    )
+
+    assert nft.balance_of("CUST1") == 1
+    assert nft.owner_of(policy.id) == "CUST1"
+    assert policy.id % (2**96) == (2**96 - 1)
+    assert policy.id == rm.make_policy_id(2**96 - 1)
+
+    nft.transfer_from("CUST1", "CUST1", ph_mock, policy.id)
+
+    timecontrol.fast_forward(WEEK - DAY)
+    with pytest.raises(RevertError, match="onPayoutReceived: They told me I have to fail"):
+        rm.resolve_policy(policy.id, True)
+
+    ph_mock.setFail(False)
+    rm.resolve_policy(policy.id, True)
+
+    assert ph_mock.policyId() == policy.id
+    assert ph_mock.payout() == _W(3600)
+
+    assert usd.balance_of("CUST1") == _W(100)
+    assert usd.balance_of(ph_mock) == _W(3600)
+
+    _deposit(pool, "eUSD1YEAR", "LP1", _W(3503), assert_deposit=False)
+    usd.approve("CUST1", pool.contract_id, _W(100))
+
+    # Create a 2nd policy
+    policy = rm.new_policy(
+        payout=_W(1800), premium=_W(50), customer="CUST1",
+        loss_prob=_R(1/37), expiration=timecontrol.now + WEEK,
+        internal_id=2**96 - 3
+    )
+
+    nft.transfer_from("CUST1", "CUST1", ph_mock, policy.id)
+    rm.resolve_policy(policy.id, False)
+
+    assert ph_mock.policyId() == policy.id
+    assert ph_mock.payout() == _W(0)
+
+    # Create a 3rd policy - just to verify failing holder doesn't reverts
+    policy = rm.new_policy(
+        payout=_W(1800), premium=_W(50), customer="CUST1",
+        loss_prob=_R(1/37), expiration=timecontrol.now + WEEK,
+        internal_id=2**96 - 4
+    )
+
+    nft.transfer_from("CUST1", "CUST1", ph_mock, policy.id)
+    ph_mock.setFail(True)
+    rm.resolve_policy(policy.id, False)
+
+
 def test_partial_payout(tenv):
     YAML_SETUP = """
     risk_modules:
