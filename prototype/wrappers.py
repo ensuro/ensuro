@@ -53,6 +53,10 @@ class PolicyNFT(IERC721):
     def __init__(self, owner="Owner", name="Test NFT", symbol="NFTEST"):
         super().__init__(owner, name, symbol, AddressBook.ZERO)
 
+    safe_transfer_from = MethodAdapter((
+        ("spender", "msg.sender"), ("from", "address"), ("to", "address"), ("token_id", "int")
+    ), "receipt", eth_variant="address, address, uint256")
+
 
 def _adapt_signed_amount(args, kwargs):
     amount = args[0] if args else kwargs["amount"]

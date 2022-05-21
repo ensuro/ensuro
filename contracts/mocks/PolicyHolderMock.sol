@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {IPolicyHolder} from "../../interfaces/IPolicyHolder.sol";
+import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 
 contract PolicyHolderMock is IPolicyHolder {
   uint256 public policyId;
@@ -28,7 +29,7 @@ contract PolicyHolderMock is IPolicyHolder {
     if (fail) revert("onERC721Received: They told me I have to fail");
     policyId = policyId_;
     emit NotificationReceived(0, policyId_, operator, from);
-    return IPolicyHolder.onPayoutReceived.selector;
+    return IERC721Receiver.onERC721Received.selector;
   }
 
   function onPolicyExpired(

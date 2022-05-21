@@ -756,7 +756,7 @@ def test_policy_holder_contract(tenv):
     rm.grant_role("RESOLVER_ROLE", rm.owner)
 
     PolicyHolderMock = get_provider().get_contract_factory("PolicyHolderMock")
-    ph_mock = PolicyHolderMock.deploy(True, {"from": rm.owner})
+    ph_mock = PolicyHolderMock.deploy(False, {"from": rm.owner})
 
     assert ph_mock.policyId() == 0
 
@@ -776,9 +776,12 @@ def test_policy_holder_contract(tenv):
     assert policy.id % (2**96) == (2**96 - 1)
     assert policy.id == rm.make_policy_id(2**96 - 1)
 
-    nft.transfer_from("CUST1", "CUST1", ph_mock, policy.id)
+    nft.safe_transfer_from("CUST1", "CUST1", ph_mock, policy.id)
+    assert ph_mock.policyId() == policy.id
 
     timecontrol.fast_forward(WEEK - DAY)
+
+    ph_mock.setFail(True)
     with pytest.raises(RevertError, match="onPayoutReceived: They told me I have to fail"):
         rm.resolve_policy(policy.id, True)
 
