@@ -41,4 +41,8 @@ interface IEToken is IERC20 {
   function getPoolLoan() external view returns (uint256);
 
   function getInvestable() external view returns (uint256);
+
+  function tokenInterestRate() external view returns (uint256);
+
+  function scrInterestRate() external view returns (uint256);
 }

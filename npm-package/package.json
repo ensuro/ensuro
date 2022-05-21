@@ -1,7 +1,7 @@
 {
   "name": "@ensuro/core",
   "description": "Ensuro - Decentralized insurance protocol",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "files": [
     "**/*.sol",
     "/build/contracts/*.json",

@@ -474,11 +474,11 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
     return _scr;
   }
 
-  function scrInterestRate() public view returns (uint256) {
+  function scrInterestRate() public view override returns (uint256) {
     return _scrInterestRate;
   }
 
-  function tokenInterestRate() public view returns (uint256) {
+  function tokenInterestRate() public view override returns (uint256) {
     return _tokenInterestRate;
   }
 
