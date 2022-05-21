@@ -63,7 +63,7 @@ def load_config(yaml_config=None, module=None):
     if module is None:
         module = importlib.import_module(config["module"])
 
-    currency_params = config.get("currency", {})
+    currency_params = dict(config.get("currency", {}))
     if currency_params.get("decimals", 18) == 18:
         to_wad = _W
     else:
@@ -107,7 +107,7 @@ def load_config(yaml_config=None, module=None):
         etk = module.EToken(**etoken_dict)
         pool.add_etoken(etk)
 
-    asset_manager = config.get("asset_manager", {})
+    asset_manager = dict(config.get("asset_manager", {}))
     if asset_manager:
         asset_manager_class = asset_manager.pop("class")
         asset_manager["owner"] = pool_config.owner
@@ -115,7 +115,7 @@ def load_config(yaml_config=None, module=None):
         asset_manager = getattr(module, asset_manager_class)(**asset_manager)
         pool.config.set_asset_manager(asset_manager)
 
-    insolvency_hook = config.get("insolvency_hook", {})
+    insolvency_hook = dict(config.get("insolvency_hook", {}))
     if insolvency_hook:
         insolvency_hook_class = insolvency_hook.pop("class")
         insolvency_hook["pool"] = pool

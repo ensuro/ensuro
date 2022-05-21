@@ -14,6 +14,7 @@ import {IInsolvencyHook} from "../interfaces/IInsolvencyHook.sol";
 import {IPolicyPoolComponent} from "../interfaces/IPolicyPoolComponent.sol";
 import {IEToken} from "../interfaces/IEToken.sol";
 import {IPolicyNFT} from "../interfaces/IPolicyNFT.sol";
+import {IPolicyHolder} from "../interfaces/IPolicyHolder.sol";
 import {IAssetManager} from "../interfaces/IAssetManager.sol";
 import {Policy} from "./Policy.sol";
 import {WadRayMath} from "./WadRayMath.sol";
@@ -45,7 +46,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   // solhint-disable-next-line var-name-mixedcase
   uint256 public immutable NEGLIGIBLE_AMOUNT; // init as 10**(decimals-3) == 0.001 USD
 
-  bytes32 public constant REBALANCE_ROLE = keccak256("REBALANCE_ROLE");
   bytes32 public constant WITHDRAW_WON_PREMIUMS_ROLE = keccak256("WITHDRAW_WON_PREMIUMS_ROLE");
 
   bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
@@ -466,16 +466,43 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     delete _policies[policy.id];
     delete _policiesFunds[policy.id];
     if (payout > 0) {
-      address customer = _policyNFT.ownerOf(policy.id);
-      if (AddressUpgradeable.isContract(customer)) {
-        // If it's a contract, call callback function to allow on-chain reaction
-        // TODO: Should we use gasLimit?
-        // TODO: Should have a reentrancy guard?
-        // solhint-disable-next-line avoid-low-level-calls
-        customer.call(
-          abi.encodeWithSignature("ensuroPayoutCallback(uint256,uint256)", policy.id, payout)
-        );
+      _notifyPayout(policy.id, payout);
+    } else {
+      _notifyExpiration(policy.id);
+    }
+  }
+
+  function _notifyPayout(uint256 policyId, uint256 payout) internal {
+    address customer = _policyNFT.ownerOf(policyId);
+    if (!AddressUpgradeable.isContract(customer)) return;
+    try
+      IPolicyHolder(customer).onPayoutReceived(_msgSender(), address(this), policyId, payout)
+    returns (bytes4 retval) {
+      require(
+        retval == IPolicyHolder.onPayoutReceived.selector,
+        "Invalid return value from Policy Holder"
+      );
+    } catch (bytes memory reason) {
+      if (reason.length == 0) {
+        return; // Not implemented, it's fine
+      } else {
+        // solhint-disable-next-line no-inline-assembly
+        assembly {
+          revert(add(32, reason), mload(reason))
+        }
       }
+    }
+  }
+
+  function _notifyExpiration(uint256 policyId) internal {
+    address customer = _policyNFT.ownerOf(policyId);
+    if (!AddressUpgradeable.isContract(customer)) return;
+    try IPolicyHolder(customer).onPolicyExpired(_msgSender(), address(this), policyId) returns (
+      bytes4
+    ) {
+      return;
+    } catch {
+      return;
     }
   }
 
@@ -620,40 +647,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     _transferTo(_config.treasury(), amount);
     emit WonPremiumsInOut(false, amount);
     return amount;
-  }
-
-  function rebalancePolicy(Policy.PolicyData calldata policy)
-    external
-    onlyRole(REBALANCE_ROLE)
-    whenNotPaused
-  {
-    _validatePolicy(policy);
-    DataTypes.ETokenToWadMap storage policyFunds = _policiesFunds[policy.id];
-    uint256 ocean = 0;
-
-    // Iterates all the tokens
-    // If locked - unlocks - finally stores the available ocean in policyFunds
-    for (uint256 i = 0; i < _eTokens.length(); i++) {
-      (IEToken etk, DataTypes.ETokenStatus etkStatus) = _eTokens.at(i);
-      uint256 etkOcean = 0;
-      (bool locked, uint256 etkScr) = policyFunds.tryGet(etk);
-      if (locked) {
-        etk.unlockScr(policy.interestRate(), etkScr);
-      }
-      if (
-        etkStatus == DataTypes.ETokenStatus.active &&
-        etk.accepts(address(policy.riskModule), policy.expiration)
-      ) etkOcean = etk.oceanForNewScr();
-      if (etkOcean == 0) {
-        if (locked) policyFunds.remove(etk);
-      } else {
-        policyFunds.set(etk, etkOcean);
-        ocean += etkOcean;
-      }
-    }
-
-    _distributeScr(policy.scr, policy.interestRate(), ocean, policyFunds);
-    emit PolicyRebalanced(policy.riskModule, policy.id);
   }
 
   function getInvestable() external view override returns (uint256) {
