@@ -43,6 +43,7 @@ abstract contract PolicyPoolComponent is
   uint56 internal _lastTweakActions; // bitwise map of applied actions
 
   event GovernanceAction(IPolicyPoolConfig.GovernanceActions indexed action, uint256 value);
+  event ComponentChanged(IPolicyPoolConfig.GovernanceActions indexed action, address value);
 
   modifier onlyPolicyPool() {
     require(_msgSender() == address(_policyPool), "The caller must be the PolicyPool");
@@ -145,6 +146,11 @@ abstract contract PolicyPoolComponent is
     _validateParameters();
     if (tweak) _registerTweak(action);
     emit GovernanceAction(action, value);
+  }
+
+  function _componentChanged(IPolicyPoolConfig.GovernanceActions action, address value) internal {
+    _validateParameters();
+    emit ComponentChanged(action, value);
   }
 
   function lastTweak() external view returns (uint40, uint56) {

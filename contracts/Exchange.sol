@@ -170,4 +170,20 @@ contract Exchange is IExchange, PolicyPoolComponent {
     _maxSlippage = newValue;
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setMaxSlippage, newValue, tweak);
   }
+
+  function setPriceOracle(IPriceOracle newPriceOracle)
+    external
+    onlyPoolRole2(LEVEL1_ROLE, LEVEL2_ROLE)
+  {
+    _oracle = newPriceOracle;
+    _componentChanged(IPolicyPoolConfig.GovernanceActions.setPriceOracle, address(newPriceOracle));
+  }
+
+  function setSwapRouter(IUniswapV2Router02 newSwapRouter)
+    external
+    onlyPoolRole2(LEVEL1_ROLE, LEVEL2_ROLE)
+  {
+    _swapRouter = newSwapRouter;
+    _componentChanged(IPolicyPoolConfig.GovernanceActions.setSwapRouter, address(newSwapRouter));
+  }
 }

@@ -47,6 +47,8 @@ interface IPolicyPoolConfig is IAccessControlUpgradeable {
     setAcceptAllRMs, // EToken Governance action  - value == boolean
     setAcceptException, // EToken Governance action - value == (!isException << 255)|address
     setExchange, // Changes exchange helper contract
+    setPriceOracle, // Changes exchange's PriceOracle
+    setSwapRouter, // Changes exchange's SwapRouter
     last
   }
 
