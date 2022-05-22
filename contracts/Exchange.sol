@@ -63,15 +63,26 @@ contract Exchange is IExchange, PolicyPoolComponent {
     address assetTo,
     uint256 amount
   ) public view override returns (uint256) {
-    uint256 exchangeRate = _oracle.getAssetPrice(assetFrom).wadDiv(_oracle.getAssetPrice(assetTo));
-    uint8 decFrom = IERC20Metadata(assetFrom).decimals();
-    uint8 decTo = IERC20Metadata(assetTo).decimals();
+    return amount.wadMul(getExchangeRate(assetFrom, assetTo));
+  }
+
+  function getExchangeRate(address asset, address expressedInAsset)
+    public
+    view
+    override
+    returns (uint256)
+  {
+    uint256 exchangeRate = _oracle.getAssetPrice(asset).wadDiv(
+      _oracle.getAssetPrice(expressedInAsset)
+    );
+    uint8 decFrom = IERC20Metadata(asset).decimals();
+    uint8 decTo = IERC20Metadata(expressedInAsset).decimals();
     if (decFrom > decTo) {
       exchangeRate /= 10**(decFrom - decTo);
     } else {
       exchangeRate *= 10**(decTo - decFrom);
     }
-    return amount.wadMul(exchangeRate);
+    return exchangeRate;
   }
 
   function getAmountIn(
@@ -121,11 +132,31 @@ contract Exchange is IExchange, PolicyPoolComponent {
       );
   }
 
+  function buy(
+    address assetIn,
+    address assetOut,
+    uint256 amountOutExact,
+    address outAddr,
+    uint256 deadline
+  ) external view override returns (bytes memory) {
+    uint256 amountInMax = convert(assetOut, assetIn, amountOutExact).wadMul(1e18 + _maxSlippage);
+
+    return
+      abi.encodeWithSignature(
+        "swapTokensForExactTokens(uint256,uint256,address[],address,uint256)",
+        amountOutExact,
+        amountInMax,
+        _exchangePath(assetIn, assetOut),
+        outAddr,
+        deadline
+      );
+  }
+
   function decodeSwapOut(bytes memory responseData) external pure override returns (uint256) {
     return abi.decode(responseData, (uint256[]))[1];
   }
 
-  function maxSlippage() external view returns (uint256) {
+  function maxSlippage() external view override returns (uint256) {
     return _maxSlippage;
   }
 

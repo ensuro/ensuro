@@ -25,6 +25,8 @@ interface IExchange {
     uint256 amount
   ) external view returns (uint256);
 
+  function getExchangeRate(address asset, address expressedInAsset) external view returns (uint256);
+
   function getAmountIn(
     address assetIn,
     address assetOut,
@@ -43,5 +45,15 @@ interface IExchange {
     uint256 deadline
   ) external view returns (bytes memory);
 
+  function buy(
+    address assetIn,
+    address assetOut,
+    uint256 amountOutExact,
+    address outAddr,
+    uint256 deadline
+  ) external view returns (bytes memory);
+
   function decodeSwapOut(bytes memory responseData) external view returns (uint256);
+
+  function maxSlippage() external view returns (uint256);
 }
