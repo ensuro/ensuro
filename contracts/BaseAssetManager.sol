@@ -278,24 +278,4 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
       _parameterChanged(IPolicyPoolConfig.GovernanceActions.setLiquidityMiddle, middle, tweak);
     if (setMax) _parameterChanged(IPolicyPoolConfig.GovernanceActions.setLiquidityMax, max, tweak);
   }
-
-  function _setLiquidityMiddle(uint256 newValue) internal {
-    bool tweak = !hasPoolRole(LEVEL2_ROLE);
-    require(
-      !tweak || _isTweakRay(_liquidityMiddle, newValue, 3e26),
-      "Tweak exceeded: liquidityMiddle tweaks only up to 30%"
-    );
-    _liquidityMiddle = newValue;
-    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setLiquidityMiddle, newValue, tweak);
-  }
-
-  function _setLiquidityMax(uint256 newValue) internal {
-    bool tweak = !hasPoolRole(LEVEL2_ROLE);
-    require(
-      !tweak || _isTweakRay(_liquidityMax, newValue, 3e26),
-      "Tweak exceeded: liquidityMax tweaks only up to 30%"
-    );
-    _liquidityMax = newValue;
-    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setLiquidityMax, newValue, tweak);
-  }
 }
