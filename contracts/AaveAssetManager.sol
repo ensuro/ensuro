@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
+import {AddressUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {BaseAssetManager} from "./BaseAssetManager.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
+import {IExchange} from "../interfaces/IExchange.sol";
 import {WadRayMath} from "./WadRayMath.sol";
 import {ILendingPoolAddressesProvider} from "@aave/protocol-v2/contracts/interfaces/ILendingPoolAddressesProvider.sol";
 import {ILendingPool} from "@aave/protocol-v2/contracts/interfaces/ILendingPool.sol";
 import {IAToken} from "@aave/protocol-v2/contracts/interfaces/IAToken.sol";
-import {IPriceOracle} from "@aave/protocol-v2/contracts/interfaces/IPriceOracle.sol";
 import {AaveProtocolDataProvider} from "@aave/protocol-v2/contracts/misc/AaveProtocolDataProvider.sol";
-import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 
 /**
  * @title AssetManager that reinvests the capital in AAVE
@@ -29,6 +29,7 @@ import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUn
 contract AaveAssetManager is BaseAssetManager {
   using SafeERC20 for IERC20Metadata;
   using WadRayMath for uint256;
+  using AddressUpgradeable for address;
 
   bytes32 public constant SWAP_REWARDS_ROLE = keccak256("SWAP_REWARDS_ROLE");
 
@@ -41,10 +42,8 @@ contract AaveAssetManager is BaseAssetManager {
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IERC20Metadata internal immutable _rewardToken;
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
-  IUniswapV2Router02 internal immutable _swapRouter; // We will use SushiSwap in Polygon
   uint256 internal _claimRewardsMin; // Minimum amount of rewards accumulated to claim
   uint256 internal _reinvestRewardsMin; // Minimum amount of rewards to reinvest into AAVE
-  uint256 internal _maxSlippage; // Maximum slippage in WAD
 
   bytes32 internal constant DATA_PROVIDER_ID =
     0x0100000000000000000000000000000000000000000000000000000000000000;
@@ -54,13 +53,10 @@ contract AaveAssetManager is BaseAssetManager {
   event RewardSwapped(uint256 rewardIn, uint256 currencyOut);
 
   /// @custom:oz-upgrades-unsafe-allow constructor
-  constructor(
-    IPolicyPool policyPool_,
-    ILendingPoolAddressesProvider aaveAddrProv_,
-    IUniswapV2Router02 swapRouter_
-  ) BaseAssetManager(policyPool_) {
+  constructor(IPolicyPool policyPool_, ILendingPoolAddressesProvider aaveAddrProv_)
+    BaseAssetManager(policyPool_)
+  {
     _aaveAddrProv = aaveAddrProv_;
-    _swapRouter = swapRouter_;
     AaveProtocolDataProvider dataProvider = AaveProtocolDataProvider(
       aaveAddrProv_.getAddress(DATA_PROVIDER_ID)
     );
@@ -77,23 +73,19 @@ contract AaveAssetManager is BaseAssetManager {
     uint256 liquidityMiddle_,
     uint256 liquidityMax_,
     uint256 claimRewardsMin_,
-    uint256 reinvestRewardsMin_,
-    uint256 maxSlippage_
+    uint256 reinvestRewardsMin_
   ) public initializer {
     __BaseAssetManager_init(liquidityMin_, liquidityMiddle_, liquidityMax_);
-    __AaveAssetManager_init(claimRewardsMin_, reinvestRewardsMin_, maxSlippage_);
+    __AaveAssetManager_init(claimRewardsMin_, reinvestRewardsMin_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
-  function __AaveAssetManager_init(
-    uint256 claimRewardsMin_,
-    uint256 reinvestRewardsMin_,
-    uint256 maxSlippage_
-  ) internal initializer {
+  function __AaveAssetManager_init(uint256 claimRewardsMin_, uint256 reinvestRewardsMin_)
+    internal
+    initializer
+  {
     _claimRewardsMin = claimRewardsMin_;
     _reinvestRewardsMin = reinvestRewardsMin_;
-    require(maxSlippage_ <= 1e17, "maxSlippage can't be more than 10%");
-    _maxSlippage = maxSlippage_;
   }
 
   function getInvestmentValue() public view override returns (uint256) {
@@ -130,12 +122,12 @@ contract AaveAssetManager is BaseAssetManager {
     return ILendingPool(_aaveAddrProv.getLendingPool());
   }
 
-  function priceOracle() public view returns (IPriceOracle) {
-    return IPriceOracle(_aaveAddrProv.getPriceOracle());
-  }
-
   function _aaveDataProvider() internal view returns (AaveProtocolDataProvider) {
     return AaveProtocolDataProvider(_aaveAddrProv.getAddress(DATA_PROVIDER_ID));
+  }
+
+  function _exchange() internal view returns (IExchange) {
+    return policyPool().config().exchange();
   }
 
   function aToken() public view returns (IAToken) {
@@ -158,19 +150,7 @@ contract AaveAssetManager is BaseAssetManager {
   }
 
   function _rewardToCurrency(uint256 amount) internal view returns (uint256) {
-    // TODO Check: this is safe? Or I should use IPriceOracle instead
-    IPriceOracle oracle = priceOracle();
-    IERC20Metadata from_ = rewardToken();
-    IERC20Metadata to_ = currency();
-    uint256 exchangeRate = oracle.getAssetPrice(address(from_)).wadDiv(
-      oracle.getAssetPrice(address(to_))
-    );
-    if (from_.decimals() > to_.decimals()) {
-      exchangeRate /= 10**(from_.decimals() - to_.decimals());
-    } else {
-      exchangeRate *= 10**(from_.decimals() - to_.decimals());
-    }
-    return amount.wadMul(exchangeRate);
+    return _exchange().convert(address(rewardToken()), address(currency()), amount);
   }
 
   function reinvestRewardToken() public {
@@ -183,28 +163,31 @@ contract AaveAssetManager is BaseAssetManager {
   }
 
   function _swapRewards(uint256 amount, address outAddr) internal returns (uint256, uint256) {
-    address[] memory path = _exchangePath();
-    uint256 swapIn = IERC20Metadata(path[0]).balanceOf(address(this));
+    IERC20Metadata rw = rewardToken();
+    uint256 swapIn = rw.balanceOf(address(this));
     if (swapIn < amount) {
       uint256 toWithdraw = amount - swapIn;
       if (rewardAToken().balanceOf(address(this)) < toWithdraw) {
         toWithdraw = type(uint256).max; // if not enought withdraw all
       }
-      swapIn += lendingPool().withdraw(path[0], toWithdraw, address(this));
+      swapIn += lendingPool().withdraw(address(rw), toWithdraw, address(this));
     } else {
       swapIn = amount;
     }
-    uint256 swapOutMin = _rewardToCurrency(swapIn).wadMul(1e18 - _maxSlippage);
-    IERC20Metadata(path[0]).approve(address(_swapRouter), swapIn);
-    uint256[] memory amounts = _swapRouter.swapExactTokensForTokens(
+    address swapRouter = _exchange().getSwapRouter();
+    rw.approve(swapRouter, swapIn);
+    bytes memory swapCall = _exchange().sell(
+      address(rw),
+      address(currency()),
       swapIn,
-      swapOutMin,
-      path,
       outAddr,
       block.timestamp
     );
-    emit RewardSwapped(swapIn, amounts[1]);
-    return (swapIn, amounts[1]);
+
+    bytes memory response = swapRouter.functionCall(swapCall, "Swap operation failed");
+    uint256 swapOut = _exchange().decodeSwapOut(response);
+    emit RewardSwapped(swapIn, swapOut);
+    return (swapIn, swapOut);
   }
 
   function swapRewards(uint256 amount)
@@ -250,7 +233,11 @@ contract AaveAssetManager is BaseAssetManager {
       // In this case, it's safe using getAmountsIn to compute how many rewards are needed to swap
       // but then, when I do the swap I validate the slippage with the market price (given by AAVE's Oracle)
       // is acceptable
-      uint256 requiredRewards = _swapRouter.getAmountsIn(remainingAmount, _exchangePath())[0];
+      uint256 requiredRewards = _exchange().getAmountIn(
+        address(rewardToken()),
+        address(currency()),
+        remainingAmount
+      );
       (, uint256 currencyOut) = _swapRewards(requiredRewards, address(_policyPool));
       if (currencyOut < remainingAmount) {
         remainingAmount -= currencyOut;
@@ -286,10 +273,6 @@ contract AaveAssetManager is BaseAssetManager {
     return _reinvestRewardsMin;
   }
 
-  function maxSlippage() external view returns (uint256) {
-    return _maxSlippage;
-  }
-
   function setClaimRewardsMin(uint256 newValue) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
@@ -311,16 +294,5 @@ contract AaveAssetManager is BaseAssetManager {
     );
     _reinvestRewardsMin = newValue;
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setReinvestRewardsMin, newValue, tweak);
-  }
-
-  function setMaxSlippage(uint256 newValue) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
-    require(newValue <= 1e17, "maxSlippage can't be more than 10%");
-    bool tweak = !hasPoolRole(LEVEL2_ROLE);
-    require(
-      !tweak || _isTweakWad(_maxSlippage, newValue, 3e26),
-      "Tweak exceeded: maxSlippage tweaks only up to 30%"
-    );
-    _maxSlippage = newValue;
-    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setMaxSlippage, newValue, tweak);
   }
 }

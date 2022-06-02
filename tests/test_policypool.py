@@ -209,111 +209,8 @@ def test_transfers_usdc(tenv):
     etoken.balance_of("LP3").assert_equal(interest // _W(6))
 
 
-def test_rebalance_policy(tenv):
-    YAML_SETUP = """
-    risk_modules:
-      - name: Roulette
-        scr_percentage: 1
-        ensuro_fee: 0
-        scr_interest_rate: "0.01"
-    currency:
-        name: USD
-        symbol: $
-        initial_supply: 6000
-        initial_balances:
-        - user: LP1
-          amount: 1037
-        - user: LP2
-          amount: 1000
-        - user: LP3
-          amount: 1000
-        - user: CUST1
-          amount: 100
-    etokens:
-      - name: eUSD1WEEK
-        expiration_period: 604800
-      - name: eUSD1MONTH
-        expiration_period: 2592000
-      - name: eUSD1YEAR
-        expiration_period: 31536000
-    """
-
-    pool = load_config(StringIO(YAML_SETUP), tenv.module)
-    timecontrol = tenv.time_control
-    rm = pool.config.risk_modules["Roulette"]
-    rm.grant_role("PRICER_ROLE", rm.owner)
-    rm.grant_role("RESOLVER_ROLE", rm.owner)
-
-    _deposit(pool, "eUSD1YEAR", "LP1", _W(1037))
-    _deposit(pool, "eUSD1MONTH", "LP2", _W(1000))
-    _deposit(pool, "eUSD1WEEK", "LP3", _W(1000))
-
-    pool.currency.approve("CUST1", pool.contract_id, _W(100))
-    policy = rm.new_policy(
-        payout=_W(2100), premium=_W(100), customer="CUST1",
-        loss_prob=_R("0.03"), expiration=timecontrol.now + 10 * DAY,
-        internal_id=123
-    )
-    assert policy.scr == _W(2037)
-    for_lps = policy.premium_split()[-1]
-    for_lps.assert_equal(_W(2037) * _W("0.01") * _W(10/365))
-
-    # Only eUSD1YEAR and eUSD1MONTH are affected
-    assert pool.etokens["eUSD1YEAR"].ocean == _W(0)
-    assert pool.etokens["eUSD1MONTH"].ocean == _W(0)
-    assert pool.etokens["eUSD1WEEK"].ocean == _W(1000)
-
-    assert pool.get_policy_fund_count(policy.id) == 2
-
-    timecontrol.fast_forward(4 * DAY)
-
-    # Calculate oceans when policy unlocked to be relocked
-    oceans = {
-        "eUSD1YEAR": pool.etokens["eUSD1YEAR"].total_supply(),
-        "eUSD1MONTH": pool.etokens["eUSD1MONTH"].total_supply(),
-        "eUSD1WEEK": pool.etokens["eUSD1WEEK"].total_supply(),
-    }
-
-    oceans["eUSD1YEAR"].assert_equal(_W(1037) + for_lps * _W(4/10) * _W(1037/2037))
-    oceans["eUSD1MONTH"].assert_equal(_W(1000) + for_lps * _W(4/10) * _W(1000/2037))
-    total_ocean = _W(3037) + for_lps * _W(4/10)
-
-    # After four days, now the policy expires in less than a week, so eUSD1WEEK is eligible
-    pool.config.grant_role("REBALANCE_ROLE", "REBALANCER_USER")
-    with pool.as_("REBALANCER_USER"):
-        pool.rebalance_policy(policy.id)
-
-    ocean_shares = _calculate_shares(oceans, total_ocean)
-
-    # Now funds are locked in the three pools
-    for etk_name, scr_share in ocean_shares.items():
-        pool.etokens[etk_name].scr.assert_equal(scr_share * policy.scr)
-
-    scr_week_share = pool.etokens["eUSD1WEEK"].scr // policy.scr
-    scr_year_share = (_W(1) - scr_week_share) * _W(1037/2037)
-    scr_month_share = (_W(1) - scr_week_share) * _W(1000/2037)
-
-    scr_week_share.assert_equal(_W(1/3), decimals=2)  # not exactly 1/3 because accrued interest
-    scr_year_share.assert_equal(_W(1/3), decimals=2)
-    scr_month_share.assert_equal(_W(1/3), decimals=2)
-
-    timecontrol.fast_forward(6 * DAY)
-
-    pool.etokens["eUSD1YEAR"].total_supply().assert_equal(
-        _W(1037) + for_lps * _W("0.4") * _W(1037/2037) + for_lps * _W("0.6") * scr_year_share,
-        decimals=3
-    )
-    pool.etokens["eUSD1MONTH"].total_supply().assert_equal(
-        _W(1000) + for_lps * _W("0.4") * _W(1000/2037) + for_lps * _W("0.6") * scr_month_share,
-        decimals=3
-    )
-    pool.etokens["eUSD1WEEK"].total_supply().assert_equal(
-        _W(1000) + for_lps * _W("0.6") * scr_week_share,
-        decimals=3
-    )
-
-
-def test_not_accept_rm(tenv):
+def xtest_not_accept_rm(tenv):
+    # TODO: rewrite this test without using rebalance_policy
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
@@ -819,6 +716,110 @@ def test_nfts(tenv):
             loss_prob=_R(1/37), expiration=timecontrol.now + WEEK,
             internal_id=2**96 - 1
         )
+
+
+def test_policy_holder_contract(tenv):
+    if tenv.kind != "ethereum":
+        return
+
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        scr_percentage: 1
+        ensuro_fee: 0
+    nft:
+        name: Ensuro Policy NFT
+        symbol: EPOL
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 9000
+        initial_balances:
+        - user: LP1
+          amount: 7006
+        - user: CUST1
+          amount: 200
+    etokens:
+      - name: eUSD1WEEK
+        expiration_period: 604800
+      - name: eUSD1MONTH
+        expiration_period: 2592000
+      - name: eUSD1YEAR
+        expiration_period: 31536000
+    """
+
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    nft = pool.policy_nft
+    timecontrol = tenv.time_control
+    rm = pool.config.risk_modules["Roulette"]
+    rm.grant_role("PRICER_ROLE", rm.owner)
+    rm.grant_role("RESOLVER_ROLE", rm.owner)
+
+    PolicyHolderMock = get_provider().get_contract_factory("PolicyHolderMock")
+    ph_mock = PolicyHolderMock.deploy(False, {"from": rm.owner})
+
+    assert ph_mock.policyId() == 0
+
+    usd = pool.currency
+
+    _deposit(pool, "eUSD1YEAR", "LP1", _W(3503))
+
+    usd.approve("CUST1", pool.contract_id, _W(100))
+    policy = rm.new_policy(
+        payout=_W(3600), premium=_W(100), customer="CUST1",
+        loss_prob=_R(1/37), expiration=timecontrol.now + WEEK,
+        internal_id=2**96 - 1
+    )
+
+    assert nft.balance_of("CUST1") == 1
+    assert nft.owner_of(policy.id) == "CUST1"
+    assert policy.id % (2**96) == (2**96 - 1)
+    assert policy.id == rm.make_policy_id(2**96 - 1)
+
+    nft.safe_transfer_from("CUST1", "CUST1", ph_mock, policy.id)
+    assert ph_mock.policyId() == policy.id
+
+    timecontrol.fast_forward(WEEK - DAY)
+
+    ph_mock.setFail(True)
+    with pytest.raises(RevertError, match="onPayoutReceived: They told me I have to fail"):
+        rm.resolve_policy(policy.id, True)
+
+    ph_mock.setFail(False)
+    rm.resolve_policy(policy.id, True)
+
+    assert ph_mock.policyId() == policy.id
+    assert ph_mock.payout() == _W(3600)
+
+    assert usd.balance_of("CUST1") == _W(100)
+    assert usd.balance_of(ph_mock) == _W(3600)
+
+    _deposit(pool, "eUSD1YEAR", "LP1", _W(3503), assert_deposit=False)
+    usd.approve("CUST1", pool.contract_id, _W(100))
+
+    # Create a 2nd policy
+    policy = rm.new_policy(
+        payout=_W(1800), premium=_W(50), customer="CUST1",
+        loss_prob=_R(1/37), expiration=timecontrol.now + WEEK,
+        internal_id=2**96 - 3
+    )
+
+    nft.transfer_from("CUST1", "CUST1", ph_mock, policy.id)
+    rm.resolve_policy(policy.id, False)
+
+    assert ph_mock.policyId() == policy.id
+    assert ph_mock.payout() == _W(0)
+
+    # Create a 3rd policy - just to verify failing holder doesn't reverts
+    policy = rm.new_policy(
+        payout=_W(1800), premium=_W(50), customer="CUST1",
+        loss_prob=_R(1/37), expiration=timecontrol.now + WEEK,
+        internal_id=2**96 - 4
+    )
+
+    nft.transfer_from("CUST1", "CUST1", ph_mock, policy.id)
+    ph_mock.setFail(True)
+    rm.resolve_policy(policy.id, False)
 
 
 def test_partial_payout(tenv):

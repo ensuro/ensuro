@@ -330,7 +330,7 @@ class EToken(ERC20Token):
     def total_withdrawable(self):
         """Returns the amount that's available to be withdrawed"""
         locked = (
-            self.scr.to_ray() * (_R(1) + self.scr_interest_rate) * self.liquidity_requirement
+            self.scr.to_ray() * self.liquidity_requirement
         ).to_wad()
         return max(_W(0), self.total_supply() - locked)
 

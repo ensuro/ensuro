@@ -121,6 +121,17 @@ def test_aave_asset_manager(USDC, aave, PolicyPoolAndConfig, WMATIC):
 
     config, pool = PolicyPoolAndConfig
 
+    exchange = wrappers.Exchange(
+        config.owner, pool,
+        oracle=aave.price_oracle,
+        swap_router=SUSHISWAP_ROUTER_ADDRESS,
+        max_slippage=_W("0.0")
+    )
+
+    config.grant_role("LEVEL1_ROLE", config.owner)
+    config.grant_role("LEVEL2_ROLE", "WHOKNOWSWHENTOSELL")
+    config.set_exchange(exchange)
+
     liquidity_min = usd_amount * _W("0.1")
     liquidity_middle = usd_amount * _W("0.5")
     liquidity_max = usd_amount * _W("0.8")
@@ -131,8 +142,6 @@ def test_aave_asset_manager(USDC, aave, PolicyPoolAndConfig, WMATIC):
         liquidity_middle=liquidity_middle,
         liquidity_max=liquidity_max,
         aave_address_provider=AAVE_AP_ADDRESS,
-        swap_router=SUSHISWAP_ROUTER_ADDRESS,
-        max_slippage=_W("0.0")
     )
 
     # Donate 2 matic to aave_mgr
@@ -142,8 +151,6 @@ def test_aave_asset_manager(USDC, aave, PolicyPoolAndConfig, WMATIC):
 
     aave_mgr.get_investment_value().assert_equal(_W(2) * usd_per_matic // _W(10**12))
 
-    config.grant_role("LEVEL1_ROLE", config.owner)
-    config.grant_role("LEVEL2_ROLE", "WHOKNOWSWHENTOSELL")
     config.set_asset_manager(aave_mgr)
 
     # Transfer LP1 USD to PolicyPoolMockForward
@@ -172,10 +179,10 @@ def test_aave_asset_manager(USDC, aave, PolicyPoolAndConfig, WMATIC):
     #    wmatic_in, usdc_out = aave_mgr.swap_rewards(_W(3))  # Fails because max_slippage=0
     # Sometimes fails, others don't. It depends on the difference between Sushi and Chainlink price
 
-    with aave_mgr.as_("WHOKNOWSWHENTOSELL"):
-        aave_mgr.max_slippage = _W("0.02")
+    with exchange.as_("WHOKNOWSWHENTOSELL"):
+        exchange.max_slippage = _W("0.02")
 
-    assert aave_mgr.max_slippage == _W("0.02")
+    assert exchange.max_slippage == _W("0.02")
 
     with aave_mgr.as_("WHOKNOWSWHENTOSELL"):
         wmatic_in, usdc_out = aave_mgr.swap_rewards(_W(3))  # Fails because max_slippage=0

@@ -37,11 +37,6 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
 
   address internal _wallet; // Address of the RiskModule provider
 
-  modifier validateParamsAfterChange() {
-    _;
-    _validateParameters();
-  }
-
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
   constructor(IPolicyPool policyPool_) PolicyPoolComponent(policyPool_) {}
@@ -104,7 +99,7 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
   }
 
   // runs validation on RiskModule parameters
-  function _validateParameters() internal view {
+  function _validateParameters() internal view override {
     require(
       _scrPercentage <= WadRayMath.RAY && _scrPercentage > 0,
       "Validation: scrPercentage must be <=1"
@@ -159,7 +154,6 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
   function setScrPercentage(uint256 newScrPercentage)
     external
     onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-    validateParamsAfterChange
   {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
@@ -174,11 +168,7 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     );
   }
 
-  function setMoc(uint256 newMoc)
-    external
-    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-    validateParamsAfterChange
-  {
+  function setMoc(uint256 newMoc) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(!tweak || _isTweakRay(_moc, newMoc, 1e26), "Tweak exceeded: moc tweaks only up to 10%");
     _moc = newMoc;
@@ -188,7 +178,6 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
   function setScrInterestRate(uint256 newScrInterestRate)
     external
     onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-    validateParamsAfterChange
   {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
@@ -203,11 +192,7 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     );
   }
 
-  function setEnsuroFee(uint256 newEnsuroFee)
-    external
-    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-    validateParamsAfterChange
-  {
+  function setEnsuroFee(uint256 newEnsuroFee) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
       !tweak || _isTweakRay(_ensuroFee, newEnsuroFee, 3e26),
@@ -220,7 +205,6 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
   function setMaxScrPerPolicy(uint256 newMaxScrPerPolicy)
     external
     onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-    validateParamsAfterChange
   {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
@@ -238,7 +222,6 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
   function setScrLimit(uint256 newScrLimit)
     external
     onlyPoolRole3(LEVEL1_ROLE, LEVEL2_ROLE, LEVEL3_ROLE)
-    validateParamsAfterChange
   {
     bool tweak = !hasPoolRole(LEVEL2_ROLE) && !hasPoolRole(LEVEL1_ROLE);
     require(
@@ -256,11 +239,7 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setScrLimit, newScrLimit, tweak);
   }
 
-  function setWallet(address wallet_)
-    external
-    onlyRole(RM_PROVIDER_ROLE)
-    validateParamsAfterChange
-  {
+  function setWallet(address wallet_) external onlyRole(RM_PROVIDER_ROLE) {
     _wallet = wallet_;
     _parameterChanged(
       IPolicyPoolConfig.GovernanceActions.setWallet,
@@ -273,7 +252,7 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     uint256 payout,
     uint256 lossProb,
     uint40 expiration
-  ) external view returns (uint256) {
+  ) public view returns (uint256) {
     uint256 purePremium = payout.wadToRay().rayMul(lossProb.rayMul(moc())).rayToWad();
     uint256 scr = payout.wadMul(scrPercentage().rayToWad()) - purePremium;
     uint256 interestRate = (

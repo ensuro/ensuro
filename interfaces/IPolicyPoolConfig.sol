@@ -6,6 +6,7 @@ import {IAssetManager} from "./IAssetManager.sol";
 import {IInsolvencyHook} from "./IInsolvencyHook.sol";
 import {ILPWhitelist} from "./ILPWhitelist.sol";
 import {IRiskModule} from "./IRiskModule.sol";
+import {IExchange} from "./IExchange.sol";
 
 /**
  * @title IPolicyPoolAccess - Interface for the contract that handles roles for the PolicyPool and components
@@ -45,6 +46,9 @@ interface IPolicyPoolConfig is IAccessControlUpgradeable {
     setMaxSlippage,
     setAcceptAllRMs, // EToken Governance action  - value == boolean
     setAcceptException, // EToken Governance action - value == (!isException << 255)|address
+    setExchange, // Changes exchange helper contract
+    setPriceOracle, // Changes exchange's PriceOracle
+    setSwapRouter, // Changes exchange's SwapRouter
     last
   }
 
@@ -72,6 +76,8 @@ interface IPolicyPoolConfig is IAccessControlUpgradeable {
   function insolvencyHook() external view returns (IInsolvencyHook);
 
   function lpWhitelist() external view returns (ILPWhitelist);
+
+  function exchange() external view returns (IExchange);
 
   function treasury() external view returns (address);
 

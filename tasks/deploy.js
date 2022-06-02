@@ -276,13 +276,33 @@ async function deployAaveAssetManager(opts, hre) {
   opts.extraArgs = [
     _W(opts.claimRewardsMin),
     _W(opts.reinvestRewardsMin),
-    _W(opts.maxSlippage),
   ];
   opts.extraConstructorArgs = [
     opts.aaveAddrProv,
-    opts.swapRouter,
   ]
   return deployAssetManager(opts, hre);
+}
+
+async function deployExchange({verify, poolAddress, maxSlippage, swapRouter, priceOracle}, hre) {
+  const Exchange = await hre.ethers.getContractFactory("Exchange");
+  const exchange = await hre.upgrades.deployProxy(Exchange, [
+    priceOracle,
+    swapRouter,
+    _W(maxSlippage)
+  ], {
+    kind: 'uups',
+    unsafeAllow: ["delegatecall"],
+    constructorArgs: [poolAddress]
+  });
+
+  await exchange.deployed();
+  await logContractCreated(hre, "Exchange", exchange.address);
+  if (verify)
+    await verifyContract(hre, exchange, true, [poolAddress]);
+  const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
+  const policyPoolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await policyPool.config());
+  await policyPoolConfig.setExchange(exchange.address);
+  return exchange.address;
 }
 
 async function deployWhitelist({verify, wlClass, poolAddress, extraConstructorArgs, extraArgs}, hre) {
@@ -515,12 +535,19 @@ function add_task() {
     .addOptionalParam("liquidityMax", "liquidityMax", 200, types.float)
     .addOptionalParam("claimRewardsMin", "claimRewardsMin", 10, types.float)
     .addOptionalParam("reinvestRewardsMin", "reinvestRewardsMin", 20, types.float)
-    .addOptionalParam("maxSlippage", "maxSlippage", 0.02, types.float)
     .addOptionalParam("aaveAddrProv", "AAVE Address Provider",
                       "0xd05e3E715d945B59290df0ae8eF85c1BdB684744", types.address)
+    .setAction(deployAaveAssetManager);
+
+  task("deploy:exchange", "Deploy the Exchange")
+    .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
+    .addParam("poolAddress", "PolicyPool Address", types.address)
+    .addOptionalParam("maxSlippage", "maxSlippage", 0.02, types.float)
+    .addOptionalParam("priceOracle", "Price Oracle",
+                      "0x0229f777b0fab107f9591a41d5f02e4e98db6f2d", types.address)
     .addOptionalParam("swapRouter", "Uniswap Router Address",
                       "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506", types.address)
-    .setAction(deployAaveAssetManager);
+    .setAction(deployExchange);
 
   task("deploy:whitelist", "Deploys a Whitelisting contract")
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)

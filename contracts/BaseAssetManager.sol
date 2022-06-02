@@ -34,11 +34,6 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
   event MoneyDeinvested(uint256 amount);
   event EarningsDistributed(bool positive, uint256 amount);
 
-  modifier validateParamsAfterChange() {
-    _;
-    _validateParameters();
-  }
-
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
   constructor(IPolicyPool policyPool_) PolicyPoolComponent(policyPool_) {}
@@ -74,7 +69,7 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
     _validateParameters();
   }
 
-  function _validateParameters() internal view {
+  function _validateParameters() internal view override {
     require(
       _liquidityMin <= _liquidityMiddle && _liquidityMiddle <= _liquidityMax,
       "Validation: Liquidity limits are invalid"
@@ -217,31 +212,7 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
     return _liquidityMax;
   }
 
-  function setLiquidityMin(uint256 newValue)
-    external
-    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-    validateParamsAfterChange
-  {
-    _setLiquidityMin(newValue);
-  }
-
-  function setLiquidityMiddle(uint256 newValue)
-    external
-    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-    validateParamsAfterChange
-  {
-    _setLiquidityMiddle(newValue);
-  }
-
-  function setLiquidityMax(uint256 newValue)
-    external
-    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-    validateParamsAfterChange
-  {
-    _setLiquidityMax(newValue);
-  }
-
-  function _setLiquidityMin(uint256 newValue) internal {
+  function setLiquidityMin(uint256 newValue) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
       !tweak || _isTweakRay(_liquidityMin, newValue, 3e26),
@@ -251,7 +222,7 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setLiquidityMin, newValue, tweak);
   }
 
-  function _setLiquidityMiddle(uint256 newValue) internal {
+  function setLiquidityMiddle(uint256 newValue) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
       !tweak || _isTweakRay(_liquidityMiddle, newValue, 3e26),
@@ -261,7 +232,7 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setLiquidityMiddle, newValue, tweak);
   }
 
-  function _setLiquidityMax(uint256 newValue) internal {
+  function setLiquidityMax(uint256 newValue) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
       !tweak || _isTweakRay(_liquidityMax, newValue, 3e26),
@@ -275,9 +246,36 @@ abstract contract BaseAssetManager is IAssetManager, PolicyPoolComponent {
     uint256 min,
     uint256 middle,
     uint256 max
-  ) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) validateParamsAfterChange {
-    if (min != type(uint256).max) _setLiquidityMin(min);
-    if (middle != type(uint256).max) _setLiquidityMiddle(middle);
-    if (max != type(uint256).max) _setLiquidityMax(max);
+  ) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
+    bool setMin = min != type(uint256).max;
+    bool setMiddle = middle != type(uint256).max;
+    bool setMax = max != type(uint256).max;
+    bool tweak = !hasPoolRole(LEVEL2_ROLE);
+    // First set all - Then call _parameterChanged
+    if (setMin) {
+      require(
+        !tweak || _isTweakRay(_liquidityMin, min, 3e26),
+        "Tweak exceeded: liquidityMin tweaks only up to 30%"
+      );
+      _liquidityMin = min;
+    }
+    if (setMiddle) {
+      require(
+        !tweak || _isTweakRay(_liquidityMiddle, middle, 3e26),
+        "Tweak exceeded: liquidityMiddle tweaks only up to 30%"
+      );
+      _liquidityMiddle = middle;
+    }
+    if (setMax) {
+      require(
+        !tweak || _isTweakRay(_liquidityMax, max, 3e26),
+        "Tweak exceeded: liquidityMax tweaks only up to 30%"
+      );
+      _liquidityMax = max;
+    }
+    if (setMin) _parameterChanged(IPolicyPoolConfig.GovernanceActions.setLiquidityMin, min, tweak);
+    if (setMiddle)
+      _parameterChanged(IPolicyPoolConfig.GovernanceActions.setLiquidityMiddle, middle, tweak);
+    if (setMax) _parameterChanged(IPolicyPoolConfig.GovernanceActions.setLiquidityMax, max, tweak);
   }
 }

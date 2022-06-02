@@ -64,11 +64,6 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
     _;
   }
 
-  modifier validateParamsAfterChange() {
-    _;
-    _validateParameters();
-  }
-
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
   constructor(IPolicyPool policyPool_) PolicyPoolComponent(policyPool_) {}
@@ -130,7 +125,7 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
   }
 
   // runs validation on EToken parameters
-  function _validateParameters() internal view {
+  function _validateParameters() internal view override {
     require(
       _liquidityRequirement >= 8e26 && _liquidityRequirement <= 13e26,
       "Validation: liquidityRequirement must be [0.8, 1.3]"
@@ -479,11 +474,11 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
     return _scr;
   }
 
-  function scrInterestRate() public view returns (uint256) {
+  function scrInterestRate() public view override returns (uint256) {
     return _scrInterestRate;
   }
 
-  function tokenInterestRate() public view returns (uint256) {
+  function tokenInterestRate() public view override returns (uint256) {
     return _tokenInterestRate;
   }
 
@@ -576,11 +571,7 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
   }
 
   function totalWithdrawable() public view virtual override returns (uint256) {
-    uint256 locked = _scr
-      .wadToRay()
-      .rayMul(WadRayMath.ray() + _scrInterestRate)
-      .rayMul(_liquidityRequirement)
-      .rayToWad();
+    uint256 locked = _scr.wadToRay().rayMul(_liquidityRequirement).rayToWad();
     uint256 totalSupply_ = totalSupply();
     if (totalSupply_ >= locked) return totalSupply_ - locked;
     else return 0;
@@ -703,7 +694,6 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
   function setPoolLoanInterestRate(uint256 newRate)
     external
     onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-    validateParamsAfterChange
   {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
@@ -718,7 +708,6 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
   function setLiquidityRequirement(uint256 newRate)
     external
     onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-    validateParamsAfterChange
   {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
@@ -729,11 +718,7 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setLiquidityRequirement, newRate, tweak);
   }
 
-  function setMaxUtilizationRate(uint256 newRate)
-    external
-    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-    validateParamsAfterChange
-  {
+  function setMaxUtilizationRate(uint256 newRate) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
       !tweak || _isTweakRay(_maxUtilizationRate, newRate, 3e26),
@@ -743,11 +728,7 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setMaxUtilizationRate, newRate, tweak);
   }
 
-  function setAcceptAllRMs(bool acceptAllRMs_)
-    external
-    onlyPoolRole(LEVEL2_ROLE)
-    validateParamsAfterChange
-  {
+  function setAcceptAllRMs(bool acceptAllRMs_) external onlyPoolRole(LEVEL2_ROLE) {
     _acceptAllRMs = acceptAllRMs_;
     _parameterChanged(
       IPolicyPoolConfig.GovernanceActions.setAcceptAllRMs,
@@ -759,7 +740,6 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
   function setAcceptException(address riskModule, bool isException)
     external
     onlyPoolRole(LEVEL2_ROLE)
-    validateParamsAfterChange
   {
     _acceptExceptions[riskModule] = isException;
     uint256 value = uint160(riskModule);
