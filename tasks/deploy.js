@@ -197,9 +197,10 @@ async function deployEToken({
 
 async function deployRiskModule({
       verify, rmClass, rmName, poolAddress, scrPercentage, scrInterestRate, ensuroFee, maxScrPerPolicy,
-      scrLimit, moc, wallet, extraArgs
+      scrLimit, moc, wallet, extraArgs, extraConstructorArgs
   }, hre) {
   extraArgs = extraArgs || [];
+  extraConstructorArgs = extraConstructorArgs || [];
   const RiskModule = await hre.ethers.getContractFactory(rmClass);
   const rm = await hre.upgrades.deployProxy(RiskModule, [
     rmName,
@@ -212,13 +213,14 @@ async function deployRiskModule({
     ...extraArgs
   ], {
     kind: 'uups',
-    constructorArgs: [poolAddress]
+    unsafeAllow: ["delegatecall"],
+    constructorArgs: [poolAddress, ...extraConstructorArgs]
   });
 
   await rm.deployed();
   await logContractCreated(hre, `${rmClass} ${rmName}`, rm.address);
   if (verify)
-    await verifyContract(hre, rm, true, [poolAddress]);
+    await verifyContract(hre, rm, true, [poolAddress, ...extraConstructorArgs]);
 
   if (moc != 1.0) {
     moc = _R(moc);
@@ -234,6 +236,13 @@ async function deployFlightDelayRM(opts, hre) {
   opts.extraArgs = [
     opts.linkToken,
     [opts.oracle, opts.delayTime, _W(opts.oracleFee), opts.dataJobId, opts.sleepJobId]
+  ];
+  return deployRiskModule(opts, hre);
+}
+
+async function deployPriceRM(opts, hre) {
+  opts.extraConstructorArgs = [
+    opts.asset, opts.referenceCurrency, _W(opts.slotSize)
   ];
   return deployRiskModule(opts, hre);
 }
@@ -503,9 +512,26 @@ function add_task() {
     .addParam("oracle", "Oracle address", types.address)
     .addOptionalParam("oracleFee", "Oracle Fee", 0.1, types.float)
     .addOptionalParam("delayTime", "Delay time", 120, types.int)
-    .addOptionalParam("dataJobId", "Data JobId", "2fb0c3a36f924e4ab43040291e14e0b7", types.str)
-    .addOptionalParam("sleepJobId", "Sleep JobId", "4241bd0288324bf8a2c683833d0b824f", types.str)
+    .addOptionalParam("dataJobId", "Data JobId", "0x2fb0c3a36f924e4ab43040291e14e0b7", types.str)
+    .addOptionalParam("sleepJobId", "Sleep JobId", "0x4241bd0288324bf8a2c683833d0b824f", types.str)
     .setAction(deployFlightDelayRM);
+
+  task("deploy:priceRiskModule", "Deploys and injects a Price RiskModule")
+    .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
+    .addParam("poolAddress", "PolicyPool Address", types.address)
+    .addOptionalParam("rmClass", "RiskModule contract", "PriceRiskModule", types.str)
+    .addOptionalParam("rmName", "Name of the RM", "Price Risk Module", types.str)
+    .addOptionalParam("scrPercentage", "SCR Percentage", 1.0, types.float)
+    .addOptionalParam("ensuroFee", "Ensuro Fee", 0.02, types.float)
+    .addOptionalParam("scrInterestRate", "Interest Rate for RM", 0.05, types.float)
+    .addOptionalParam("maxScrPerPolicy", "Max SCR Per policy", 10000, types.float)
+    .addOptionalParam("scrLimit", "Total SCR for the RM", 1e6, types.float)
+    .addOptionalParam("moc", "Margin of Conservativism", 1.0, types.float)
+    .addParam("wallet", "RM address", types.address)
+    .addParam("asset", "Insured asset address", types.address)
+    .addParam("referenceCurrency", "Reference currency address", types.address)
+    .addOptionalParam("slotSize", "Slot size", 0.01, types.float)
+    .setAction(deployPriceRM);
 
   task("deploy:assetManager", "Deploys a AssetManager and assigns it to the pool")
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
