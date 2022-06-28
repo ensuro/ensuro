@@ -65,7 +65,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   DataTypes.ETokenStatusMap internal _eTokens;
 
   mapping(uint256 => bytes32) internal _policies;
-  mapping(uint256 => DataTypes.ETokenToWadMap) internal _policiesFunds;
+  mapping(uint256 => IEToken) internal _policySolvency;
 
   uint256 internal _activePurePremiums; // sum of pure-premiums of active policies - In Wad
   uint256 internal _borrowedActivePP; // amount borrowed from active pure premiums to pay defaulted policies
@@ -274,9 +274,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   }
 
   function _lockScr(Policy.PolicyData memory policy) internal {
-    uint256 ocean = 0;
-    DataTypes.ETokenToWadMap storage policyFunds = _policiesFunds[policy.id];
-
     // Initially I iterate over all eTokens and accumulate ocean of eligible ones
     // saves the ocean in policyFunds, later will _distributeScr
     for (uint256 i = 0; i < _eTokens.length(); i++) {
@@ -284,38 +281,12 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
       if (etkStatus != DataTypes.ETokenStatus.active) continue;
       if (!etk.accepts(address(policy.riskModule), policy.expiration)) continue;
       uint256 etkOcean = etk.oceanForNewScr();
-      if (etkOcean == 0) continue;
-      ocean += etkOcean;
-      policyFunds.set(etk, etkOcean);
+      if (etkOcean < policy.scr) continue;
+      etk.lockScr(policy.interestRate(), policy.scr);
+      _policySolvency[policy.id] = etk;
+      return;
     }
-    _distributeScr(policy.scr, policy.interestRate(), ocean, policyFunds);
-  }
-
-  /**
-   * @dev Distributes SCR amount in policyFunds according to ocean per token
-   * @param scr  SCR to distribute
-   * @param ocean  Total ocean available in the ETokens for this SCR
-   * @param policyFunds  Input: loaded with ocean available for this SCR (sum=ocean)
-                         Ouput: loaded with locked SRC (sum=scr)
-   */
-  function _distributeScr(
-    uint256 scr,
-    uint256 interestRate,
-    uint256 ocean,
-    DataTypes.ETokenToWadMap storage policyFunds
-  ) internal {
-    require(ocean >= scr, "Not enought ocean to cover the policy");
-    uint256 scrNotLocked = scr;
-
-    for (uint256 i = 0; i < policyFunds.length(); i++) {
-      uint256 etkScr;
-      (IEToken etk, uint256 etkOcean) = policyFunds.at(i);
-      if (i < policyFunds.length() - 1) etkScr = scr.wadMul(etkOcean).wadDiv(ocean);
-      else etkScr = scrNotLocked;
-      etk.lockScr(interestRate, etkScr);
-      policyFunds.set(etk, etkScr);
-      scrNotLocked -= etkScr;
-    }
+    revert("Not enought ocean to cover the policy");
   }
 
   function _balance() internal view returns (uint256) {
@@ -446,17 +417,23 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
       payout
     );
 
-    if (customerWon) {
-      uint256 borrowFromScrLeft;
-      borrowFromScrLeft = _updatePolicyFundsCustWon(policy, borrowFromScr);
-      if (borrowFromScrLeft > NEGLIGIBLE_AMOUNT)
-        borrowFromScrLeft = _takeLoanFromAnyEtk(borrowFromScrLeft);
+    IEToken etk = _policySolvency[policy.id];
+    etk.unlockScr(policy.interestRate(), policy.scr);
+    (bool positive, uint256 adjustment) = _interestAdjustment(policy);
+    etk.discreteEarning(adjustment, positive);
+
+    if (borrowFromScr > 0) {
+      borrowFromScr = borrowFromScr - etk.lendToPool(borrowFromScr, true);
+      if (borrowFromScr > NEGLIGIBLE_AMOUNT)
+        borrowFromScr = _takeLoanFromAnyEtk(borrowFromScr);
       require(
-        borrowFromScrLeft <= NEGLIGIBLE_AMOUNT,
+        borrowFromScr <= NEGLIGIBLE_AMOUNT,
         "Don't know where to take the rest of the money"
       );
-    } else {
-      purePremiumWon = _updatePolicyFundsCustLost(policy, purePremiumWon);
+    } else if (purePremiumWon > 0 && etk.getPoolLoan() > 0) {
+      uint256 aux = Math.min(purePremiumWon, etk.getPoolLoan());
+      etk.repayPoolLoan(aux);
+      purePremiumWon -= aux;
     }
 
     _storePurePremiumWon(purePremiumWon); // it's possible in some cases purePremiumWon > 0 && customerWon
@@ -464,7 +441,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
 
     emit PolicyResolved(policy.riskModule, policy.id, payout);
     delete _policies[policy.id];
-    delete _policiesFunds[policy.id];
+    delete _policySolvency[policy.id];
     if (payout > 0) {
       _notifyPayout(policy.id, payout);
     } else {
@@ -515,59 +492,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     uint256 aux = policy.accruedInterest();
     if (policy.premiumForLps >= aux) return (true, policy.premiumForLps - aux);
     else return (false, aux - policy.premiumForLps);
-  }
-
-  function _updatePolicyFundsCustWon(Policy.PolicyData memory policy, uint256 borrowFromScr)
-    internal
-    returns (uint256)
-  {
-    uint256 borrowFromScrLeft = 0;
-    uint256 interestRate = policy.interestRate();
-    (bool positive, uint256 adjustment) = _interestAdjustment(policy);
-
-    // Iterate policyFunds - unlockScr / adjust / take loan
-    DataTypes.ETokenToWadMap storage policyFunds = _policiesFunds[policy.id];
-    for (uint256 i = 0; i < policyFunds.length(); i++) {
-      (IEToken etk, uint256 etkScr) = policyFunds.at(i);
-      etk.unlockScr(interestRate, etkScr);
-      etkScr = etkScr.wadDiv(policy.scr);
-      // etkScr now represents the share of SCR that's covered by this etk (variable reuse)
-      etk.discreteEarning(adjustment.wadMul(etkScr), positive);
-      if (borrowFromScr > 0) {
-        uint256 aux;
-        aux = borrowFromScr.wadMul(etkScr);
-        borrowFromScrLeft += aux - etk.lendToPool(aux, true);
-      }
-    }
-    return borrowFromScrLeft;
-  }
-
-  // Almost duplicated code from _updatePolicyFundsCustWon but separated to avoid stack depth error
-  function _updatePolicyFundsCustLost(Policy.PolicyData memory policy, uint256 purePremiumWon)
-    internal
-    returns (uint256)
-  {
-    uint256 interestRate = policy.interestRate();
-    (bool positive, uint256 adjustment) = _interestAdjustment(policy);
-
-    // Iterate policyFunds - unlockScr / adjust / repay loan
-    DataTypes.ETokenToWadMap storage policyFunds = _policiesFunds[policy.id];
-    for (uint256 i = 0; i < policyFunds.length(); i++) {
-      (IEToken etk, uint256 etkScr) = policyFunds.at(i);
-      etk.unlockScr(interestRate, etkScr);
-      etkScr = etkScr.wadDiv(policy.scr);
-      // etkScr now represents the share of SCR that's covered by this etk (variable reuse)
-      etk.discreteEarning(adjustment.wadMul(etkScr), positive);
-      if (purePremiumWon > 0 && etk.getPoolLoan() > 0) {
-        uint256 aux;
-        // if debt with token, repay from purePremium
-        aux = policy.purePremium.wadMul(etkScr);
-        aux = Math.min(purePremiumWon, Math.min(etk.getPoolLoan(), aux));
-        etk.repayPoolLoan(aux);
-        purePremiumWon -= aux;
-      }
-    }
-    return purePremiumWon;
   }
 
   /*
@@ -692,22 +616,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     }
   }
 
-  function getPolicyFundCount(uint256 policyId) external view returns (uint256) {
-    return _policiesFunds[policyId].length();
-  }
-
-  function getPolicyFundAt(uint256 policyId, uint256 index)
-    external
-    view
-    returns (IEToken, uint256)
-  {
-    return _policiesFunds[policyId].at(index);
-  }
-
-  function getPolicyFund(uint256 policyId, IEToken etoken) external view returns (uint256) {
-    (bool success, uint256 amount) = _policiesFunds[policyId].tryGet(etoken);
-    if (success) return amount;
-    else return 0;
+  function getSolvencyETK(uint256 policyId) external view returns (IEToken) {
+    return _policySolvency[policyId];
   }
 
   function getETokenCount() external view override returns (uint256) {
