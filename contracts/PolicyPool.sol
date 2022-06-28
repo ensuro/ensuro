@@ -424,12 +424,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
 
     if (borrowFromScr > 0) {
       borrowFromScr = borrowFromScr - etk.lendToPool(borrowFromScr, true);
-      if (borrowFromScr > NEGLIGIBLE_AMOUNT)
-        borrowFromScr = _takeLoanFromAnyEtk(borrowFromScr);
-      require(
-        borrowFromScr <= NEGLIGIBLE_AMOUNT,
-        "Don't know where to take the rest of the money"
-      );
+      if (borrowFromScr > NEGLIGIBLE_AMOUNT) borrowFromScr = _takeLoanFromAnyEtk(borrowFromScr);
+      require(borrowFromScr <= NEGLIGIBLE_AMOUNT, "Don't know where to take the rest of the money");
     } else if (purePremiumWon > 0 && etk.getPoolLoan() > 0) {
       uint256 aux = Math.min(purePremiumWon, etk.getPoolLoan());
       etk.repayPoolLoan(aux);
