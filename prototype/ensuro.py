@@ -122,7 +122,7 @@ class Policy(Model):
     loss_prob = RayField()
     start = IntField()
     expiration = IntField()
-    locked_funds = DictField(StringField(), WadField(), default={})
+    solvency_etoken = ContractProxyField(default=None, allow_none=True)
     pure_premium = WadField(default=Wad(0))
     premium_for_ensuro = WadField(default=Wad(0))
     premium_for_rm = WadField(default=Wad(0))
@@ -165,11 +165,6 @@ class Policy(Model):
             self.scr.to_ray() * seconds * self.interest_rate //
             Ray.from_value(SECONDS_IN_YEAR)
         ).to_wad()
-
-    def get_scr_share(self, etoken_name):
-        if etoken_name not in self.locked_funds:
-            return Ray(0)
-        return (self.locked_funds[etoken_name] // self.scr).to_ray()
 
 
 def non_negative(value):
@@ -557,29 +552,18 @@ class PolicyPool(AccessControlContract):
         return policy.id
 
     def _lock_scr(self, policy):
-        ocean = Wad(0)
-        ocean_per_token = {}
-        for etk in self.etokens.values():
+        for etk_name in sorted(self.etokens.keys()):
+            etk = self.etokens[etk_name]
             if not etk.accepts(policy):
                 continue
             ocean_token = etk.ocean_for_new_scr
-            if ocean_token == 0:
+            if ocean_token < policy.scr:
                 continue
-            ocean += ocean_token
-            ocean_per_token[etk.name] = ocean_token
-
-        require(ocean >= policy.scr, "Not enought ocean to cover the policy")
-
-        scr_not_locked = policy.scr
-
-        for index, (token_name, ocean_token) in enumerate(ocean_per_token.items()):
-            if index < (len(ocean_per_token) - 1):
-                scr_for_token = policy.scr * ocean_token // ocean
-            else:  # Last one gets the rest
-                scr_for_token = scr_not_locked
-            self.etokens[token_name].lock_scr(policy, scr_for_token)
-            policy.locked_funds[token_name] = scr_for_token
-            scr_not_locked -= scr_for_token
+            policy.solvency_etoken = etk
+            etk.lock_scr(policy, policy.scr)
+            break
+        else:
+            require(False, "Not enought ocean to cover the policy")
 
     def _transfer_to(self, target, amount):
         if amount == _W(0):
@@ -661,17 +645,19 @@ class PolicyPool(AccessControlContract):
 
         require(payout == 0 or policy.expiration > time_control.now, "Can't pay expired policy")
 
-        self.active_pure_premiums -= policy.pure_premium
+        pure_premium = policy.pure_premium
+        for_lps = policy.premium_for_lps
 
-        pure_premium, for_ensuro, for_rm, for_lps = policy.premium_split()
+        self.active_pure_premiums -= pure_premium
+
         adjustment = for_lps - policy.accrued_interest()
 
+        borrow_from_scr = Wad(0)
         if customer_won:
             policy_owner = self.policy_nft.owner_of(policy.id)
             self._transfer_to(policy_owner, payout)
             if policy.pure_premium >= payout:
                 pure_premium_won = policy.pure_premium - payout
-                borrow_from_scr = Wad(0)
             else:
                 pure_premium_won = Wad(0)
                 borrow_from_scr = self._pay_from_pool(payout - policy.pure_premium)
@@ -684,28 +670,25 @@ class PolicyPool(AccessControlContract):
                 self.borrowed_active_pp -= to_cover
                 pure_premium_won -= to_cover
 
-        etk_borrow_left = Wad(0)
-        for (etoken_name, scr_amount) in policy.locked_funds.items():
-            etk = self.etokens[etoken_name]
-            etk.unlock_scr(policy, scr_amount)
-            etk_share = scr_amount // policy.scr
-            # etk_adjustment always done because policy may last more or less than initially calculated
-            etk_adjustment = adjustment * etk_share
-            etk.discrete_earning(etk_adjustment)
-            if not customer_won:
-                borrowed_from_etk = etk.get_pool_loan()
-                if borrowed_from_etk and pure_premium_won:  # if debt with token, repay from pure_premium
-                    repay_amount = min(borrowed_from_etk, pure_premium * etk_share)
-                    etk.repay_pool_loan(repay_amount)
-                    pure_premium_won -= repay_amount
-            elif borrow_from_scr:
-                etk_borrow = borrow_from_scr * etk_share
-                etk_borrow_left += etk_borrow - etk.lend_to_pool(etk_borrow)
+        etk = policy.solvency_etoken
+        etk.unlock_scr(policy, policy.scr)
+        etk.discrete_earning(adjustment)
 
-        if etk_borrow_left > self.NEGLIGIBLE_AMOUNT:
-            etk_borrow_left = self._take_loan_from_any_etk(etk_borrow_left)
+        if not customer_won:
+            borrowed_from_etk = etk.get_pool_loan()
+            if borrowed_from_etk and pure_premium_won:  # if debt with token, repay from pure_premium
+                repay_amount = min(borrowed_from_etk, pure_premium_won)
+                etk.repay_pool_loan(repay_amount)
+                pure_premium_won -= repay_amount
+        elif borrow_from_scr:
+            etk_borrow = borrow_from_scr
+            etk_borrow_left = etk_borrow - etk.lend_to_pool(etk_borrow)
 
-        require(etk_borrow_left <= self.NEGLIGIBLE_AMOUNT, "Don't know where to take the rest of the money")
+            if etk_borrow_left > self.NEGLIGIBLE_AMOUNT:
+                etk_borrow_left = self._take_loan_from_any_etk(etk_borrow_left)
+
+            require(etk_borrow_left <= self.NEGLIGIBLE_AMOUNT,
+                    "Don't know where to take the rest of the money")
 
         self._store_pure_premium_won(pure_premium_won)
 
@@ -719,18 +702,6 @@ class PolicyPool(AccessControlContract):
             if etk_borrow_left <= self.NEGLIGIBLE_AMOUNT:
                 break
         return etk_borrow_left
-
-    @external
-    def rebalance_policy(self, policy_id):
-        policy = self.policies[policy_id]
-
-        # unlock previous SCR
-        for (etoken_name, scr_amount) in policy.locked_funds.items():
-            etk = self.etokens[etoken_name]
-            etk.unlock_scr(policy, scr_amount)
-
-        policy.locked_funds = {}
-        self._lock_scr(policy)
 
     def get_investable(self):
         borrowed_from_etk = sum((etk.get_pool_loan() for etk in self.etokens.values()), Wad(0))
@@ -758,12 +729,6 @@ class PolicyPool(AccessControlContract):
             self.borrowed_active_pp += amount
             # borrowed_active_pp should be < active_pure_premiums
             # TODO: validation and handling, but shouldn't happen
-
-    def get_policy_fund_count(self, policy_id):
-        return len(self.policies[policy_id].locked_funds)
-
-    def get_policy_fund(self, policy_id, etoken):
-        return self.policies[policy_id].locked_funds.get(etoken.name, _W(0))
 
 
 class AssetManager(AccessControlContract):

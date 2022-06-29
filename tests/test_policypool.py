@@ -35,12 +35,6 @@ def _calculate_shares(balances, total_supply):
     return dict((k, v // total_supply) for (k, v) in balances.items())
 
 
-def _get_scr_share(policy, pool, etoken_name):
-    etoken = pool.etokens[etoken_name]
-    amount = pool.get_policy_fund(policy.id, etoken)
-    return (amount // policy.scr).to_ray()
-
-
 def _deposit(pool, etk_name, lp, amount, assert_deposit=True):
     """Approves and deposits a given amount"""
     pool.currency.approve(lp, pool.contract_id, amount)
@@ -354,10 +348,6 @@ def test_walkthrough(tenv):
         - user: CUST3
           amount: 130
     etokens:
-      - name: eUSD1WEEK
-        expiration_period: 604800
-      - name: eUSD1MONTH
-        expiration_period: 2592000
       - name: eUSD1YEAR
         expiration_period: 31536000
     """
@@ -377,7 +367,6 @@ def test_walkthrough(tenv):
     _deposit(pool, "eUSD1YEAR", "LP1", _W(1000))
 
     eUSD1YEAR = pool.etokens["eUSD1YEAR"]
-    eUSD1MONTH = pool.etokens["eUSD1MONTH"]
     USD = pool.currency
 
     assert eUSD1YEAR.balance_of("LP1") == _W(1000)
@@ -406,9 +395,6 @@ def test_walkthrough(tenv):
     assert policy.pure_premium.equal(_W(36) * _W(1/37))
     policy.interest_rate.assert_equal(_R("0.0402336860"), decimals=6)
 
-    assert pool.get_policy_fund_count(policy.id) == 1
-    assert pool.get_policy_fund(policy.id, eUSD1YEAR) == policy.scr
-
     assert eUSD1YEAR.balance_of('LP1').equal(_W("1000"))
     # After one day, balance increases because of accrued interest of policy
     timecontrol.fast_forward(DAY)
@@ -428,8 +414,7 @@ def test_walkthrough(tenv):
 
     # New deposits
     pool.currency.approve("LP3", pool.contract_id, _W(2000))
-    assert pool.deposit("eUSD1WEEK", "LP3", _W(500)) == _W(500)
-    assert pool.deposit("eUSD1MONTH", "LP3", _W(1500)) == _W(1500)
+    _deposit(pool, "eUSD1YEAR", "LP3", _W(2000))
 
     balances_1y = dict((lp, eUSD1YEAR.balance_of(lp)) for lp in ("LP1", "LP2", "LP3"))
     shares_1y = _calculate_shares(balances_1y, eUSD1YEAR.total_supply())
@@ -464,26 +449,13 @@ def test_walkthrough(tenv):
     p2_one_day_interest = policy.premium_split()[-1] // _W(10)
 
     eUSD1YEAR_ocean = eUSD1YEAR.ocean
-    eUSD1MONTH_ocean = eUSD1MONTH.ocean
-    total_ocean = eUSD1YEAR_ocean + eUSD1MONTH_ocean
-
-    assert pool.get_policy_fund_count(policy.id) == 2
-    expected = (
-        (eUSD1YEAR, policy.scr * eUSD1YEAR_ocean // total_ocean),
-        (eUSD1MONTH, policy.scr * eUSD1MONTH_ocean // total_ocean),
-    )
-
-    for etoken, expected_amount in expected:
-        pool.get_policy_fund(policy.id, etoken).assert_equal(expected_amount)
-
-    p2_1y_one_day_interest = p2_one_day_interest * _get_scr_share(policy_2, pool, "eUSD1YEAR").to_wad()
 
     timecontrol.fast_forward(DAY)
 
     for lp in ("LP1", "LP2", "LP3"):
         balance = eUSD1YEAR.balance_of(lp)
         assert balance.equal(
-            balances_1y[lp] + (p1_one_day_interest + p2_1y_one_day_interest) * shares_1y[lp]
+            balances_1y[lp] + (p1_one_day_interest + p2_one_day_interest) * shares_1y[lp]
         )
         balances_1y[lp] = balance
     shares_1y = _calculate_shares(balances_1y, eUSD1YEAR.total_supply())
@@ -517,7 +489,7 @@ def test_walkthrough(tenv):
     shares_after = _calculate_shares(balances_after, eUSD1YEAR.total_supply())
     assert shares_1y == shares_after
     assert (eUSD1YEAR.total_supply() - total_supply_before).equal(
-        p2_one_day_interest * _W(2) * _get_scr_share(policy_2, pool, "eUSD1YEAR").to_wad()
+        p2_one_day_interest * _W(2)
     )
     balances_1y = balances_after
 
@@ -525,7 +497,6 @@ def test_walkthrough(tenv):
     assert p2_accrued_interest.equal(policy_2.accrued_interest())
     p2_for_lps = policy_2.premium_split()[-1]
     adjustment = p2_for_lps - p2_accrued_interest
-    p2_1MONTH_share = _get_scr_share(policy_2, pool, "eUSD1MONTH")
     rm.resolve_policy(policy_2.id, False)
 
     assert USD.balance_of("CUST2") == _W(0)
@@ -535,21 +506,17 @@ def test_walkthrough(tenv):
         balance = eUSD1YEAR.balance_of(lp)
 
         (balance - balances_1y[lp]).assert_equal(
-            adjustment * (eUSD1YEAR_ocean // total_ocean) * shares_1y[lp]
+            adjustment * shares_1y[lp]
         )
         balances_1y[lp] = balance
     shares_1y = _calculate_shares(balances_1y, eUSD1YEAR.total_supply())
 
-    assert eUSD1MONTH.balance_of("LP3").equal(
-        _W(1500) + policy_2.premium_split()[-1] * p2_1MONTH_share.to_wad()
-    )
-
     assert eUSD1YEAR.get_pool_loan().equal((
         borrow_from_scr.to_ray() * (_R(1) + daily_pool_loan_interest * _R(2))
     ).to_wad())  # pool_loan is the same but with 2 days interest
-    eUSD1YEAR.total_supply().assert_equal(_W("2966.9818"))  # from Jupyter
+    eUSD1YEAR.total_supply().assert_equal(_W("4967"))
 
-    pool.withdraw("eUSD1YEAR", "LP2", None).assert_equal(_W("1977.98534"))
+    pool.withdraw("eUSD1YEAR", "LP2", None).assert_equal(_W("1986.7994"))
 
     policies = []
 
@@ -582,11 +549,9 @@ def test_walkthrough(tenv):
                 if p.payout < pool.pure_premiums:
                     change = _W(0)
                 else:
-                    change = (pool.pure_premiums - p.payout) * _get_scr_share(p, pool, "eUSD1YEAR").to_wad()
+                    change = (pool.pure_premiums - p.payout)
             else:
-                change = min(
-                    pool_loan, (p.pure_premium.to_ray() * _get_scr_share(p, pool, "eUSD1YEAR")).to_wad()
-                )
+                change = min(pool_loan, p.pure_premium)
             rm.resolve_policy(p.id, customer_won)
             policies.pop(0)
 
@@ -604,14 +569,13 @@ def test_walkthrough(tenv):
     for i, p in enumerate(policies):
         day = 65 + i
         customer_won = day % 37 == 36
-        p_1y_share = _get_scr_share(p, pool, "eUSD1YEAR")
         rm.resolve_policy(p.id, customer_won)
         if customer_won:
             won_count += 1
             repay = _W(0)
         else:
             repay = min(
-                pool_loan, (p.pure_premium.to_ray() * p_1y_share).to_wad()
+                pool_loan, p.pure_premium
             )
         assert eUSD1YEAR.get_pool_loan().equal(pool_loan - repay)
 
@@ -622,31 +586,28 @@ def test_walkthrough(tenv):
         pool_loan = eUSD1YEAR.get_pool_loan()
 
     assert eUSD1YEAR.get_pool_loan() == _W(0)
-    pool.pure_premiums.assert_equal(_W("21.21943222506249692"), decimals=2)  # from jypiter prints
+    pool.pure_premiums.assert_equal(_W("21.296283705442503107"), decimals=2)  # from jypiter prints
 
-    assert USD.balance_of(pool.contract_id).equal(
+    USD.balance_of(pool.contract_id).assert_equal(
         _W(1000 + 2000 + 2 - 35 + 2 * 65 - 72 * won_count) +
-        _W(2000) - _W("1977.98534"), decimals=2
+        _W(2000) - _W("1986.7994"), decimals=2
     )
 
     pool.withdraw("eUSD1YEAR", "LP1", None).assert_equal(
-        _W("1023.42788568762743449"), decimals=2
+        _W("1005.638186186546873425"), decimals=2
     )
-    pool.withdraw("eUSD1WEEK", "LP3", None).assert_equal(
-        _W("500.587288338126130735"), decimals=2
-    )
-    pool.withdraw("eUSD1MONTH", "LP3", None).assert_equal(
-        _W("1501.780045569056425935"), decimals=2
+    pool.withdraw("eUSD1YEAR", "LP3", None).assert_equal(
+        _W("2011.266018358631673932"), decimals=2
     )
     USD.balance_of(pool.contract_id).assert_equal(
-        _W("21.219432"), decimals=2
+        _W("21.296283705442503146"), decimals=2
     )
 
     USD.balance_of("LP1").assert_equal(
-        _W("1023.42788568762743449"), decimals=2
+        _W("1005.638186186546873425"), decimals=2
     )
     USD.balance_of("LP3").assert_equal(
-        _W("500.587288338126130735") + _W("1501.780045569056425935"), decimals=2
+        _W("2011.266018358631673932"), decimals=2
     )
     USD.balance_of("CUST3").assert_equal(_W(72))
 
