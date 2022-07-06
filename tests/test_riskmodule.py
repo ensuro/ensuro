@@ -30,14 +30,14 @@ def tenv(request):
                 pass
 
         pool = PolicyPoolMock(currency=currency)
-        premium_pool = ensuro.PremiumPool(pool=pool)
+        premiums_account = ensuro.PremiumsAccount(pool=pool)
 
         return TEnv(
             currency=currency,
             time_control=ensuro.time_control,
             pool_config=pool_config,
             kind="prototype",
-            rm_class=partial(ensuro.TrustfulRiskModule, policy_pool=pool, premium_pool=premium_pool)
+            rm_class=partial(ensuro.TrustfulRiskModule, policy_pool=pool, premiums_account=premiums_account)
         )
     elif request.param == "ethereum":
         PolicyPoolMock = get_provider().get_contract_factory("PolicyPoolMock")

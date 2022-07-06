@@ -358,7 +358,7 @@ def test_walkthrough(tenv):
     rm = pool.config.risk_modules["Roulette"]
     rm.grant_role("PRICER_ROLE", rm.owner)
     rm.grant_role("RESOLVER_ROLE", rm.owner)
-    premium_pool = rm.premium_pool
+    premiums_account = rm.premiums_account
     pool.config.grant_role("LEVEL2_ROLE", rm.owner)  # For setting scr_interest_rate
 
     with pytest.raises(RevertError, match="transfer amount exceeds allowance|insufficient allowance"):
@@ -466,7 +466,7 @@ def test_walkthrough(tenv):
     accrued_interest = p1_one_day_interest * _W(3)
     assert accrued_interest.equal(policy_1.accrued_interest())
 
-    borrow_from_scr = policy_1.payout - premium_pool.pure_premiums
+    borrow_from_scr = policy_1.payout - premiums_account.pure_premiums
     adjustment = policy_1.premium_split()[-1] - accrued_interest
     rm.resolve_policy(policy_1.id, True)
 
@@ -548,10 +548,10 @@ def test_walkthrough(tenv):
                 break
             if customer_won:
                 won_count += 1
-                if p.payout < premium_pool.pure_premiums:
+                if p.payout < premiums_account.pure_premiums:
                     change = _W(0)
                 else:
-                    change = (premium_pool.pure_premiums - p.payout)
+                    change = (premiums_account.pure_premiums - p.payout)
             else:
                 change = min(pool_loan, p.pure_premium)
             rm.resolve_policy(p.id, customer_won)
@@ -588,14 +588,14 @@ def test_walkthrough(tenv):
         pool_loan = eUSD1YEAR.get_pool_loan()
 
     assert eUSD1YEAR.get_pool_loan() == _W(0)
-    premium_pool.pure_premiums.assert_equal(_W("21.296283705442503107"), decimals=2)  # from jypiter prints
+    premiums_account.pure_premiums.assert_equal(_W("21.296283705442503107"), decimals=2)  # from jypiter prints
 
     USD.balance_of(pool.contract_id).assert_equal(
         _W(1000 + 2000 + 2 - 35 + 2 * 65 - 72 * won_count) +
-        _W(2000) - _W("1986.7994") - premium_pool.pure_premiums, decimals=2
+        _W(2000) - _W("1986.7994") - premiums_account.pure_premiums, decimals=2
     )
 
-    USD.balance_of(premium_pool.contract_id).assert_equal(premium_pool.pure_premiums)
+    USD.balance_of(premiums_account.contract_id).assert_equal(premiums_account.pure_premiums)
 
     pool.withdraw("eUSD1YEAR", "LP1", None).assert_equal(
         _W("1005.638186186546873425"), decimals=2
@@ -603,7 +603,7 @@ def test_walkthrough(tenv):
     pool.withdraw("eUSD1YEAR", "LP3", None).assert_equal(
         _W("2011.266018358631673932"), decimals=2
     )
-    USD.balance_of(premium_pool.contract_id).assert_equal(
+    USD.balance_of(premiums_account.contract_id).assert_equal(
         _W("21.296283705442503146"), decimals=2
     )
 
@@ -875,7 +875,7 @@ def test_pool_loan_partial_payout(tenv):
     rm = pool.config.risk_modules["Roulette"]
     rm.grant_role("PRICER_ROLE", rm.owner)
     rm.grant_role("RESOLVER_ROLE", rm.owner)
-    premium_pool = rm.premium_pool
+    premiums_account = rm.premiums_account
 
     usd = pool.currency
 
@@ -892,7 +892,7 @@ def test_pool_loan_partial_payout(tenv):
     policy.scr.assert_equal(_W(3600 * .8) - policy.pure_premium)
 
     eUSD1YEAR = pool.etokens["eUSD1YEAR"]
-    premium_pool.won_pure_premiums.assert_equal(_W(0))
+    premiums_account.won_pure_premiums.assert_equal(_W(0))
     eUSD1YEAR.get_pool_loan().assert_equal(_W(0))
 
     assert eUSD1YEAR.ocean.equal(_W(3500) - policy.scr)
@@ -902,7 +902,7 @@ def test_pool_loan_partial_payout(tenv):
     assert usd.balance_of("CUST1") == _W(1999)
 
     eUSD1YEAR.get_pool_loan().assert_equal(_W(1999) - policy.pure_premium)
-    assert premium_pool.pure_premiums == _W(0)
+    assert premiums_account.pure_premiums == _W(0)
 
 
 def test_increase_won_pure_premiums(tenv):
@@ -934,7 +934,7 @@ def test_increase_won_pure_premiums(tenv):
     rm = pool.config.risk_modules["Roulette"]
     rm.grant_role("PRICER_ROLE", rm.owner)
     rm.grant_role("RESOLVER_ROLE", rm.owner)
-    premium_pool = rm.premium_pool
+    premiums_account = rm.premiums_account
 
     usd = pool.currency
 
@@ -950,7 +950,7 @@ def test_increase_won_pure_premiums(tenv):
     policy.scr.assert_equal(_W(3600 * .8) - policy.pure_premium)
 
     eUSD1YEAR = pool.etokens["eUSD1YEAR"]
-    premium_pool.won_pure_premiums.assert_equal(_W(0))
+    premiums_account.won_pure_premiums.assert_equal(_W(0))
     eUSD1YEAR.get_pool_loan().assert_equal(_W(0))
 
     assert eUSD1YEAR.ocean.equal(_W(3500) - policy.scr)
@@ -960,7 +960,7 @@ def test_increase_won_pure_premiums(tenv):
 
     assert _W(60) < policy.pure_premium
 
-    premium_pool.won_pure_premiums.assert_equal(policy.pure_premium - _W(60))
+    premiums_account.won_pure_premiums.assert_equal(policy.pure_premium - _W(60))
 
 
 def test_payout_bigger_than_pure_premium(tenv):
@@ -992,7 +992,7 @@ def test_payout_bigger_than_pure_premium(tenv):
     rm = pool.config.risk_modules["Roulette"]
     rm.grant_role("PRICER_ROLE", rm.owner)
     rm.grant_role("RESOLVER_ROLE", rm.owner)
-    premium_pool = rm.premium_pool
+    premiums_account = rm.premiums_account
 
     usd = pool.currency
 
@@ -1007,13 +1007,13 @@ def test_payout_bigger_than_pure_premium(tenv):
     policy.pure_premium.assert_equal(_W("97.297297"))
 
     eUSD1YEAR = pool.etokens["eUSD1YEAR"]
-    premium_pool.won_pure_premiums.assert_equal(_W(0))
+    premiums_account.won_pure_premiums.assert_equal(_W(0))
     eUSD1YEAR.get_pool_loan().assert_equal(_W(0))
 
     timecontrol.fast_forward(WEEK - HOUR)
     rm.resolve_policy(policy.id, _W(100))
     assert usd.balance_of("CUST1") == _W(100)
-    premium_pool.won_pure_premiums.assert_equal(_W(0))
+    premiums_account.won_pure_premiums.assert_equal(_W(0))
     eUSD1YEAR.get_pool_loan().assert_equal(_W(100) - policy.pure_premium)
 
 
@@ -1052,7 +1052,7 @@ def xtest_asset_manager(tenv):
     rm = pool.config.risk_modules["Roulette"]
     rm.grant_role("PRICER_ROLE", rm.owner)
     rm.grant_role("RESOLVER_ROLE", rm.owner)
-    premium_pool = rm.premium_pool
+    premiums_account = rm.premiums_account
 
     USD = pool.currency
     etk = pool.etokens["eUSD1YEAR"]
@@ -1100,7 +1100,7 @@ def xtest_asset_manager(tenv):
     etk_share = etk.get_investable() // asset_manager.total_investable()
     asset_manager.checkpoint()
 
-    premium_pool.won_pure_premiums.assert_equal(_W(8500) * _W("0.025") * pool_share)
+    premiums_account.won_pure_premiums.assert_equal(_W(8500) * _W("0.025") * pool_share)
     etk.balance_of("LP1").assert_equal(
         lp1_balance + for_lps + _W(8500) * _W("0.025") * etk_share, decimals=2
     )
@@ -1154,7 +1154,7 @@ def xtest_assets_under_liquidity_middle(tenv):
     rm = pool.config.risk_modules["Roulette"]
     rm.grant_role("PRICER_ROLE", rm.owner)
     rm.grant_role("RESOLVER_ROLE", rm.owner)
-    premium_pool = rm.premium_pool
+    premiums_account = rm.premiums_account
 
     pool.config.grant_role("LEVEL2_ROLE", rm.owner)  # For setting moc
 
@@ -1201,7 +1201,7 @@ def xtest_assets_under_liquidity_middle(tenv):
     rm.resolve_policy(policy_2.id, _W(3))
 
     pool.withdraw("eUSD1YEAR", "LP1", _W(80)).assert_equal(_W(80))
-    premium_pool.pure_premiums.assert_equal(_W(0))
+    premiums_account.pure_premiums.assert_equal(_W(0))
     etk.get_pool_loan().assert_equal(_W(3) - policy.pure_premium - policy_2.pure_premium)
 
 
@@ -1430,9 +1430,9 @@ def xtest_distribute_negative_earnings_from_pool_and_etokens(tenv):
     timecontrol.fast_forward(365 * DAY)
 
     assert USD.balance_of(pool.contract_id) == _W(1500)
-    pool.get_investable().assert_equal(premium_pool.pure_premiums)
-    assert premium_pool.pure_premiums > policy.pure_premium  # Increased because of earnings
-    prev_pp = premium_pool.pure_premiums
+    pool.get_investable().assert_equal(premiums_account.pure_premiums)
+    assert premiums_account.pure_premiums > policy.pure_premium  # Increased because of earnings
+    prev_pp = premiums_account.pure_premiums
     etk.get_investable().assert_equal(etk.ocean + etk.scr + etk.get_pool_loan())
 
     pre_investment_value = asset_manager.get_investment_value()
@@ -1443,8 +1443,8 @@ def xtest_distribute_negative_earnings_from_pool_and_etokens(tenv):
     (pre_investment_value - post_investment_value).assert_equal(
         pre_investment_value * _W("0.05"), decimals=2
     )
-    pool.get_investable().assert_equal(premium_pool.pure_premiums)
-    assert premium_pool.pure_premiums < prev_pp  # Reduced negative earnings
+    pool.get_investable().assert_equal(premiums_account.pure_premiums)
+    assert premiums_account.pure_premiums < prev_pp  # Reduced negative earnings
     etk.get_investable().assert_equal(etk.ocean + etk.scr + etk.get_pool_loan())
 
 
@@ -1645,8 +1645,8 @@ def xtest_lp_insolvency_hook_cover_etoken(tenv):
 @set_precision(Wad, 3)
 def xtest_lp_insolvency_hook_other_etk(tenv):
     vars = test_insolvency_without_hook(tenv)
-    pool, premium_pool, rm, etk, for_lps, policy, USD, timecontrol = extract_vars(
-        vars, "pool,premium_pool,rm,etk,for_lps,policy,USD,timecontrol"
+    pool, premiums_account, rm, etk, for_lps, policy, USD, timecontrol = extract_vars(
+        vars, "pool,premiums_account,rm,etk,for_lps,policy,USD,timecontrol"
     )
     etk1m = pool.etokens["eUSD1MONTH"]
     ins_hook = tenv.module.LPInsolvencyHook(pool=pool, etoken="eUSD1MONTH")
@@ -1670,7 +1670,7 @@ def xtest_lp_insolvency_hook_other_etk(tenv):
     # Now our charitative customers gives some of the money back as grant
     USD.approve("CUST1", pool.contract_id, _W(9200))
     pool.receive_grant("CUST1", _W(4000))
-    premium_pool.won_pure_premiums.assert_equal(_W(4000))  # The grant is on premium pool
+    premiums_account.won_pure_premiums.assert_equal(_W(4000))  # The grant is on premium pool
 
     pool.repay_etoken_loan("eUSD1MONTH").assert_equal(_W(4000))
     etk1m.get_pool_loan().assert_equal(_W(4000) + policy.premium_for_ensuro + policy.premium_for_rm,
@@ -1678,7 +1678,7 @@ def xtest_lp_insolvency_hook_other_etk(tenv):
     etk1m_pool_loan = etk1m.get_pool_loan()
 
     etk1m.balance_of(ins_hook).assert_equal(_W(4000), decimals=2)
-    premium_pool.won_pure_premiums.assert_equal(_W(0))  # The grant is no longer in premium pool
+    premiums_account.won_pure_premiums.assert_equal(_W(0))  # The grant is no longer in premium pool
 
     # After some time and send another grant
     timecontrol.fast_forward(30 * DAY)
@@ -1809,7 +1809,7 @@ def test_expire_policy(tenv):
     rm.grant_role("PRICER_ROLE", rm.owner)
     rm.grant_role("RESOLVER_ROLE", rm.owner)
     pool.config.grant_role("LEVEL2_ROLE", rm.owner)  # For setting moc
-    premium_pool = rm.premium_pool
+    premiums_account = rm.premiums_account
 
     with rm.as_(rm.owner):
         rm.moc = _R("1.1")
@@ -1851,7 +1851,7 @@ def test_expire_policy(tenv):
     USD.balance_of("ENS").assert_equal(for_ensuro)
     USD.balance_of("MGA").assert_equal(for_rm)
     USD.balance_of("CUST1").assert_equal(_W(0))
-    premium_pool.won_pure_premiums.assert_equal(pure_premium)
+    premiums_account.won_pure_premiums.assert_equal(pure_premium)
     rm.total_scr.assert_equal(_W(0))
 
     return locals()
@@ -1915,25 +1915,25 @@ def test_withdraw_won_premiums(tenv):
     if is_brownie_coverage_enabled(tenv):
         return  # This test never ends if coverage is activated
     vars = test_expire_policy(tenv)
-    pool, premium_pool, USD = extract_vars(
-        vars, "pool,premium_pool,USD"
+    pool, premiums_account, USD = extract_vars(
+        vars, "pool,premiums_account,USD"
     )
     treasury_balance = USD.balance_of("ENS")
-    won_pure_premiums = premium_pool.won_pure_premiums
+    won_pure_premiums = premiums_account.won_pure_premiums
 
     with pytest.raises(RevertError, match="AccessControl"):
-        premium_pool.withdraw_won_premiums(_W(1))
+        premiums_account.withdraw_won_premiums(_W(1))
 
     pool.config.grant_role("WITHDRAW_WON_PREMIUMS_ROLE", "PREMIUM_WITHDRAWER")
 
-    with premium_pool.as_("PREMIUM_WITHDRAWER"):
-        premium_pool.withdraw_won_premiums(_W(10)).assert_equal(_W(10))
+    with premiums_account.as_("PREMIUM_WITHDRAWER"):
+        premiums_account.withdraw_won_premiums(_W(10)).assert_equal(_W(10))
 
     USD.balance_of("ENS").assert_equal(treasury_balance + _W(10))
-    premium_pool.won_pure_premiums.assert_equal(won_pure_premiums - _W(10))
+    premiums_account.won_pure_premiums.assert_equal(won_pure_premiums - _W(10))
 
-    with premium_pool.as_("PREMIUM_WITHDRAWER"):
-        premium_pool.withdraw_won_premiums(_W(999999)).assert_equal(won_pure_premiums - _W(10))
+    with premiums_account.as_("PREMIUM_WITHDRAWER"):
+        premiums_account.withdraw_won_premiums(_W(999999)).assert_equal(won_pure_premiums - _W(10))
 
     USD.balance_of("ENS").assert_equal(treasury_balance + won_pure_premiums)
-    premium_pool.won_pure_premiums.assert_equal(0)
+    premiums_account.won_pure_premiums.assert_equal(0)

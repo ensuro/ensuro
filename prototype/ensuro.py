@@ -32,7 +32,7 @@ time_control = TimeControl()
 
 class RiskModule(AccessControlContract):
     policy_pool = ContractProxyField()
-    premium_pool = ContractProxyField()
+    premiums_account = ContractProxyField()
     name = StringField()
     moc = RayField(default=_R(1))
     scr_percentage = RayField(default=Ray(0))
@@ -456,7 +456,7 @@ class PolicyPoolConfig(AccessControlContract):
         self.policy_pool = policy_pool
 
     def add_risk_module(self, risk_module):
-        # TODO: validate risk_module.premium_pool.pool = self.policy_pool
+        # TODO: validate risk_module.premiums_account.pool = self.policy_pool
         self.risk_modules[risk_module.name] = ContractProxy(risk_module.contract_id)
 
     @only_role("LEVEL1_ROLE", "GUARDIAN_ROLE")
@@ -473,7 +473,7 @@ class PolicyPoolConfig(AccessControlContract):
         self.asset_manager = asset_manager
 
 
-class PremiumPool(AccessControlContract):
+class PremiumsAccount(AccessControlContract):
     pool = ContractProxyField()
     active_pure_premiums = WadField(default=Wad(0))
     borrowed_active_pp = WadField(default=Wad(0))
@@ -543,7 +543,6 @@ class PremiumPool(AccessControlContract):
             balance = self.currency.balance_of(self.contract_id)
 
         if amount > balance:
-            import ipdb; ipdb.set_trace()
             self.currency.transfer(self.contract_id, target, balance)
             return amount - balance
         else:
@@ -652,14 +651,14 @@ class PolicyPool(AccessControlContract):
 
         assert policy.interest_rate >= 0
 
-        policy.risk_module.premium_pool.new_policy(policy)
+        policy.risk_module.premiums_account.new_policy(policy)
 
         self._lock_scr(policy)
 
         self.policies[policy.id] = policy
         self.currency.transfer_from(
             self.contract_id, customer,
-            policy.risk_module.premium_pool, policy.pure_premium
+            policy.risk_module.premiums_account, policy.pure_premium
         )
         self.currency.transfer_from(
             self.contract_id, customer,
@@ -728,13 +727,13 @@ class PolicyPool(AccessControlContract):
         borrow_from_scr = Wad(0)
         if customer_won:
             policy_owner = self.policy_nft.owner_of(policy.id)
-            borrow_from_scr = policy.risk_module.premium_pool.policy_resolved_with_payout(
+            borrow_from_scr = policy.risk_module.premiums_account.policy_resolved_with_payout(
                 policy_owner, policy, payout
             )
             if borrow_from_scr > 0:
                 self._transfer_to(policy_owner, borrow_from_scr)
         else:
-            policy.risk_module.premium_pool.policy_expired(policy)
+            policy.risk_module.premiums_account.policy_expired(policy)
 
         if borrow_from_scr:
             etk_borrow = borrow_from_scr

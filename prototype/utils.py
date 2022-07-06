@@ -94,16 +94,16 @@ def load_config(yaml_config=None, module=None):
     pool = module.PolicyPool(**pool_params)
     pool.config.grant_role("LEVEL1_ROLE", pool_config.owner)
 
-    for premium_pool_dict in config.get("premium_pools", []):
-        premium_pool_dict["pool"] = pool
-        default_premium_pool = module.PremiumPool(**premium_pool_dict)
+    for premiums_account_dict in config.get("premiums_accounts", []):
+        premiums_account_dict["pool"] = pool
+        default_premiums_account = module.PremiumsAccount(**premiums_account_dict)
     else:
-        default_premium_pool = module.PremiumPool(pool=pool)
+        default_premiums_account = module.PremiumsAccount(pool=pool)
 
     for risk_module_dict in config.get("risk_modules", []):
         risk_module_dict["policy_pool"] = pool
-        if "premium_pool" not in risk_module_dict:
-            risk_module_dict["premium_pool"] = default_premium_pool
+        if "premiums_account" not in risk_module_dict:
+            risk_module_dict["premiums_account"] = default_premiums_account
         rm = module.TrustfulRiskModule(**risk_module_dict)
         pool.config.add_risk_module(rm)
 
