@@ -41,19 +41,24 @@ def tenv(request):
         )
     elif request.param == "ethereum":
         PolicyPoolMock = get_provider().get_contract_factory("PolicyPoolMock")
+        PremiumsAccountMock = get_provider().get_contract_factory("PolicyPoolComponentMock")
 
         currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
         config = wrappers.PolicyPoolConfig(owner="owner")
 
         pool = PolicyPoolMock.deploy(currency.contract, config.contract, {"from": currency.owner})
+        premiums_account = PremiumsAccountMock.deploy(pool, {"from": currency.owner})
 
         return TEnv(
             currency=currency,
             time_control=get_provider().time_control,
             pool_config=config,
             kind="ethereum",
-            rm_class=partial(wrappers.TrustfulRiskModule,
-                             policy_pool=wrappers.PolicyPool.connect(pool, currency.owner))
+            rm_class=partial(
+                wrappers.TrustfulRiskModule,
+                policy_pool=wrappers.PolicyPool.connect(pool, currency.owner),
+                premiums_account=premiums_account
+            )
         )
 
 

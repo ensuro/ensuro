@@ -13,8 +13,7 @@ USDC = make_integer_float(6, "USDC")
 _D = USDC.from_value
 
 
-# @pytest.fixture(params=["prototype", "ethereum"])
-@pytest.fixture(params=["prototype"])
+@pytest.fixture(params=["prototype", "ethereum"])
 def tenv(request):
     if request.param == "prototype":
         from prototype import ensuro

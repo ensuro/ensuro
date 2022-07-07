@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IPolicyPool} from "../../interfaces/IPolicyPool.sol";
+import {IPremiumsAccount} from "../../interfaces/IPremiumsAccount.sol";
 import {IPolicyPoolConfig} from "../../interfaces/IPolicyPoolConfig.sol";
 import {RiskModule} from "../RiskModule.sol";
 import {Policy} from "../Policy.sol";
@@ -66,10 +67,11 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(
     IPolicyPool policyPool_,
+    IPremiumsAccount premiumsAccount_,
     IERC20Metadata asset_,
     IERC20Metadata referenceCurrency_,
     uint256 slotSize_
-  ) RiskModule(policyPool_) {
+  ) RiskModule(policyPool_, premiumsAccount_) {
     _asset = asset_;
     _referenceCurrency = referenceCurrency_;
     _slotSize = slotSize_;

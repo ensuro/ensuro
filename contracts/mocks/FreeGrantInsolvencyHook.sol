@@ -36,7 +36,7 @@ contract FreeGrantInsolvencyHook is IInsolvencyHook, IPolicyPoolComponent {
     IERC20 currency = _policyPool.currency();
     IMintableERC20(address(currency)).mint(address(this), paymentAmount);
     currency.approve(address(_policyPool), paymentAmount);
-    _policyPool.receiveGrant(paymentAmount);
+    // _policyPool.receiveGrant(paymentAmount); - TODO
     cashGranted += paymentAmount;
     emit OutOfCashGranted(paymentAmount);
   }

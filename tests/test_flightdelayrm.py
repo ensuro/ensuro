@@ -9,7 +9,7 @@ from prototype import wrappers
 from . import extract_vars
 
 
-TEnv = namedtuple("TEnv", "time_control currency pool pool_config kind module link_token")
+TEnv = namedtuple("TEnv", "time_control currency pool premiums_account pool_config kind module link_token")
 
 
 class LinkTokenMock(IERC20):
@@ -30,12 +30,14 @@ def tenv(request):
     link_token = LinkTokenMock()
 
     pool = get_provider().deploy("PolicyPoolMock", (currency.contract, config.contract), currency.owner)
+    premiums_account = get_provider().deploy("PolicyPoolComponentMock", (pool, ), currency.owner)
 
     return TEnv(
         currency=currency,
         time_control=get_provider().time_control,
         pool_config=config,
         pool=wrappers.PolicyPool.connect(pool, currency.owner),
+        premiums_account=wrappers.PremiumsAccount.connect(premiums_account, currency.owner),
         link_token=link_token,
         kind="ethereum",
         module=wrappers,
@@ -45,7 +47,7 @@ def tenv(request):
 def test_flightdelay_set_oracle_params(tenv):
     FlightDelayRiskModule = tenv.module.FlightDelayRiskModule
     rm = FlightDelayRiskModule(
-        "Flyion", tenv.pool, link_token=tenv.link_token,
+        "Flyion", tenv.pool, tenv.premiums_account, link_token=tenv.link_token,
         oracle_params=FlightDelayRiskModule.OracleParams(
             oracle="ORACLE", delay_time=30, fee=_W("0.1"),
             data_job_id="0x2fb0c3a36f924e4ab43040291e14e0b7",
@@ -80,7 +82,7 @@ def test_flightdelay_set_oracle_params(tenv):
 def test_flightdelay_setup_with_mock_oracle(tenv):
     FlightDelayRiskModule = tenv.module.FlightDelayRiskModule
     rm = FlightDelayRiskModule(
-        "Flyion", tenv.pool, link_token=tenv.link_token,
+        "Flyion", tenv.pool, tenv.premiums_account, link_token=tenv.link_token,
         oracle_params=FlightDelayRiskModule.OracleParams(
             oracle="ORACLE", delay_time=30, fee=_W("0.1"),
             data_job_id="0x2fb0c3a36f924e4ab43040291e14e0b7",

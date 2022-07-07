@@ -8,6 +8,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import {IPremiumsAccount} from "../interfaces/IPremiumsAccount.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {IRiskModule} from "../interfaces/IRiskModule.sol";
 import {IInsolvencyHook} from "../interfaces/IInsolvencyHook.sol";
@@ -18,7 +19,6 @@ import {IPolicyHolder} from "../interfaces/IPolicyHolder.sol";
 import {IAssetManager} from "../interfaces/IAssetManager.sol";
 import {Policy} from "./Policy.sol";
 import {WadRayMath} from "./WadRayMath.sol";
-import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {DataTypes} from "./DataTypes.sol";
 
 /**
@@ -46,8 +46,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   // solhint-disable-next-line var-name-mixedcase
   uint256 public immutable NEGLIGIBLE_AMOUNT; // init as 10**(decimals-3) == 0.001 USD
 
-  bytes32 public constant WITHDRAW_WON_PREMIUMS_ROLE = keccak256("WITHDRAW_WON_PREMIUMS_ROLE");
-
   bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
   bytes32 public constant LEVEL1_ROLE = keccak256("LEVEL1_ROLE");
   bytes32 public constant LEVEL2_ROLE = keccak256("LEVEL2_ROLE");
@@ -67,21 +65,11 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   mapping(uint256 => bytes32) internal _policies;
   mapping(uint256 => IEToken) internal _policySolvency;
 
-  uint256 internal _activePurePremiums; // sum of pure-premiums of active policies - In Wad
-  uint256 internal _borrowedActivePP; // amount borrowed from active pure premiums to pay defaulted policies
-  uint256 internal _wonPurePremiums; // amount of pure premiums won from non-defaulted policies
-
   event NewPolicy(IRiskModule indexed riskModule, Policy.PolicyData policy);
   event PolicyRebalanced(IRiskModule indexed riskModule, uint256 indexed policyId);
   event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, uint256 payout);
 
   event ETokenStatusChanged(IEToken indexed eToken, DataTypes.ETokenStatus newStatus);
-
-  /*
-   * Premiums can come in (for free, without liability) with receiveGrant.
-   * And can come out (withdrawed to treasury) with withdrawWonPremiums
-   */
-  event WonPremiumsInOut(bool moneyIn, uint256 value);
 
   modifier onlyAssetManager() {
     require(
@@ -127,11 +115,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
       "AssetManager can't be set before PolicyPool initialization"
     );
     _policyNFT.connect();
-    /*
-    _activePurePremiums = 0;
-    _borrowedActivePP = 0;
-    _wonPurePremiums = 0;
-    */
   }
 
   // solhint-disable-next-line no-empty-blocks
@@ -155,22 +138,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
 
   function policyNFT() external view virtual override returns (address) {
     return address(_policyNFT);
-  }
-
-  function purePremiums() public view returns (uint256) {
-    return _activePurePremiums + _wonPurePremiums - _borrowedActivePP;
-  }
-
-  function activePurePremiums() external view returns (uint256) {
-    return _activePurePremiums;
-  }
-
-  function wonPurePremiums() external view returns (uint256) {
-    return _wonPurePremiums;
-  }
-
-  function borrowedActivePP() external view returns (uint256) {
-    return _borrowedActivePP;
   }
 
   // #if_succeeds_disabled {:msg "eToken added as active"} _eTokens.get(eToken) == DataTypes.ETokenStatus.active;
@@ -262,10 +229,12 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     _config.checkAcceptsNewPolicy(rm);
     policy.id = (uint256(uint160(address(rm))) << 96) + internalId;
     _policies[policy.id] = policy.hash();
-    _activePurePremiums += policy.purePremium;
+    IPremiumsAccount pa = rm.premiumsAccount();
+    pa.newPolicy(policy.purePremium);
     _lockScr(policy);
     _policyNFT.safeMint(customer, policy.id);
-    _currency.safeTransferFrom(customer, address(this), policy.purePremium + policy.premiumForLps);
+    _currency.safeTransferFrom(customer, address(pa), policy.purePremium);
+    _currency.safeTransferFrom(customer, address(this), policy.premiumForLps);
     _currency.safeTransferFrom(customer, _config.treasury(), policy.premiumForEnsuro);
     if (policy.premiumForRm > 0 && customer != rm.wallet())
       _currency.safeTransferFrom(customer, rm.wallet(), policy.premiumForRm);
@@ -295,79 +264,19 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
 
   function _transferTo(address destination, uint256 amount) internal {
     if (amount == 0) return;
-    if (_config.assetManager() != IAssetManager(address(0)) && _balance() < amount) {
+    uint256 balance = _balance();
+    if (_config.assetManager() != IAssetManager(address(0)) && balance < amount) {
       _config.assetManager().refillWallet(amount);
+      balance = _balance();
+    }
+    if (balance < amount && (amount - balance) < NEGLIGIBLE_AMOUNT) {
+      amount = balance;
     }
     // Calculate again the balance and check if enought, if not call unsolvency_hook
     if (_config.insolvencyHook() != IInsolvencyHook(address(0)) && _balance() < amount) {
       _config.insolvencyHook().outOfCash(amount - _balance());
     }
     _currency.safeTransfer(destination, amount);
-  }
-
-  function _payFromPool(uint256 toPay) internal returns (uint256) {
-    // 1. take from won_pure_premiums
-    if (toPay <= _wonPurePremiums) {
-      _wonPurePremiums -= toPay;
-      return 0;
-    }
-    if (_wonPurePremiums > 0) {
-      toPay -= _wonPurePremiums;
-      _wonPurePremiums = 0;
-    }
-    // 2. borrow from active pure premiums
-    if (_activePurePremiums > _borrowedActivePP) {
-      if (toPay <= (_activePurePremiums - _borrowedActivePP)) {
-        _borrowedActivePP += toPay;
-        return 0;
-      } else {
-        toPay -= _activePurePremiums - _borrowedActivePP;
-        _borrowedActivePP = _activePurePremiums;
-      }
-    }
-    return toPay;
-  }
-
-  function _storePurePremiumWon(uint256 purePremiumWon) internal {
-    if (purePremiumWon == 0) return;
-    if (_borrowedActivePP >= purePremiumWon) {
-      _borrowedActivePP -= purePremiumWon;
-    } else {
-      if (_borrowedActivePP > 0) {
-        purePremiumWon -= _borrowedActivePP;
-        _borrowedActivePP = 0;
-      }
-      _wonPurePremiums += purePremiumWon;
-    }
-  }
-
-  function _processResolution(
-    Policy.PolicyData memory policy,
-    bool customerWon,
-    uint256 payout
-  ) internal returns (uint256, uint256) {
-    uint256 borrowFromScr; // = 0
-    uint256 purePremiumWon; // = 0
-    uint256 aux;
-
-    if (customerWon) {
-      _transferTo(_policyNFT.ownerOf(policy.id), payout);
-      if (policy.purePremium > payout) {
-        purePremiumWon = policy.purePremium - payout;
-      } else {
-        borrowFromScr = _payFromPool(payout - policy.purePremium);
-      }
-    } else {
-      // Pay RM and Ensuro
-      purePremiumWon = policy.purePremium;
-      // cover first _borrowedActivePP
-      if (_borrowedActivePP > _activePurePremiums) {
-        aux = Math.min(_borrowedActivePP - _activePurePremiums, purePremiumWon);
-        _borrowedActivePP -= aux;
-        purePremiumWon -= aux;
-      }
-    }
-    return (borrowFromScr, purePremiumWon);
   }
 
   function _validatePolicy(Policy.PolicyData memory policy) internal view {
@@ -409,30 +318,33 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
 
     bool customerWon = payout > 0;
 
-    _activePurePremiums -= policy.purePremium;
-
-    (uint256 borrowFromScr, uint256 purePremiumWon) = _processResolution(
-      policy,
-      customerWon,
-      payout
-    );
-
+    // Unlock SCR and adjust eToken
     IEToken etk = _policySolvency[policy.id];
     etk.unlockScr(policy.interestRate(), policy.scr);
     (bool positive, uint256 adjustment) = _interestAdjustment(policy);
     etk.discreteEarning(adjustment, positive);
 
-    if (borrowFromScr > 0) {
-      borrowFromScr = borrowFromScr - etk.lendToPool(borrowFromScr, true);
-      if (borrowFromScr > NEGLIGIBLE_AMOUNT) borrowFromScr = _takeLoanFromAnyEtk(borrowFromScr);
-      require(borrowFromScr <= NEGLIGIBLE_AMOUNT, "Don't know where to take the rest of the money");
-    } else if (purePremiumWon > 0 && etk.getPoolLoan() > 0) {
-      uint256 aux = Math.min(purePremiumWon, etk.getPoolLoan());
-      etk.repayPoolLoan(aux);
-      purePremiumWon -= aux;
+    if (customerWon) {
+      address policyOwner = _policyNFT.ownerOf(policy.id);
+      uint256 borrowFromScr = rm.premiumsAccount().policyResolvedWithPayout(
+        policyOwner,
+        policy.purePremium,
+        payout
+      );
+      if (borrowFromScr > 0) {
+        _transferTo(policyOwner, borrowFromScr);
+        borrowFromScr = borrowFromScr - etk.lendToPool(borrowFromScr, true);
+        if (borrowFromScr > NEGLIGIBLE_AMOUNT) borrowFromScr = _takeLoanFromAnyEtk(borrowFromScr);
+        require(
+          borrowFromScr <= NEGLIGIBLE_AMOUNT,
+          "Don't know where to take the rest of the money"
+        );
+      }
+    } else {
+      uint256 etkRepayment = rm.premiumsAccount().policyExpired(policy.purePremium, etk);
+      if (etkRepayment > 0) etk.repayPoolLoan(etkRepayment); // TODO repayment will be done in premium pool
     }
 
-    _storePurePremiumWon(purePremiumWon); // it's possible in some cases purePremiumWon > 0 && customerWon
     rm.releaseScr(policy.scr);
 
     emit PolicyResolved(policy.riskModule, policy.id, payout);
@@ -504,71 +416,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     return loanLeft;
   }
 
-  /**
-   *
-   * Repays a loan taken with the eToken with the money in the premium pool.
-   * The repayment should happen without calling this method when customer losses and eToken is one of the
-   * policyFunds. But sometimes we need to take loans from tokens not linked to the policy.
-   *
-   * returns The amount repaid
-   *
-   * Requirements:
-   *
-   * - `eToken` must be `active` or `deprecated`
-   */
-  function repayETokenLoan(IEToken eToken) external whenNotPaused returns (uint256) {
-    (bool found, DataTypes.ETokenStatus etkStatus) = _eTokens.tryGet(eToken);
-    require(
-      found &&
-        (etkStatus == DataTypes.ETokenStatus.active ||
-          etkStatus == DataTypes.ETokenStatus.deprecated),
-      "eToken is not active"
-    );
-    uint256 poolLoan = eToken.getPoolLoan();
-    uint256 toPayLater = _payFromPool(poolLoan);
-    eToken.repayPoolLoan(poolLoan - toPayLater);
-    return poolLoan - toPayLater;
-  }
-
-  /**
-   *
-   * Endpoint to receive "free money" and inject that money into the premium pool.
-   *
-   * Can be used for example if the PolicyPool subscribes an excess loss policy with other company.
-   *
-   */
-  function receiveGrant(uint256 amount) external override {
-    _currency.safeTransferFrom(msg.sender, address(this), amount);
-    _storePurePremiumWon(amount);
-    emit WonPremiumsInOut(true, amount);
-  }
-
-  /**
-   *
-   * Withdraws excess premiums to PolicyPool's treasury.
-   * This might be needed in some cases for example if we are deprecating the protocol or the excess premiums
-   * are needed to compensate something. Shouldn't be used. Can be disabled revoking role WITHDRAW_WON_PREMIUMS_ROLE
-   *
-   * returns The amount withdrawed
-   *
-   * Requirements:
-   *
-   * - onlyRole(WITHDRAW_WON_PREMIUMS_ROLE)
-   * - _wonPurePremiums > 0
-   */
-  function withdrawWonPremiums(uint256 amount)
-    external
-    onlyRole(WITHDRAW_WON_PREMIUMS_ROLE)
-    returns (uint256)
-  {
-    if (amount > _wonPurePremiums) amount = _wonPurePremiums;
-    require(amount > 0, "No premiums to withdraw");
-    _wonPurePremiums -= amount;
-    _transferTo(_config.treasury(), amount);
-    emit WonPremiumsInOut(false, amount);
-    return amount;
-  }
-
   function getInvestable() external view override returns (uint256) {
     uint256 borrowedFromEtk = 0;
     for (uint256 i = 0; i < _eTokens.length(); i++) {
@@ -579,7 +426,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
       // TODO: define if not active are investable or not
       borrowedFromEtk += etk.getPoolLoan();
     }
-    uint256 premiums = purePremiums();
+    // uint256 premiums = purePremiums();
+    uint256 premiums = 0; // TODO
     if (premiums > borrowedFromEtk) return premiums - borrowedFromEtk;
     else return 0;
   }
@@ -602,7 +450,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     override
     onlyAssetManager
     whenNotPaused
-  {
+  {} // solhint-disable-line no-empty-blocks
+
+  /*
     if (positive) {
       // earnings
       _storePurePremiumWon(amount);
@@ -610,7 +460,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
       // losses
       _payFromPool(amount); // return value should be 0 if not, losses are more than capital available
     }
-  }
+    // TODO
+  }*/
 
   function getSolvencyETK(uint256 policyId) external view returns (IEToken) {
     return _policySolvency[policyId];

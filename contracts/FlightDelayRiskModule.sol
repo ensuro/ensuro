@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
+import {IPremiumsAccount} from "../interfaces/IPremiumsAccount.sol";
 import {Policy} from "./Policy.sol";
 import {RiskModule} from "./RiskModule.sol";
 import {Chainlink} from "@chainlink/contracts/src/v0.8/Chainlink.sol";
@@ -44,7 +45,9 @@ contract FlightDelayRiskModule is RiskModule, ChainlinkClientUpgradeable {
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
-  constructor(IPolicyPool policyPool_) RiskModule(policyPool_) {}
+  constructor(IPolicyPool policyPool_, IPremiumsAccount premiumsAccount_)
+    RiskModule(policyPool_, premiumsAccount_)
+  {} // solhint-disable-line no-empty-blocks
 
   /**
    * @dev Initializes the RiskModule
