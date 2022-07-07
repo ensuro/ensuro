@@ -195,8 +195,24 @@ async function deployEToken({
   return etoken.address;
 }
 
+async function deployPremiumsAccount({verify, poolAddress}, hre) {
+  const PremiumsAccount = await hre.ethers.getContractFactory("PremiumsAccount");
+  const pa = await hre.upgrades.deployProxy(PremiumsAccount, [], {
+    kind: 'uups',
+    unsafeAllow: ["delegatecall"],
+    constructorArgs: [poolAddress],
+  });
+
+  await pa.deployed();
+  await logContractCreated(hre, `PremiumsAccount`, pa.address);
+  if (verify)
+    await verifyContract(hre, pa, true, [poolAddress]);
+  return pa.address;
+}
+
 async function deployRiskModule({
-      verify, rmClass, rmName, poolAddress, scrPercentage, scrInterestRate, ensuroFee, maxScrPerPolicy,
+      verify, rmClass, rmName, poolAddress, paAddress, scrPercentage, scrInterestRate, ensuroFee,
+      maxScrPerPolicy,
       scrLimit, moc, wallet, extraArgs, extraConstructorArgs
   }, hre) {
   extraArgs = extraArgs || [];
@@ -214,7 +230,7 @@ async function deployRiskModule({
   ], {
     kind: 'uups',
     unsafeAllow: ["delegatecall"],
-    constructorArgs: [poolAddress, ...extraConstructorArgs]
+    constructorArgs: [poolAddress, paAddress, ...extraConstructorArgs]
   });
 
   await rm.deployed();
@@ -482,9 +498,15 @@ function add_task() {
                       .05, types.float)
     .setAction(deployEToken);
 
+  task("deploy:premiumsAccount", "Deploy a premiums account")
+    .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
+    .addParam("poolAddress", "PolicyPool Address", types.address)
+    .setAction(deployPremiumsAccount);
+
   task("deploy:riskModule", "Deploys a RiskModule and adds it to the pool")
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addParam("poolAddress", "PolicyPool Address", types.address)
+    .addParam("paAddress", "PremiumsAccount Address", types.address)
     .addOptionalParam("rmClass", "RiskModule contract", "TrustfulRiskModule", types.str)
     .addOptionalParam("rmName", "Name of the RM", "Test RM", types.str)
     .addOptionalParam("scrPercentage", "SCR Percentage", 1.0, types.float)
@@ -499,6 +521,7 @@ function add_task() {
   task("deploy:fdRiskModule", "Deploys and injects a Flight Delay RiskModule")
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addParam("poolAddress", "PolicyPool Address", types.address)
+    .addParam("paAddress", "PremiumsAccount Address", types.address)
     .addOptionalParam("rmClass", "RiskModule contract", "FlightDelayRiskModule", types.str)
     .addOptionalParam("rmName", "Name of the RM", "Flight Delay Risk Module", types.str)
     .addOptionalParam("scrPercentage", "SCR Percentage", 1.0, types.float)
@@ -519,6 +542,7 @@ function add_task() {
   task("deploy:priceRiskModule", "Deploys and injects a Price RiskModule")
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addParam("poolAddress", "PolicyPool Address", types.address)
+    .addParam("paAddress", "PremiumsAccount Address", types.address)
     .addOptionalParam("rmClass", "RiskModule contract", "PriceRiskModule", types.str)
     .addOptionalParam("rmName", "Name of the RM", "Price Risk Module", types.str)
     .addOptionalParam("scrPercentage", "SCR Percentage", 1.0, types.float)

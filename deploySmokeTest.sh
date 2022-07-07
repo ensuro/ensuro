@@ -30,8 +30,11 @@ if [ ! -z $START_GANACHE ]; then
     kill -0 $GANACHE_PID || die "Error launching ganache-cli localhost"
 fi
 
-POOL=`npx hardhat --network $NETWORK deploy $VERIFY |
-    egrep -o  "^PolicyPool deployed to: (https?://.*/)?0x[0-9a-fA-F]+" |
+TMPFILE=`mktemp`
+
+npx hardhat --network $NETWORK deploy $VERIFY | tee $TMPFILE
+
+POOL=`egrep -o  "^PolicyPool deployed to: (https?://.*/)?0x[0-9a-fA-F]+" $TMPFILE |
     sed -r 's|PolicyPool deployed to: (https?://.*/)?(0x[0-9a-fA-F]+)|\2|g'`
 
 if [ $? -ne 0 ]; then
@@ -40,14 +43,27 @@ fi
 
 echo "PolicyPool = $POOL"
 
+npx hardhat --network $NETWORK deploy:premiumsAccount $VERIFY --pool-address $POOL | tee $TMPFILE
+
+PREMIUMS_ACCOUNT=`egrep -o  "^PremiumsAccount deployed to: (https?://.*/)?0x[0-9a-fA-F]+" $TMPFILE |
+    sed -r 's|PremiumsAccount deployed to: (https?://.*/)?(0x[0-9a-fA-F]+)|\2|g'`
+
+if [ $? -ne 0 ]; then
+    die "Error deploying Premiums Account"
+fi
+
+echo "PremiumsAccount = $PREMIUMS_ACCOUNT"
+
 npx hardhat --network $NETWORK deploy:eToken  \
     --pool-address $POOL $VERIFY || die "Error deploying eToken"
 
 npx hardhat --network $NETWORK deploy:riskModule $VERIFY --pool-address $POOL \
+    --pa-address $PREMIUMS_ACCOUNT \
     --wallet 0x951B9B8a7b0e3701E757c015F43df9F2F867B824 || die "Error deploying riskModule"
 
 # FlightDelayRiskModule
 npx hardhat --network $NETWORK deploy:fdRiskModule $VERIFY --pool-address $POOL \
+    --pa-address $PREMIUMS_ACCOUNT \
     --rm-name "Flight Delay Insurance" --max-scr-per-policy 10000 --scr-limit 240000 \
     --wallet 0xc62c56f50FcE8881Ec5D7271Af5Bea6f18c88183 \
     --link-token 0x326c977e6efc84e512bb9c30f76e30c160ed06fb \
