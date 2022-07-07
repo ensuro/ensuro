@@ -40,7 +40,14 @@ contract PremiumsAccount is IPremiumsAccount, PolicyPoolComponent {
   constructor(IPolicyPool policyPool_) PolicyPoolComponent(policyPool_) {}
 
   /**
-   * @dev Initializes the RiskModule
+   * @dev Public initialize Initializes the PremiumsAccount
+   */
+  function initialize() public initializer {
+    __PremiumsAccount_init();
+  }
+
+  /**
+   * @dev Initializes the PremiumsAccount
    */
   // solhint-disable-next-line func-name-mixedcase
   function __PremiumsAccount_init() internal initializer {
@@ -177,12 +184,12 @@ contract PremiumsAccount is IPremiumsAccount, PolicyPoolComponent {
     if (amount > _wonPurePremiums) amount = _wonPurePremiums;
     require(amount > 0, "No premiums to withdraw");
     _wonPurePremiums -= amount;
-    _transferTo(_policyPool.config().treasury(), amount);
+    _transferTo(_policyPool.config().treasury(), amount); // TODO: discuss if destination shoud be msg.sender
     emit WonPremiumsInOut(false, amount);
     return amount;
   }
 
-  function newPolicy(uint256 purePremium) external override {
+  function newPolicy(uint256 purePremium) external override onlyPolicyPool {
     _activePurePremiums += purePremium;
   }
 
@@ -190,7 +197,7 @@ contract PremiumsAccount is IPremiumsAccount, PolicyPoolComponent {
     address policyOwner,
     uint256 purePremium,
     uint256 payout
-  ) external override returns (uint256) {
+  ) external override onlyPolicyPool returns (uint256) {
     _activePurePremiums -= purePremium;
     if (purePremium >= payout) {
       _storePurePremiumWon(purePremium - payout);
@@ -204,7 +211,12 @@ contract PremiumsAccount is IPremiumsAccount, PolicyPoolComponent {
     }
   }
 
-  function policyExpired(uint256 purePremium, IEToken etk) external override returns (uint256) {
+  function policyExpired(uint256 purePremium, IEToken etk)
+    external
+    override
+    onlyPolicyPool
+    returns (uint256)
+  {
     uint256 aux;
     uint256 purePremiumWon = purePremium;
     _activePurePremiums -= purePremiumWon;
