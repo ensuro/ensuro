@@ -6,7 +6,7 @@ exports.DAY = 3600 * 24;
 
 exports.initCurrency = async function(options, initial_targets, initial_balances) {
   const Currency = await ethers.getContractFactory("TestCurrency");
-  currency = await Currency.deploy(
+  let currency = await Currency.deploy(
     options.name || "Test Currency",
     options.symbol || "TEST",
     options.initial_supply,
@@ -35,7 +35,7 @@ exports.now = function() {
   return Math.floor(new Date().getTime() / 1000);
 }
 
-exports.addRiskModule = async function(pool, contractFactory, {
+exports.addRiskModule = async function(pool, premiumsAccount, contractFactory, {
       rmName, scrPercentage, scrInterestRate, ensuroFee, maxScrPerPolicy,
       scrLimit, moc, wallet, extraArgs, extraConstructorArgs
       }) {
@@ -54,7 +54,7 @@ exports.addRiskModule = async function(pool, contractFactory, {
   ], {
     kind: 'uups',
     unsafeAllow: ["delegatecall"],
-    constructorArgs: [pool.address, ...extraConstructorArgs]
+    constructorArgs: [pool.address, premiumsAccount.address, ...extraConstructorArgs]
   });
 
   await rm.deployed();
@@ -181,6 +181,18 @@ exports.deployPool = async function(hre, options) {
   await grantRole(hre, policyPoolConfig, "LEVEL2_ROLE");
   await grantRole(hre, policyPoolConfig, "LEVEL3_ROLE");
   return policyPool;
+}
+
+exports.deployPremiumsAccount = async function (hre, pool, options) {
+  const PremiumsAccount = await ethers.getContractFactory("PremiumsAccount");
+  const premiumsAccount = await hre.upgrades.deployProxy(PremiumsAccount, [], {
+    constructorArgs: [pool.address],
+    kind: 'uups',
+    unsafeAllow: ["delegatecall"],
+  });
+
+  await premiumsAccount.deployed();
+  return premiumsAccount;
 }
 
 async function _getDefaultSigner(hre) {

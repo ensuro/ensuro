@@ -41,8 +41,10 @@ AAVE_ADDR_PROV=0xd05e3E715d945B59290df0ae8eF85c1BdB684744  # Polygon Aave
 SWAP_ROUTER=0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506  # Polygon SushiSwap
 PRICE_ORACLE=0x0229f777b0fab107f9591a41d5f02e4e98db6f2d  # Polygon Price Oracle of AAVE
 
-POOL=`npx hardhat --network $NETWORK deploy $VERIFY --currency-address $USDC |
-    egrep -o  "^PolicyPool deployed to: (https?://.*/)?0x[0-9a-fA-F]+" |
+TMPFILE=`mktemp`
+npx hardhat --network $NETWORK deploy $VERIFY --currency-address $USDC | tee $TMPFILE
+
+POOL=`egrep -o  "^PolicyPool deployed to: (https?://.*/)?0x[0-9a-fA-F]+" $TMPFILE |
     sed -r 's|PolicyPool deployed to: (https?://.*/)?(0x[0-9a-fA-F]+)|\2|g'`
 
 if [ $? -ne 0 ]; then
@@ -50,6 +52,17 @@ if [ $? -ne 0 ]; then
 fi
 
 echo "PolicyPool = $POOL"
+
+npx hardhat --network $NETWORK deploy:premiumsAccount $VERIFY --pool-address $POOL | tee $TMPFILE
+
+PREMIUMS_ACCOUNT=`egrep -o  "^PremiumsAccount deployed to: (https?://.*/)?0x[0-9a-fA-F]+" $TMPFILE |
+    sed -r 's|PremiumsAccount deployed to: (https?://.*/)?(0x[0-9a-fA-F]+)|\2|g'`
+
+if [ $? -ne 0 ]; then
+    die "Error deploying Premiums Account"
+fi
+
+echo "PremiumsAccount = $PREMIUMS_ACCOUNT"
 
 # Exchange
 npx hardhat --network $NETWORK deploy:exchange $VERIFY \

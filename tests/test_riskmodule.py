@@ -29,28 +29,36 @@ def tenv(request):
             def resolve_policy(self, policy_id, customer_won):
                 pass
 
+        pool = PolicyPoolMock(currency=currency)
+        premiums_account = ensuro.PremiumsAccount(pool=pool)
+
         return TEnv(
             currency=currency,
             time_control=ensuro.time_control,
             pool_config=pool_config,
             kind="prototype",
-            rm_class=partial(ensuro.TrustfulRiskModule, policy_pool=PolicyPoolMock(currency=currency))
+            rm_class=partial(ensuro.TrustfulRiskModule, policy_pool=pool, premiums_account=premiums_account)
         )
     elif request.param == "ethereum":
         PolicyPoolMock = get_provider().get_contract_factory("PolicyPoolMock")
+        PremiumsAccountMock = get_provider().get_contract_factory("PolicyPoolComponentMock")
 
         currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
         config = wrappers.PolicyPoolConfig(owner="owner")
 
         pool = PolicyPoolMock.deploy(currency.contract, config.contract, {"from": currency.owner})
+        premiums_account = PremiumsAccountMock.deploy(pool, {"from": currency.owner})
 
         return TEnv(
             currency=currency,
             time_control=get_provider().time_control,
             pool_config=config,
             kind="ethereum",
-            rm_class=partial(wrappers.TrustfulRiskModule,
-                             policy_pool=wrappers.PolicyPool.connect(pool, currency.owner))
+            rm_class=partial(
+                wrappers.TrustfulRiskModule,
+                policy_pool=wrappers.PolicyPool.connect(pool, currency.owner),
+                premiums_account=premiums_account
+            )
         )
 
 

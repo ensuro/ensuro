@@ -63,7 +63,7 @@ describe("Test AaveAssetManager Upgrade - run at block 23237626", function() {
     expect(receipt.gasUsed.toNumber()).to.be.lessThanOrEqual(initialGas.toNumber() * 0.8);
   });
 
-  it("Should distribute earnings in deinvestAll - no upgrade", async function() {
+  it.skip("Should distribute earnings in deinvestAll - no upgrade", async function() {
     const balanceBefore = await USDC.balanceOf(ADDRESSES.pool);
     const investmentValueBefore = await assetMgr.getInvestmentValue();
     expect(balanceBefore).to.equal(2000e6);

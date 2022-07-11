@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
+import {IPremiumsAccount} from "./IPremiumsAccount.sol";
+
 /**
  * @title IRiskModule interface
  * @dev Interface for RiskModule smart contracts. Gives access to RiskModule configuration parameters
@@ -26,4 +28,6 @@ interface IRiskModule {
   function wallet() external view returns (address);
 
   function releaseScr(uint256 scrAmount) external;
+
+  function premiumsAccount() external view returns (IPremiumsAccount);
 }

@@ -32,6 +32,7 @@ time_control = TimeControl()
 
 class RiskModule(AccessControlContract):
     policy_pool = ContractProxyField()
+    premiums_account = ContractProxyField()
     name = StringField()
     moc = RayField(default=_R(1))
     scr_percentage = RayField(default=Ray(0))
@@ -455,6 +456,7 @@ class PolicyPoolConfig(AccessControlContract):
         self.policy_pool = policy_pool
 
     def add_risk_module(self, risk_module):
+        # TODO: validate risk_module.premiums_account.pool = self.policy_pool
         self.risk_modules[risk_module.name] = ContractProxy(risk_module.contract_id)
 
     @only_role("LEVEL1_ROLE", "GUARDIAN_ROLE")
@@ -471,15 +473,137 @@ class PolicyPoolConfig(AccessControlContract):
         self.asset_manager = asset_manager
 
 
+class PremiumsAccount(AccessControlContract):
+    pool = ContractProxyField()
+    active_pure_premiums = WadField(default=Wad(0))
+    borrowed_active_pp = WadField(default=Wad(0))
+    won_pure_premiums = WadField(default=Wad(0))
+
+    def has_role(self, role, account):
+        return self.pool.config.has_role(role, account)
+
+    @property
+    def currency(self):
+        return self.pool.currency
+
+    @property
+    def pure_premiums(self):
+        return self.active_pure_premiums + self.won_pure_premiums - self.borrowed_active_pp
+
+    def _store_pure_premium_won(self, pure_premium_won):
+        if not pure_premium_won:
+            return
+        if self.borrowed_active_pp >= pure_premium_won:
+            self.borrowed_active_pp -= pure_premium_won
+            return
+        elif self.borrowed_active_pp > 0:
+            pure_premium_won -= self.borrowed_active_pp
+            self.borrowed_active_pp = Wad(0)
+        self.won_pure_premiums += pure_premium_won
+
+    @external
+    def receive_grant(self, sender, amount):
+        self.currency.transfer_from(self.contract_id, sender, self.contract_id, amount)
+        self._store_pure_premium_won(amount)
+
+    @external
+    @only_role("WITHDRAW_WON_PREMIUMS_ROLE")
+    def withdraw_won_premiums(self, amount):
+        if amount > self.won_pure_premiums:
+            amount = self.won_pure_premiums
+        require(amount > 0, "No premiums to withdraw")
+        self._pay_from_pool(amount)
+        self._transfer_to(self.pool.config.treasury, amount)
+        return amount
+
+    def _pay_from_pool(self, to_pay):
+        # 1. take from won_pure_premiums
+        if to_pay <= self.won_pure_premiums:
+            self.won_pure_premiums -= to_pay
+            return Wad(0)
+        elif self.won_pure_premiums > 0:
+            to_pay -= self.won_pure_premiums
+            self.won_pure_premiums = Wad(0)
+        # 2. borrow from active pure premiums
+        if to_pay <= (self.active_pure_premiums - self.borrowed_active_pp):
+            self.borrowed_active_pp += to_pay
+            return Wad(0)
+        elif (self.active_pure_premiums - self.borrowed_active_pp) > 0:
+            # Borrow some
+            to_pay -= self.active_pure_premiums - self.borrowed_active_pp
+            self.borrowed_active_pp = self.active_pure_premiums
+        return to_pay
+
+    def _transfer_to(self, target, amount):
+        if amount == _W(0):
+            return
+        balance = self.currency.balance_of(self.contract_id)
+        if self.pool.config.asset_manager and balance < amount:
+            self.pool.config.asset_manager.refill_wallet(amount)
+            balance = self.currency.balance_of(self.contract_id)
+
+        if amount > balance:
+            self.currency.transfer(self.contract_id, target, balance)
+            return amount - balance
+        else:
+            self.currency.transfer(self.contract_id, target, amount)
+            return _W(0)
+
+    def new_policy(self, policy):
+        self.active_pure_premiums += policy.pure_premium
+
+    @external
+    def repay_etoken_loan(self, etoken):
+        etk = self.etokens[etoken]
+        pool_loan = etk.get_pool_loan()
+        to_pay_later = self._pay_from_pool(pool_loan)
+        etk.repay_pool_loan(pool_loan - to_pay_later)
+        return pool_loan - to_pay_later
+
+    @external
+    def policy_resolved_with_payout(self, customer, policy, payout):
+        self.active_pure_premiums -= policy.pure_premium
+
+        borrow_from_scr = Wad(0)
+        if policy.pure_premium >= payout:
+            self._store_pure_premium_won(policy.pure_premium - payout)
+            # TODO: repay debt?
+        else:
+            borrow_from_scr = self._pay_from_pool(payout - policy.pure_premium)
+
+        self._transfer_to(customer, payout - borrow_from_scr)
+        return borrow_from_scr
+
+    @external
+    def policy_expired(self, policy):
+        self.active_pure_premiums -= policy.pure_premium
+
+        # Pay Ensuro and RM
+        pure_premium_won = policy.pure_premium
+        # Cover first borrowed_active_pp
+        if self.borrowed_active_pp > self.active_pure_premiums:
+            to_cover = min(self.borrowed_active_pp - self.active_pure_premiums, pure_premium_won)
+            self.borrowed_active_pp -= to_cover
+            pure_premium_won -= to_cover
+
+        etk = policy.solvency_etoken
+
+        borrowed_from_etk = etk.get_pool_loan()
+        if borrowed_from_etk and pure_premium_won:  # if debt with token, repay from pure_premium
+            repay_amount = min(borrowed_from_etk, pure_premium_won)
+            etk.repay_pool_loan(repay_amount)
+            pure_premium_won -= repay_amount
+            self._transfer_to(self.pool, repay_amount)
+
+        self._store_pure_premium_won(pure_premium_won)
+
+
 class PolicyPool(AccessControlContract):
     config = ContractProxyField()
     policy_nft = ContractProxyField()
     currency = ContractProxyField()
     etokens = DictField(StringField(), ContractProxyField(), default={})
     policies = DictField(IntField(), CompositeField(Policy), default={})
-    active_pure_premiums = WadField(default=Wad(0))
-    borrowed_active_pp = WadField(default=Wad(0))
-    won_pure_premiums = WadField(default=Wad(0))
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -488,10 +612,6 @@ class PolicyPool(AccessControlContract):
 
     def has_role(self, role, account):
         return self.config.has_role(role, account)
-
-    @property
-    def pure_premiums(self):
-        return self.active_pure_premiums + self.won_pure_premiums - self.borrowed_active_pp
 
     def add_etoken(self, etoken):
         self.etokens[etoken.name] = ContractProxy(etoken.contract_id)
@@ -531,14 +651,18 @@ class PolicyPool(AccessControlContract):
 
         assert policy.interest_rate >= 0
 
-        self.active_pure_premiums += policy.pure_premium
+        policy.risk_module.premiums_account.new_policy(policy)
 
         self._lock_scr(policy)
 
         self.policies[policy.id] = policy
         self.currency.transfer_from(
             self.contract_id, customer,
-            self.contract_id, policy.pure_premium + policy.premium_for_lps
+            policy.risk_module.premiums_account, policy.pure_premium
+        )
+        self.currency.transfer_from(
+            self.contract_id, customer,
+            self.contract_id, policy.premium_for_lps
         )
         self.currency.transfer_from(
             self.contract_id, customer,
@@ -577,58 +701,6 @@ class PolicyPool(AccessControlContract):
             self.config.insolvency_hook.out_of_cash(amount - self.currency.balance_of(self.contract_id))
         return self.currency.transfer(self.contract_id, target, amount)
 
-    def _pay_from_pool(self, to_pay):
-        # 1. take from won_pure_premiums
-        if to_pay <= self.won_pure_premiums:
-            self.won_pure_premiums -= to_pay
-            return Wad(0)
-        elif self.won_pure_premiums > 0:
-            to_pay -= self.won_pure_premiums
-            self.won_pure_premiums = Wad(0)
-        # 2. borrow from active pure premiums
-        if to_pay <= (self.active_pure_premiums - self.borrowed_active_pp):
-            self.borrowed_active_pp += to_pay
-            return Wad(0)
-        elif (self.active_pure_premiums - self.borrowed_active_pp) > 0:
-            # Borrow some
-            to_pay -= self.active_pure_premiums - self.borrowed_active_pp
-            self.borrowed_active_pp = self.active_pure_premiums
-        return to_pay
-
-    def _store_pure_premium_won(self, pure_premium_won):
-        if not pure_premium_won:
-            return
-        if self.borrowed_active_pp >= pure_premium_won:
-            self.borrowed_active_pp -= pure_premium_won
-            return
-        elif self.borrowed_active_pp > 0:
-            pure_premium_won -= self.borrowed_active_pp
-            self.borrowed_active_pp = Wad(0)
-        self.won_pure_premiums += pure_premium_won
-
-    @external
-    def receive_grant(self, sender, amount):
-        self.currency.transfer_from(self.contract_id, sender, self.contract_id, amount)
-        self._store_pure_premium_won(amount)
-
-    @external
-    @only_role("WITHDRAW_WON_PREMIUMS_ROLE")
-    def withdraw_won_premiums(self, amount):
-        if amount > self.won_pure_premiums:
-            amount = self.won_pure_premiums
-        require(amount > 0, "No premiums to withdraw")
-        self._pay_from_pool(amount)
-        self._transfer_to(self.config.treasury, amount)
-        return amount
-
-    @external
-    def repay_etoken_loan(self, etoken):
-        etk = self.etokens[etoken]
-        pool_loan = etk.get_pool_loan()
-        to_pay_later = self._pay_from_pool(pool_loan)
-        etk.repay_pool_loan(pool_loan - to_pay_later)
-        return pool_loan - to_pay_later
-
     @external
     def expire_policy(self, policy_id):
         policy = self.policies[policy_id]
@@ -645,42 +717,25 @@ class PolicyPool(AccessControlContract):
 
         require(payout == 0 or policy.expiration > time_control.now, "Can't pay expired policy")
 
-        pure_premium = policy.pure_premium
+        # Unlock SCR and adjust eToken
         for_lps = policy.premium_for_lps
-
-        self.active_pure_premiums -= pure_premium
-
         adjustment = for_lps - policy.accrued_interest()
-
-        borrow_from_scr = Wad(0)
-        if customer_won:
-            policy_owner = self.policy_nft.owner_of(policy.id)
-            self._transfer_to(policy_owner, payout)
-            if policy.pure_premium >= payout:
-                pure_premium_won = policy.pure_premium - payout
-            else:
-                pure_premium_won = Wad(0)
-                borrow_from_scr = self._pay_from_pool(payout - policy.pure_premium)
-        else:
-            # Pay Ensuro and RM
-            pure_premium_won = pure_premium
-            # Cover first borrowed_active_pp
-            if self.borrowed_active_pp > self.active_pure_premiums:
-                to_cover = min(self.borrowed_active_pp - self.active_pure_premiums, pure_premium_won)
-                self.borrowed_active_pp -= to_cover
-                pure_premium_won -= to_cover
-
         etk = policy.solvency_etoken
         etk.unlock_scr(policy, policy.scr)
         etk.discrete_earning(adjustment)
 
-        if not customer_won:
-            borrowed_from_etk = etk.get_pool_loan()
-            if borrowed_from_etk and pure_premium_won:  # if debt with token, repay from pure_premium
-                repay_amount = min(borrowed_from_etk, pure_premium_won)
-                etk.repay_pool_loan(repay_amount)
-                pure_premium_won -= repay_amount
-        elif borrow_from_scr:
+        borrow_from_scr = Wad(0)
+        if customer_won:
+            policy_owner = self.policy_nft.owner_of(policy.id)
+            borrow_from_scr = policy.risk_module.premiums_account.policy_resolved_with_payout(
+                policy_owner, policy, payout
+            )
+            if borrow_from_scr > 0:
+                self._transfer_to(policy_owner, borrow_from_scr)
+        else:
+            policy.risk_module.premiums_account.policy_expired(policy)
+
+        if borrow_from_scr:
             etk_borrow = borrow_from_scr
             etk_borrow_left = etk_borrow - etk.lend_to_pool(etk_borrow)
 
@@ -689,8 +744,6 @@ class PolicyPool(AccessControlContract):
 
             require(etk_borrow_left <= self.NEGLIGIBLE_AMOUNT,
                     "Don't know where to take the rest of the money")
-
-        self._store_pure_premium_won(pure_premium_won)
 
         policy.risk_module.remove_policy(policy)
         del self.policies[policy_id]

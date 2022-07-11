@@ -1,5 +1,5 @@
 const { expect } = require("chai");
-const { initCurrency, deployPool, _E, _W, _R, addRiskModule,
+const { initCurrency, deployPool, deployPremiumsAccount, _E, _W, _R, addRiskModule,
         amountFunction, grantRole, addEToken, getTransactionEvent } = require("./test-utils");
 
 
@@ -7,6 +7,7 @@ describe("Test PriceRiskModule contract", function() {
   let currency;
   let wmatic;
   let pool;
+  let premiumsAccount;
   let priceOracle;
   let PriceRiskModule;
   let owner, lp, cust;
@@ -32,6 +33,8 @@ describe("Test PriceRiskModule contract", function() {
       treasuryAddress: "0x87c47c9a5a2aa74ae714857d64911d9a091c25b1",  // Random address
     });
     pool._A = _A;
+
+    premiumsAccount = await deployPremiumsAccount(hre, pool);
 
     const PriceOracle = await ethers.getContractFactory("PriceOracle");
     priceOracle = await PriceOracle.deploy();
@@ -62,7 +65,7 @@ describe("Test PriceRiskModule contract", function() {
   }
 
   it("Should reject if prices not defined", async function() {
-    const rm = await addRiskModule(pool, PriceRiskModule, {
+    const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
       extraConstructorArgs: [wmatic.address, currency.address, _W("0.01")],
     });
 
@@ -113,7 +116,7 @@ describe("Test PriceRiskModule contract", function() {
   });
 
   it("Should trigger the policy only if threshold met", async function() {
-    const rm = await addRiskModule(pool, PriceRiskModule, {
+    const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
       extraConstructorArgs: [wmatic.address, currency.address, _W("0.01")],
       scrPercentage: "0.5"
     });
@@ -167,7 +170,7 @@ describe("Test PriceRiskModule contract", function() {
   });
 
   it("Should trigger the policy only if threshold met - Upper variant", async function() {
-    const rm = await addRiskModule(pool, PriceRiskModule, {
+    const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
       extraConstructorArgs: [wmatic.address, currency.address, _W("0.01")],
       scrPercentage: "0.5"
     });

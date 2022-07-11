@@ -26,8 +26,6 @@ interface IPolicyPool {
 
   function resolvePolicyFullPayout(Policy.PolicyData calldata policy, bool customerWon) external;
 
-  function receiveGrant(uint256 amount) external;
-
   function getInvestable() external view returns (uint256);
 
   function getETokenCount() external view returns (uint256);

@@ -100,10 +100,6 @@ contract PolicyPoolMock is IPolicyPool {
     emit PolicyResolved(IRiskModule(msg.sender), policy.id, payout);
   }
 
-  function receiveGrant(uint256) external pure override {
-    revert("Not Implemented");
-  }
-
   function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external override {
     _resolvePolicy(policy, payout);
   }

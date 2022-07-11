@@ -6,6 +6,7 @@ import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/acce
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
 import {IRiskModule} from "../interfaces/IRiskModule.sol";
+import {IPremiumsAccount} from "../interfaces/IPremiumsAccount.sol";
 import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
 import {Policy} from "./Policy.sol";
 
@@ -24,6 +25,9 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
   // For parameters that can be changed by the risk module provider
   bytes32 public constant RM_PROVIDER_ROLE = keccak256("RM_PROVIDER_ROLE");
 
+  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+  IPremiumsAccount internal immutable _premiumsAccount;
+
   string private _name;
   uint256 internal _scrPercentage; // in ray - Solvency Capital Requirement percentage, to calculate
   // capital requirement as % of (payout - premium)
@@ -39,7 +43,15 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
-  constructor(IPolicyPool policyPool_) PolicyPoolComponent(policyPool_) {}
+  constructor(IPolicyPool policyPool_, IPremiumsAccount premiumsAccount_)
+    PolicyPoolComponent(policyPool_)
+  {
+    require(
+      PolicyPoolComponent(address(premiumsAccount_)).policyPool() == policyPool_,
+      "The PremiumsAccount must be part of the Pool"
+    );
+    _premiumsAccount = premiumsAccount_;
+  }
 
   /**
    * @dev Initializes the RiskModule
@@ -298,5 +310,9 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     // all the policy. Since we just need the amount, for performance reasons
     // we just send the amount and the method is called releaseScr
     _totalScr -= scrAmount;
+  }
+
+  function premiumsAccount() external view override returns (IPremiumsAccount) {
+    return _premiumsAccount;
   }
 }
