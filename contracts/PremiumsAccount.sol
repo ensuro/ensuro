@@ -90,10 +90,8 @@ contract PremiumsAccount is IPremiumsAccount, PolicyPoolComponent {
       _wonPurePremiums -= toPay;
       return 0;
     }
-    if (_wonPurePremiums > 0) {
-      toPay -= _wonPurePremiums;
-      _wonPurePremiums = 0;
-    }
+    toPay -= _wonPurePremiums;
+    _wonPurePremiums = 0;
     // 2. borrow from active pure premiums
     if (_activePurePremiums > _borrowedActivePP) {
       if (toPay <= (_activePurePremiums - _borrowedActivePP)) {
@@ -108,15 +106,17 @@ contract PremiumsAccount is IPremiumsAccount, PolicyPoolComponent {
   }
 
   function _storePurePremiumWon(uint256 purePremiumWon) internal {
+    // TODO: merge _wonPurePremiums and _borrowedActivePP into single int256 variable
+    // and this will be just `_wonPurePremiums += purePremiumWon;`
     if (purePremiumWon == 0) return;
     if (_borrowedActivePP >= purePremiumWon) {
       _borrowedActivePP -= purePremiumWon;
     } else {
       if (_borrowedActivePP > 0) {
         purePremiumWon -= _borrowedActivePP;
-        _borrowedActivePP = 0;
       }
-      _wonPurePremiums += purePremiumWon;
+      _wonPurePremiums += (purePremiumWon - _borrowedActivePP);
+      _borrowedActivePP = 0;
     }
   }
 
