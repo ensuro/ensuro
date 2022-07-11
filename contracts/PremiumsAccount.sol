@@ -112,9 +112,6 @@ contract PremiumsAccount is IPremiumsAccount, PolicyPoolComponent {
     if (_borrowedActivePP >= purePremiumWon) {
       _borrowedActivePP -= purePremiumWon;
     } else {
-      if (_borrowedActivePP > 0) {
-        purePremiumWon -= _borrowedActivePP;
-      }
       _wonPurePremiums += (purePremiumWon - _borrowedActivePP);
       _borrowedActivePP = 0;
     }
