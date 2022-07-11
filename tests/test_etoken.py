@@ -345,7 +345,6 @@ def test_pool_loan(tenv):
     etk.get_pool_loan().assert_equal(_W(300) * _W(1 + 0.0002 * 7))
     with etk.thru_policy_pool():
         etk.lend_to_pool(_W(100))
-    etk.get_investable().assert_equal(etk.ocean + etk.scr + etk.get_pool_loan())
 
     tenv.time_control.fast_forward(1 * DAY)
 

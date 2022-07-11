@@ -290,10 +290,6 @@ class EToken(ERC20Token):
         require(self.scale_factor >= self.MIN_SCALE, "Scale too small, can lead to rounding errors")
         self._update_token_interest_rate()
 
-    def asset_earnings(self, amount):
-        self._update_current_scale()
-        self.discrete_earning(amount)
-
     def deposit(self, provider, amount):
         require(
             self.policy_pool.config.lp_whitelist is None or
@@ -426,9 +422,6 @@ class EToken(ERC20Token):
     def utilization_rate(self):
         return (self.scr // self.total_supply()).to_ray()
 
-    def get_investable(self):
-        return self.scr + self.ocean + self.get_pool_loan()
-
     def set_accept_exception(self, rm, is_exception):
         self.accept_exceptions[rm] = is_exception
 
@@ -445,8 +438,6 @@ class PolicyNFT(ERC721Token):
 class PolicyPoolConfig(AccessControlContract):
     policy_pool = ContractProxyField(allow_none=True, default=None)
     treasury = AddressField(default="ENS")
-    asset_manager = ContractProxyField(default=None, allow_none=True)
-    insolvency_hook = ContractProxyField(default=None, allow_none=True)
     lp_whitelist = ContractProxyField(default=None, allow_none=True)
     risk_modules = DictField(StringField(), ContractProxyField(), default={})
 
@@ -460,17 +451,8 @@ class PolicyPoolConfig(AccessControlContract):
         self.risk_modules[risk_module.name] = ContractProxy(risk_module.contract_id)
 
     @only_role("LEVEL1_ROLE", "GUARDIAN_ROLE")
-    def set_insolvency_hook(self, insolvency_hook):
-        self.insolvency_hook = ContractProxy(insolvency_hook.contract_id) if insolvency_hook else None
-
-    @only_role("LEVEL1_ROLE", "GUARDIAN_ROLE")
     def set_lp_whitelist(self, lp_whitelist):
         self.lp_whitelist = ContractProxy(lp_whitelist.contract_id) if lp_whitelist else None
-
-    @only_role("LEVEL1_ROLE", "GUARDIAN_ROLE")
-    def set_asset_manager(self, asset_manager):
-        self.policy_pool.set_asset_manager(asset_manager)
-        self.asset_manager = asset_manager
 
 
 class PremiumsAccount(AccessControlContract):
@@ -538,9 +520,6 @@ class PremiumsAccount(AccessControlContract):
         if amount == _W(0):
             return
         balance = self.currency.balance_of(self.contract_id)
-        if self.pool.config.asset_manager and balance < amount:
-            self.pool.config.asset_manager.refill_wallet(amount)
-            balance = self.currency.balance_of(self.contract_id)
 
         if amount > balance:
             self.currency.transfer(self.contract_id, target, balance)
@@ -616,12 +595,6 @@ class PolicyPool(AccessControlContract):
     def add_etoken(self, etoken):
         self.etokens[etoken.name] = ContractProxy(etoken.contract_id)
 
-    def set_asset_manager(self, asset_manager):
-        if self.config.asset_manager:
-            self.config.asset_manager.deinvest_all()
-            self.currency.approve(self, self.config.asset_manager, _W(0))
-        self.currency.approve(self, asset_manager, _W(1e20))
-
     @external
     def deposit(self, etoken, provider, amount):
         self.currency.transfer_from(self.contract_id, provider, self.contract_id, amount)
@@ -693,12 +666,10 @@ class PolicyPool(AccessControlContract):
         if amount == _W(0):
             return
         balance = self.currency.balance_of(self.contract_id)
-        if self.config.asset_manager and balance < amount:
-            self.config.asset_manager.refill_wallet(amount)
 
-        # Calculate again the balance and check if enought, if not call unsolvency_hook
-        if self.config.insolvency_hook and self.currency.balance_of(self.contract_id) < amount:
-            self.config.insolvency_hook.out_of_cash(amount - self.currency.balance_of(self.contract_id))
+        if balance < amount and (amount - balance) < self.NEGLIGIBLE_AMOUNT:
+            amount = balance
+
         return self.currency.transfer(self.contract_id, target, amount)
 
     @external
@@ -739,219 +710,11 @@ class PolicyPool(AccessControlContract):
             etk_borrow = borrow_from_scr
             etk_borrow_left = etk_borrow - etk.lend_to_pool(etk_borrow)
 
-            if etk_borrow_left > self.NEGLIGIBLE_AMOUNT:
-                etk_borrow_left = self._take_loan_from_any_etk(etk_borrow_left)
-
             require(etk_borrow_left <= self.NEGLIGIBLE_AMOUNT,
                     "Don't know where to take the rest of the money")
 
         policy.risk_module.remove_policy(policy)
         del self.policies[policy_id]
-
-    def _take_loan_from_any_etk(self, etk_borrow_left):
-        "When locked tokens don't have enought money, we take money from any token"
-        for etk in self.etokens.values():
-            etk_borrow_left -= etk.lend_to_pool(etk_borrow_left, False)
-            if etk_borrow_left <= self.NEGLIGIBLE_AMOUNT:
-                break
-        return etk_borrow_left
-
-    def get_investable(self):
-        borrowed_from_etk = sum((etk.get_pool_loan() for etk in self.etokens.values()), Wad(0))
-        return max(self.pure_premiums - borrowed_from_etk, Wad(0))
-
-    def asset_earnings(self, amount):
-        if amount > 0:
-            # earnings - first repay borrowed_active_pp then increase won_pure_premiums
-            if self.borrowed_active_pp >= amount:
-                self.borrowed_active_pp -= amount
-                return
-            elif self.borrowed_active_pp > 0:
-                amount -= self.borrowed_active_pp
-                self.borrowed_active_pp = Wad(0)
-            self.won_pure_premiums += amount
-        elif amount < 0:
-            # losses - first consume won_pure_premiums then borrowed_active_pp
-            amount = -amount
-            if self.won_pure_premiums >= amount:
-                self.won_pure_premiums -= amount
-                return
-            elif self.won_pure_premiums > 0:
-                amount -= self.won_pure_premiums
-                self.won_pure_premiums = Wad(0)
-            self.borrowed_active_pp += amount
-            # borrowed_active_pp should be < active_pure_premiums
-            # TODO: validation and handling, but shouldn't happen
-
-
-class AssetManager(AccessControlContract):
-    pool = ContractProxyField()
-
-    cash_balance = WadField(default=Wad(0))
-    liquidity_min = WadField()
-    liquidity_middle = WadField()
-    liquidity_max = WadField()
-
-    # Any time balance_of(PolicyPool) < liquidity_min we refill up to liquidity_middle
-    # Any time balance_of(PolicyPool) > liquidity_max take liquidity up liquidity_middle
-    last_investment_value = WadField(default=Wad(0))
-
-    def total_investable(self):
-        "Estimation of all total assets available reinvest"
-        pool_investable = self.pool.get_investable()
-        token_investable = sum((etk.get_investable() for etk in self.pool.etokens.values()), Wad(0))
-
-        return pool_investable + token_investable
-
-    def distribute_earnings(self):
-        investment_value = self.get_investment_value()
-        total_investable = self.total_investable()
-        earnings = investment_value - self.last_investment_value
-        pool_share = self.pool.get_investable() // total_investable
-        self.pool.asset_earnings(earnings * pool_share)
-
-        for etk in self.pool.etokens.values():
-            etk_share = etk.get_investable() // total_investable
-            etk.asset_earnings(earnings * etk_share)
-
-        self.last_investment_value = investment_value
-
-    def get_investment_value(self):
-        raise NotImplementedError()
-
-    def rebalance(self):
-        pool_cash = self.pool.currency.balance_of(self.pool.contract_id)
-
-        if pool_cash > self.liquidity_max:
-            self._invest(pool_cash - self.liquidity_middle)
-        elif pool_cash < self.liquidity_min:
-            deinvest_amount = min(self.liquidity_middle - pool_cash, self.get_investment_value())
-            if deinvest_amount > 0:
-                self._deinvest(deinvest_amount)
-        # else:
-            # pool_cash between [self.liquidity_min, self.liquidity_max]
-            # No need to transfer
-
-    def checkpoint(self):
-        self.distribute_earnings()
-        self.rebalance()
-
-    def refill_wallet(self, payment_amount):
-        pool_cash = self.pool.currency.balance_of(self.pool.contract_id)
-        investment_value = self.get_investment_value()
-        # try to leave the pool balance at liquidity_middle after the payment
-        deinvest = payment_amount + self.liquidity_middle - pool_cash
-        if deinvest > investment_value:
-            deinvest = investment_value
-
-        self._deinvest(deinvest)
-
-    def _invest(self, amount):
-        self.cash_balance += amount
-        self.last_investment_value += amount
-        # Must be reimplemented and do the actual cash movement
-
-    def _deinvest(self, amount):
-        self.cash_balance -= amount
-        self.last_investment_value -= amount
-        # Must be reimplemented and do the actual cash movement
-
-    def deinvest_all(self):
-        self._deinvest(self.get_investment_value())
-
-
-class FixedRateAssetManager(AssetManager):
-    """Test asset manager that accrues interest at fixed rate"""
-
-    interest_rate = RayField(default=_R("0.05"))
-    last_mint_burn = IntField(default=time_control.now)
-    _positive = IntField(default=1)
-
-    def _get_positive(self):
-        return bool(self._positive)
-
-    def _set_positive(self, new_value):
-        self._mint_burn()
-        self._positive = int(new_value)
-
-    positive = property(_get_positive, _set_positive)
-
-    def get_investment_value(self):
-        balance = self.pool.currency.balance_of(self.contract_id)
-        secs = time_control.now - self.last_mint_burn
-        if secs <= 0:
-            return balance
-        interest_rate = self.interest_rate * _R(secs) // _R(SECONDS_IN_YEAR)
-        if (self.positive):
-            return (balance.to_ray() * (_R(1) + interest_rate)).to_wad()
-        else:
-            return (balance.to_ray() * (_R(1) - interest_rate)).to_wad()
-
-    def _mint_burn(self):
-        if self.last_mint_burn == time_control.now:
-            return
-        balance = self.pool.currency.balance_of(self.contract_id)
-        current_value = self.get_investment_value()
-        if current_value > balance:
-            self.pool.currency.mint(self.contract_id, current_value - balance)
-        elif current_value < balance:
-            self.pool.currency.burn(self.contract_id, balance - current_value)
-        self.last_mint_burn = time_control.now
-
-    def _invest(self, amount):
-        self._mint_burn()
-        super()._invest(amount)
-        self.pool.currency.transfer(self.pool.contract_id, self.contract_id, amount)
-
-    def _deinvest(self, amount):
-        self._mint_burn()
-        super()._deinvest(amount)
-        self.pool.currency.transfer(self.contract_id, self.pool.contract_id, amount)
-
-    def set_liquidity_multiple(self, min, middle, max):
-        if min is not None:
-            self.liquidity_min = min
-        if middle is not None:
-            self.liquidity_middle = middle
-        if max is not None:
-            self.liquidity_max = max
-
-
-class FreeGrantInsolvencyHook(Contract):
-    pool = ContractProxyField()
-    cash_granted = WadField(default=Wad(0))
-
-    def out_of_cash(self, amount):
-        # Just a simple implementation that mints money and grants
-        self.pool.currency.mint(self.contract_id, amount)
-        self.pool.currency.approve(self.contract_id, self.pool.contract_id, amount)
-        self.pool.receive_grant(self.contract_id, amount)
-        self.cash_granted += amount
-
-    def insolvent_etoken(self, etoken, amount):
-        pass
-
-
-class LPInsolvencyHook(Contract):
-    pool = ContractProxyField()
-    etoken = StringField()
-    cash_deposited = WadField(default=Wad(0))
-    cover_etoken = IntField(default=0)
-
-    def out_of_cash(self, amount):
-        self._mint_and_deposit(self.etoken, amount)
-
-    def _mint_and_deposit(self, etoken, amount):
-        # Just a simple implementation that mints money and grants
-        self.pool.currency.mint(self.contract_id, amount)
-        self.pool.currency.approve(self.contract_id, self.pool.contract_id, amount)
-        self.pool.deposit(etoken, self.contract_id, amount)
-        self.cash_deposited += amount
-
-    def insolvent_etoken(self, etoken, amount):
-        if self.cover_etoken:
-            # Covers amount + 10% of the SCR
-            self._mint_and_deposit(etoken.name, amount + etoken.scr * _W("0.1"))
 
 
 class LPManualWhitelist(Contract):

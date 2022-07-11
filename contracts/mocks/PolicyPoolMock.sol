@@ -4,7 +4,6 @@ pragma solidity ^0.8.0;
 import {IPolicyPool} from "../../interfaces/IPolicyPool.sol";
 import {IRiskModule} from "../../interfaces/IRiskModule.sol";
 import {IEToken} from "../../interfaces/IEToken.sol";
-import {IAssetManager} from "../../interfaces/IAssetManager.sol";
 import {IPolicyPoolConfig} from "../../interfaces/IPolicyPoolConfig.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -31,10 +30,6 @@ contract PolicyPoolMock is IPolicyPool {
     _currency = currency_;
     _config = config_;
     _config.connect();
-    require(
-      _config.assetManager() == IAssetManager(address(0)),
-      "AssetManager can't be set before PolicyPool initialization"
-    );
     _totalETokenSupply = 1e40; // 1e22 = a lot...
   }
 
@@ -50,31 +45,12 @@ contract PolicyPoolMock is IPolicyPool {
     return address(0);
   }
 
-  function setAssetManager(IAssetManager newAssetManager) external override {
-    require(msg.sender == address(_config), "Only the PolicyPoolConfig can change assetManager");
-    if (address(_config.assetManager()) != address(0)) {
-      _config.assetManager().deinvestAll(); // deInvest all assets
-      _currency.approve(address(_config.assetManager()), 0); // revoke currency management approval
-    }
-    if (address(newAssetManager) != address(0)) {
-      _currency.approve(address(newAssetManager), type(uint256).max);
-    }
-  }
-
-  function getInvestable() external pure override returns (uint256) {
-    return 0;
-  }
-
   function getETokenCount() external pure override returns (uint256) {
     return 0;
   }
 
   function getETokenAt(uint256) external pure override returns (IEToken) {
     return IEToken(address(0));
-  }
-
-  function assetEarnings(uint256, bool) external pure override {
-    revert("Not Implemented");
   }
 
   function newPolicy(
@@ -156,24 +132,6 @@ contract PolicyPoolMockForward is ForwardProxy {
 
   function config() external view returns (IPolicyPoolConfig) {
     return _config;
-  }
-
-  function setAssetManager(IAssetManager newAssetManager) external {
-    require(msg.sender == address(_config), "Only the PolicyPoolConfig can change assetManager");
-    if (address(_config.assetManager()) != address(0)) {
-      _config.assetManager().deinvestAll(); // deInvest all assets
-      _currency.approve(address(_config.assetManager()), 0); // revoke currency management approval
-    }
-    if (address(newAssetManager) != address(0)) {
-      _currency.approve(address(newAssetManager), type(uint256).max);
-    }
-  }
-
-  // solhint-disable-next-line no-empty-blocks
-  function assetEarnings(uint256 amount, bool positive) external {}
-
-  function getInvestable() external view returns (uint256) {
-    return _currency.balanceOf(address(this));
   }
 
   function getETokenCount() external pure returns (uint256) {

@@ -24,8 +24,6 @@ interface IEToken is IERC20 {
 
   function discreteEarning(uint256 amount, bool positive) external;
 
-  function assetEarnings(uint256 amount, bool positive) external;
-
   function deposit(address provider, uint256 amount) external returns (uint256);
 
   function totalWithdrawable() external view returns (uint256);
@@ -39,8 +37,6 @@ interface IEToken is IERC20 {
   function repayPoolLoan(uint256 amount) external;
 
   function getPoolLoan() external view returns (uint256);
-
-  function getInvestable() external view returns (uint256);
 
   function tokenInterestRate() external view returns (uint256);
 

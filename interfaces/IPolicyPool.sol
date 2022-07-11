@@ -5,7 +5,6 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import {Policy} from "../contracts/Policy.sol";
 import {IEToken} from "./IEToken.sol";
 import {IPolicyPoolConfig} from "./IPolicyPoolConfig.sol";
-import {IAssetManager} from "./IAssetManager.sol";
 
 interface IPolicyPool {
   function currency() external view returns (IERC20Metadata);
@@ -13,8 +12,6 @@ interface IPolicyPool {
   function config() external view returns (IPolicyPoolConfig);
 
   function policyNFT() external view returns (address);
-
-  function setAssetManager(IAssetManager newAssetManager) external;
 
   function newPolicy(
     Policy.PolicyData memory policy,
@@ -26,13 +23,9 @@ interface IPolicyPool {
 
   function resolvePolicyFullPayout(Policy.PolicyData calldata policy, bool customerWon) external;
 
-  function getInvestable() external view returns (uint256);
-
   function getETokenCount() external view returns (uint256);
 
   function getETokenAt(uint256 index) external view returns (IEToken);
-
-  function assetEarnings(uint256 amount, bool positive) external;
 
   function deposit(IEToken eToken, uint256 amount) external;
 
