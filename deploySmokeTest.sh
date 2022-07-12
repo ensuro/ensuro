@@ -71,10 +71,6 @@ npx hardhat --network $NETWORK deploy:fdRiskModule $VERIFY --pool-address $POOL 
     --data-job-id 0x2fb0c3a36f924e4ab43040291e14e0b7 \
     --sleep-job-id 0x4241bd0288324bf8a2c683833d0b824f  || die "Error deploying FlightDelayRiskModule"
 
-# FixedRateAssetManager
-npx hardhat --network $NETWORK deploy:fixedInterestAssetManager $VERIFY \
-    --pool-address $POOL || die "Error deploying FixedRateAssetManager"
-
 # Whitelist
 npx hardhat --network $NETWORK deploy:whitelist $VERIFY \
     --pool-address $POOL

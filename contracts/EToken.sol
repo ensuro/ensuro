@@ -56,14 +56,6 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
   event PoolLoan(uint256 value);
   event PoolLoanRepaid(uint256 value);
 
-  modifier onlyAssetManager() {
-    require(
-      _msgSender() == address(_policyPool.config().assetManager()),
-      "The caller must be the PolicyPool's AssetManager"
-    );
-    _;
-  }
-
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
   constructor(IPolicyPool policyPool_) PolicyPoolComponent(policyPool_) {}
@@ -547,11 +539,6 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
     _discreteChange(amount, positive);
   }
 
-  function assetEarnings(uint256 amount, bool positive) external override onlyAssetManager {
-    _updateCurrentScale();
-    _discreteChange(amount, positive);
-  }
-
   function deposit(address provider, uint256 amount)
     external
     override
@@ -647,13 +634,6 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
     _updateCurrentScale(); // shouldn't do anything because lendToPool is after unlock_scr but doing anyway
     _discreteChange(amount, false);
     emit PoolLoan(amount);
-    if (!fromOcean && _scr > totalSupply()) {
-      // Notify insolvency_hook - Insuficient solvency
-      IInsolvencyHook hook = _policyPool.config().insolvencyHook();
-      if (address(hook) != address(0)) {
-        hook.insolventEToken(this, _scr - totalSupply());
-      }
-    }
     return amount;
   }
 
@@ -745,9 +725,5 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
     uint256 value = uint160(riskModule);
     if (!isException) value |= (1 << 255); // if changed to NOT exception activate first bit
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setAcceptException, value, false);
-  }
-
-  function getInvestable() public view virtual override returns (uint256) {
-    return _scr + ocean() + getPoolLoan();
   }
 }

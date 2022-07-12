@@ -70,11 +70,6 @@ npx hardhat --network $NETWORK deploy:exchange $VERIFY \
    --price-oracle $PRICE_ORACLE \
     --pool-address $POOL || die "Error deploying Exchange"
 
-# AaveAssetManager
-npx hardhat --network $NETWORK deploy:aaveAssetManager $VERIFY \
-   --aave-addr-prov $AAVE_ADDR_PROV \
-    --pool-address $POOL || die "Error deploying AaveAssetManager"
-
 if [ ! -z $HHNODE_PID ]; then
    kill $HHNODE_PID
 fi

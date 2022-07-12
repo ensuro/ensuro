@@ -11,12 +11,10 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 import {IPremiumsAccount} from "../interfaces/IPremiumsAccount.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {IRiskModule} from "../interfaces/IRiskModule.sol";
-import {IInsolvencyHook} from "../interfaces/IInsolvencyHook.sol";
 import {IPolicyPoolComponent} from "../interfaces/IPolicyPoolComponent.sol";
 import {IEToken} from "../interfaces/IEToken.sol";
 import {IPolicyNFT} from "../interfaces/IPolicyNFT.sol";
 import {IPolicyHolder} from "../interfaces/IPolicyHolder.sol";
-import {IAssetManager} from "../interfaces/IAssetManager.sol";
 import {Policy} from "./Policy.sol";
 import {WadRayMath} from "./WadRayMath.sol";
 import {DataTypes} from "./DataTypes.sol";
@@ -71,14 +69,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
 
   event ETokenStatusChanged(IEToken indexed eToken, DataTypes.ETokenStatus newStatus);
 
-  modifier onlyAssetManager() {
-    require(
-      msg.sender == address(_config.assetManager()),
-      "Only assetManager can call this function"
-    );
-    _;
-  }
-
   modifier onlyRole(bytes32 role) {
     _config.checkRole(role, msg.sender);
     _;
@@ -110,10 +100,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   // solhint-disable-next-line func-name-mixedcase
   function __PolicyPool_init_unchained() internal initializer {
     _config.connect();
-    require(
-      _config.assetManager() == IAssetManager(address(0)),
-      "AssetManager can't be set before PolicyPool initialization"
-    );
     _policyNFT.connect();
   }
 
@@ -175,17 +161,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
 
   function getETokenStatus(IEToken eToken) external view returns (DataTypes.ETokenStatus) {
     return _eTokens.get(eToken);
-  }
-
-  function setAssetManager(IAssetManager newAssetManager) external override {
-    require(msg.sender == address(_config), "Only the PolicyPoolConfig can change assetManager");
-    if (address(_config.assetManager()) != address(0)) {
-      _config.assetManager().deinvestAll(); // deInvest all assets
-      _currency.approve(address(_config.assetManager()), 0); // revoke currency management approval
-    }
-    if (address(newAssetManager) != address(0)) {
-      _currency.approve(address(newAssetManager), type(uint256).max);
-    }
   }
 
   /// #if_succeeds
@@ -265,16 +240,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   function _transferTo(address destination, uint256 amount) internal {
     if (amount == 0) return;
     uint256 balance = _balance();
-    if (_config.assetManager() != IAssetManager(address(0)) && balance < amount) {
-      _config.assetManager().refillWallet(amount);
-      balance = _balance();
-    }
     if (balance < amount && (amount - balance) < NEGLIGIBLE_AMOUNT) {
       amount = balance;
-    }
-    // Calculate again the balance and check if enought, if not call unsolvency_hook
-    if (_config.insolvencyHook() != IInsolvencyHook(address(0)) && _balance() < amount) {
-      _config.insolvencyHook().outOfCash(amount - _balance());
     }
     _currency.safeTransfer(destination, amount);
   }
@@ -334,7 +301,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
       if (borrowFromScr > 0) {
         _transferTo(policyOwner, borrowFromScr);
         borrowFromScr = borrowFromScr - etk.lendToPool(borrowFromScr, true);
-        if (borrowFromScr > NEGLIGIBLE_AMOUNT) borrowFromScr = _takeLoanFromAnyEtk(borrowFromScr);
         require(
           borrowFromScr <= NEGLIGIBLE_AMOUNT,
           "Don't know where to take the rest of the money"
@@ -402,36 +368,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     else return (false, aux - policy.premiumForLps);
   }
 
-  /*
-   * Called when the payout to be taken from policyFunds wasn't enought.
-   * Then I take loan from the others tokens
-   */
-  function _takeLoanFromAnyEtk(uint256 loanLeft) internal returns (uint256) {
-    for (uint256 i = 0; i < _eTokens.length(); i++) {
-      (IEToken etk, DataTypes.ETokenStatus etkStatus) = _eTokens.at(i);
-      if (etkStatus != DataTypes.ETokenStatus.active) continue;
-      loanLeft -= etk.lendToPool(loanLeft, false);
-      if (loanLeft <= NEGLIGIBLE_AMOUNT) break;
-    }
-    return loanLeft;
-  }
-
-  function getInvestable() external view override returns (uint256) {
-    uint256 borrowedFromEtk = 0;
-    for (uint256 i = 0; i < _eTokens.length(); i++) {
-      (
-        IEToken etk, /* DataTypes.ETokenStatus etkStatus */
-
-      ) = _eTokens.at(i);
-      // TODO: define if not active are investable or not
-      borrowedFromEtk += etk.getPoolLoan();
-    }
-    // uint256 premiums = purePremiums();
-    uint256 premiums = 0; // TODO
-    if (premiums > borrowedFromEtk) return premiums - borrowedFromEtk;
-    else return 0;
-  }
-
   function totalETokenSupply() public view override returns (uint256) {
     uint256 ret = 0;
     for (uint256 i = 0; i < _eTokens.length(); i++) {
@@ -444,24 +380,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     }
     return ret;
   }
-
-  function assetEarnings(uint256 amount, bool positive)
-    external
-    override
-    onlyAssetManager
-    whenNotPaused
-  {} // solhint-disable-line no-empty-blocks
-
-  /*
-    if (positive) {
-      // earnings
-      _storePurePremiumWon(amount);
-    } else {
-      // losses
-      _payFromPool(amount); // return value should be 0 if not, losses are more than capital available
-    }
-    // TODO
-  }*/
 
   function getSolvencyETK(uint256 policyId) external view returns (IEToken) {
     return _policySolvency[policyId];

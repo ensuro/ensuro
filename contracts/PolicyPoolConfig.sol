@@ -4,8 +4,6 @@ pragma solidity ^0.8.0;
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {IAssetManager} from "../interfaces/IAssetManager.sol";
-import {IInsolvencyHook} from "../interfaces/IInsolvencyHook.sol";
 import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {IRiskModule} from "../interfaces/IRiskModule.sol";
@@ -37,8 +35,6 @@ contract PolicyPoolConfig is
   uint256 public constant L2_RM_LIMIT = 5e16; // 5% in WAD
 
   address internal _treasury; // address of Ensuro treasury
-  IAssetManager internal _assetManager; // asset manager
-  IInsolvencyHook internal _insolvencyHook; // Contract that handles insolvency situations
   IPolicyPool internal _policyPool;
   ILPWhitelist internal _lpWhitelist; // Contract that handles whitelisting of Liquidity Providers
   IExchange internal _exchange; // Contract that handles exchange operations between assets
@@ -112,21 +108,6 @@ contract PolicyPoolConfig is
     if (!hasRole(role1, account)) _checkRole(role2, account);
   }
 
-  function setAssetManager(IAssetManager assetManager_) external onlyRole(LEVEL1_ROLE) {
-    require(
-      address(assetManager_) == address(0) ||
-        IPolicyPoolComponent(address(assetManager_)).policyPool() == _policyPool,
-      "Component not linked to this PolicyPool"
-    );
-    _policyPool.setAssetManager(assetManager_);
-    _assetManager = assetManager_;
-    emit ComponentChanged(GovernanceActions.setAssetManager, address(_assetManager));
-  }
-
-  function assetManager() external view virtual override returns (IAssetManager) {
-    return _assetManager;
-  }
-
   function setTreasury(address treasury_) external onlyRole(LEVEL1_ROLE) {
     _treasury = treasury_;
     emit ComponentChanged(GovernanceActions.setTreasury, _treasury);
@@ -134,23 +115,6 @@ contract PolicyPoolConfig is
 
   function treasury() external view override returns (address) {
     return _treasury;
-  }
-
-  function setInsolvencyHook(IInsolvencyHook insolvencyHook_)
-    external
-    onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
-  {
-    require(
-      address(insolvencyHook_) == address(0) ||
-        IPolicyPoolComponent(address(insolvencyHook_)).policyPool() == _policyPool,
-      "Component not linked to this PolicyPool"
-    );
-    _insolvencyHook = insolvencyHook_;
-    emit ComponentChanged(GovernanceActions.setInsolvencyHook, address(_insolvencyHook));
-  }
-
-  function insolvencyHook() external view override returns (IInsolvencyHook) {
-    return _insolvencyHook;
   }
 
   function setLPWhitelist(ILPWhitelist lpWhitelist_)
