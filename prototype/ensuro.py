@@ -289,7 +289,7 @@ class EToken(ReserveMixin, ERC20Token):
         self._update_token_interest_rate()
         self._check_balance()
 
-    def unlock_scr(self, policy, scr_amount):
+    def unlock_scr(self, policy, scr_amount, adjustment):
         # Pre condition: the pool needs to transfer the amount of the interests
         require(scr_amount <= self.scr, "Want to unlock more SCR than locked")
         self._update_current_scale()
@@ -303,10 +303,10 @@ class EToken(ReserveMixin, ERC20Token):
             self.scr_interest_rate = (
                 self.scr_interest_rate * orig_scr.to_ray() - policy.interest_rate * scr_amount.to_ray()
             ) // self.scr.to_ray()  # revert weighted average
-        self._update_token_interest_rate()
+        self._discrete_earning(adjustment)
         self._check_balance()
 
-    def discrete_earning(self, amount):
+    def _discrete_earning(self, amount):
         self._update_current_scale()
         new_total_supply = amount + self.total_supply()
         self.scale_factor = new_total_supply.to_ray() // self._base_supply().to_ray()
@@ -417,7 +417,7 @@ class EToken(ReserveMixin, ERC20Token):
             self._update_pool_loan_scale()
             self.pool_loan += (amount.to_ray() // self.pool_loan_scale).to_wad()
         self._update_current_scale()
-        self.discrete_earning(-amount)
+        self._discrete_earning(-amount)
         self._transfer_to(receiver, amount)
         self._check_balance()
         return amount_asked - amount
@@ -428,7 +428,7 @@ class EToken(ReserveMixin, ERC20Token):
             (self.get_pool_loan() - amount).to_ray() // self.pool_loan_scale
         ).to_wad()
         self._update_current_scale()
-        self.discrete_earning(amount)
+        self._discrete_earning(amount)
         self._check_balance()
 
     def _get_pool_loan_scale(self):
@@ -700,8 +700,7 @@ class PolicyPool(AccessControlContract):
         for_lps = policy.premium_for_lps
         adjustment = for_lps - policy.accrued_interest()
         etk = policy.solvency_etoken
-        etk.discrete_earning(adjustment)
-        etk.unlock_scr(policy, policy.scr)  # TODO: mix both calls in the same
+        etk.unlock_scr(policy, policy.scr, adjustment)
 
         if customer_won:
             policy_owner = self.policy_nft.owner_of(policy.id)
