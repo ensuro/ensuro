@@ -130,18 +130,13 @@ class EToken(IERC20):
     )
 
     unlock_scr = MethodAdapter(
-        (("policy_interest_rate", "ray"), ("scr_amount", "amount")),
+        (("policy_interest_rate", "ray"), ("scr_amount", "amount"), ("adjustment", "amount")),
         adapt_args=lambda args, kwargs: ([], {
             "policy_interest_rate": (args[0] if args else kwargs["policy"]).interest_rate,
             "scr_amount": args[1] if len(args) > 1 else kwargs["scr_amount"],
+            "adjustment": args[2] if len(args) > 2 else kwargs["adjustment"],
         })
     )
-
-    discrete_earning = MethodAdapter((("amount", "amount"), ("positive", "bool")),
-                                     adapt_args=_adapt_signed_amount)
-
-    asset_earnings = MethodAdapter((("amount", "amount"), ("positive", "bool")),
-                                   adapt_args=_adapt_signed_amount)
 
     deposit_ = MethodAdapter((("provider", "address"), ("amount", "amount")))
 
@@ -164,12 +159,13 @@ class EToken(IERC20):
         adapt_args=lambda args, kwargs: ((None, args[0].expiration, ), {})
     )
 
-    lend_to_pool_ = MethodAdapter((("amount", "amount"), ("from_ocean", "bool")))
+    lend_to_pool_ = MethodAdapter((("amount", "amount"), ("receiver", "address"), ("from_ocean", "bool")))
 
-    def lend_to_pool(self, amount, from_ocean=True):
-        receipt = self.lend_to_pool_(amount, from_ocean)
+    def lend_to_pool(self, amount, receiver, from_ocean=True):
+        receipt = self.lend_to_pool_(amount, receiver, from_ocean)
         if "PoolLoan" in receipt.events:
-            return Wad(receipt.events["PoolLoan"]["value"])
+            evt = receipt.events["PoolLoan"]
+            return Wad(evt["amountAsked"]) - Wad(evt["value"])
         else:
             return Wad(0)
 

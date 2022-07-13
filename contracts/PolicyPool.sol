@@ -40,10 +40,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   using DataTypes for DataTypes.ETokenStatusMap;
   using SafeERC20 for IERC20Metadata;
 
-  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
-  // solhint-disable-next-line var-name-mixedcase
-  uint256 public immutable NEGLIGIBLE_AMOUNT; // init as 10**(decimals-3) == 0.001 USD
-
   bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
   bytes32 public constant LEVEL1_ROLE = keccak256("LEVEL1_ROLE");
   bytes32 public constant LEVEL2_ROLE = keccak256("LEVEL2_ROLE");
@@ -88,7 +84,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     _config = config_;
     _policyNFT = policyNFT_;
     _currency = currency_;
-    NEGLIGIBLE_AMOUNT = 10**(currency_.decimals() - 3);
   }
 
   function initialize() public initializer {
@@ -169,7 +164,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   function deposit(IEToken eToken, uint256 amount) external override whenNotPaused {
     (bool found, DataTypes.ETokenStatus etkStatus) = _eTokens.tryGet(eToken);
     require(found && etkStatus == DataTypes.ETokenStatus.active, "eToken is not active");
-    _currency.safeTransferFrom(msg.sender, address(this), amount);
+    _currency.safeTransferFrom(msg.sender, address(eToken), amount);
     eToken.deposit(msg.sender, amount);
   }
 
@@ -189,9 +184,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
       "eToken not found or withdraws not allowed"
     );
     address provider = msg.sender;
-    uint256 withdrawed = eToken.withdraw(provider, amount);
-    if (withdrawed > 0) _transferTo(provider, withdrawed);
-    return withdrawed;
+    return eToken.withdraw(provider, amount);
   }
 
   function newPolicy(
@@ -206,10 +199,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     _policies[policy.id] = policy.hash();
     IPremiumsAccount pa = rm.premiumsAccount();
     pa.newPolicy(policy.purePremium);
-    _lockScr(policy);
+    IEToken solvencyEtk = _lockScr(policy);
     _policyNFT.safeMint(customer, policy.id);
     _currency.safeTransferFrom(customer, address(pa), policy.purePremium);
-    _currency.safeTransferFrom(customer, address(this), policy.premiumForLps);
+    _currency.safeTransferFrom(customer, address(solvencyEtk), policy.premiumForLps);
     _currency.safeTransferFrom(customer, _config.treasury(), policy.premiumForEnsuro);
     if (policy.premiumForRm > 0 && customer != rm.wallet())
       _currency.safeTransferFrom(customer, rm.wallet(), policy.premiumForRm);
@@ -217,7 +210,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     return policy.id;
   }
 
-  function _lockScr(Policy.PolicyData memory policy) internal {
+  function _lockScr(Policy.PolicyData memory policy) internal returns (IEToken) {
     // Initially I iterate over all eTokens and accumulate ocean of eligible ones
     // saves the ocean in policyFunds, later will _distributeScr
     for (uint256 i = 0; i < _eTokens.length(); i++) {
@@ -228,22 +221,13 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
       if (etkOcean < policy.scr) continue;
       etk.lockScr(policy.interestRate(), policy.scr);
       _policySolvency[policy.id] = etk;
-      return;
+      return etk;
     }
     revert("Not enought ocean to cover the policy");
   }
 
   function _balance() internal view returns (uint256) {
     return _currency.balanceOf(address(this));
-  }
-
-  function _transferTo(address destination, uint256 amount) internal {
-    if (amount == 0) return;
-    uint256 balance = _balance();
-    if (balance < amount && (amount - balance) < NEGLIGIBLE_AMOUNT) {
-      amount = balance;
-    }
-    _currency.safeTransfer(destination, amount);
   }
 
   function _validatePolicy(Policy.PolicyData memory policy) internal view {
@@ -287,28 +271,17 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
 
     // Unlock SCR and adjust eToken
     IEToken etk = _policySolvency[policy.id];
-    etk.unlockScr(policy.interestRate(), policy.scr);
-    (bool positive, uint256 adjustment) = _interestAdjustment(policy);
-    etk.discreteEarning(adjustment, positive); // TODO: merge unlockScr and discreteEarning in the same call
+    etk.unlockScr(
+      policy.interestRate(),
+      policy.scr,
+      int256(policy.premiumForLps) - int256(policy.accruedInterest())
+    );
 
     if (customerWon) {
       address policyOwner = _policyNFT.ownerOf(policy.id);
-      uint256 borrowFromScr = rm.premiumsAccount().policyResolvedWithPayout(
-        policyOwner,
-        policy.purePremium,
-        payout
-      );
-      if (borrowFromScr > 0) {
-        _transferTo(policyOwner, borrowFromScr);
-        borrowFromScr = borrowFromScr - etk.lendToPool(borrowFromScr, true);
-        require(
-          borrowFromScr <= NEGLIGIBLE_AMOUNT,
-          "Don't know where to take the rest of the money"
-        );
-      }
+      rm.premiumsAccount().policyResolvedWithPayout(policyOwner, policy.purePremium, payout, etk);
     } else {
-      uint256 etkRepayment = rm.premiumsAccount().policyExpired(policy.purePremium, etk);
-      if (etkRepayment > 0) etk.repayPoolLoan(etkRepayment); // TODO repayment will be done in premium pool
+      rm.premiumsAccount().policyExpired(policy.purePremium, etk);
     }
 
     rm.releaseScr(policy.scr);
@@ -355,17 +328,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     } catch {
       return;
     }
-  }
-
-  function _interestAdjustment(Policy.PolicyData memory policy)
-    internal
-    view
-    returns (bool, uint256)
-  {
-    // Calculate interest accrual adjustment
-    uint256 aux = policy.accruedInterest();
-    if (policy.premiumForLps >= aux) return (true, policy.premiumForLps - aux);
-    else return (false, aux - policy.premiumForLps);
   }
 
   function totalETokenSupply() public view override returns (uint256) {

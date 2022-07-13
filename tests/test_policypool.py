@@ -449,8 +449,6 @@ def test_walkthrough(tenv):
     )
     p2_one_day_interest = policy.premium_split()[-1] // _W(10)
 
-    eUSD1YEAR_ocean = eUSD1YEAR.ocean
-
     timecontrol.fast_forward(DAY)
 
     for lp in ("LP1", "LP2", "LP3"):
@@ -590,7 +588,9 @@ def test_walkthrough(tenv):
         pool_loan = eUSD1YEAR.get_pool_loan()
 
     assert eUSD1YEAR.get_pool_loan() == _W(0)
-    premiums_account.pure_premiums.assert_equal(_W("21.296283705442503107"), decimals=2)  # from jypiter prints
+    premiums_account.pure_premiums.assert_equal(
+        _W("21.296283705442503107"), decimals=2
+    )  # from jypiter prints
 
     USD.balance_of(eUSD1YEAR).assert_equal(
         _W(1000 + 2000 + 2 - 35 + 2 * 65 - 72 * won_count) +

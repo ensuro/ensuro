@@ -3,7 +3,7 @@ pragma solidity ^0.8.0;
 
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
-import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
+import {Reserve} from "./Reserve.sol";
 import {IEToken} from "../interfaces/IEToken.sol";
 import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
 import {IInsolvencyHook} from "../interfaces/IInsolvencyHook.sol";
@@ -19,7 +19,7 @@ import {WadRayMath} from "./WadRayMath.sol";
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
-contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
+contract EToken is Reserve, IERC20Metadata, IEToken {
   uint256 public constant MIN_SCALE = 1e17; // 0.0000000001 == 1e-10 in ray
 
   using WadRayMath for uint256;
@@ -53,12 +53,12 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
   // Exceptions to the accept all or accept none policy defined before
   mapping(address => bool) internal _acceptExceptions;
 
-  event PoolLoan(uint256 value);
+  event PoolLoan(uint256 value, uint256 amountAsked);
   event PoolLoanRepaid(uint256 value);
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
-  constructor(IPolicyPool policyPool_) PolicyPoolComponent(policyPool_) {}
+  constructor(IPolicyPool policyPool_) Reserve(policyPool_) {}
 
   /**
    * @dev Initializes the eToken
@@ -507,11 +507,11 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
     _updateTokenInterestRate();
   }
 
-  function unlockScr(uint256 policyInterestRate, uint256 scrAmount)
-    external
-    override
-    onlyPolicyPool
-  {
+  function unlockScr(
+    uint256 policyInterestRate,
+    uint256 scrAmount,
+    int256 adjustment
+  ) external override onlyPolicyPool {
     require(scrAmount <= _scr, "Current SCR less than the amount you want to unlock");
     _updateCurrentScale();
 
@@ -525,19 +525,14 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
         policyInterestRate.rayMul(scrAmount.wadToRay())).rayDiv(_scr.wadToRay());
     }
     emit SCRUnlocked(policyInterestRate, scrAmount);
-    _updateTokenInterestRate();
+    _discreteChange(adjustment);
   }
 
-  function _discreteChange(uint256 amount, bool positive) internal {
-    uint256 newTotalSupply = positive ? (totalSupply() + amount) : (totalSupply() - amount);
+  function _discreteChange(int256 amount) internal {
+    uint256 newTotalSupply = uint256(int256(totalSupply()) + amount);
     _scaleFactor = newTotalSupply.wadToRay().rayDiv(_totalSupply.wadToRay());
     require(_scaleFactor >= MIN_SCALE, "Scale too small, can lead to rounding errors");
     _updateTokenInterestRate();
-  }
-
-  function discreteEarning(uint256 amount, bool positive) external override onlyPolicyPool {
-    _updateCurrentScale();
-    _discreteChange(amount, positive);
   }
 
   function deposit(address provider, uint256 amount)
@@ -581,6 +576,7 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
     if (amount == 0) return 0;
     _burn(provider, amount);
     _updateTokenInterestRate();
+    _transferTo(provider, amount);
     return amount;
   }
 
@@ -612,17 +608,23 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
     else return 0;
   }
 
-  function lendToPool(uint256 amount, bool fromOcean)
+  function lendToPool(
+    uint256 amount,
+    address receiver,
+    bool fromOcean
+  )
     external
     override
-    onlyPolicyPool
-    returns (uint256)
+    returns (
+      uint256 // TODO: validate msg.sender !!!
+    )
   {
+    uint256 amountAsked = amount;
     if (fromOcean && amount > ocean()) amount = ocean();
     if (!fromOcean && amount > totalSupply()) amount = totalSupply();
     if (amount > _maxNegativeAdjustment()) {
       amount = _maxNegativeAdjustment();
-      if (amount == 0) return amount;
+      if (amount == 0) return amountAsked;
     }
     if (_poolLoan == 0) {
       _poolLoan = amount;
@@ -633,16 +635,19 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
       _poolLoan += amount.wadToRay().rayDiv(_poolLoanScale).rayToWad();
     }
     _updateCurrentScale(); // shouldn't do anything because lendToPool is after unlock_scr but doing anyway
-    _discreteChange(amount, false);
-    emit PoolLoan(amount);
-    return amount;
+    _discreteChange(-int256(amount));
+    _transferTo(receiver, amount);
+    emit PoolLoan(amount, amountAsked);
+    return amountAsked - amount;
   }
 
-  function repayPoolLoan(uint256 amount) external override onlyPolicyPool {
+  function repayPoolLoan(uint256 amount) external override {
+    // TODO: validate msg.sender !!!
+    // Assumes the caller transferred the amount of money
     _updatePoolLoanScale();
     _poolLoan = (getPoolLoan() - amount).wadToRay().rayDiv(_poolLoanScale).rayToWad();
     _updateCurrentScale(); // shouldn't do anything because lendToPool is after unlock_scr but doing anyway
-    _discreteChange(amount, true);
+    _discreteChange(int256(amount));
     emit PoolLoanRepaid(amount);
   }
 

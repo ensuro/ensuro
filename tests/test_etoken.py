@@ -378,7 +378,7 @@ def test_pool_loan(tenv):
         tenv.currency.transfer("SOMEONE", etk, lended)
         etk.repay_pool_loan(lended)
         assert etk.get_pool_loan() == _W(0)
-        assert etk.lend_to_pool(_W(300), "SOMEONE") == 0
+        etk.lend_to_pool(_W(300), "SOMEONE").assert_equal(_W(0))
 
     etk.get_pool_loan().assert_equal(_W(300))
     tenv.time_control.fast_forward(7 * DAY)
@@ -386,7 +386,7 @@ def test_pool_loan(tenv):
     # After 7 days increases at a rate of 7.3%/year (0.02% per day)
     etk.get_pool_loan().assert_equal(_W(300) * _W(1 + 0.0002 * 7))
     with etk.thru_policy_pool():
-        assert etk.lend_to_pool(_W(100), "OTHER") == _W(0)
+        etk.lend_to_pool(_W(100), "OTHER").assert_equal(_W(0))
         assert tenv.currency.balance_of("OTHER") == _W(100)
 
     tenv.time_control.fast_forward(1 * DAY)

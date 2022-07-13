@@ -20,9 +20,11 @@ interface IEToken is IERC20 {
 
   function lockScr(uint256 policyInterestRate, uint256 scrAmount) external;
 
-  function unlockScr(uint256 policyInterestRate, uint256 scrAmount) external;
-
-  function discreteEarning(uint256 amount, bool positive) external;
+  function unlockScr(
+    uint256 policyInterestRate,
+    uint256 scrAmount,
+    int256 adjustment
+  ) external;
 
   function deposit(address provider, uint256 amount) external returns (uint256);
 
@@ -32,7 +34,11 @@ interface IEToken is IERC20 {
 
   function accepts(address riskModule, uint40 policyExpiration) external view returns (bool);
 
-  function lendToPool(uint256 amount, bool fromOcean) external returns (uint256);
+  function lendToPool(
+    uint256 amount,
+    address receiver,
+    bool fromOcean
+  ) external returns (uint256);
 
   function repayPoolLoan(uint256 amount) external;
 
