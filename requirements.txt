@@ -1,0 +1,5 @@
+m9g==0.0.6
+PyYAML==5.4.1
+eth-brownie==1.19.0
+eth-prototype[brownie]>=0.6.2
+environs==9.5.0
