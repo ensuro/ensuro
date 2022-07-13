@@ -19,6 +19,7 @@ abstract contract Reserve is PolicyPoolComponent {
   // solhint-disable-next-line var-name-mixedcase
   uint256 public immutable NEGLIGIBLE_AMOUNT; // init as 10**(decimals/2) == 0.001 USD
 
+  /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(IPolicyPool policyPool_) PolicyPoolComponent(policyPool_) {
     NEGLIGIBLE_AMOUNT = 10**(policyPool_.currency().decimals() / 2);
   }

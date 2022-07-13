@@ -184,6 +184,7 @@ async function deployEToken({
   ], {
     kind: 'uups',
     constructorArgs: [poolAddress],
+    unsafeAllow: ["delegatecall"],
   });
 
   await etoken.deployed();

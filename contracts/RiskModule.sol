@@ -42,7 +42,6 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
   address internal _wallet; // Address of the RiskModule provider
 
   /// @custom:oz-upgrades-unsafe-allow constructor
-  // solhint-disable-next-line no-empty-blocks
   constructor(IPolicyPool policyPool_, IPremiumsAccount premiumsAccount_)
     PolicyPoolComponent(policyPool_)
   {
