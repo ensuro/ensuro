@@ -492,6 +492,7 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
 
   function lockScr(uint256 policyInterestRate, uint256 scrAmount) external override onlyPolicyPool {
     require(scrAmount <= this.ocean(), "Not enought OCEAN to cover the SCR");
+    // TODO: shouldn't be this.oceanForNewScr ???
     _updateCurrentScale();
     if (_scr == 0) {
       _scr = scrAmount;

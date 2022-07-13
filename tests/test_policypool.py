@@ -5,7 +5,7 @@ from ethproto.contracts import RevertError
 from ethproto.wadray import _W, _R, set_precision, Wad, make_integer_float
 from ethproto.wrappers import get_provider
 from prototype.utils import load_config, WEEK, DAY, HOUR
-from . import extract_vars, is_brownie_coverage_enabled
+from . import extract_vars, is_brownie_coverage_enabled, TEST_VARIANTS
 
 TEnv = namedtuple("TEnv", "time_control module kind")
 
@@ -13,7 +13,7 @@ USDC = make_integer_float(6, "USDC")
 _D = USDC.from_value
 
 
-@pytest.fixture(params=["prototype", "ethereum"])
+@pytest.fixture(params=TEST_VARIANTS)
 def tenv(request):
     if request.param == "prototype":
         from prototype import ensuro
@@ -470,7 +470,7 @@ def test_walkthrough(tenv):
     rm.resolve_policy(policy_1.id, True)
 
     assert USD.balance_of("CUST1") == _W(36)
-    assert USD.balance_of(pool.contract_id).equal(_W(1000 + 2000 + 2000 + 2 - 35))
+    assert USD.balance_of(eUSD1YEAR).equal(_W(1000 + 2000 + 2000 + 2 - 35))
 
     borrow_from_scr.assert_equal(eUSD1YEAR.get_pool_loan())
     daily_pool_loan_interest = eUSD1YEAR.pool_loan_interest_rate // _R(365)
@@ -501,7 +501,10 @@ def test_walkthrough(tenv):
     rm.resolve_policy(policy_2.id, False)
 
     assert USD.balance_of("CUST2") == _W(0)
-    USD.balance_of(pool.contract_id).assert_equal(_W(1000 + 2000 + 2000 + 2 - 35))  # unchanged
+    USD.balance_of(pool.contract_id).assert_equal(_W(0))  # Balance no longer in the pool
+    USD.balance_of(eUSD1YEAR).assert_equal(
+        _W(1000 + 2000 + 2000 + 2 - 35)
+    )  # unchanged
 
     for lp in ("LP1", "LP2", "LP3"):
         balance = eUSD1YEAR.balance_of(lp)
@@ -589,12 +592,12 @@ def test_walkthrough(tenv):
     assert eUSD1YEAR.get_pool_loan() == _W(0)
     premiums_account.pure_premiums.assert_equal(_W("21.296283705442503107"), decimals=2)  # from jypiter prints
 
-    USD.balance_of(pool.contract_id).assert_equal(
+    USD.balance_of(eUSD1YEAR).assert_equal(
         _W(1000 + 2000 + 2 - 35 + 2 * 65 - 72 * won_count) +
         _W(2000) - _W("1986.7994") - premiums_account.pure_premiums, decimals=2
     )
 
-    USD.balance_of(premiums_account.contract_id).assert_equal(premiums_account.pure_premiums)
+    USD.balance_of(premiums_account).assert_equal(premiums_account.pure_premiums)
 
     pool.withdraw("eUSD1YEAR", "LP1", None).assert_equal(
         _W("1005.638186186546873425"), decimals=2

@@ -117,35 +117,7 @@ contract PremiumsAccount is IPremiumsAccount, PolicyPoolComponent {
     }
   }
 
-  /**
-   *
-   * Repays a loan taken with the eToken with the money in the premium pool.
-   * The repayment should happen without calling this method when customer losses and eToken is one of the
-   * policyFunds. But sometimes we need to take loans from tokens not linked to the policy.
-   *
-   * returns The amount repaid
-   *
-   * Requirements:
-   *
-   * - `eToken` must be `active` or `deprecated`
-   */
-
-  /*
-    // TODO: review if we keep this method and if we keep it open
-  function repayETokenLoan(IEToken eToken) external whenNotPaused returns (uint256) {
-    (bool found, DataTypes.ETokenStatus etkStatus) = _eTokens.tryGet(eToken);
-    require(
-      found &&
-        (etkStatus == DataTypes.ETokenStatus.active ||
-          etkStatus == DataTypes.ETokenStatus.deprecated),
-      "eToken is not active"
-    );
-    uint256 poolLoan = eToken.getPoolLoan();
-    uint256 toPayLater = _payFromPool(poolLoan);
-    eToken.repayPoolLoan(poolLoan - toPayLater);
-    return poolLoan - toPayLater;
-  }
-  */
+  // TODO: restore repayETokenLoan?
 
   /**
    *

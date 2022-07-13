@@ -289,7 +289,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     IEToken etk = _policySolvency[policy.id];
     etk.unlockScr(policy.interestRate(), policy.scr);
     (bool positive, uint256 adjustment) = _interestAdjustment(policy);
-    etk.discreteEarning(adjustment, positive);
+    etk.discreteEarning(adjustment, positive); // TODO: merge unlockScr and discreteEarning in the same call
 
     if (customerWon) {
       address policyOwner = _policyNFT.ownerOf(policy.id);
