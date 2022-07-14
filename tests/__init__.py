@@ -1,4 +1,9 @@
 import sys
+from environs import Env
+
+env = Env()
+
+TEST_VARIANTS = env.list("TEST_VARIANTS", ["prototype", "ethereum"])
 
 
 def extract_vars(vars, keys):

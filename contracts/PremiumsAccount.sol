@@ -6,7 +6,7 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {WadRayMath} from "./WadRayMath.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
-import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
+import {Reserve} from "./Reserve.sol";
 import {IPremiumsAccount} from "../interfaces/IPremiumsAccount.sol";
 import {Policy} from "./Policy.sol";
 import {IEToken} from "../interfaces/IEToken.sol";
@@ -18,7 +18,7 @@ import {DataTypes} from "./DataTypes.sol";
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
-contract PremiumsAccount is IPremiumsAccount, PolicyPoolComponent {
+contract PremiumsAccount is IPremiumsAccount, Reserve {
   using Policy for Policy.PolicyData;
   using WadRayMath for uint256;
   using SafeERC20 for IERC20Metadata;
@@ -37,7 +37,7 @@ contract PremiumsAccount is IPremiumsAccount, PolicyPoolComponent {
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
-  constructor(IPolicyPool policyPool_) PolicyPoolComponent(policyPool_) {}
+  constructor(IPolicyPool policyPool_) Reserve(policyPool_) {}
 
   /**
    * @dev Public initialize Initializes the PremiumsAccount
@@ -117,35 +117,7 @@ contract PremiumsAccount is IPremiumsAccount, PolicyPoolComponent {
     }
   }
 
-  /**
-   *
-   * Repays a loan taken with the eToken with the money in the premium pool.
-   * The repayment should happen without calling this method when customer losses and eToken is one of the
-   * policyFunds. But sometimes we need to take loans from tokens not linked to the policy.
-   *
-   * returns The amount repaid
-   *
-   * Requirements:
-   *
-   * - `eToken` must be `active` or `deprecated`
-   */
-
-  /*
-    // TODO: review if we keep this method and if we keep it open
-  function repayETokenLoan(IEToken eToken) external whenNotPaused returns (uint256) {
-    (bool found, DataTypes.ETokenStatus etkStatus) = _eTokens.tryGet(eToken);
-    require(
-      found &&
-        (etkStatus == DataTypes.ETokenStatus.active ||
-          etkStatus == DataTypes.ETokenStatus.deprecated),
-      "eToken is not active"
-    );
-    uint256 poolLoan = eToken.getPoolLoan();
-    uint256 toPayLater = _payFromPool(poolLoan);
-    eToken.repayPoolLoan(poolLoan - toPayLater);
-    return poolLoan - toPayLater;
-  }
-  */
+  // TODO: restore repayETokenLoan?
 
   /**
    *
@@ -193,27 +165,25 @@ contract PremiumsAccount is IPremiumsAccount, PolicyPoolComponent {
   function policyResolvedWithPayout(
     address policyOwner,
     uint256 purePremium,
-    uint256 payout
-  ) external override onlyPolicyPool returns (uint256) {
+    uint256 payout,
+    IEToken etk
+  ) external override onlyPolicyPool {
     _activePurePremiums -= purePremium;
     if (purePremium >= payout) {
       _storePurePremiumWon(purePremium - payout);
       // TODO: repay debt?
       _transferTo(policyOwner, payout);
-      return 0;
     } else {
       uint256 borrowFromScr = _payFromPool(payout - purePremium);
+      if (borrowFromScr > 0) {
+        uint256 left = etk.lendToPool(borrowFromScr, policyOwner, true);
+        require(left <= NEGLIGIBLE_AMOUNT, "Don't know where to take the rest of the money");
+      }
       _transferTo(policyOwner, payout - borrowFromScr);
-      return borrowFromScr;
     }
   }
 
-  function policyExpired(uint256 purePremium, IEToken etk)
-    external
-    override
-    onlyPolicyPool
-    returns (uint256)
-  {
+  function policyExpired(uint256 purePremium, IEToken etk) external override onlyPolicyPool {
     uint256 aux;
     uint256 purePremiumWon = purePremium;
     _activePurePremiums -= purePremiumWon;
@@ -227,22 +197,13 @@ contract PremiumsAccount is IPremiumsAccount, PolicyPoolComponent {
 
     // Then repay loan
     uint256 borrowedFromEtk = etk.getPoolLoan();
-    uint256 etkRepayment;
     if (borrowedFromEtk > 0) {
-      aux = Math.min(purePremiumWon, borrowedFromEtk);
-      // etk.repayPoolLoan(aux); - TODO repayment will be done other way
-      purePremiumWon -= aux;
-      etkRepayment = aux;
-      _transferTo(address(_policyPool), aux);
+      uint256 etkRepayment = Math.min(purePremiumWon, borrowedFromEtk);
+      _transferTo(address(etk), etkRepayment);
+      etk.repayPoolLoan(etkRepayment);
+      purePremiumWon -= etkRepayment;
     }
     // Finally store purePremiumWon
     _storePurePremiumWon(purePremiumWon);
-    return etkRepayment; // TODO: temporal
-  }
-
-  function _transferTo(address destination, uint256 amount) internal {
-    if (amount == 0) return;
-    // TODO: asset management
-    currency().safeTransfer(destination, amount);
   }
 }

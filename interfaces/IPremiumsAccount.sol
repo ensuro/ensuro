@@ -14,8 +14,9 @@ interface IPremiumsAccount {
   function policyResolvedWithPayout(
     address policyOwner,
     uint256 purePremium,
-    uint256 payout
-  ) external returns (uint256);
+    uint256 payout,
+    IEToken etk
+  ) external;
 
-  function policyExpired(uint256 purePremium, IEToken etk) external returns (uint256);
+  function policyExpired(uint256 purePremium, IEToken etk) external;
 }

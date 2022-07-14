@@ -9,11 +9,12 @@ from prototype import ensuro
 from ethproto.wadray import _W, _R, Wad
 from prototype import wrappers
 from prototype.utils import WEEK, DAY
+from . import TEST_VARIANTS
 
 TEnv = namedtuple("TEnv", "time_control currency rm_class pool_config kind")
 
 
-@pytest.fixture(params=["ethereum", "prototype"])
+@pytest.fixture(params=TEST_VARIANTS)
 def tenv(request):
     if request.param == "prototype":
         currency = ERC20Token(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))

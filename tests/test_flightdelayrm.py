@@ -6,7 +6,7 @@ from ethproto.contracts import RevertError
 from ethproto.wrappers import get_provider, IERC20, MethodAdapter
 from ethproto.wadray import _W, _R, Wad
 from prototype import wrappers
-from . import extract_vars
+from . import extract_vars, TEST_VARIANTS
 
 
 TEnv = namedtuple("TEnv", "time_control currency pool premiums_account pool_config kind module link_token")
@@ -23,7 +23,7 @@ class LinkTokenMock(IERC20):
         super().__init__(owner, name, symbol, initial_supply)
 
 
-@pytest.fixture(params=["ethereum"])
+@pytest.fixture(params=[x for x in TEST_VARIANTS if x == "ethereum"])
 def tenv(request):
     currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
     config = wrappers.PolicyPoolConfig(owner="owner")

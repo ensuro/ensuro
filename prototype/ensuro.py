@@ -173,7 +173,23 @@ def non_negative(value):
         raise ValueError("Not allowed negative")
 
 
-class EToken(ERC20Token):
+class ReserveMixin:
+    @property
+    def NEGLIGIBLE_AMOUNT(self):
+        return Wad(10 ** (self.currency.decimals // 2))
+
+    def _transfer_to(self, target, amount):
+        if amount == _W(0):
+            return
+        balance = self.currency.balance_of(self.contract_id)
+
+        if balance < amount and (amount - balance) < self.NEGLIGIBLE_AMOUNT:
+            amount = balance
+
+        return self.currency.transfer(self.contract_id, target, amount)
+
+
+class EToken(ReserveMixin, ERC20Token):
     MIN_SCALE = _R("0.0000000001")  # 1e-10
     policy_pool = ContractProxyField()
     expiration_period = IntField()
@@ -201,6 +217,10 @@ class EToken(ERC20Token):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._running_as = "ensuro"
+
+    @property
+    def currency(self):
+        return self.policy_pool.currency
 
     def _update_current_scale(self):
         self.scale_factor = self._calculate_current_scale()
@@ -267,8 +287,10 @@ class EToken(ERC20Token):
                 self.scr_interest_rate * orig_scr.to_ray() + policy.interest_rate * scr_amount.to_ray()
             ) // self.scr.to_ray()  # weighted average of previous and policy interest_rate
         self._update_token_interest_rate()
+        self._check_balance()
 
-    def unlock_scr(self, policy, scr_amount):
+    def unlock_scr(self, policy, scr_amount, adjustment):
+        # Pre condition: the pool needs to transfer the amount of the interests
         require(scr_amount <= self.scr, "Want to unlock more SCR than locked")
         self._update_current_scale()
 
@@ -281,16 +303,26 @@ class EToken(ERC20Token):
             self.scr_interest_rate = (
                 self.scr_interest_rate * orig_scr.to_ray() - policy.interest_rate * scr_amount.to_ray()
             ) // self.scr.to_ray()  # revert weighted average
-        self._update_token_interest_rate()
+        self._discrete_earning(adjustment)
+        self._check_balance()
 
-    def discrete_earning(self, amount):
+    def _discrete_earning(self, amount):
         self._update_current_scale()
         new_total_supply = amount + self.total_supply()
         self.scale_factor = new_total_supply.to_ray() // self._base_supply().to_ray()
         require(self.scale_factor >= self.MIN_SCALE, "Scale too small, can lead to rounding errors")
         self._update_token_interest_rate()
 
+    def _check_balance(self):
+        balance = self.currency.balance_of(self)
+        require(
+            balance >= self.total_supply() or
+            (self.total_supply() - balance) < self.NEGLIGIBLE_AMOUNT,
+            "Cash balance under total_supply"
+        )
+
     def deposit(self, provider, amount):
+        # Pre condition: the pool needs to transfer the amount
         require(
             self.policy_pool.config.lp_whitelist is None or
             self.policy_pool.config.lp_whitelist.accepts_deposit(self, provider, amount),
@@ -300,6 +332,7 @@ class EToken(ERC20Token):
         scaled_amount = (amount.to_ray() // self.scale_factor).to_wad()
         self.mint(provider, scaled_amount)
         self._update_token_interest_rate()
+        self._check_balance()
         return self.balance_of(provider)
 
     def balance_of(self, provider):
@@ -341,6 +374,8 @@ class EToken(ERC20Token):
         self.burn(provider, scaled_amount)
         self._update_token_interest_rate()
 
+        self._transfer_to(provider, amount)
+
         return amount
 
     def accepts(self, policy):
@@ -360,7 +395,10 @@ class EToken(ERC20Token):
             _W(0)
         )
 
-    def lend_to_pool(self, amount, from_ocean=True):
+    def lend_to_pool(self, amount, receiver, from_ocean=True):
+        amount_asked = amount
+        amount = amount_asked
+
         if from_ocean:
             if amount > self.ocean:
                 amount = self.ocean
@@ -370,7 +408,7 @@ class EToken(ERC20Token):
         if amount > self._max_negative_adjustment():
             amount = self._max_negative_adjustment()
             if amount <= 0:
-                return Wad(0)
+                return amount_asked
         if self.pool_loan == 0:
             self.pool_loan = amount
             self.pool_loan_scale = Ray(RAY)
@@ -379,14 +417,10 @@ class EToken(ERC20Token):
             self._update_pool_loan_scale()
             self.pool_loan += (amount.to_ray() // self.pool_loan_scale).to_wad()
         self._update_current_scale()
-        self.discrete_earning(-amount)
-        if not from_ocean and self.scr > self.total_supply():
-            # Notify insolvency_hook - Insuficient solvency
-            if self.policy_pool.config.insolvency_hook:
-                self.policy_pool.config.insolvency_hook.insolvent_etoken(
-                    self, self.scr - self.total_supply()
-                )
-        return amount
+        self._discrete_earning(-amount)
+        self._transfer_to(receiver, amount)
+        self._check_balance()
+        return amount_asked - amount
 
     def repay_pool_loan(self, amount):
         self._update_pool_loan_scale()
@@ -394,7 +428,8 @@ class EToken(ERC20Token):
             (self.get_pool_loan() - amount).to_ray() // self.pool_loan_scale
         ).to_wad()
         self._update_current_scale()
-        self.discrete_earning(amount)
+        self._discrete_earning(amount)
+        self._check_balance()
 
     def _get_pool_loan_scale(self):
         seconds = time_control.now - self.pool_loan_last_update
@@ -455,7 +490,7 @@ class PolicyPoolConfig(AccessControlContract):
         self.lp_whitelist = ContractProxy(lp_whitelist.contract_id) if lp_whitelist else None
 
 
-class PremiumsAccount(AccessControlContract):
+class PremiumsAccount(ReserveMixin, AccessControlContract):
     pool = ContractProxyField()
     active_pure_premiums = WadField(default=Wad(0))
     borrowed_active_pp = WadField(default=Wad(0))
@@ -516,28 +551,10 @@ class PremiumsAccount(AccessControlContract):
             self.borrowed_active_pp = self.active_pure_premiums
         return to_pay
 
-    def _transfer_to(self, target, amount):
-        if amount == _W(0):
-            return
-        balance = self.currency.balance_of(self.contract_id)
-
-        if amount > balance:
-            self.currency.transfer(self.contract_id, target, balance)
-            return amount - balance
-        else:
-            self.currency.transfer(self.contract_id, target, amount)
-            return _W(0)
-
     def new_policy(self, policy):
         self.active_pure_premiums += policy.pure_premium
 
-    @external
-    def repay_etoken_loan(self, etoken):
-        etk = self.etokens[etoken]
-        pool_loan = etk.get_pool_loan()
-        to_pay_later = self._pay_from_pool(pool_loan)
-        etk.repay_pool_loan(pool_loan - to_pay_later)
-        return pool_loan - to_pay_later
+    # TODO: restore repay_pool_loan?
 
     @external
     def policy_resolved_with_payout(self, customer, policy, payout):
@@ -549,6 +566,10 @@ class PremiumsAccount(AccessControlContract):
             # TODO: repay debt?
         else:
             borrow_from_scr = self._pay_from_pool(payout - policy.pure_premium)
+            if borrow_from_scr > 0:
+                amount_left = policy.solvency_etoken.lend_to_pool(borrow_from_scr, customer)
+                require(amount_left <= self.NEGLIGIBLE_AMOUNT,
+                        "Don't know where to take the rest of the money")
 
         self._transfer_to(customer, payout - borrow_from_scr)
         return borrow_from_scr
@@ -570,9 +591,9 @@ class PremiumsAccount(AccessControlContract):
         borrowed_from_etk = etk.get_pool_loan()
         if borrowed_from_etk and pure_premium_won:  # if debt with token, repay from pure_premium
             repay_amount = min(borrowed_from_etk, pure_premium_won)
+            self._transfer_to(etk, repay_amount)
             etk.repay_pool_loan(repay_amount)
             pure_premium_won -= repay_amount
-            self._transfer_to(self.pool, repay_amount)
 
         self._store_pure_premium_won(pure_premium_won)
 
@@ -587,7 +608,7 @@ class PolicyPool(AccessControlContract):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.config.connect(self)
-        self.NEGLIGIBLE_AMOUNT = Wad(10**(self.currency.decimals - 3))
+        self.NEGLIGIBLE_AMOUNT = Wad(10**(self.currency.decimals // 2))
 
     def has_role(self, role, account):
         return self.config.has_role(role, account)
@@ -597,17 +618,14 @@ class PolicyPool(AccessControlContract):
 
     @external
     def deposit(self, etoken, provider, amount):
-        self.currency.transfer_from(self.contract_id, provider, self.contract_id, amount)
         token = self.etokens[etoken]
+        self.currency.transfer_from(self.contract_id, provider, token.contract_id, amount)
         return token.deposit(provider, amount)
 
     @external
     def withdraw(self, etoken, provider, amount):
         token = self.etokens[etoken]
-        withdrawed = token.withdraw(provider, amount)
-        if withdrawed:
-            self._transfer_to(provider, withdrawed)
-        return withdrawed
+        return token.withdraw(provider, amount)
 
     def fast_forward_time(self, secs):
         global time_control
@@ -635,7 +653,7 @@ class PolicyPool(AccessControlContract):
         )
         self.currency.transfer_from(
             self.contract_id, customer,
-            self.contract_id, policy.premium_for_lps
+            policy.solvency_etoken, policy.premium_for_lps
         )
         self.currency.transfer_from(
             self.contract_id, customer,
@@ -662,16 +680,6 @@ class PolicyPool(AccessControlContract):
         else:
             require(False, "Not enought ocean to cover the policy")
 
-    def _transfer_to(self, target, amount):
-        if amount == _W(0):
-            return
-        balance = self.currency.balance_of(self.contract_id)
-
-        if balance < amount and (amount - balance) < self.NEGLIGIBLE_AMOUNT:
-            amount = balance
-
-        return self.currency.transfer(self.contract_id, target, amount)
-
     @external
     def expire_policy(self, policy_id):
         policy = self.policies[policy_id]
@@ -692,26 +700,15 @@ class PolicyPool(AccessControlContract):
         for_lps = policy.premium_for_lps
         adjustment = for_lps - policy.accrued_interest()
         etk = policy.solvency_etoken
-        etk.unlock_scr(policy, policy.scr)
-        etk.discrete_earning(adjustment)
+        etk.unlock_scr(policy, policy.scr, adjustment)
 
-        borrow_from_scr = Wad(0)
         if customer_won:
             policy_owner = self.policy_nft.owner_of(policy.id)
-            borrow_from_scr = policy.risk_module.premiums_account.policy_resolved_with_payout(
+            policy.risk_module.premiums_account.policy_resolved_with_payout(
                 policy_owner, policy, payout
             )
-            if borrow_from_scr > 0:
-                self._transfer_to(policy_owner, borrow_from_scr)
         else:
             policy.risk_module.premiums_account.policy_expired(policy)
-
-        if borrow_from_scr:
-            etk_borrow = borrow_from_scr
-            etk_borrow_left = etk_borrow - etk.lend_to_pool(etk_borrow)
-
-            require(etk_borrow_left <= self.NEGLIGIBLE_AMOUNT,
-                    "Don't know where to take the rest of the money")
 
         policy.risk_module.remove_policy(policy)
         del self.policies[policy_id]
