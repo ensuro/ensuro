@@ -21,13 +21,13 @@ interface IRiskModule {
 
   function maxPayoutPerPolicy() external view returns (uint256);
 
-  function scrLimit() external view returns (uint256);
+  function exposureLimit() external view returns (uint256);
 
-  function totalScr() external view returns (uint256);
+  function activeExposure() external view returns (uint256);
 
   function wallet() external view returns (address);
 
-  function releaseScr(uint256 scrAmount) external;
+  function releaseExposure(uint256 payout) external;
 
   function premiumsAccount() external view returns (IPremiumsAccount);
 }

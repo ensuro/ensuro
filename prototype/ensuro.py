@@ -39,8 +39,8 @@ class RiskModule(AccessControlContract):
     ensuro_fee = RayField(default=Ray(0))   # Ensuro fee as % of pure_premium
     roc = RayField(default=Ray(0))
     max_payout_per_policy = WadField(default=_W(1000000))
-    scr_limit = WadField(default=_W(10000000))
-    total_scr = WadField(default=_W(0))
+    exposure_limit = WadField(default=_W(10000000))
+    active_exposure = WadField(default=_W(0))
 
     wallet = AddressField(default="RM")
 
@@ -54,7 +54,7 @@ class RiskModule(AccessControlContract):
         "ensuro_fee": "LEVEL2_ROLE",
         "roc": "LEVEL2_ROLE",
         "max_payout_per_policy": "LEVEL2_ROLE",
-        "scr_limit": "LEVEL2_ROLE",
+        "exposure_limit": "LEVEL2_ROLE",
     }
 
     def _validate_setattr(self, attr_name, value):
@@ -78,11 +78,11 @@ class RiskModule(AccessControlContract):
         policy = Policy(id=-1, risk_module=self, payout=payout, premium=premium,
                         loss_prob=loss_prob, start=start, expiration=expiration)
 
-        require(policy.scr <= self.max_payout_per_policy,
-                f"Policy SCR: {policy.scr} > maximum per policy {self.max_payout_per_policy}")
-        total_scr = self.total_scr + policy.scr
-        require(total_scr <= self.scr_limit, "RiskModule: SCR limit exceeded")
-        self.total_scr = total_scr
+        require(policy.payout <= self.max_payout_per_policy,
+                f"Policy Payout: {policy.payout} > maximum per policy {self.max_payout_per_policy}")
+        active_exposure = self.active_exposure + policy.payout
+        require(active_exposure <= self.exposure_limit, "RiskModule: Exposure limit exceeded")
+        self.active_exposure = active_exposure
 
         policy.id = self.policy_pool.new_policy(policy, customer, internal_id)
         assert policy.id > 0
@@ -99,7 +99,7 @@ class RiskModule(AccessControlContract):
 
     @external
     def remove_policy(self, policy):
-        self.total_scr -= policy.scr
+        self.active_exposure -= policy.payout
 
 
 class TrustfulRiskModule(RiskModule):

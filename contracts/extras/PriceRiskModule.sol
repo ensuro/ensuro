@@ -84,7 +84,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
    * @param ensuroFee_ % of premium that will go for Ensuro treasury (in ray)
    * @param roc_ return on capital paid to LPs (annualized percentage - in ray)
    * @param maxPayoutPerPolicy_ Maximum payout per policy (in wad)
-   * @param scrLimit_ Max SCR to be allocated to this module (in wad)
+   * @param exposureLimit_ Max exposure (sum of payouts) to be allocated to this module (in wad)
    * @param wallet_ Address of the RiskModule provider
    */
   function initialize(
@@ -93,10 +93,18 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     uint256 ensuroFee_,
     uint256 roc_,
     uint256 maxPayoutPerPolicy_,
-    uint256 scrLimit_,
+    uint256 exposureLimit_,
     address wallet_
   ) public initializer {
-    __RiskModule_init(name_, collRatio_, ensuroFee_, roc_, maxPayoutPerPolicy_, scrLimit_, wallet_);
+    __RiskModule_init(
+      name_,
+      collRatio_,
+      ensuroFee_,
+      roc_,
+      maxPayoutPerPolicy_,
+      exposureLimit_,
+      wallet_
+    );
     _internalId = 1;
   }
 

@@ -284,7 +284,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
       rm.premiumsAccount().policyExpired(policy.purePremium, etk);
     }
 
-    rm.releaseScr(policy.scr);
+    rm.releaseExposure(policy.payout);
 
     emit PolicyResolved(policy.riskModule, policy.id, payout);
     delete _policies[policy.id];

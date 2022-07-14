@@ -250,21 +250,21 @@ class RiskModule(ETHWrapper):
     constructor_args = (("pool", "address"), ("premiums_account", "address"), )
     initialize_args = (
         ("name", "string"), ("coll_ratio", "ray"), ("ensuro_fee", "ray"),
-        ("roc", "ray"), ("max_payout_per_policy", "amount"), ("scr_limit", "amount"),
+        ("roc", "ray"), ("max_payout_per_policy", "amount"), ("exposure_limit", "amount"),
         ("wallet", "address")
     )
 
     def __init__(self, name, policy_pool, premiums_account, coll_ratio=_R(1), ensuro_fee=_R(0),
-                 roc=_R(0), max_payout_per_policy=_W(1000000), scr_limit=_W(1000000),
+                 roc=_R(0), max_payout_per_policy=_W(1000000), exposure_limit=_W(1000000),
                  wallet="RM", owner="owner"):
         coll_ratio = _R(coll_ratio)
         ensuro_fee = _R(ensuro_fee)
         roc = _R(roc)
         max_payout_per_policy = _W(max_payout_per_policy)
-        scr_limit = _W(scr_limit)
+        exposure_limit = _W(exposure_limit)
         super().__init__(owner, policy_pool.contract, premiums_account, name, coll_ratio, ensuro_fee,
                          roc,
-                         max_payout_per_policy, scr_limit, wallet)
+                         max_payout_per_policy, exposure_limit, wallet)
         self.policy_pool = policy_pool
         self._premiums_account = premiums_account
         self._auto_from = self.owner
@@ -275,8 +275,8 @@ class RiskModule(ETHWrapper):
     ensuro_fee = MethodAdapter((), "ray", is_property=True)
     roc = MethodAdapter((), "ray", is_property=True)
     max_payout_per_policy = MethodAdapter((), "amount", is_property=True)
-    scr_limit = MethodAdapter((), "amount", is_property=True)
-    total_scr = MethodAdapter((), "amount", is_property=True)
+    exposure_limit = MethodAdapter((), "amount", is_property=True)
+    active_exposure = MethodAdapter((), "amount", is_property=True)
     wallet = MethodAdapter((), "address", is_property=True)
     get_minimum_premium = MethodAdapter(
         (("payout", "amount"), ("loss_prob", "ray"), ("expiration", "int")),
@@ -348,18 +348,18 @@ class FlightDelayRiskModule(RiskModule):
     oracle_params = MethodAdapter((), "(address, int, amount, bytes16, bytes16)", is_property=True)
 
     def __init__(self, name, policy_pool, premiums_account, coll_ratio=_R(1), ensuro_fee=_R(0),
-                 roc=_R(0), max_payout_per_policy=_W(1000000), scr_limit=_W(1000000),
+                 roc=_R(0), max_payout_per_policy=_W(1000000), exposure_limit=_W(1000000),
                  wallet="RM", owner="owner",
                  link_token=None, oracle_params=None):
         coll_ratio = _R(coll_ratio)
         ensuro_fee = _R(ensuro_fee)
         roc = _R(roc)
         max_payout_per_policy = _W(max_payout_per_policy)
-        scr_limit = _W(scr_limit)
+        exposure_limit = _W(exposure_limit)
         super(RiskModule, self).__init__(
             owner, policy_pool.contract, premiums_account, name, coll_ratio, ensuro_fee,
             roc,
-            max_payout_per_policy, scr_limit, wallet,
+            max_payout_per_policy, exposure_limit, wallet,
             link_token, oracle_params
         )
         self.policy_pool = policy_pool

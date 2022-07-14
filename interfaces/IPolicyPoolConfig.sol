@@ -26,7 +26,7 @@ interface IPolicyPoolConfig is IAccessControlUpgradeable {
     setRoc,
     setEnsuroFee,
     setMaxPayoutPerPolicy,
-    setScrLimit,
+    setExposureLimit,
     setSharedCoverageMinPercentage,
     setSharedCoveragePercentage,
     setWallet,

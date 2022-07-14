@@ -67,7 +67,7 @@ def test_getset_rm_parameters(tenv):
     rm = tenv.rm_class(
         name="Roulette", coll_ratio=_R(1), ensuro_fee=_R("0.03"),
         roc=_R("0.02"),
-        max_payout_per_policy=_W(1000), scr_limit=_W(1000000),
+        max_payout_per_policy=_W(1000), exposure_limit=_W(1000000),
         wallet="CASINO"
     )
     assert rm.name == "Roulette"
@@ -75,7 +75,7 @@ def test_getset_rm_parameters(tenv):
     rm.ensuro_fee.assert_equal(_R(3/100))
     rm.roc.assert_equal(_R(2/100))
     assert rm.max_payout_per_policy == _W(1000)
-    assert rm.scr_limit == _W(1000000)
+    assert rm.exposure_limit == _W(1000000)
     assert rm.wallet == "CASINO"
 
     rm.grant_role("RM_PROVIDER_ROLE", "CASINO")  # Grant the role to the casino owner
@@ -88,7 +88,7 @@ def test_getset_rm_parameters(tenv):
         ("ensuro_fee", "L2_USER", _R(4/100)),
         ("roc", "L2_USER", _R(3/100)),
         ("max_payout_per_policy", "L2_USER", _W(2000)),
-        ("scr_limit", "L2_USER", _W(10000000)),
+        ("exposure_limit", "L2_USER", _W(10000000)),
         ("wallet", "CASINO", "CASINO_POCKET"),
     ]
 
@@ -116,7 +116,7 @@ def test_getset_rm_parameters_tweaks(tenv):
     rm = tenv.rm_class(
         name="Roulette", coll_ratio=_R(1), ensuro_fee=_R("0.03"),
         roc=_R("0.02"),
-        max_payout_per_policy=_W(1000), scr_limit=_W(1e6),  # 1m
+        max_payout_per_policy=_W(1000), exposure_limit=_W(1e6),  # 1m
         wallet="CASINO"
     )
     tenv.pool_config.grant_role("LEVEL1_ROLE", "L1_USER")
@@ -150,7 +150,7 @@ def test_getset_rm_parameters_tweaks(tenv):
         ("moc", _R("0.88")),  # 10% allowed - previous 1
         ("roc", _R("0.04")),  # 30% allowed
         ("ensuro_fee", _R("0.05")),  # 30% allowed
-        ("scr_limit", _W(2e6)),  # 10% allowed - previous 1e6
+        ("exposure_limit", _W(2e6)),  # 10% allowed - previous 1e6
         ("max_payout_per_policy", _W(1400)),  # 30% allowed
     ]
 
@@ -168,7 +168,7 @@ def test_getset_rm_parameters_tweaks(tenv):
         ("moc", _R("1.05")),  # 10% allowed - previous 1
         ("roc", _R("0.025")),  # 30% allowed - previous 2%
         ("ensuro_fee", _R("0.025")),  # 30% allowed - previous 3%
-        ("scr_limit", _W(1.05e6)),  # 10% allowed - previous 1.05e6
+        ("exposure_limit", _W(1.05e6)),  # 10% allowed - previous 1.05e6
         ("max_payout_per_policy", _W(1299)),  # 30% allowed - previous 1000
     ]
 
@@ -183,7 +183,7 @@ def test_getset_rm_parameters_tweaks(tenv):
         ("moc", _R("0.8")),
         ("roc", _R("0.01")),
         ("ensuro_fee", _R("0.01")),
-        ("scr_limit", _W(3e6)),
+        ("exposure_limit", _W(3e6)),
         ("max_payout_per_policy", _W(500)),
     ]
 
@@ -200,22 +200,22 @@ def test_getset_rm_parameters_tweaks(tenv):
 
     # Increases require LEVEL1_ROLE because more than 10% of total liquidity
     with rm.as_("L2_USER"), pytest.raises(RevertError, match="requires LEVEL1_ROLE"):
-        rm.scr_limit = _W(4e6)
+        rm.exposure_limit = _W(4e6)
     with rm.as_("L3_USER"), pytest.raises(RevertError, match="requires LEVEL1_ROLE"):
-        rm.scr_limit = _W(3.1e6)
+        rm.exposure_limit = _W(3.1e6)
 
     # Decreases are OK
     with rm.as_("L3_USER"):
-        rm.scr_limit = _W(2.9e6)
-        assert rm.scr_limit == _W(2.9e6)
+        rm.exposure_limit = _W(2.9e6)
+        assert rm.exposure_limit == _W(2.9e6)
     with rm.as_("L2_USER"):
-        rm.scr_limit = _W(2e6)
-        assert rm.scr_limit == _W(2e6)
+        rm.exposure_limit = _W(2e6)
+        assert rm.exposure_limit == _W(2e6)
 
     # L1_USER can increase over 10% liquidity
     with rm.as_("L1_USER"):
-        rm.scr_limit = _W(4e6)
-        assert rm.scr_limit == _W(4e6)
+        rm.exposure_limit = _W(4e6)
+        assert rm.exposure_limit == _W(4e6)
 
 
 def test_avoid_repeated_tweaks(tenv):
@@ -224,7 +224,7 @@ def test_avoid_repeated_tweaks(tenv):
     rm = tenv.rm_class(
         name="Roulette", coll_ratio=_R(1), ensuro_fee=_R("0.03"),
         roc=_R("0.02"),
-        max_payout_per_policy=_W(1000), scr_limit=_W(1e6),  # 1m
+        max_payout_per_policy=_W(1000), exposure_limit=_W(1e6),  # 1m
         wallet="CASINO"
     )
     tenv.pool_config.grant_role("LEVEL3_ROLE", "L3_USER")
@@ -254,7 +254,7 @@ def test_new_policy(tenv):
     rm = tenv.rm_class(
         name="Roulette", coll_ratio=_R(1), ensuro_fee=_R("0.02"),
         roc=_R("0.01"),
-        max_payout_per_policy=_W(1000), scr_limit=_W(1000000),
+        max_payout_per_policy=_W(1000), exposure_limit=_W(1000000),
         wallet="CASINO"
     )
     assert rm.name == "Roulette"
@@ -298,7 +298,7 @@ def test_moc(tenv):
     rm = tenv.rm_class(
         name="Roulette", coll_ratio=_R(1), ensuro_fee=_R("0.01"),
         roc=_R(0),
-        max_payout_per_policy=_W(1000), scr_limit=_W(1000000),
+        max_payout_per_policy=_W(1000), exposure_limit=_W(1000000),
         wallet="CASINO"
     )
     tenv.currency.transfer(tenv.currency.owner, "CUST1", _W(1))
@@ -338,7 +338,7 @@ def test_minimum_premium(tenv):
     rm = tenv.rm_class(
         name="Roulette", coll_ratio=_R("0.2"), ensuro_fee=_R("0.01"),
         roc=_R("0.10"),
-        max_payout_per_policy=_W(1000), scr_limit=_W(1000000),
+        max_payout_per_policy=_W(1000), exposure_limit=_W(1000000),
         wallet="CASINO"
     )
     tenv.pool_config.grant_role("LEVEL2_ROLE", "DAO")
