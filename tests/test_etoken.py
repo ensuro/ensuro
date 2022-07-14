@@ -377,7 +377,7 @@ def test_pool_loan(tenv):
 
         tenv.currency.transfer("SOMEONE", etk, lended)
         etk.repay_pool_loan(lended)
-        assert etk.get_pool_loan() == _W(0)
+        etk.get_pool_loan().assert_equal(_W(0))
         etk.lend_to_pool(_W(300), "SOMEONE").assert_equal(_W(0))
 
     etk.get_pool_loan().assert_equal(_W(300))
