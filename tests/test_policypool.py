@@ -48,8 +48,8 @@ def test_transfers(tenv):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
-        scr_percentage: 1
-        scr_interest_rate: "0.01"
+        coll_ratio: 1
+        roc: "0.01"
         ensuro_fee: 0
     currency:
         name: USD
@@ -127,8 +127,8 @@ def test_transfers_usdc(tenv):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
-        scr_percentage: 1
-        scr_interest_rate: "0.01"
+        coll_ratio: 1
+        roc: "0.01"
         ensuro_fee: 0
     currency:
         name: USD
@@ -208,9 +208,9 @@ def xtest_not_accept_rm(tenv):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
-        scr_percentage: 1
+        coll_ratio: 1
         ensuro_fee: 0
-        scr_interest_rate: "0.01"
+        roc: "0.01"
     currency:
         name: USD
         symbol: $
@@ -321,14 +321,14 @@ def test_walkthrough(tenv):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
-        scr_percentage: 1
+        coll_ratio: 1
         ensuro_fee: 0
-        scr_interest_rate: "0.040233686"  # interest rate to make premium_for_rm=0
+        roc: "0.040233686"  # interest rate to make premium_for_rm=0
       - name: Flight-Insurance
-        scr_percentage: "0.9"
+        coll_ratio: "0.9"
         ensuro_fee: "0.015"
       - name: Fire-Insurance
-        scr_percentage: "0.8"
+        coll_ratio: "0.8"
         ensuro_fee: "0.005"
     currency:
         name: USD
@@ -358,7 +358,7 @@ def test_walkthrough(tenv):
     rm.grant_role("PRICER_ROLE", rm.owner)
     rm.grant_role("RESOLVER_ROLE", rm.owner)
     premiums_account = rm.premiums_account
-    pool.config.grant_role("LEVEL2_ROLE", rm.owner)  # For setting scr_interest_rate
+    pool.config.grant_role("LEVEL2_ROLE", rm.owner)  # For setting roc
 
     with pytest.raises(RevertError, match="transfer amount exceeds allowance|insufficient allowance"):
         pool.deposit("eUSD1YEAR", "LP1", _W(1000))
@@ -432,7 +432,7 @@ def test_walkthrough(tenv):
         )
 
     p2_for_lps = _W(2 - 72/37)
-    rm.scr_interest_rate = (
+    rm.roc = (
         p2_for_lps.to_ray() * _R(365 / 10) // _R(72 - 72/37)
     ).round(6)  # too much precision
 
@@ -530,7 +530,7 @@ def test_walkthrough(tenv):
     won_count = 0
 
     # Adjust interest rate to make for_rm = 0
-    rm.scr_interest_rate = (
+    rm.roc = (
         _R(2 - 72/37) * _R(365 / 6) // _R(72 - 72/37)
     ).round(6)  # too much precision
 
@@ -624,7 +624,7 @@ def test_nfts(tenv):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
-        scr_percentage: 1
+        coll_ratio: 1
         ensuro_fee: 0
     nft:
         name: Ensuro Policy NFT
@@ -694,7 +694,7 @@ def test_policy_holder_contract(tenv):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
-        scr_percentage: 1
+        coll_ratio: 1
         ensuro_fee: 0
     nft:
         name: Ensuro Policy NFT
@@ -795,9 +795,9 @@ def test_partial_payout(tenv):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
-        scr_percentage: "0.8"
+        coll_ratio: "0.8"
         ensuro_fee: 0
-        scr_interest_rate: "0.0506438"  # interest rate to make premium_for_rm=0
+        roc: "0.0506438"  # interest rate to make premium_for_rm=0
     currency:
         name: USD
         symbol: $
@@ -852,9 +852,9 @@ def test_pool_loan_partial_payout(tenv):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
-        scr_percentage: "0.8"
+        coll_ratio: "0.8"
         ensuro_fee: 0
-        scr_interest_rate: "0.0506438"  # interest rate to make premium_for_rm=0
+        roc: "0.0506438"  # interest rate to make premium_for_rm=0
     currency:
         name: USD
         symbol: $
@@ -911,9 +911,9 @@ def test_increase_won_pure_premiums(tenv):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
-        scr_percentage: "0.8"
+        coll_ratio: "0.8"
         ensuro_fee: 0
-        scr_interest_rate: "0.0506438"  # interest rate to make premium_for_rm=0
+        roc: "0.0506438"  # interest rate to make premium_for_rm=0
     currency:
         name: USD
         symbol: $
@@ -969,9 +969,9 @@ def test_payout_bigger_than_pure_premium(tenv):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
-        scr_percentage: "0.8"
+        coll_ratio: "0.8"
         ensuro_fee: 0
-        scr_interest_rate: "0.0506438"  # interest rate to make premium_for_rm=0
+        roc: "0.0506438"  # interest rate to make premium_for_rm=0
     currency:
         name: USD
         symbol: $
@@ -1027,8 +1027,8 @@ def xtest_asset_manager(tenv):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
-        scr_percentage: 1
-        scr_interest_rate: "0.02"
+        coll_ratio: 1
+        roc: "0.02"
     currency:
         name: USD
         symbol: $
@@ -1084,12 +1084,12 @@ def xtest_asset_manager(tenv):
 
     asset_manager.checkpoint()
     USD.balance_of(pool.contract_id).assert_equal(
-        _W(1500) + policy.pure_premium + policy.premium_for_lps
+        _W(1500) + policy.pure_premium + policy.coc
     )
     etk.balance_of("LP1").assert_equal(lp1_balance)
     pool.get_investable().assert_equal(policy.pure_premium)
     etk.get_investable().assert_equal(lp1_balance)
-    # policy.premium_for_lps is not accounted neither as investable from the pool nor the ETK.
+    # policy.coc is not accounted neither as investable from the pool nor the ETK.
     # That's fine because it's money moving second by second from one to the other
     # It only affects the share of the earnings
     # TODO: think a better approach for get_investable
@@ -1111,7 +1111,7 @@ def xtest_asset_manager(tenv):
     USD.balance_of(asset_manager.contract_id).assert_equal(
         _W(10000) +                # initial LP investment
         _W(8500) * _W("0.075") +   # earned interest
-        policy.pure_premium + policy.premium_for_lps -  # part of the premium retained in the pool
+        policy.pure_premium + policy.coc -  # part of the premium retained in the pool
         _W(9200) -  # payout
         _W(1500)    # 1500 (liquidity_middle)
     )
@@ -1126,11 +1126,11 @@ def xtest_assets_under_liquidity_middle(tenv):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
-        scr_percentage: "0.3734"
-        scr_interest_rate: "0.1"
+        coll_ratio: "0.3734"
+        roc: "0.1"
         scr_limit: 250000
         ensuro_fee: "0.0392"
-        max_scr_per_policy: 500
+        max_payout_per_policy: 500
     currency:
         name: USD
         symbol: $
@@ -1211,11 +1211,11 @@ def xtest_distribute_negative_earnings(tenv):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
-        scr_percentage: "0.2448"
-        scr_interest_rate: "0.0729"
+        coll_ratio: "0.2448"
+        roc: "0.0729"
         scr_limit: 250000
         ensuro_fee: "0.0321"
-        max_scr_per_policy: 500
+        max_payout_per_policy: 500
     currency:
         name: USD
         symbol: $
@@ -1266,11 +1266,11 @@ def xtest_distribute_negative_earnings_full_capital_from_etokens(tenv):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
-        scr_percentage: "0.2448"
-        scr_interest_rate: "0.0729"
+        coll_ratio: "0.2448"
+        roc: "0.0729"
         scr_limit: 250000
         ensuro_fee: "0.0321"
-        max_scr_per_policy: 500
+        max_payout_per_policy: 500
     currency:
         name: USD
         symbol: $
@@ -1316,7 +1316,7 @@ def xtest_distribute_negative_earnings_full_capital_from_etokens(tenv):
 
     asset_manager.rebalance()
     initial_investment_value = (
-        _W(5000) - asset_manager.liquidity_middle + policy.pure_premium + policy.premium_for_lps
+        _W(5000) - asset_manager.liquidity_middle + policy.pure_premium + policy.coc
     )
     asset_manager.get_investment_value().assert_equal(initial_investment_value)
     timecontrol.fast_forward(45 * DAY - HOUR)
@@ -1375,8 +1375,8 @@ def xtest_distribute_negative_earnings_from_pool_and_etokens(tenv):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
-        scr_percentage: 1
-        scr_interest_rate: "0.02"
+        coll_ratio: 1
+        roc: "0.02"
     currency:
         name: USD
         symbol: $
@@ -1421,7 +1421,7 @@ def xtest_distribute_negative_earnings_from_pool_and_etokens(tenv):
 
     asset_manager.rebalance()
     expected_investment_value = (
-        _W(10000) - asset_manager.liquidity_middle + policy.pure_premium + policy.premium_for_lps
+        _W(10000) - asset_manager.liquidity_middle + policy.pure_premium + policy.coc
     )
     asset_manager.get_investment_value().assert_equal(expected_investment_value)
     timecontrol.fast_forward(365 * DAY)
@@ -1454,8 +1454,8 @@ def xtest_insolvency_without_hook(tenv):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
-        scr_percentage: "0.1"
-        scr_interest_rate: "0.02"
+        coll_ratio: "0.1"
+        roc: "0.02"
     currency:
         name: USD
         symbol: $
@@ -1500,7 +1500,7 @@ def xtest_insolvency_without_hook(tenv):
     pure_premium, _, _, for_lps = policy.premium_split()
     etk.scr.assert_equal(_W(9200) * _W("0.1") - policy.pure_premium)
 
-    assert USD.balance_of(pool.contract_id) == (_W(1000) + policy.pure_premium + policy.premium_for_lps)
+    assert USD.balance_of(pool.contract_id) == (_W(1000) + policy.pure_premium + policy.coc)
 
     timecontrol.fast_forward(365 * DAY // 2 - 60)
 
@@ -1518,7 +1518,7 @@ def xtest_grant_insolvency_hook(tenv):
 
     rm.resolve_policy(policy.id, True)
 
-    ins_hook.cash_granted.assert_equal(_W(8000) + policy.premium_for_ensuro + policy.premium_for_rm)
+    ins_hook.cash_granted.assert_equal(_W(8000) + policy.ensuro_commission + policy.premium_for_rm)
 
 
 def xtest_lp_insolvency_hook(tenv):
@@ -1529,7 +1529,7 @@ def xtest_lp_insolvency_hook(tenv):
 
     rm.resolve_policy(policy.id, True)
 
-    ins_hook.cash_deposited.assert_equal(_W(8000) + policy.premium_for_ensuro + policy.premium_for_rm)
+    ins_hook.cash_deposited.assert_equal(_W(8000) + policy.ensuro_commission + policy.premium_for_rm)
     etk.ocean.assert_equal(_W(0))
     etk.scr.assert_equal(_W(0))
     etk.get_pool_loan().assert_equal(_W(9200) - policy.pure_premium, decimals=2)
@@ -1569,8 +1569,8 @@ def xtest_lp_insolvency_hook_negative_ocean(tenv):
 
     USD.balance_of(pool.contract_id).assert_equal(
         _W(9000) +
-        policy.pure_premium + policy.premium_for_lps +
-        policy_2.pure_premium + policy_2.premium_for_lps
+        policy.pure_premium + policy.coc +
+        policy_2.pure_premium + policy_2.coc
     )
 
     rm.resolve_policy(policy.id, _W(9190))
@@ -1586,7 +1586,7 @@ def xtest_lp_insolvency_hook_negative_ocean(tenv):
         _W(9000) -  # Money deposited
         _W(9190) +   # Payout
         policy.pure_premium + policy_2.pure_premium +
-        policy.premium_for_lps  # Other for_lps not yet accrued
+        policy.coc  # Other for_lps not yet accrued
     )
     pool.borrowed_active_pp.assert_equal(policy_2.pure_premium)
 
@@ -1622,8 +1622,8 @@ def xtest_lp_insolvency_hook_cover_etoken(tenv):
 
     USD.balance_of(pool.contract_id).assert_equal(
         _W(9000) +
-        policy.pure_premium + policy.premium_for_lps +
-        policy_2.pure_premium + policy_2.premium_for_lps
+        policy.pure_premium + policy.coc +
+        policy_2.pure_premium + policy_2.coc
     )
 
     rm.resolve_policy(policy.id, _W("9192.2"))
@@ -1657,11 +1657,11 @@ def xtest_lp_insolvency_hook_other_etk(tenv):
     rm.resolve_policy(policy.id, True)
     USD.balance_of("CUST1").assert_equal(_W(9200))
 
-    ins_hook.cash_deposited.assert_equal(_W(8000) + policy.premium_for_ensuro + policy.premium_for_rm)
+    ins_hook.cash_deposited.assert_equal(_W(8000) + policy.ensuro_commission + policy.premium_for_rm)
     etk.ocean.assert_equal(_W(0))
     etk.scr.assert_equal(_W(0))
     etk.get_pool_loan().assert_equal(_W(1000) + for_lps)
-    etk1m.get_pool_loan().assert_equal(_W(8000) + policy.premium_for_ensuro + policy.premium_for_rm)
+    etk1m.get_pool_loan().assert_equal(_W(8000) + policy.ensuro_commission + policy.premium_for_rm)
 
     etk.balance_of("LP1").assert_equal(_W(0))
     etk.balance_of(ins_hook).assert_equal(_W(0))
@@ -1675,7 +1675,7 @@ def xtest_lp_insolvency_hook_other_etk(tenv):
     premiums_account.won_pure_premiums.assert_equal(_W(4000))  # The grant is on premium pool
 
     pool.repay_etoken_loan("eUSD1MONTH").assert_equal(_W(4000))
-    etk1m.get_pool_loan().assert_equal(_W(4000) + policy.premium_for_ensuro + policy.premium_for_rm,
+    etk1m.get_pool_loan().assert_equal(_W(4000) + policy.ensuro_commission + policy.premium_for_rm,
                                        decimals=2)
     etk1m_pool_loan = etk1m.get_pool_loan()
 
@@ -1700,8 +1700,8 @@ def test_lp_whitelist(tenv):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
-        scr_percentage: "0.1"
-        scr_interest_rate: "0.02"
+        coll_ratio: "0.1"
+        roc: "0.02"
     currency:
         name: USD
         symbol: $
@@ -1781,9 +1781,9 @@ def test_expire_policy(tenv):
     YAML_SETUP = """
     risk_modules:
       - name: Flight Insurance
-        scr_percentage: "0.1"
+        coll_ratio: "0.1"
         ensuro_fee: "0.05"
-        scr_interest_rate: "0.01"
+        roc: "0.01"
         wallet: "MGA"
     currency:
         name: USD
@@ -1827,7 +1827,7 @@ def test_expire_policy(tenv):
 
     # Check for_rm and for_ensuro are paid upfront
     pool.currency.balance_of("MGA").assert_equal(policy.premium_for_rm)
-    pool.currency.balance_of("ENS").assert_equal(policy.premium_for_ensuro)
+    pool.currency.balance_of("ENS").assert_equal(policy.ensuro_commission)
 
     policy.scr.assert_equal(_W(2100) * _W("0.1") - policy.pure_premium)
     etk.scr.assert_equal(_W(2100) * _W("0.1") - policy.pure_premium)
@@ -1863,9 +1863,9 @@ def test_expire_policy_payout(tenv):
     YAML_SETUP = """
     risk_modules:
       - name: Flight Insurance
-        scr_percentage: "0.1"
+        coll_ratio: "0.1"
         ensuro_fee: "0.05"
-        scr_interest_rate: "0.01"
+        roc: "0.01"
         wallet: "MGA"
     currency:
         name: USD

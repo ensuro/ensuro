@@ -35,10 +35,10 @@ class RiskModule(AccessControlContract):
     premiums_account = ContractProxyField()
     name = StringField()
     moc = RayField(default=_R(1))
-    scr_percentage = RayField(default=Ray(0))
+    coll_ratio = RayField(default=Ray(0))
     ensuro_fee = RayField(default=Ray(0))   # Ensuro fee as % of pure_premium
-    scr_interest_rate = RayField(default=Ray(0))
-    max_scr_per_policy = WadField(default=_W(1000000))
+    roc = RayField(default=Ray(0))
+    max_payout_per_policy = WadField(default=_W(1000000))
     scr_limit = WadField(default=_W(10000000))
     total_scr = WadField(default=_W(0))
 
@@ -50,10 +50,10 @@ class RiskModule(AccessControlContract):
 
     pool_set_attr_roles = {
         "moc": "LEVEL2_ROLE",
-        "scr_percentage": "LEVEL2_ROLE",
+        "coll_ratio": "LEVEL2_ROLE",
         "ensuro_fee": "LEVEL2_ROLE",
-        "scr_interest_rate": "LEVEL2_ROLE",
-        "max_scr_per_policy": "LEVEL2_ROLE",
+        "roc": "LEVEL2_ROLE",
+        "max_payout_per_policy": "LEVEL2_ROLE",
         "scr_limit": "LEVEL2_ROLE",
     }
 
@@ -78,8 +78,8 @@ class RiskModule(AccessControlContract):
         policy = Policy(id=-1, risk_module=self, payout=payout, premium=premium,
                         loss_prob=loss_prob, start=start, expiration=expiration)
 
-        require(policy.scr <= self.max_scr_per_policy,
-                f"Policy SCR: {policy.scr} > maximum per policy {self.max_scr_per_policy}")
+        require(policy.scr <= self.max_payout_per_policy,
+                f"Policy SCR: {policy.scr} > maximum per policy {self.max_payout_per_policy}")
         total_scr = self.total_scr + policy.scr
         require(total_scr <= self.scr_limit, "RiskModule: SCR limit exceeded")
         self.total_scr = total_scr
@@ -90,12 +90,12 @@ class RiskModule(AccessControlContract):
 
     def get_minimum_premium(self, payout, loss_prob, expiration):
         pure_premium = (payout.to_ray() * loss_prob * self.moc).to_wad()
-        scr = payout * self.scr_percentage.to_wad() - pure_premium
-        premium_for_lps = scr * (
-            self.scr_interest_rate * _R(expiration - time_control.now) // _R(SECONDS_IN_YEAR)
+        scr = payout * self.coll_ratio.to_wad() - pure_premium
+        coc = scr * (
+            self.roc * _R(expiration - time_control.now) // _R(SECONDS_IN_YEAR)
         ).to_wad()
-        premium_for_ensuro = (pure_premium + premium_for_lps) * self.ensuro_fee.to_wad()
-        return (pure_premium + premium_for_ensuro + premium_for_lps)
+        ensuro_commission = (pure_premium + coc) * self.ensuro_fee.to_wad()
+        return (pure_premium + ensuro_commission + coc)
 
     @external
     def remove_policy(self, policy):
@@ -125,9 +125,9 @@ class Policy(Model):
     expiration = IntField()
     solvency_etoken = ContractProxyField(default=None, allow_none=True)
     pure_premium = WadField(default=Wad(0))
-    premium_for_ensuro = WadField(default=Wad(0))
+    ensuro_commission = WadField(default=Wad(0))
     premium_for_rm = WadField(default=Wad(0))
-    premium_for_lps = WadField(default=Wad(0))
+    coc = WadField(default=Wad(0))
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -135,27 +135,27 @@ class Policy(Model):
 
     def _do_premium_split(self):
         self.pure_premium = (self.payout.to_ray() * self.loss_prob * self.risk_module.moc).to_wad()
-        self.scr = (self.payout * self.risk_module.scr_percentage.to_wad()) - self.pure_premium
-        self.premium_for_lps = self.scr * (
-            self.risk_module.scr_interest_rate * _R(self.expiration - self.start) // _R(SECONDS_IN_YEAR)
+        self.scr = (self.payout * self.risk_module.coll_ratio.to_wad()) - self.pure_premium
+        self.coc = self.scr * (
+            self.risk_module.roc * _R(self.expiration - self.start) // _R(SECONDS_IN_YEAR)
         ).to_wad()
-        self.premium_for_ensuro = (
-            self.pure_premium + self.premium_for_lps
+        self.ensuro_commission = (
+            self.pure_premium + self.coc
         ) * self.risk_module.ensuro_fee.to_wad()
-        require(self.premium >= (self.pure_premium + self.premium_for_lps + self.premium_for_ensuro),
+        require(self.premium >= (self.pure_premium + self.coc + self.ensuro_commission),
                 "Premium less than minimum")
         self.premium_for_rm = (
-            self.premium - self.pure_premium - self.premium_for_lps - self.premium_for_ensuro
+            self.premium - self.pure_premium - self.coc - self.ensuro_commission
         )
-        self.interest_rate.assert_equal(self.risk_module.scr_interest_rate)
+        self.interest_rate.assert_equal(self.risk_module.roc)
 
     def premium_split(self):
-        return self.pure_premium, self.premium_for_ensuro, self.premium_for_rm, self.premium_for_lps
+        return self.pure_premium, self.ensuro_commission, self.premium_for_rm, self.coc
 
     @property
     def interest_rate(self):
         return (
-            self.premium_for_lps * _W(SECONDS_IN_YEAR) // (
+            self.coc * _W(SECONDS_IN_YEAR) // (
                 _W(self.expiration - self.start) * self.scr
             )
         ).to_ray()
@@ -653,11 +653,11 @@ class PolicyPool(AccessControlContract):
         )
         self.currency.transfer_from(
             self.contract_id, customer,
-            policy.solvency_etoken, policy.premium_for_lps
+            policy.solvency_etoken, policy.coc
         )
         self.currency.transfer_from(
             self.contract_id, customer,
-            self.config.treasury, policy.premium_for_ensuro
+            self.config.treasury, policy.ensuro_commission
         )
         if policy.premium_for_rm and policy.risk_module.wallet != customer:
             self.currency.transfer_from(
@@ -697,7 +697,7 @@ class PolicyPool(AccessControlContract):
         require(payout == 0 or policy.expiration > time_control.now, "Can't pay expired policy")
 
         # Unlock SCR and adjust eToken
-        for_lps = policy.premium_for_lps
+        for_lps = policy.coc
         adjustment = for_lps - policy.accrued_interest()
         etk = policy.solvency_etoken
         etk.unlock_scr(policy, policy.scr, adjustment)

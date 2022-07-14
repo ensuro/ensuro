@@ -52,11 +52,10 @@ contract FlightDelayRiskModule is RiskModule, ChainlinkClientUpgradeable {
   /**
    * @dev Initializes the RiskModule
    * @param name_ Name of the Risk Module
-   * @param scrPercentage_ Solvency Capital Requirement percentage, to calculate
-                           capital requirement as % of (payout - premium)  (in ray)
+   * @param collRatio_ Collateralization ratio to compute solvency requirement as % of payout (in ray)
    * @param ensuroFee_ % of premium that will go for Ensuro treasury (in ray)
-   * @param scrInterestRate_ cost of capital (in ray)
-   * @param maxScrPerPolicy_ Max SCR to be allocated to this module (in wad)
+   * @param roc_ return on capital paid to LPs (annualized percentage - in ray)
+   * @param maxPayoutPerPolicy_ Maximum payout per policy (in wad)
    * @param scrLimit_ Max SCR to be allocated to this module (in wad)
    * @param wallet_ Address of the RiskModule provider
    * @param linkToken_ Address of ChainLink LINK token
@@ -64,24 +63,16 @@ contract FlightDelayRiskModule is RiskModule, ChainlinkClientUpgradeable {
    */
   function initialize(
     string memory name_,
-    uint256 scrPercentage_,
+    uint256 collRatio_,
     uint256 ensuroFee_,
-    uint256 scrInterestRate_,
-    uint256 maxScrPerPolicy_,
+    uint256 roc_,
+    uint256 maxPayoutPerPolicy_,
     uint256 scrLimit_,
     address wallet_,
     address linkToken_,
     OracleParams memory oracleParams_
   ) public initializer {
-    __RiskModule_init(
-      name_,
-      scrPercentage_,
-      ensuroFee_,
-      scrInterestRate_,
-      maxScrPerPolicy_,
-      scrLimit_,
-      wallet_
-    );
+    __RiskModule_init(name_, collRatio_, ensuroFee_, roc_, maxPayoutPerPolicy_, scrLimit_, wallet_);
     __ChainlinkClient_init();
     __FlightDelayRiskModule_init_unchained(linkToken_, oracleParams_);
   }

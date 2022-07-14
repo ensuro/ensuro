@@ -202,8 +202,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     IEToken solvencyEtk = _lockScr(policy);
     _policyNFT.safeMint(customer, policy.id);
     _currency.safeTransferFrom(customer, address(pa), policy.purePremium);
-    _currency.safeTransferFrom(customer, address(solvencyEtk), policy.premiumForLps);
-    _currency.safeTransferFrom(customer, _config.treasury(), policy.premiumForEnsuro);
+    _currency.safeTransferFrom(customer, address(solvencyEtk), policy.coc);
+    _currency.safeTransferFrom(customer, _config.treasury(), policy.ensuroCommission);
     if (policy.premiumForRm > 0 && customer != rm.wallet())
       _currency.safeTransferFrom(customer, rm.wallet(), policy.premiumForRm);
     emit NewPolicy(rm, policy);
@@ -274,7 +274,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     etk.unlockScr(
       policy.interestRate(),
       policy.scr,
-      int256(policy.premiumForLps) - int256(policy.accruedInterest())
+      int256(policy.coc) - int256(policy.accruedInterest())
     );
 
     if (customerWon) {

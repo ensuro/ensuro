@@ -11,15 +11,15 @@ import {IPremiumsAccount} from "./IPremiumsAccount.sol";
 interface IRiskModule {
   function name() external view returns (string memory);
 
-  function scrPercentage() external view returns (uint256);
+  function collRatio() external view returns (uint256);
 
   function moc() external view returns (uint256);
 
   function ensuroFee() external view returns (uint256);
 
-  function scrInterestRate() external view returns (uint256);
+  function roc() external view returns (uint256);
 
-  function maxScrPerPolicy() external view returns (uint256);
+  function maxPayoutPerPolicy() external view returns (uint256);
 
   function scrLimit() external view returns (uint256);
 
