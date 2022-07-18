@@ -15,7 +15,9 @@ interface IRiskModule {
 
   function moc() external view returns (uint256);
 
-  function ensuroFee() external view returns (uint256);
+  function ensuroPpFee() external view returns (uint256);
+
+  function ensuroCocFee() external view returns (uint256);
 
   function roc() external view returns (uint256);
 

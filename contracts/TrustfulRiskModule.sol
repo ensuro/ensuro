@@ -28,7 +28,7 @@ contract TrustfulRiskModule is RiskModule {
    * @dev Initializes the RiskModule
    * @param name_ Name of the Risk Module
    * @param collRatio_ Collateralization ratio to compute solvency requirement as % of payout (in ray)
-   * @param ensuroFee_ % of premium that will go for Ensuro treasury (in ray)
+   * @param ensuroPpFee_ % of pure premium that will go for Ensuro treasury (in ray)
    * @param roc_ return on capital paid to LPs (annualized percentage - in ray)
    * @param maxPayoutPerPolicy_ Maximum payout per policy (in wad)
    * @param exposureLimit_ Max exposure (sum of payouts) to be allocated to this module (in wad)
@@ -37,7 +37,7 @@ contract TrustfulRiskModule is RiskModule {
   function initialize(
     string memory name_,
     uint256 collRatio_,
-    uint256 ensuroFee_,
+    uint256 ensuroPpFee_,
     uint256 roc_,
     uint256 maxPayoutPerPolicy_,
     uint256 exposureLimit_,
@@ -46,7 +46,7 @@ contract TrustfulRiskModule is RiskModule {
     __RiskModule_init(
       name_,
       collRatio_,
-      ensuroFee_,
+      ensuroPpFee_,
       roc_,
       maxPayoutPerPolicy_,
       exposureLimit_,

@@ -65,14 +65,14 @@ def tenv(request):
 
 def test_getset_rm_parameters(tenv):
     rm = tenv.rm_class(
-        name="Roulette", coll_ratio=_R(1), ensuro_fee=_R("0.03"),
+        name="Roulette", coll_ratio=_R(1), ensuro_pp_fee=_R("0.03"),
         roc=_R("0.02"),
         max_payout_per_policy=_W(1000), exposure_limit=_W(1000000),
         wallet="CASINO"
     )
     assert rm.name == "Roulette"
     assert rm.coll_ratio == _R(1)
-    rm.ensuro_fee.assert_equal(_R(3/100))
+    rm.ensuro_pp_fee.assert_equal(_R(3/100))
     rm.roc.assert_equal(_R(2/100))
     assert rm.max_payout_per_policy == _W(1000)
     assert rm.exposure_limit == _W(1000000)
@@ -85,7 +85,7 @@ def test_getset_rm_parameters(tenv):
 
     test_attributes = [
         ("coll_ratio", "L2_USER", _R(0.8)),
-        ("ensuro_fee", "L2_USER", _R(4/100)),
+        ("ensuro_pp_fee", "L2_USER", _R(4/100)),
         ("roc", "L2_USER", _R(3/100)),
         ("max_payout_per_policy", "L2_USER", _W(2000)),
         ("exposure_limit", "L2_USER", _W(10000000)),
@@ -114,7 +114,7 @@ def test_getset_rm_parameters_tweaks(tenv):
     if tenv.kind != "ethereum":
         return
     rm = tenv.rm_class(
-        name="Roulette", coll_ratio=_R(1), ensuro_fee=_R("0.03"),
+        name="Roulette", coll_ratio=_R(1), ensuro_pp_fee=_R("0.03"),
         roc=_R("0.02"),
         max_payout_per_policy=_W(1000), exposure_limit=_W(1e6),  # 1m
         wallet="CASINO"
@@ -136,7 +136,7 @@ def test_getset_rm_parameters_tweaks(tenv):
         ("coll_ratio", _R(1.01)),  # <= 1
         ("moc", _R("0.4")),  # [0.5, 2]
         ("moc", _R("2.1")),  # [0.5, 2]
-        ("ensuro_fee", _R("1.01")),  # <= 1
+        ("ensuro_pp_fee", _R("1.01")),  # <= 1
         ("roc", _R("1.01")),  # <= 1
     ]
 
@@ -149,7 +149,7 @@ def test_getset_rm_parameters_tweaks(tenv):
         ("coll_ratio", _R("0.88")),  # 10% allowed - previous 100
         ("moc", _R("0.88")),  # 10% allowed - previous 1
         ("roc", _R("0.04")),  # 30% allowed
-        ("ensuro_fee", _R("0.05")),  # 30% allowed
+        ("ensuro_pp_fee", _R("0.05")),  # 30% allowed
         ("exposure_limit", _W(2e6)),  # 10% allowed - previous 1e6
         ("max_payout_per_policy", _W(1400)),  # 30% allowed
     ]
@@ -167,7 +167,7 @@ def test_getset_rm_parameters_tweaks(tenv):
         ("coll_ratio", _R("0.91")),  # 10% allowed - previous 100
         ("moc", _R("1.05")),  # 10% allowed - previous 1
         ("roc", _R("0.025")),  # 30% allowed - previous 2%
-        ("ensuro_fee", _R("0.025")),  # 30% allowed - previous 3%
+        ("ensuro_pp_fee", _R("0.025")),  # 30% allowed - previous 3%
         ("exposure_limit", _W(1.05e6)),  # 10% allowed - previous 1.05e6
         ("max_payout_per_policy", _W(1299)),  # 30% allowed - previous 1000
     ]
@@ -182,7 +182,7 @@ def test_getset_rm_parameters_tweaks(tenv):
         ("coll_ratio", _R("0.1")),
         ("moc", _R("0.8")),
         ("roc", _R("0.01")),
-        ("ensuro_fee", _R("0.01")),
+        ("ensuro_pp_fee", _R("0.01")),
         ("exposure_limit", _W(3e6)),
         ("max_payout_per_policy", _W(500)),
     ]
@@ -222,7 +222,7 @@ def test_avoid_repeated_tweaks(tenv):
     if tenv.kind != "ethereum":
         return
     rm = tenv.rm_class(
-        name="Roulette", coll_ratio=_R(1), ensuro_fee=_R("0.03"),
+        name="Roulette", coll_ratio=_R(1), ensuro_pp_fee=_R("0.03"),
         roc=_R("0.02"),
         max_payout_per_policy=_W(1000), exposure_limit=_W(1e6),  # 1m
         wallet="CASINO"
@@ -252,7 +252,7 @@ def test_avoid_repeated_tweaks(tenv):
 
 def test_new_policy(tenv):
     rm = tenv.rm_class(
-        name="Roulette", coll_ratio=_R(1), ensuro_fee=_R("0.02"),
+        name="Roulette", coll_ratio=_R(1), ensuro_pp_fee=_R("0.02"),
         roc=_R("0.01"),
         max_payout_per_policy=_W(1000), exposure_limit=_W(1000000),
         wallet="CASINO"
@@ -262,6 +262,13 @@ def test_new_policy(tenv):
     tenv.currency.approve("CUST1", rm.policy_pool, _W(1))
     assert tenv.currency.allowance("CUST1", rm.policy_pool) == _W(1)
     expiration = tenv.time_control.now + WEEK
+
+    # Set ensuro_coc_fee
+    tenv.pool_config.grant_role("LEVEL2_ROLE", "DAO")
+    with rm.as_("DAO"):
+        rm.ensuro_coc_fee = _R("0.03")
+
+    assert rm.ensuro_coc_fee == _R("0.03")
 
     with rm.as_("JOHN_DOE"), pytest.raises(RevertError, match="is missing role"):
         policy = rm.new_policy(_W(36), _W(1), _R(1/37), expiration, "CUST1", 123)
@@ -279,8 +286,11 @@ def test_new_policy(tenv):
     assert policy.expiration == expiration
     assert (tenv.time_control.now - policy.start) < 60  # Must be now, giving 60 seconds tolerance
     policy.coc.assert_equal(policy.scr * _W("0.01") * _W(7/365))
-    policy.ensuro_commission.assert_equal((policy.pure_premium + policy.coc) * _W("0.02"))
-    policy.premium_for_rm.assert_equal(
+    policy.ensuro_commission.assert_equal(
+        policy.pure_premium * _W("0.02") +
+        policy.coc * _W("0.03")
+    )
+    policy.partner_commission.assert_equal(
         _W(1) - policy.pure_premium - policy.coc - policy.ensuro_commission
     )
     policy.interest_rate.assert_equal(_R("0.01"))
@@ -296,7 +306,7 @@ def test_new_policy(tenv):
 
 def test_moc(tenv):
     rm = tenv.rm_class(
-        name="Roulette", coll_ratio=_R(1), ensuro_fee=_R("0.01"),
+        name="Roulette", coll_ratio=_R(1), ensuro_pp_fee=_R("0.01"),
         roc=_R(0),
         max_payout_per_policy=_W(1000), exposure_limit=_W(1000000),
         wallet="CASINO"
@@ -336,7 +346,7 @@ def test_moc(tenv):
 
 def test_minimum_premium(tenv):
     rm = tenv.rm_class(
-        name="Roulette", coll_ratio=_R("0.2"), ensuro_fee=_R("0.01"),
+        name="Roulette", coll_ratio=_R("0.2"), ensuro_pp_fee=_R("0.01"),
         roc=_R("0.10"),
         max_payout_per_policy=_W(1000), exposure_limit=_W(1000000),
         wallet="CASINO"
@@ -349,7 +359,7 @@ def test_minimum_premium(tenv):
     pure_premium = _W(36/37) * _W("1.3")
     scr = _W(36) * _W("0.2") - pure_premium
     rm.get_minimum_premium(_W(36), _R(1/37), expiration).assert_equal(
-        (pure_premium + scr * _W(7/365) * _W("0.10")) * _W("1.01")
+        pure_premium * _W("1.01") + scr * _W(7/365) * _W("0.10")
     )
     minimum_premium = rm.get_minimum_premium(_W(36), _R(1/37), expiration)
 
@@ -369,4 +379,4 @@ def test_minimum_premium(tenv):
     policy.premium.assert_equal(minimum_premium, decimals=3)
     policy.loss_prob.assert_equal(_R(1/37))
     policy.pure_premium.assert_equal(_W(36 * 1/37 * 1.3))
-    policy.ensuro_commission.assert_equal((policy.pure_premium + policy.coc) * _W("0.01"))
+    policy.ensuro_commission.assert_equal(policy.pure_premium * _W("0.01"))

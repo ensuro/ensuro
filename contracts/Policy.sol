@@ -26,7 +26,7 @@ library Policy {
     uint256 purePremium; // share of the premium that covers expected losses
     // equal to payout * lossProb * riskModule.moc
     uint256 ensuroCommission; // share of the premium that goes for Ensuro
-    uint256 premiumForRm; // share of the premium that goes for the RM (if policy won)
+    uint256 partnerCommission; // share of the premium that goes for the RM
     uint256 coc; // share of the premium that goes to the liquidity providers (won or not)
     IRiskModule riskModule;
     uint40 start;
@@ -37,7 +37,7 @@ library Policy {
   /// #if_succeeds
   ///    {:msg "premium distributed"}
   ///    premium == (newPolicy.purePremium + newPolicy.coc +
-  ///                newPolicy.premiumForRm + newPolicy.ensuroCommission);
+  ///                newPolicy.partnerCommission + newPolicy.ensuroCommission);
   function initialize(
     IRiskModule riskModule,
     uint256 premium,
@@ -60,14 +60,14 @@ library Policy {
       ((riskModule.roc() * (policy.expiration - policy.start)).rayDiv(SECONDS_IN_YEAR_RAY))
         .rayToWad()
     );
-    policy.ensuroCommission = (policy.purePremium + policy.coc).wadMul(
-      riskModule.ensuroFee().rayToWad()
-    );
+    policy.ensuroCommission =
+      policy.purePremium.wadMul(riskModule.ensuroPpFee().rayToWad()) +
+      policy.coc.wadMul(riskModule.ensuroCocFee().rayToWad());
     require(
       policy.purePremium + policy.ensuroCommission + policy.coc <= premium,
       "Premium less than minimum"
     );
-    policy.premiumForRm = premium - policy.purePremium - policy.coc - policy.ensuroCommission;
+    policy.partnerCommission = premium - policy.purePremium - policy.coc - policy.ensuroCommission;
     return policy;
   }
 

@@ -204,8 +204,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     _currency.safeTransferFrom(customer, address(pa), policy.purePremium);
     _currency.safeTransferFrom(customer, address(solvencyEtk), policy.coc);
     _currency.safeTransferFrom(customer, _config.treasury(), policy.ensuroCommission);
-    if (policy.premiumForRm > 0 && customer != rm.wallet())
-      _currency.safeTransferFrom(customer, rm.wallet(), policy.premiumForRm);
+    if (policy.partnerCommission > 0 && customer != rm.wallet())
+      _currency.safeTransferFrom(customer, rm.wallet(), policy.partnerCommission);
     emit NewPolicy(rm, policy);
     return policy.id;
   }

@@ -36,7 +36,8 @@ class RiskModule(AccessControlContract):
     name = StringField()
     moc = RayField(default=_R(1))
     coll_ratio = RayField(default=Ray(0))
-    ensuro_fee = RayField(default=Ray(0))   # Ensuro fee as % of pure_premium
+    ensuro_pp_fee = RayField(default=Ray(0))   # Ensuro fee as % of pure_premium
+    ensuro_coc_fee = RayField(default=Ray(0))   # Ensuro fee as % of coc
     roc = RayField(default=Ray(0))
     max_payout_per_policy = WadField(default=_W(1000000))
     exposure_limit = WadField(default=_W(10000000))
@@ -51,7 +52,7 @@ class RiskModule(AccessControlContract):
     pool_set_attr_roles = {
         "moc": "LEVEL2_ROLE",
         "coll_ratio": "LEVEL2_ROLE",
-        "ensuro_fee": "LEVEL2_ROLE",
+        "ensuro_pp_fee": "LEVEL2_ROLE",
         "roc": "LEVEL2_ROLE",
         "max_payout_per_policy": "LEVEL2_ROLE",
         "exposure_limit": "LEVEL2_ROLE",
@@ -94,7 +95,7 @@ class RiskModule(AccessControlContract):
         coc = scr * (
             self.roc * _R(expiration - time_control.now) // _R(SECONDS_IN_YEAR)
         ).to_wad()
-        ensuro_commission = (pure_premium + coc) * self.ensuro_fee.to_wad()
+        ensuro_commission = pure_premium * self.ensuro_pp_fee.to_wad() + coc * self.ensuro_coc_fee.to_wad()
         return (pure_premium + ensuro_commission + coc)
 
     @external
@@ -126,7 +127,7 @@ class Policy(Model):
     solvency_etoken = ContractProxyField(default=None, allow_none=True)
     pure_premium = WadField(default=Wad(0))
     ensuro_commission = WadField(default=Wad(0))
-    premium_for_rm = WadField(default=Wad(0))
+    partner_commission = WadField(default=Wad(0))
     coc = WadField(default=Wad(0))
 
     def __init__(self, **kwargs):
@@ -140,17 +141,18 @@ class Policy(Model):
             self.risk_module.roc * _R(self.expiration - self.start) // _R(SECONDS_IN_YEAR)
         ).to_wad()
         self.ensuro_commission = (
-            self.pure_premium + self.coc
-        ) * self.risk_module.ensuro_fee.to_wad()
+            self.pure_premium * self.risk_module.ensuro_pp_fee.to_wad() +
+            self.coc * self.risk_module.ensuro_coc_fee.to_wad()
+        )
         require(self.premium >= (self.pure_premium + self.coc + self.ensuro_commission),
                 "Premium less than minimum")
-        self.premium_for_rm = (
+        self.partner_commission = (
             self.premium - self.pure_premium - self.coc - self.ensuro_commission
         )
         self.interest_rate.assert_equal(self.risk_module.roc)
 
     def premium_split(self):
-        return self.pure_premium, self.ensuro_commission, self.premium_for_rm, self.coc
+        return self.pure_premium, self.ensuro_commission, self.partner_commission, self.coc
 
     @property
     def interest_rate(self):
@@ -659,10 +661,10 @@ class PolicyPool(AccessControlContract):
             self.contract_id, customer,
             self.config.treasury, policy.ensuro_commission
         )
-        if policy.premium_for_rm and policy.risk_module.wallet != customer:
+        if policy.partner_commission and policy.risk_module.wallet != customer:
             self.currency.transfer_from(
                 self.contract_id, customer,
-                policy.risk_module.wallet, policy.premium_for_rm
+                policy.risk_module.wallet, policy.partner_commission
             )
         return policy.id
 

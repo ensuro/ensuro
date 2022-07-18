@@ -50,7 +50,7 @@ def test_transfers(tenv):
       - name: Roulette
         coll_ratio: 1
         roc: "0.01"
-        ensuro_fee: 0
+        ensuro_pp_fee: 0
     currency:
         name: USD
         symbol: $
@@ -129,7 +129,7 @@ def test_transfers_usdc(tenv):
       - name: Roulette
         coll_ratio: 1
         roc: "0.01"
-        ensuro_fee: 0
+        ensuro_pp_fee: 0
     currency:
         name: USD
         decimals: 6
@@ -209,7 +209,7 @@ def xtest_not_accept_rm(tenv):
     risk_modules:
       - name: Roulette
         coll_ratio: 1
-        ensuro_fee: 0
+        ensuro_pp_fee: 0
         roc: "0.01"
     currency:
         name: USD
@@ -322,14 +322,14 @@ def test_walkthrough(tenv):
     risk_modules:
       - name: Roulette
         coll_ratio: 1
-        ensuro_fee: 0
-        roc: "0.040233686"  # interest rate to make premium_for_rm=0
+        ensuro_pp_fee: 0
+        roc: "0.040233686"  # interest rate to make partner_commission=0
       - name: Flight-Insurance
         coll_ratio: "0.9"
-        ensuro_fee: "0.015"
+        ensuro_pp_fee: "0.015"
       - name: Fire-Insurance
         coll_ratio: "0.8"
-        ensuro_fee: "0.005"
+        ensuro_pp_fee: "0.005"
     currency:
         name: USD
         symbol: $
@@ -625,7 +625,7 @@ def test_nfts(tenv):
     risk_modules:
       - name: Roulette
         coll_ratio: 1
-        ensuro_fee: 0
+        ensuro_pp_fee: 0
     nft:
         name: Ensuro Policy NFT
         symbol: EPOL
@@ -695,7 +695,7 @@ def test_policy_holder_contract(tenv):
     risk_modules:
       - name: Roulette
         coll_ratio: 1
-        ensuro_fee: 0
+        ensuro_pp_fee: 0
     nft:
         name: Ensuro Policy NFT
         symbol: EPOL
@@ -796,8 +796,8 @@ def test_partial_payout(tenv):
     risk_modules:
       - name: Roulette
         coll_ratio: "0.8"
-        ensuro_fee: 0
-        roc: "0.0506438"  # interest rate to make premium_for_rm=0
+        ensuro_pp_fee: 0
+        roc: "0.0506438"  # interest rate to make partner_commission=0
     currency:
         name: USD
         symbol: $
@@ -833,7 +833,7 @@ def test_partial_payout(tenv):
         internal_id=111
     )
 
-    policy.premium_for_rm.assert_equal(_W(0))
+    policy.partner_commission.assert_equal(_W(0))
     policy.scr.assert_equal(_W(3600 * .8) - _W(3600/37))
 
     assert pool.etokens["eUSD1YEAR"].ocean.equal(_W(3500) - policy.scr)
@@ -853,8 +853,8 @@ def test_pool_loan_partial_payout(tenv):
     risk_modules:
       - name: Roulette
         coll_ratio: "0.8"
-        ensuro_fee: 0
-        roc: "0.0506438"  # interest rate to make premium_for_rm=0
+        ensuro_pp_fee: 0
+        roc: "0.0506438"  # interest rate to make partner_commission=0
     currency:
         name: USD
         symbol: $
@@ -912,8 +912,8 @@ def test_increase_won_pure_premiums(tenv):
     risk_modules:
       - name: Roulette
         coll_ratio: "0.8"
-        ensuro_fee: 0
-        roc: "0.0506438"  # interest rate to make premium_for_rm=0
+        ensuro_pp_fee: 0
+        roc: "0.0506438"  # interest rate to make partner_commission=0
     currency:
         name: USD
         symbol: $
@@ -970,8 +970,8 @@ def test_payout_bigger_than_pure_premium(tenv):
     risk_modules:
       - name: Roulette
         coll_ratio: "0.8"
-        ensuro_fee: 0
-        roc: "0.0506438"  # interest rate to make premium_for_rm=0
+        ensuro_pp_fee: 0
+        roc: "0.0506438"  # interest rate to make partner_commission=0
     currency:
         name: USD
         symbol: $
@@ -1019,7 +1019,7 @@ def test_payout_bigger_than_pure_premium(tenv):
     eUSD1YEAR.get_pool_loan().assert_equal(_W(100) - policy.pure_premium)
 
 
-# TODO: define later if partial payouts pay to ensuro_fee and premium_for_rm if possible
+# TODO: define later if partial payouts pay to ensuro_commision and partner_commission if possible
 
 
 @set_precision(Wad, 3)
@@ -1129,7 +1129,7 @@ def xtest_assets_under_liquidity_middle(tenv):
         coll_ratio: "0.3734"
         roc: "0.1"
         scr_limit: 250000
-        ensuro_fee: "0.0392"
+        ensuro_pp_fee: "0.0392"
         max_payout_per_policy: 500
     currency:
         name: USD
@@ -1214,7 +1214,7 @@ def xtest_distribute_negative_earnings(tenv):
         coll_ratio: "0.2448"
         roc: "0.0729"
         scr_limit: 250000
-        ensuro_fee: "0.0321"
+        ensuro_pp_fee: "0.0321"
         max_payout_per_policy: 500
     currency:
         name: USD
@@ -1269,7 +1269,7 @@ def xtest_distribute_negative_earnings_full_capital_from_etokens(tenv):
         coll_ratio: "0.2448"
         roc: "0.0729"
         scr_limit: 250000
-        ensuro_fee: "0.0321"
+        ensuro_pp_fee: "0.0321"
         max_payout_per_policy: 500
     currency:
         name: USD
@@ -1518,7 +1518,7 @@ def xtest_grant_insolvency_hook(tenv):
 
     rm.resolve_policy(policy.id, True)
 
-    ins_hook.cash_granted.assert_equal(_W(8000) + policy.ensuro_commission + policy.premium_for_rm)
+    ins_hook.cash_granted.assert_equal(_W(8000) + policy.ensuro_commission + policy.partner_commission)
 
 
 def xtest_lp_insolvency_hook(tenv):
@@ -1529,7 +1529,7 @@ def xtest_lp_insolvency_hook(tenv):
 
     rm.resolve_policy(policy.id, True)
 
-    ins_hook.cash_deposited.assert_equal(_W(8000) + policy.ensuro_commission + policy.premium_for_rm)
+    ins_hook.cash_deposited.assert_equal(_W(8000) + policy.ensuro_commission + policy.partner_commission)
     etk.ocean.assert_equal(_W(0))
     etk.scr.assert_equal(_W(0))
     etk.get_pool_loan().assert_equal(_W(9200) - policy.pure_premium, decimals=2)
@@ -1657,11 +1657,11 @@ def xtest_lp_insolvency_hook_other_etk(tenv):
     rm.resolve_policy(policy.id, True)
     USD.balance_of("CUST1").assert_equal(_W(9200))
 
-    ins_hook.cash_deposited.assert_equal(_W(8000) + policy.ensuro_commission + policy.premium_for_rm)
+    ins_hook.cash_deposited.assert_equal(_W(8000) + policy.ensuro_commission + policy.partner_commission)
     etk.ocean.assert_equal(_W(0))
     etk.scr.assert_equal(_W(0))
     etk.get_pool_loan().assert_equal(_W(1000) + for_lps)
-    etk1m.get_pool_loan().assert_equal(_W(8000) + policy.ensuro_commission + policy.premium_for_rm)
+    etk1m.get_pool_loan().assert_equal(_W(8000) + policy.ensuro_commission + policy.partner_commission)
 
     etk.balance_of("LP1").assert_equal(_W(0))
     etk.balance_of(ins_hook).assert_equal(_W(0))
@@ -1675,7 +1675,7 @@ def xtest_lp_insolvency_hook_other_etk(tenv):
     premiums_account.won_pure_premiums.assert_equal(_W(4000))  # The grant is on premium pool
 
     pool.repay_etoken_loan("eUSD1MONTH").assert_equal(_W(4000))
-    etk1m.get_pool_loan().assert_equal(_W(4000) + policy.ensuro_commission + policy.premium_for_rm,
+    etk1m.get_pool_loan().assert_equal(_W(4000) + policy.ensuro_commission + policy.partner_commission,
                                        decimals=2)
     etk1m_pool_loan = etk1m.get_pool_loan()
 
@@ -1782,7 +1782,7 @@ def test_expire_policy(tenv):
     risk_modules:
       - name: Flight Insurance
         coll_ratio: "0.1"
-        ensuro_fee: "0.05"
+        ensuro_pp_fee: "0.05"
         roc: "0.01"
         wallet: "MGA"
     currency:
@@ -1815,6 +1815,7 @@ def test_expire_policy(tenv):
 
     with rm.as_(rm.owner):
         rm.moc = _R("1.1")
+        rm.ensuro_coc_fee = _R("0.05")
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(1000))
 
@@ -1826,7 +1827,7 @@ def test_expire_policy(tenv):
     )
 
     # Check for_rm and for_ensuro are paid upfront
-    pool.currency.balance_of("MGA").assert_equal(policy.premium_for_rm)
+    pool.currency.balance_of("MGA").assert_equal(policy.partner_commission)
     pool.currency.balance_of("ENS").assert_equal(policy.ensuro_commission)
 
     policy.scr.assert_equal(_W(2100) * _W("0.1") - policy.pure_premium)
@@ -1864,7 +1865,7 @@ def test_expire_policy_payout(tenv):
     risk_modules:
       - name: Flight Insurance
         coll_ratio: "0.1"
-        ensuro_fee: "0.05"
+        ensuro_pp_fee: "0.05"
         roc: "0.01"
         wallet: "MGA"
     currency:
