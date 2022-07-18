@@ -25,9 +25,9 @@ library Policy {
     uint256 lossProb; // original loss probability (in ray)
     uint256 purePremium; // share of the premium that covers expected losses
     // equal to payout * lossProb * riskModule.moc
-    uint256 premiumForEnsuro; // share of the premium that goes for Ensuro (if policy won)
-    uint256 premiumForRm; // share of the premium that goes for the RM (if policy won)
-    uint256 premiumForLps; // share of the premium that goes to the liquidity providers (won or not)
+    uint256 ensuroCommission; // share of the premium that goes for Ensuro
+    uint256 partnerCommission; // share of the premium that goes for the RM
+    uint256 coc; // share of the premium that goes to the liquidity providers (won or not)
     IRiskModule riskModule;
     uint40 start;
     uint40 expiration;
@@ -36,8 +36,8 @@ library Policy {
   /// #if_succeeds {:msg "premium preserved"} premium == (newPolicy.premium);
   /// #if_succeeds
   ///    {:msg "premium distributed"}
-  ///    premium == (newPolicy.purePremium + newPolicy.premiumForLps +
-  ///                newPolicy.premiumForRm + newPolicy.premiumForEnsuro);
+  ///    premium == (newPolicy.purePremium + newPolicy.coc +
+  ///                newPolicy.partnerCommission + newPolicy.ensuroCommission);
   function initialize(
     IRiskModule riskModule,
     uint256 premium,
@@ -52,36 +52,29 @@ library Policy {
     policy.payout = payout;
     policy.lossProb = lossProb;
     policy.purePremium = payout.wadToRay().rayMul(lossProb.rayMul(riskModule.moc())).rayToWad();
-    policy.scr = payout.wadMul(riskModule.scrPercentage().rayToWad()) - policy.purePremium;
+    policy.scr = payout.wadMul(riskModule.collRatio().rayToWad()) - policy.purePremium;
     require(policy.scr != 0, "SCR can't be zero");
     policy.start = uint40(block.timestamp);
     policy.expiration = expiration;
-    policy.premiumForLps = policy.scr.wadMul(
-      (
-        (riskModule.scrInterestRate() * (policy.expiration - policy.start)).rayDiv(
-          SECONDS_IN_YEAR_RAY
-        )
-      ).rayToWad()
+    policy.coc = policy.scr.wadMul(
+      ((riskModule.roc() * (policy.expiration - policy.start)).rayDiv(SECONDS_IN_YEAR_RAY))
+        .rayToWad()
     );
-    policy.premiumForEnsuro = (policy.purePremium + policy.premiumForLps).wadMul(
-      riskModule.ensuroFee().rayToWad()
-    );
+    policy.ensuroCommission =
+      policy.purePremium.wadMul(riskModule.ensuroPpFee().rayToWad()) +
+      policy.coc.wadMul(riskModule.ensuroCocFee().rayToWad());
     require(
-      policy.purePremium + policy.premiumForEnsuro + policy.premiumForLps <= premium,
+      policy.purePremium + policy.ensuroCommission + policy.coc <= premium,
       "Premium less than minimum"
     );
-    policy.premiumForRm =
-      premium -
-      policy.purePremium -
-      policy.premiumForLps -
-      policy.premiumForEnsuro;
+    policy.partnerCommission = premium - policy.purePremium - policy.coc - policy.ensuroCommission;
     return policy;
   }
 
   function interestRate(PolicyData memory policy) internal pure returns (uint256) {
     return
       policy
-        .premiumForLps
+        .coc
         .wadMul(SECONDS_IN_YEAR)
         .wadDiv((policy.expiration - policy.start) * policy.scr)
         .wadToRay();

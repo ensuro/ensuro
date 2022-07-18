@@ -11,23 +11,25 @@ import {IPremiumsAccount} from "./IPremiumsAccount.sol";
 interface IRiskModule {
   function name() external view returns (string memory);
 
-  function scrPercentage() external view returns (uint256);
+  function collRatio() external view returns (uint256);
 
   function moc() external view returns (uint256);
 
-  function ensuroFee() external view returns (uint256);
+  function ensuroPpFee() external view returns (uint256);
 
-  function scrInterestRate() external view returns (uint256);
+  function ensuroCocFee() external view returns (uint256);
 
-  function maxScrPerPolicy() external view returns (uint256);
+  function roc() external view returns (uint256);
 
-  function scrLimit() external view returns (uint256);
+  function maxPayoutPerPolicy() external view returns (uint256);
 
-  function totalScr() external view returns (uint256);
+  function exposureLimit() external view returns (uint256);
+
+  function activeExposure() external view returns (uint256);
 
   function wallet() external view returns (address);
 
-  function releaseScr(uint256 scrAmount) external;
+  function releaseExposure(uint256 payout) external;
 
   function premiumsAccount() external view returns (IPremiumsAccount);
 }

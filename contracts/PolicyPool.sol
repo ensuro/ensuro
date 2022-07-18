@@ -202,10 +202,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     IEToken solvencyEtk = _lockScr(policy);
     _policyNFT.safeMint(customer, policy.id);
     _currency.safeTransferFrom(customer, address(pa), policy.purePremium);
-    _currency.safeTransferFrom(customer, address(solvencyEtk), policy.premiumForLps);
-    _currency.safeTransferFrom(customer, _config.treasury(), policy.premiumForEnsuro);
-    if (policy.premiumForRm > 0 && customer != rm.wallet())
-      _currency.safeTransferFrom(customer, rm.wallet(), policy.premiumForRm);
+    _currency.safeTransferFrom(customer, address(solvencyEtk), policy.coc);
+    _currency.safeTransferFrom(customer, _config.treasury(), policy.ensuroCommission);
+    if (policy.partnerCommission > 0 && customer != rm.wallet())
+      _currency.safeTransferFrom(customer, rm.wallet(), policy.partnerCommission);
     emit NewPolicy(rm, policy);
     return policy.id;
   }
@@ -274,7 +274,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     etk.unlockScr(
       policy.interestRate(),
       policy.scr,
-      int256(policy.premiumForLps) - int256(policy.accruedInterest())
+      int256(policy.coc) - int256(policy.accruedInterest())
     );
 
     if (customerWon) {
@@ -284,7 +284,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
       rm.premiumsAccount().policyExpired(policy.purePremium, etk);
     }
 
-    rm.releaseScr(policy.scr);
+    rm.releaseExposure(policy.payout);
 
     emit PolicyResolved(policy.riskModule, policy.id, payout);
     delete _policies[policy.id];

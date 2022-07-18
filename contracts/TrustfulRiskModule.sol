@@ -27,30 +27,29 @@ contract TrustfulRiskModule is RiskModule {
   /**
    * @dev Initializes the RiskModule
    * @param name_ Name of the Risk Module
-   * @param scrPercentage_ Solvency Capital Requirement percentage, to calculate
-                          capital requirement as % of (payout - premium)  (in ray)
-   * @param ensuroFee_ % of premium that will go for Ensuro treasury (in ray)
-   * @param scrInterestRate_ cost of capital (in ray)
-   * @param maxScrPerPolicy_ Max SCR to be allocated to this module (in wad)
-   * @param scrLimit_ Max SCR to be allocated to this module (in wad)
+   * @param collRatio_ Collateralization ratio to compute solvency requirement as % of payout (in ray)
+   * @param ensuroPpFee_ % of pure premium that will go for Ensuro treasury (in ray)
+   * @param roc_ return on capital paid to LPs (annualized percentage - in ray)
+   * @param maxPayoutPerPolicy_ Maximum payout per policy (in wad)
+   * @param exposureLimit_ Max exposure (sum of payouts) to be allocated to this module (in wad)
    * @param wallet_ Address of the RiskModule provider
    */
   function initialize(
     string memory name_,
-    uint256 scrPercentage_,
-    uint256 ensuroFee_,
-    uint256 scrInterestRate_,
-    uint256 maxScrPerPolicy_,
-    uint256 scrLimit_,
+    uint256 collRatio_,
+    uint256 ensuroPpFee_,
+    uint256 roc_,
+    uint256 maxPayoutPerPolicy_,
+    uint256 exposureLimit_,
     address wallet_
   ) public initializer {
     __RiskModule_init(
       name_,
-      scrPercentage_,
-      ensuroFee_,
-      scrInterestRate_,
-      maxScrPerPolicy_,
-      scrLimit_,
+      collRatio_,
+      ensuroPpFee_,
+      roc_,
+      maxPayoutPerPolicy_,
+      exposureLimit_,
       wallet_
     );
   }

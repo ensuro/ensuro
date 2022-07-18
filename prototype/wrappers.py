@@ -186,7 +186,7 @@ class EToken(IERC20):
 class Policy:
 
     def __init__(self, id, payout, premium, scr, loss_prob,
-                 pure_premium, premium_for_ensuro, premium_for_rm, premium_for_lps,
+                 pure_premium, ensuro_commission, partner_commission, coc,
                  risk_module, start, expiration, address_book):
         self.id = id
         self._risk_module = risk_module
@@ -198,17 +198,17 @@ class Policy:
         self.start = start
         self.expiration = expiration
         self.pure_premium = Wad(pure_premium)
-        self.premium_for_ensuro = Wad(premium_for_ensuro)
-        self.premium_for_rm = Wad(premium_for_rm)
-        self.premium_for_lps = Wad(premium_for_lps)
+        self.ensuro_commission = Wad(ensuro_commission)
+        self.partner_commission = Wad(partner_commission)
+        self.coc = Wad(coc)
 
     def premium_split(self):
-        return self.pure_premium, self.premium_for_ensuro, self.premium_for_rm, self.premium_for_lps
+        return self.pure_premium, self.ensuro_commission, self.partner_commission, self.coc
 
     @property
     def interest_rate(self):
         return (
-            self.premium_for_lps * _W(SECONDS_IN_YEAR) // (
+            self.coc * _W(SECONDS_IN_YEAR) // (
                 _W(self.expiration - self.start) * self.scr
             )
         ).to_ray()
@@ -223,7 +223,7 @@ class Policy:
     def as_tuple(self):
         return (
             self.id, self.payout, self.premium, self.scr, self.loss_prob,
-            self.pure_premium, self.premium_for_ensuro, self.premium_for_rm, self.premium_for_lps,
+            self.pure_premium, self.ensuro_commission, self.partner_commission, self.coc,
             self._risk_module, self.start, self.expiration
         )
 
@@ -249,34 +249,35 @@ class RiskModule(ETHWrapper):
 
     constructor_args = (("pool", "address"), ("premiums_account", "address"), )
     initialize_args = (
-        ("name", "string"), ("scr_percentage", "ray"), ("ensuro_fee", "ray"),
-        ("scr_interest_rate", "ray"), ("max_scr_per_policy", "amount"), ("scr_limit", "amount"),
+        ("name", "string"), ("coll_ratio", "ray"), ("ensuro_pp_fee", "ray"),
+        ("roc", "ray"), ("max_payout_per_policy", "amount"), ("exposure_limit", "amount"),
         ("wallet", "address")
     )
 
-    def __init__(self, name, policy_pool, premiums_account, scr_percentage=_R(1), ensuro_fee=_R(0),
-                 scr_interest_rate=_R(0), max_scr_per_policy=_W(1000000), scr_limit=_W(1000000),
+    def __init__(self, name, policy_pool, premiums_account, coll_ratio=_R(1), ensuro_pp_fee=_R(0),
+                 roc=_R(0), max_payout_per_policy=_W(1000000), exposure_limit=_W(1000000),
                  wallet="RM", owner="owner"):
-        scr_percentage = _R(scr_percentage)
-        ensuro_fee = _R(ensuro_fee)
-        scr_interest_rate = _R(scr_interest_rate)
-        max_scr_per_policy = _W(max_scr_per_policy)
-        scr_limit = _W(scr_limit)
-        super().__init__(owner, policy_pool.contract, premiums_account, name, scr_percentage, ensuro_fee,
-                         scr_interest_rate,
-                         max_scr_per_policy, scr_limit, wallet)
+        coll_ratio = _R(coll_ratio)
+        ensuro_pp_fee = _R(ensuro_pp_fee)
+        roc = _R(roc)
+        max_payout_per_policy = _W(max_payout_per_policy)
+        exposure_limit = _W(exposure_limit)
+        super().__init__(owner, policy_pool.contract, premiums_account, name, coll_ratio, ensuro_pp_fee,
+                         roc,
+                         max_payout_per_policy, exposure_limit, wallet)
         self.policy_pool = policy_pool
         self._premiums_account = premiums_account
         self._auto_from = self.owner
 
     name = MethodAdapter((), "string", is_property=True)
-    scr_percentage = MethodAdapter((), "ray", is_property=True)
+    coll_ratio = MethodAdapter((), "ray", is_property=True)
     moc = MethodAdapter((), "ray", is_property=True)
-    ensuro_fee = MethodAdapter((), "ray", is_property=True)
-    scr_interest_rate = MethodAdapter((), "ray", is_property=True)
-    max_scr_per_policy = MethodAdapter((), "amount", is_property=True)
-    scr_limit = MethodAdapter((), "amount", is_property=True)
-    total_scr = MethodAdapter((), "amount", is_property=True)
+    ensuro_pp_fee = MethodAdapter((), "ray", is_property=True)
+    ensuro_coc_fee = MethodAdapter((), "ray", is_property=True)
+    roc = MethodAdapter((), "ray", is_property=True)
+    max_payout_per_policy = MethodAdapter((), "amount", is_property=True)
+    exposure_limit = MethodAdapter((), "amount", is_property=True)
+    active_exposure = MethodAdapter((), "amount", is_property=True)
     wallet = MethodAdapter((), "address", is_property=True)
     get_minimum_premium = MethodAdapter(
         (("payout", "amount"), ("loss_prob", "ray"), ("expiration", "int")),
@@ -347,19 +348,19 @@ class FlightDelayRiskModule(RiskModule):
 
     oracle_params = MethodAdapter((), "(address, int, amount, bytes16, bytes16)", is_property=True)
 
-    def __init__(self, name, policy_pool, premiums_account, scr_percentage=_R(1), ensuro_fee=_R(0),
-                 scr_interest_rate=_R(0), max_scr_per_policy=_W(1000000), scr_limit=_W(1000000),
+    def __init__(self, name, policy_pool, premiums_account, coll_ratio=_R(1), ensuro_pp_fee=_R(0),
+                 roc=_R(0), max_payout_per_policy=_W(1000000), exposure_limit=_W(1000000),
                  wallet="RM", owner="owner",
                  link_token=None, oracle_params=None):
-        scr_percentage = _R(scr_percentage)
-        ensuro_fee = _R(ensuro_fee)
-        scr_interest_rate = _R(scr_interest_rate)
-        max_scr_per_policy = _W(max_scr_per_policy)
-        scr_limit = _W(scr_limit)
+        coll_ratio = _R(coll_ratio)
+        ensuro_pp_fee = _R(ensuro_pp_fee)
+        roc = _R(roc)
+        max_payout_per_policy = _W(max_payout_per_policy)
+        exposure_limit = _W(exposure_limit)
         super(RiskModule, self).__init__(
-            owner, policy_pool.contract, premiums_account, name, scr_percentage, ensuro_fee,
-            scr_interest_rate,
-            max_scr_per_policy, scr_limit, wallet,
+            owner, policy_pool.contract, premiums_account, name, coll_ratio, ensuro_pp_fee,
+            roc,
+            max_payout_per_policy, exposure_limit, wallet,
             link_token, oracle_params
         )
         self.policy_pool = policy_pool

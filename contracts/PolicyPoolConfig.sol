@@ -160,8 +160,8 @@ contract PolicyPoolConfig is
     );
     require(
       hasRole(LEVEL1_ROLE, msg.sender) ||
-        _policyPool.totalETokenSupply() > (riskModule.scrLimit().wadMul(L2_RM_LIMIT)),
-      "RiskModule SCR Limit exceeds the limit for LEVEL2 user"
+        _policyPool.totalETokenSupply() > (riskModule.exposureLimit().wadMul(L2_RM_LIMIT)),
+      "RiskModule Exposure Limit exceeds the limit for LEVEL2 user"
     );
     _riskModules[riskModule] = RiskModuleStatus.active;
     emit RiskModuleStatusChanged(riskModule, RiskModuleStatus.active);
@@ -169,7 +169,7 @@ contract PolicyPoolConfig is
 
   function removeRiskModule(IRiskModule riskModule) external onlyRole(LEVEL2_ROLE) {
     require(_riskModules[riskModule] != RiskModuleStatus.inactive, "Risk Module not found");
-    require(riskModule.totalScr() == 0, "Can't remove a module with active policies");
+    require(riskModule.activeExposure() == 0, "Can't remove a module with active policies");
     delete _riskModules[riskModule];
     emit RiskModuleStatusChanged(riskModule, RiskModuleStatus.inactive);
   }
@@ -188,7 +188,7 @@ contract PolicyPoolConfig is
     require(
       newStatus != RiskModuleStatus.active ||
         hasRole(LEVEL1_ROLE, msg.sender) ||
-        _policyPool.totalETokenSupply() > (riskModule.scrLimit().wadMul(L2_RM_LIMIT)),
+        _policyPool.totalETokenSupply() > (riskModule.exposureLimit().wadMul(L2_RM_LIMIT)),
       "RiskModule SCR Limit exceeds the limit for LEVEL2 user"
     );
     // Anyone (LEVEL1, LEVEL2, GUARDIAN) can deprecate

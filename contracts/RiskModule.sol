@@ -29,15 +29,15 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
   IPremiumsAccount internal immutable _premiumsAccount;
 
   string private _name;
-  uint256 internal _scrPercentage; // in ray - Solvency Capital Requirement percentage, to calculate
-  // capital requirement as % of (payout - premium)
+  uint256 internal _collRatio; // in ray - Collateralization Ratio to compute solvency requirement as % of payout
   uint256 internal _moc; // in ray - Margin Of Conservativism - factor that multiplies lossProb
   // to calculate purePremium
-  uint256 internal _ensuroFee; // in ray - % of pure premium that will go for Ensuro treasury
-  uint256 internal _scrInterestRate; // in ray - % of interest to charge for the SCR
-  uint256 internal _maxScrPerPolicy; // in wad - Max SCR per policy
-  uint256 internal _scrLimit; // in wad - Max SCR to be allocated to this module
-  uint256 internal _totalScr; // in wad - Current SCR allocated to this module
+  uint256 internal _ensuroPpFee; // in ray - % of pure premium that will go for Ensuro treasury
+  uint256 internal _ensuroCocFee; // in ray - % of cost of capital that will go for Ensuro treasury
+  uint256 internal _roc; // in ray - return on capital paid to LPs - Annualized Percentage
+  uint256 internal _maxPayoutPerPolicy; // in wad - Max payout per policy
+  uint256 internal _exposureLimit; // in wad - Max exposure (sum of payouts) to be allocated to this module
+  uint256 internal _activeExposure; // in wad - Current exposure of active policies
 
   address internal _wallet; // Address of the RiskModule provider
 
@@ -55,33 +55,32 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
   /**
    * @dev Initializes the RiskModule
    * @param name_ Name of the Risk Module
-   * @param scrPercentage_ Solvency Capital Requirement percentage, to calculate
-                          capital requirement as % of (payout - premium)  (in ray)
-   * @param ensuroFee_ % of pure premium that will go for Ensuro treasury (in ray)
-   * @param scrInterestRate_ % of interest to charge for the SCR (in ray)
-   * @param maxScrPerPolicy_ Max SCR to be allocated to this module (in wad)
-   * @param scrLimit_ Max SCR to be allocated to this module (in wad)
+   * @param collRatio_ Collateralization ratio to compute solvency requirement as % of payout (in ray)
+   * @param ensuroPpFee_ % of pure premium that will go for Ensuro treasury (in ray)
+   * @param roc_ return on capital paid to LPs (annualized percentage - in ray)
+   * @param maxPayoutPerPolicy_ Maximum payout per policy (in wad)
+   * @param exposureLimit_ Max exposure (sum of payouts) to be allocated to this module (in wad)
    * @param wallet_ Address of the RiskModule provider
    */
   // solhint-disable-next-line func-name-mixedcase
   function __RiskModule_init(
     string memory name_,
-    uint256 scrPercentage_,
-    uint256 ensuroFee_,
-    uint256 scrInterestRate_,
-    uint256 maxScrPerPolicy_,
-    uint256 scrLimit_,
+    uint256 collRatio_,
+    uint256 ensuroPpFee_,
+    uint256 roc_,
+    uint256 maxPayoutPerPolicy_,
+    uint256 exposureLimit_,
     address wallet_
   ) internal initializer {
     __AccessControl_init();
     __PolicyPoolComponent_init();
     __RiskModule_init_unchained(
       name_,
-      scrPercentage_,
-      ensuroFee_,
-      scrInterestRate_,
-      maxScrPerPolicy_,
-      scrLimit_,
+      collRatio_,
+      ensuroPpFee_,
+      roc_,
+      maxPayoutPerPolicy_,
+      exposureLimit_,
       wallet_
     );
   }
@@ -89,21 +88,21 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
   // solhint-disable-next-line func-name-mixedcase
   function __RiskModule_init_unchained(
     string memory name_,
-    uint256 scrPercentage_,
-    uint256 ensuroFee_,
-    uint256 scrInterestRate_,
-    uint256 maxScrPerPolicy_,
-    uint256 scrLimit_,
+    uint256 collRatio_,
+    uint256 ensuroPpFee_,
+    uint256 roc_,
+    uint256 maxPayoutPerPolicy_,
+    uint256 exposureLimit_,
     address wallet_
   ) internal initializer {
     _name = name_;
-    _scrPercentage = scrPercentage_;
+    _collRatio = collRatio_;
     _moc = WadRayMath.RAY;
-    _ensuroFee = ensuroFee_;
-    _scrInterestRate = scrInterestRate_;
-    _maxScrPerPolicy = maxScrPerPolicy_;
-    _scrLimit = scrLimit_;
-    _totalScr = 0;
+    _ensuroPpFee = ensuroPpFee_;
+    _roc = roc_;
+    _maxPayoutPerPolicy = maxPayoutPerPolicy_;
+    _exposureLimit = exposureLimit_;
+    _activeExposure = 0;
     _wallet = wallet_;
     _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
     _validateParameters();
@@ -111,18 +110,19 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
 
   // runs validation on RiskModule parameters
   function _validateParameters() internal view override {
-    require(
-      _scrPercentage <= WadRayMath.RAY && _scrPercentage > 0,
-      "Validation: scrPercentage must be <=1"
-    );
+    require(_collRatio <= WadRayMath.RAY && _collRatio > 0, "Validation: collRatio must be <=1");
     require(
       _moc <= (2 * WadRayMath.RAY) && _moc >= (WadRayMath.RAY / 2),
       "Validation: moc must be [0.5, 2]"
     );
-    require(_ensuroFee <= WadRayMath.RAY, "Validation: ensuroFee must be <= 1");
-    require(_scrInterestRate <= WadRayMath.RAY, "Validation: scrInterestRate must be <= 1 (100%)");
-    // _maxScrPerPolicy no limits
-    require(_scrLimit >= _totalScr, "Validation: scrLimit can't be less than actual totalScr");
+    require(_ensuroPpFee <= WadRayMath.RAY, "Validation: ensuroPpFee must be <= 1");
+    require(_ensuroCocFee <= WadRayMath.RAY, "Validation: ensuroCocFee must be <= 1");
+    require(_roc <= WadRayMath.RAY, "Validation: roc must be <= 1 (100%)");
+    // _maxPayoutPerPolicy no limits
+    require(
+      _exposureLimit >= _activeExposure,
+      "Validation: exposureLimit can't be less than actual activeExposure"
+    );
     require(_wallet != address(0), "Validation: Wallet can't be zero address");
   }
 
@@ -130,53 +130,50 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     return _name;
   }
 
-  function scrPercentage() public view override returns (uint256) {
-    return _scrPercentage;
+  function collRatio() public view override returns (uint256) {
+    return _collRatio;
   }
 
   function moc() public view override returns (uint256) {
     return _moc;
   }
 
-  function ensuroFee() public view override returns (uint256) {
-    return _ensuroFee;
+  function ensuroPpFee() public view override returns (uint256) {
+    return _ensuroPpFee;
   }
 
-  function scrInterestRate() public view override returns (uint256) {
-    return _scrInterestRate;
+  function ensuroCocFee() public view override returns (uint256) {
+    return _ensuroCocFee;
   }
 
-  function maxScrPerPolicy() public view override returns (uint256) {
-    return _maxScrPerPolicy;
+  function roc() public view override returns (uint256) {
+    return _roc;
   }
 
-  function scrLimit() public view override returns (uint256) {
-    return _scrLimit;
+  function maxPayoutPerPolicy() public view override returns (uint256) {
+    return _maxPayoutPerPolicy;
   }
 
-  function totalScr() public view override returns (uint256) {
-    return _totalScr;
+  function exposureLimit() public view override returns (uint256) {
+    return _exposureLimit;
+  }
+
+  function activeExposure() public view override returns (uint256) {
+    return _activeExposure;
   }
 
   function wallet() public view override returns (address) {
     return _wallet;
   }
 
-  function setScrPercentage(uint256 newScrPercentage)
-    external
-    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-  {
+  function setCollRatio(uint256 newCollRatio) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
-      !tweak || _isTweakRay(_scrPercentage, newScrPercentage, 1e26),
-      "Tweak exceeded: scrPercentage tweaks only up to 10%"
+      !tweak || _isTweakRay(_collRatio, newCollRatio, 1e26),
+      "Tweak exceeded: collRatio tweaks only up to 10%"
     );
-    _scrPercentage = newScrPercentage;
-    _parameterChanged(
-      IPolicyPoolConfig.GovernanceActions.setScrPercentage,
-      newScrPercentage,
-      tweak
-    );
+    _collRatio = newCollRatio;
+    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setCollRatio, newCollRatio, tweak);
   }
 
   function setMoc(uint256 newMoc) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
@@ -186,68 +183,72 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setMoc, newMoc, tweak);
   }
 
-  function setScrInterestRate(uint256 newScrInterestRate)
+  function setRoc(uint256 newRoc) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
+    bool tweak = !hasPoolRole(LEVEL2_ROLE);
+    require(!tweak || _isTweakRay(_roc, newRoc, 3e26), "Tweak exceeded: roc tweaks only up to 30%");
+    _roc = newRoc;
+    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setRoc, newRoc, tweak);
+  }
+
+  function setEnsuroPpFee(uint256 newValue) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
+    bool tweak = !hasPoolRole(LEVEL2_ROLE);
+    require(
+      !tweak || _isTweakRay(_ensuroPpFee, newValue, 3e26),
+      "Tweak exceeded: ensuroPpFee tweaks only up to 30%"
+    );
+    _ensuroPpFee = newValue;
+    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setEnsuroPpFee, newValue, tweak);
+  }
+
+  function setEnsuroCocFee(uint256 newValue) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
+    bool tweak = !hasPoolRole(LEVEL2_ROLE);
+    require(
+      !tweak || _isTweakRay(_ensuroCocFee, newValue, 3e26),
+      "Tweak exceeded: ensuroCocFee tweaks only up to 30%"
+    );
+    _ensuroCocFee = newValue;
+    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setEnsuroCocFee, newValue, tweak);
+  }
+
+  function setMaxPayoutPerPolicy(uint256 newMaxPayoutPerPolicy)
     external
     onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
   {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
-      !tweak || _isTweakRay(_scrInterestRate, newScrInterestRate, 3e26),
-      "Tweak exceeded: scrInterestRate tweaks only up to 30%"
+      !tweak || _isTweakWad(_maxPayoutPerPolicy, newMaxPayoutPerPolicy, 3e17),
+      "Tweak exceeded: maxPayoutPerPolicy tweaks only up to 30%"
     );
-    _scrInterestRate = newScrInterestRate;
+    _maxPayoutPerPolicy = newMaxPayoutPerPolicy;
     _parameterChanged(
-      IPolicyPoolConfig.GovernanceActions.setScrInterestRate,
-      newScrInterestRate,
+      IPolicyPoolConfig.GovernanceActions.setMaxPayoutPerPolicy,
+      newMaxPayoutPerPolicy,
       tweak
     );
   }
 
-  function setEnsuroFee(uint256 newEnsuroFee) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
-    bool tweak = !hasPoolRole(LEVEL2_ROLE);
-    require(
-      !tweak || _isTweakRay(_ensuroFee, newEnsuroFee, 3e26),
-      "Tweak exceeded: ensuroFee tweaks only up to 30%"
-    );
-    _ensuroFee = newEnsuroFee;
-    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setEnsuroFee, newEnsuroFee, tweak);
-  }
-
-  function setMaxScrPerPolicy(uint256 newMaxScrPerPolicy)
-    external
-    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-  {
-    bool tweak = !hasPoolRole(LEVEL2_ROLE);
-    require(
-      !tweak || _isTweakWad(_maxScrPerPolicy, newMaxScrPerPolicy, 3e17),
-      "Tweak exceeded: maxScrPerPolicy tweaks only up to 30%"
-    );
-    _maxScrPerPolicy = newMaxScrPerPolicy;
-    _parameterChanged(
-      IPolicyPoolConfig.GovernanceActions.setMaxScrPerPolicy,
-      newMaxScrPerPolicy,
-      tweak
-    );
-  }
-
-  function setScrLimit(uint256 newScrLimit)
+  function setExposureLimit(uint256 newExposureLimit)
     external
     onlyPoolRole3(LEVEL1_ROLE, LEVEL2_ROLE, LEVEL3_ROLE)
   {
     bool tweak = !hasPoolRole(LEVEL2_ROLE) && !hasPoolRole(LEVEL1_ROLE);
     require(
-      !tweak || _isTweakWad(_scrLimit, newScrLimit, 1e17),
-      "Tweak exceeded: scrLimit tweaks only up to 10%"
+      !tweak || _isTweakWad(_exposureLimit, newExposureLimit, 1e17),
+      "Tweak exceeded: exposureLimit tweaks only up to 10%"
     );
     require(
-      newScrLimit <= _scrLimit ||
+      newExposureLimit <= _exposureLimit ||
         hasPoolRole(LEVEL1_ROLE) ||
-        _policyPool.totalETokenSupply().wadMul(1e17) > newScrLimit,
+        _policyPool.totalETokenSupply().wadMul(1e17) > newExposureLimit,
       "Tweak exceeded: Increase, >=10% of the total liquidity, requires LEVEL1_ROLE"
     );
-    require(newScrLimit >= _totalScr, "Can't set SCR less than current SCR allocation");
-    _scrLimit = newScrLimit;
-    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setScrLimit, newScrLimit, tweak);
+    require(newExposureLimit >= _activeExposure, "Can't set SCR less than current SCR allocation");
+    _exposureLimit = newExposureLimit;
+    _parameterChanged(
+      IPolicyPoolConfig.GovernanceActions.setExposureLimit,
+      newExposureLimit,
+      tweak
+    );
   }
 
   function setWallet(address wallet_) external onlyRole(RM_PROVIDER_ROLE) {
@@ -265,13 +266,13 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     uint40 expiration
   ) public view returns (uint256) {
     uint256 purePremium = payout.wadToRay().rayMul(lossProb.rayMul(moc())).rayToWad();
-    uint256 scr = payout.wadMul(scrPercentage().rayToWad()) - purePremium;
-    uint256 interestRate = (
-      (scrInterestRate() * (expiration - block.timestamp)).rayDiv(SECONDS_IN_YEAR_RAY)
-    ).rayToWad();
-    uint256 premiumForLps = scr.wadMul(interestRate);
-    uint256 premiumForEnsuro = (purePremium + premiumForLps).wadMul(ensuroFee().rayToWad());
-    return purePremium + premiumForEnsuro + premiumForLps;
+    uint256 scr = payout.wadMul(collRatio().rayToWad()) - purePremium;
+    uint256 interestRate = ((roc() * (expiration - block.timestamp)).rayDiv(SECONDS_IN_YEAR_RAY))
+      .rayToWad();
+    uint256 coc = scr.wadMul(interestRate);
+    uint256 ensuroCommission = purePremium.wadMul(ensuroPpFee().rayToWad()) +
+      coc.wadMul(ensuroCocFee().rayToWad());
+    return purePremium + ensuroCommission + coc;
   }
 
   function _newPolicy(
@@ -289,6 +290,7 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
       _policyPool.currency().allowance(customer, address(_policyPool)) >= premium,
       "You must allow ENSURO to transfer the premium"
     );
+    require(payout <= _maxPayoutPerPolicy, "RiskModule: Payout is more than maximum per policy");
     Policy.PolicyData memory policy = Policy.initialize(
       this,
       premium,
@@ -296,19 +298,18 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
       lossProb,
       expiration
     );
-    require(policy.scr <= _maxScrPerPolicy, "RiskModule: SCR is more than maximum per policy");
-    _totalScr += policy.scr;
-    require(_totalScr <= _scrLimit, "RiskModule: SCR limit exceeded");
+    _activeExposure += policy.payout;
+    require(_activeExposure <= _exposureLimit, "RiskModule: SCR limit exceeded");
     uint256 policyId = _policyPool.newPolicy(policy, customer, internalId);
     policy.id = policyId;
     return policy;
   }
 
-  function releaseScr(uint256 scrAmount) external override onlyPolicyPool {
+  function releaseExposure(uint256 payout) external override onlyPolicyPool {
     // In the Python protype this function is called `remove_policy` and receives
     // all the policy. Since we just need the amount, for performance reasons
-    // we just send the amount and the method is called releaseScr
-    _totalScr -= scrAmount;
+    // we just send the amount and the method is called releaseExposure
+    _activeExposure -= payout;
   }
 
   function premiumsAccount() external view override returns (IPremiumsAccount) {
