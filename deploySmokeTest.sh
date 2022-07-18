@@ -64,7 +64,7 @@ npx hardhat --network $NETWORK deploy:riskModule $VERIFY --pool-address $POOL \
 # FlightDelayRiskModule
 npx hardhat --network $NETWORK deploy:fdRiskModule $VERIFY --pool-address $POOL \
     --pa-address $PREMIUMS_ACCOUNT \
-    --rm-name "Flight Delay Insurance" --max-scr-per-policy 10000 --scr-limit 240000 \
+    --rm-name "Flight Delay Insurance" --max-payout-per-policy 10000 --exposure-limit 240000 \
     --wallet 0xc62c56f50FcE8881Ec5D7271Af5Bea6f18c88183 \
     --link-token 0x326c977e6efc84e512bb9c30f76e30c160ed06fb \
     --oracle 0x0a908660e9319413a16978fa48df641b4bf37c54 \

@@ -212,20 +212,21 @@ async function deployPremiumsAccount({verify, poolAddress}, hre) {
 }
 
 async function deployRiskModule({
-      verify, rmClass, rmName, poolAddress, paAddress, scrPercentage, scrInterestRate, ensuroFee,
-      maxScrPerPolicy,
-      scrLimit, moc, wallet, extraArgs, extraConstructorArgs
+      verify, rmClass, rmName, poolAddress, paAddress, collRatio, roc,
+      ensuroPpFee, ensuroCocFee,
+      maxPayoutPerPolicy,
+      exposureLimit, moc, wallet, extraArgs, extraConstructorArgs
   }, hre) {
   extraArgs = extraArgs || [];
   extraConstructorArgs = extraConstructorArgs || [];
   const RiskModule = await hre.ethers.getContractFactory(rmClass);
   const rm = await hre.upgrades.deployProxy(RiskModule, [
     rmName,
-    _R(scrPercentage),
-    _R(ensuroFee),
-    _R(scrInterestRate),
-    _A(maxScrPerPolicy),
-    _A(scrLimit),
+    _R(collRatio),
+    _R(ensuroPpFee),
+    _R(roc),
+    _A(maxPayoutPerPolicy),
+    _A(exposureLimit),
     wallet,
     ...extraArgs
   ], {
@@ -242,6 +243,10 @@ async function deployRiskModule({
   if (moc != 1.0) {
     moc = _R(moc);
     await rm.setMoc(moc);
+  }
+  if (ensuroCocFee != 0) {
+    ensuroCocFee = _R(ensuroCocFee);
+    await rm.setEnsuroCocFee(ensuroCocFee);
   }
   const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
   const policyPoolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await policyPool.config());
@@ -510,11 +515,12 @@ function add_task() {
     .addParam("paAddress", "PremiumsAccount Address", types.address)
     .addOptionalParam("rmClass", "RiskModule contract", "TrustfulRiskModule", types.str)
     .addOptionalParam("rmName", "Name of the RM", "Test RM", types.str)
-    .addOptionalParam("scrPercentage", "SCR Percentage", 1.0, types.float)
-    .addOptionalParam("ensuroFee", "Ensuro Fee", 0.02, types.float)
-    .addOptionalParam("scrInterestRate", "Interest Rate for RM", 0.05, types.float)
-    .addOptionalParam("maxScrPerPolicy", "Max SCR Per policy", 10000, types.float)
-    .addOptionalParam("scrLimit", "Total SCR for the RM", 1e6, types.float)
+    .addOptionalParam("collRatio", "Collateralization ratio", 1.0, types.float)
+    .addOptionalParam("ensuroPpFee", "Ensuro Pure Premium Fee", 0.02, types.float)
+    .addOptionalParam("ensuroCocFee", "Ensuro Coc Fee", 0.1, types.float)
+    .addOptionalParam("roc", "Interest rate paid to LPs for solvency capital", 0.05, types.float)
+    .addOptionalParam("maxPayoutPerPolicy", "Max Payout Per policy", 10000, types.float)
+    .addOptionalParam("exposureLimit", "Exposure (sum of payouts) limit for the RM", 1e6, types.float)
     .addOptionalParam("moc", "Margin of Conservativism", 1.0, types.float)
     .addParam("wallet", "RM address", types.address)
     .setAction(deployRiskModule);
@@ -525,11 +531,12 @@ function add_task() {
     .addParam("paAddress", "PremiumsAccount Address", types.address)
     .addOptionalParam("rmClass", "RiskModule contract", "FlightDelayRiskModule", types.str)
     .addOptionalParam("rmName", "Name of the RM", "Flight Delay Risk Module", types.str)
-    .addOptionalParam("scrPercentage", "SCR Percentage", 1.0, types.float)
-    .addOptionalParam("ensuroFee", "Ensuro Fee", 0.02, types.float)
-    .addOptionalParam("scrInterestRate", "Interest Rate for RM", 0.05, types.float)
-    .addOptionalParam("maxScrPerPolicy", "Max SCR Per policy", 10000, types.float)
-    .addOptionalParam("scrLimit", "Total SCR for the RM", 1e6, types.float)
+    .addOptionalParam("collRatio", "Collateralization ratio", 1.0, types.float)
+    .addOptionalParam("ensuroPpFee", "Ensuro Pure Premium Fee", 0.02, types.float)
+    .addOptionalParam("ensuroCocFee", "Ensuro Coc Fee", 0.1, types.float)
+    .addOptionalParam("roc", "Interest rate paid to LPs for solvency capital", 0.05, types.float)
+    .addOptionalParam("maxPayoutPerPolicy", "Max Payout Per policy", 10000, types.float)
+    .addOptionalParam("exposureLimit", "Exposure (sum of payouts) limit for the RM", 1e6, types.float)
     .addOptionalParam("moc", "Margin of Conservativism", 1.0, types.float)
     .addParam("wallet", "RM address", types.address)
     .addParam("linkToken", "LINK address", types.address)
@@ -546,11 +553,12 @@ function add_task() {
     .addParam("paAddress", "PremiumsAccount Address", types.address)
     .addOptionalParam("rmClass", "RiskModule contract", "PriceRiskModule", types.str)
     .addOptionalParam("rmName", "Name of the RM", "Price Risk Module", types.str)
-    .addOptionalParam("scrPercentage", "SCR Percentage", 1.0, types.float)
-    .addOptionalParam("ensuroFee", "Ensuro Fee", 0.02, types.float)
-    .addOptionalParam("scrInterestRate", "Interest Rate for RM", 0.05, types.float)
-    .addOptionalParam("maxScrPerPolicy", "Max SCR Per policy", 10000, types.float)
-    .addOptionalParam("scrLimit", "Total SCR for the RM", 1e6, types.float)
+    .addOptionalParam("collRatio", "Collateralization ratio", 1.0, types.float)
+    .addOptionalParam("ensuroPpFee", "Ensuro Pure Premium Fee", 0.02, types.float)
+    .addOptionalParam("ensuroCocFee", "Ensuro Coc Fee", 0.1, types.float)
+    .addOptionalParam("roc", "Interest rate paid to LPs for solvency capital", 0.05, types.float)
+    .addOptionalParam("maxPayoutPerPolicy", "Max Payout Per policy", 10000, types.float)
+    .addOptionalParam("exposureLimit", "Exposure (sum of payouts) limit for the RM", 1e6, types.float)
     .addOptionalParam("moc", "Margin of Conservativism", 1.0, types.float)
     .addParam("wallet", "RM address", types.address)
     .addParam("asset", "Insured asset address", types.address)
