@@ -54,7 +54,7 @@ contract FlightDelayRiskModule is RiskModule, ChainlinkClientUpgradeable {
    * @param name_ Name of the Risk Module
    * @param collRatio_ Collateralization ratio to compute solvency requirement as % of payout (in ray)
    * @param ensuroPpFee_ % of pure premium that will go for Ensuro treasury (in ray)
-   * @param roc_ return on capital paid to LPs (annualized percentage - in ray)
+   * @param srRoc_ return on capital paid to Senior LPs (annualized percentage - in ray)
    * @param maxPayoutPerPolicy_ Maximum payout per policy (in wad)
    * @param exposureLimit_ Max exposure (sum of payouts) to be allocated to this module (in wad)
    * @param wallet_ Address of the RiskModule provider
@@ -65,7 +65,7 @@ contract FlightDelayRiskModule is RiskModule, ChainlinkClientUpgradeable {
     string memory name_,
     uint256 collRatio_,
     uint256 ensuroPpFee_,
-    uint256 roc_,
+    uint256 srRoc_,
     uint256 maxPayoutPerPolicy_,
     uint256 exposureLimit_,
     address wallet_,
@@ -76,7 +76,7 @@ contract FlightDelayRiskModule is RiskModule, ChainlinkClientUpgradeable {
       name_,
       collRatio_,
       ensuroPpFee_,
-      roc_,
+      srRoc_,
       maxPayoutPerPolicy_,
       exposureLimit_,
       wallet_

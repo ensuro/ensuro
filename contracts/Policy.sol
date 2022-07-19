@@ -47,22 +47,24 @@ library Policy {
   ) internal view returns (PolicyData memory newPolicy) {
     require(premium <= payout, "Premium cannot be more than payout");
     PolicyData memory policy;
+    IRiskModule.Params memory rmParams = riskModule.params();
+
     policy.riskModule = riskModule;
     policy.premium = premium;
     policy.payout = payout;
     policy.lossProb = lossProb;
-    policy.purePremium = payout.wadToRay().rayMul(lossProb.rayMul(riskModule.moc())).rayToWad();
-    policy.scr = payout.wadMul(riskModule.collRatio().rayToWad()) - policy.purePremium;
+    policy.purePremium = payout.wadToRay().rayMul(lossProb.rayMul(rmParams.moc)).rayToWad();
+    policy.scr = payout.wadMul(rmParams.collRatio.rayToWad()) - policy.purePremium;
     require(policy.scr != 0, "SCR can't be zero");
     policy.start = uint40(block.timestamp);
     policy.expiration = expiration;
     policy.coc = policy.scr.wadMul(
-      ((riskModule.roc() * (policy.expiration - policy.start)).rayDiv(SECONDS_IN_YEAR_RAY))
+      ((rmParams.srRoc * (policy.expiration - policy.start)).rayDiv(SECONDS_IN_YEAR_RAY))
         .rayToWad()
     );
     policy.ensuroCommission =
-      policy.purePremium.wadMul(riskModule.ensuroPpFee().rayToWad()) +
-      policy.coc.wadMul(riskModule.ensuroCocFee().rayToWad());
+      policy.purePremium.wadMul(rmParams.ensuroPpFee.rayToWad()) +
+      policy.coc.wadMul(rmParams.ensuroCocFee.rayToWad());
     require(
       policy.purePremium + policy.ensuroCommission + policy.coc <= premium,
       "Premium less than minimum"

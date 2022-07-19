@@ -250,31 +250,52 @@ class RiskModule(ETHWrapper):
     constructor_args = (("pool", "address"), ("premiums_account", "address"), )
     initialize_args = (
         ("name", "string"), ("coll_ratio", "ray"), ("ensuro_pp_fee", "ray"),
-        ("roc", "ray"), ("max_payout_per_policy", "amount"), ("exposure_limit", "amount"),
+        ("sr_roc", "ray"), ("max_payout_per_policy", "amount"), ("exposure_limit", "amount"),
         ("wallet", "address")
     )
 
     def __init__(self, name, policy_pool, premiums_account, coll_ratio=_R(1), ensuro_pp_fee=_R(0),
-                 roc=_R(0), max_payout_per_policy=_W(1000000), exposure_limit=_W(1000000),
+                 sr_roc=_R(0), max_payout_per_policy=_W(1000000), exposure_limit=_W(1000000),
                  wallet="RM", owner="owner"):
         coll_ratio = _R(coll_ratio)
         ensuro_pp_fee = _R(ensuro_pp_fee)
-        roc = _R(roc)
+        sr_roc = _R(sr_roc)
         max_payout_per_policy = _W(max_payout_per_policy)
         exposure_limit = _W(exposure_limit)
         super().__init__(owner, policy_pool.contract, premiums_account, name, coll_ratio, ensuro_pp_fee,
-                         roc,
+                         sr_roc,
                          max_payout_per_policy, exposure_limit, wallet)
         self.policy_pool = policy_pool
         self._premiums_account = premiums_account
         self._auto_from = self.owner
 
     name = MethodAdapter((), "string", is_property=True)
-    coll_ratio = MethodAdapter((), "ray", is_property=True)
-    moc = MethodAdapter((), "ray", is_property=True)
-    ensuro_pp_fee = MethodAdapter((), "ray", is_property=True)
-    ensuro_coc_fee = MethodAdapter((), "ray", is_property=True)
-    roc = MethodAdapter((), "ray", is_property=True)
+
+    params = MethodAdapter((), "tuple")
+    set_param = MethodAdapter((("param", "int"), ("value", "ray")))
+
+    class GetParam:
+        def __init__(self, paramIndex):
+            self.paramIndex = paramIndex
+
+        def __call__(self, wrapper):
+            return Ray(wrapper.params()[self.paramIndex])
+
+    class SetParam:
+        def __init__(self, paramIndex):
+            self.paramIndex = paramIndex
+
+        def __call__(self, wrapper, value):
+            return wrapper.set_param(self.paramIndex, value)
+
+    moc = property(GetParam(0), SetParam(0))
+    jr_coll_ratio = property(GetParam(1), SetParam(1))
+    coll_ratio = property(GetParam(2), SetParam(2))
+    ensuro_pp_fee = property(GetParam(3), SetParam(3))
+    ensuro_coc_fee = property(GetParam(4), SetParam(4))
+    jr_roc = property(GetParam(5), SetParam(5))
+    sr_roc = property(GetParam(6), SetParam(6))
+
     max_payout_per_policy = MethodAdapter((), "amount", is_property=True)
     exposure_limit = MethodAdapter((), "amount", is_property=True)
     active_exposure = MethodAdapter((), "amount", is_property=True)
@@ -349,17 +370,17 @@ class FlightDelayRiskModule(RiskModule):
     oracle_params = MethodAdapter((), "(address, int, amount, bytes16, bytes16)", is_property=True)
 
     def __init__(self, name, policy_pool, premiums_account, coll_ratio=_R(1), ensuro_pp_fee=_R(0),
-                 roc=_R(0), max_payout_per_policy=_W(1000000), exposure_limit=_W(1000000),
+                 sr_roc=_R(0), max_payout_per_policy=_W(1000000), exposure_limit=_W(1000000),
                  wallet="RM", owner="owner",
                  link_token=None, oracle_params=None):
         coll_ratio = _R(coll_ratio)
         ensuro_pp_fee = _R(ensuro_pp_fee)
-        roc = _R(roc)
+        sr_roc = _R(sr_roc)
         max_payout_per_policy = _W(max_payout_per_policy)
         exposure_limit = _W(exposure_limit)
         super(RiskModule, self).__init__(
             owner, policy_pool.contract, premiums_account, name, coll_ratio, ensuro_pp_fee,
-            roc,
+            sr_roc,
             max_payout_per_policy, exposure_limit, wallet,
             link_token, oracle_params
         )

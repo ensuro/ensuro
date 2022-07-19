@@ -49,7 +49,7 @@ def test_transfers(tenv):
     risk_modules:
       - name: Roulette
         coll_ratio: 1
-        roc: "0.01"
+        sr_roc: "0.01"
         ensuro_pp_fee: 0
     currency:
         name: USD
@@ -128,7 +128,7 @@ def test_transfers_usdc(tenv):
     risk_modules:
       - name: Roulette
         coll_ratio: 1
-        roc: "0.01"
+        sr_roc: "0.01"
         ensuro_pp_fee: 0
     currency:
         name: USD
@@ -210,7 +210,7 @@ def xtest_not_accept_rm(tenv):
       - name: Roulette
         coll_ratio: 1
         ensuro_pp_fee: 0
-        roc: "0.01"
+        sr_roc: "0.01"
     currency:
         name: USD
         symbol: $
@@ -323,7 +323,7 @@ def test_walkthrough(tenv):
       - name: Roulette
         coll_ratio: 1
         ensuro_pp_fee: 0
-        roc: "0.040233686"  # interest rate to make partner_commission=0
+        sr_roc: "0.040233686"  # interest rate to make partner_commission=0
       - name: Flight-Insurance
         coll_ratio: "0.9"
         ensuro_pp_fee: "0.015"
@@ -358,7 +358,7 @@ def test_walkthrough(tenv):
     rm.grant_role("PRICER_ROLE", rm.owner)
     rm.grant_role("RESOLVER_ROLE", rm.owner)
     premiums_account = rm.premiums_account
-    pool.config.grant_role("LEVEL2_ROLE", rm.owner)  # For setting roc
+    pool.config.grant_role("LEVEL2_ROLE", rm.owner)  # For setting sr_roc
 
     with pytest.raises(RevertError, match="transfer amount exceeds allowance|insufficient allowance"):
         pool.deposit("eUSD1YEAR", "LP1", _W(1000))
@@ -432,7 +432,7 @@ def test_walkthrough(tenv):
         )
 
     p2_for_lps = _W(2 - 72/37)
-    rm.roc = (
+    rm.sr_roc = (
         p2_for_lps.to_ray() * _R(365 / 10) // _R(72 - 72/37)
     ).round(6)  # too much precision
 
@@ -530,7 +530,7 @@ def test_walkthrough(tenv):
     won_count = 0
 
     # Adjust interest rate to make for_rm = 0
-    rm.roc = (
+    rm.sr_roc = (
         _R(2 - 72/37) * _R(365 / 6) // _R(72 - 72/37)
     ).round(6)  # too much precision
 
@@ -797,7 +797,7 @@ def test_partial_payout(tenv):
       - name: Roulette
         coll_ratio: "0.8"
         ensuro_pp_fee: 0
-        roc: "0.0506438"  # interest rate to make partner_commission=0
+        sr_roc: "0.0506438"  # interest rate to make partner_commission=0
     currency:
         name: USD
         symbol: $
@@ -854,7 +854,7 @@ def test_pool_loan_partial_payout(tenv):
       - name: Roulette
         coll_ratio: "0.8"
         ensuro_pp_fee: 0
-        roc: "0.0506438"  # interest rate to make partner_commission=0
+        sr_roc: "0.0506438"  # interest rate to make partner_commission=0
     currency:
         name: USD
         symbol: $
@@ -913,7 +913,7 @@ def test_increase_won_pure_premiums(tenv):
       - name: Roulette
         coll_ratio: "0.8"
         ensuro_pp_fee: 0
-        roc: "0.0506438"  # interest rate to make partner_commission=0
+        sr_roc: "0.0506438"  # interest rate to make partner_commission=0
     currency:
         name: USD
         symbol: $
@@ -971,7 +971,7 @@ def test_payout_bigger_than_pure_premium(tenv):
       - name: Roulette
         coll_ratio: "0.8"
         ensuro_pp_fee: 0
-        roc: "0.0506438"  # interest rate to make partner_commission=0
+        sr_roc: "0.0506438"  # interest rate to make partner_commission=0
     currency:
         name: USD
         symbol: $
@@ -1028,7 +1028,7 @@ def xtest_asset_manager(tenv):
     risk_modules:
       - name: Roulette
         coll_ratio: 1
-        roc: "0.02"
+        sr_roc: "0.02"
     currency:
         name: USD
         symbol: $
@@ -1127,7 +1127,7 @@ def xtest_assets_under_liquidity_middle(tenv):
     risk_modules:
       - name: Roulette
         coll_ratio: "0.3734"
-        roc: "0.1"
+        sr_roc: "0.1"
         scr_limit: 250000
         ensuro_pp_fee: "0.0392"
         max_payout_per_policy: 500
@@ -1212,7 +1212,7 @@ def xtest_distribute_negative_earnings(tenv):
     risk_modules:
       - name: Roulette
         coll_ratio: "0.2448"
-        roc: "0.0729"
+        sr_roc: "0.0729"
         scr_limit: 250000
         ensuro_pp_fee: "0.0321"
         max_payout_per_policy: 500
@@ -1267,7 +1267,7 @@ def xtest_distribute_negative_earnings_full_capital_from_etokens(tenv):
     risk_modules:
       - name: Roulette
         coll_ratio: "0.2448"
-        roc: "0.0729"
+        sr_roc: "0.0729"
         scr_limit: 250000
         ensuro_pp_fee: "0.0321"
         max_payout_per_policy: 500
@@ -1376,7 +1376,7 @@ def xtest_distribute_negative_earnings_from_pool_and_etokens(tenv):
     risk_modules:
       - name: Roulette
         coll_ratio: 1
-        roc: "0.02"
+        sr_roc: "0.02"
     currency:
         name: USD
         symbol: $
@@ -1455,7 +1455,7 @@ def xtest_insolvency_without_hook(tenv):
     risk_modules:
       - name: Roulette
         coll_ratio: "0.1"
-        roc: "0.02"
+        sr_roc: "0.02"
     currency:
         name: USD
         symbol: $
@@ -1701,7 +1701,7 @@ def test_lp_whitelist(tenv):
     risk_modules:
       - name: Roulette
         coll_ratio: "0.1"
-        roc: "0.02"
+        sr_roc: "0.02"
     currency:
         name: USD
         symbol: $
@@ -1783,7 +1783,7 @@ def test_expire_policy(tenv):
       - name: Flight Insurance
         coll_ratio: "0.1"
         ensuro_pp_fee: "0.05"
-        roc: "0.01"
+        sr_roc: "0.01"
         wallet: "MGA"
     currency:
         name: USD
@@ -1866,7 +1866,7 @@ def test_expire_policy_payout(tenv):
       - name: Flight Insurance
         coll_ratio: "0.1"
         ensuro_pp_fee: "0.05"
-        roc: "0.01"
+        sr_roc: "0.01"
         wallet: "MGA"
     currency:
         name: USD
