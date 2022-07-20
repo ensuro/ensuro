@@ -154,7 +154,7 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
   function _getParam(Parameter param) internal view returns (uint256) {
     uint256 startBitPosition = 32 * uint256(param);
     uint256 mask = type(uint256).max ^ (0xFFFFFFFF << startBitPosition);
-    return ((_params & ~mask) >> startBitPosition) * 10**18;  // 9 digits -> 27 digits
+    return ((_params & ~mask) >> startBitPosition) * 10**18; // 9 digits -> 27 digits
   }
 
   function _setParam(Parameter param, uint256 newValue) internal {
@@ -164,7 +164,10 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     _params = (_params & mask) | (~mask & ((newValue / 10**18) << startBitPosition));
   }
 
-  function setParam(Parameter param, uint256 newValue) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
+  function setParam(Parameter param, uint256 newValue)
+    external
+    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
+  {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
       !tweak || _isTweakRay(_getParam(param), newValue, 1e26),
@@ -172,7 +175,9 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     );
     _setParam(param, newValue);
     _parameterChanged(
-      IPolicyPoolConfig.GovernanceActions(uint256(IPolicyPoolConfig.GovernanceActions.setMoc) + uint256(param)),
+      IPolicyPoolConfig.GovernanceActions(
+        uint256(IPolicyPoolConfig.GovernanceActions.setMoc) + uint256(param)
+      ),
       newValue,
       tweak
     );
@@ -187,7 +192,7 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     ret.jrRoc = _getParam(Parameter.jrRoc);
     ret.srRoc = _getParam(Parameter.srRoc);
     return ret;
- }
+  }
 
   function setMaxPayoutPerPolicy(uint256 newMaxPayoutPerPolicy)
     external

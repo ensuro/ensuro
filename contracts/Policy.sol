@@ -59,8 +59,7 @@ library Policy {
     policy.start = uint40(block.timestamp);
     policy.expiration = expiration;
     policy.coc = policy.scr.wadMul(
-      ((rmParams.srRoc * (policy.expiration - policy.start)).rayDiv(SECONDS_IN_YEAR_RAY))
-        .rayToWad()
+      ((rmParams.srRoc * (policy.expiration - policy.start)).rayDiv(SECONDS_IN_YEAR_RAY)).rayToWad()
     );
     policy.ensuroCommission =
       policy.purePremium.wadMul(rmParams.ensuroPpFee.rayToWad()) +
