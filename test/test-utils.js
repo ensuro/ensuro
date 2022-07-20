@@ -44,9 +44,9 @@ exports.addRiskModule = async function(pool, premiumsAccount, contractFactory, {
   const _A = pool._A || _W;
   const rm = await hre.upgrades.deployProxy(contractFactory, [
     rmName || "RiskModule",
-    _R(scrPercentage) || _R(1),
-    _R(ensuroFee) || _R(0),
-    _R(scrInterestRate) || _R(0.1),
+    _W(scrPercentage) || _W(1),
+    _W(ensuroFee) || _W(0),
+    _W(scrInterestRate) || _W(0.1),
     _A(maxScrPerPolicy) || _A(1000),
     _A(scrLimit) || _A(1000000),
     wallet || "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",  // Random address
@@ -60,8 +60,8 @@ exports.addRiskModule = async function(pool, premiumsAccount, contractFactory, {
   await rm.deployed();
 
   if (moc !== undefined && moc != 1.0) {
-    moc = _R(moc);
-    await rm.setMoc(moc);
+    moc = _W(moc);
+    await rm.setParam(0, moc);
   }
   const policyPoolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await pool.config());
   await policyPoolConfig.addRiskModule(rm.address);

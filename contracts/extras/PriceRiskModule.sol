@@ -80,9 +80,9 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
   /**
    * @dev Initializes the RiskModule
    * @param name_ Name of the Risk Module
-   * @param collRatio_ Collateralization ratio to compute solvency requirement as % of payout (in ray)
-   * @param ensuroPpFee_ % of pure premium that will go for Ensuro treasury (in ray)
-   * @param srRoc_ return on capital paid to Senior LPs (annualized percentage - in ray)
+   * @param collRatio_ Collateralization ratio to compute solvency requirement as % of payout (in wad)
+   * @param ensuroPpFee_ % of pure premium that will go for Ensuro treasury (in wad)
+   * @param srRoc_ return on capital paid to Senior LPs (annualized percentage - in wad)
    * @param maxPayoutPerPolicy_ Maximum payout per policy (in wad)
    * @param exposureLimit_ Max exposure (sum of payouts) to be allocated to this module (in wad)
    * @param wallet_ Address of the RiskModule provider
