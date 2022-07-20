@@ -496,12 +496,12 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     _updateCurrentScale();
     if (_scr == 0) {
       _scr = scrAmount;
-      _scrInterestRate = policyInterestRate;
+      _scrInterestRate = policyInterestRate.wadToRay();
     } else {
       uint256 origScr = _scr.wadToRay();
       _scr += scrAmount;
       _scrInterestRate = (_scrInterestRate.rayMul(origScr) +
-        policyInterestRate.rayMul(scrAmount.wadToRay())).rayDiv(_scr.wadToRay());
+        policyInterestRate.wadMul(scrAmount).wadToRay()).rayDiv(_scr.wadToRay());
     }
     emit SCRLocked(policyInterestRate, scrAmount);
     _updateTokenInterestRate();
@@ -522,7 +522,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
       uint256 origScr = _scr.wadToRay();
       _scr -= scrAmount;
       _scrInterestRate = (_scrInterestRate.rayMul(origScr) -
-        policyInterestRate.rayMul(scrAmount.wadToRay())).rayDiv(_scr.wadToRay());
+        policyInterestRate.wadMul(scrAmount).wadToRay()).rayDiv(_scr.wadToRay());
     }
     emit SCRUnlocked(policyInterestRate, scrAmount);
     _discreteChange(adjustment);

@@ -14,7 +14,7 @@ library Policy {
   using WadRayMath for uint256;
 
   uint256 internal constant SECONDS_IN_YEAR = 31536000e18; /* 365 * 24 * 3600 * 10e18 */
-  uint256 internal constant SECONDS_IN_YEAR_RAY = 31536000e27; /* 365 * 24 * 3600 * 10e27 */
+  uint256 internal constant SECONDS_IN_YEAR_WAD = 31536000e18; /* 365 * 24 * 3600 * 10e18 */
 
   // Active Policies
   struct PolicyData {
@@ -22,7 +22,7 @@ library Policy {
     uint256 payout;
     uint256 premium;
     uint256 scr;
-    uint256 lossProb; // original loss probability (in ray)
+    uint256 lossProb; // original loss probability (in wad)
     uint256 purePremium; // share of the premium that covers expected losses
     // equal to payout * lossProb * riskModule.moc
     uint256 ensuroCommission; // share of the premium that goes for Ensuro
@@ -53,17 +53,17 @@ library Policy {
     policy.premium = premium;
     policy.payout = payout;
     policy.lossProb = lossProb;
-    policy.purePremium = payout.wadToRay().rayMul(lossProb.rayMul(rmParams.moc)).rayToWad();
-    policy.scr = payout.wadMul(rmParams.collRatio.rayToWad()) - policy.purePremium;
+    policy.purePremium = payout.wadMul(lossProb.wadMul(rmParams.moc));
+    policy.scr = payout.wadMul(rmParams.collRatio) - policy.purePremium;
     require(policy.scr != 0, "SCR can't be zero");
     policy.start = uint40(block.timestamp);
     policy.expiration = expiration;
     policy.coc = policy.scr.wadMul(
-      ((rmParams.srRoc * (policy.expiration - policy.start)).rayDiv(SECONDS_IN_YEAR_RAY)).rayToWad()
+      ((rmParams.srRoc * (policy.expiration - policy.start)).wadDiv(SECONDS_IN_YEAR_WAD))
     );
     policy.ensuroCommission =
-      policy.purePremium.wadMul(rmParams.ensuroPpFee.rayToWad()) +
-      policy.coc.wadMul(rmParams.ensuroCocFee.rayToWad());
+      policy.purePremium.wadMul(rmParams.ensuroPpFee) +
+      policy.coc.wadMul(rmParams.ensuroCocFee);
     require(
       policy.purePremium + policy.ensuroCommission + policy.coc <= premium,
       "Premium less than minimum"
@@ -74,22 +74,12 @@ library Policy {
 
   function interestRate(PolicyData memory policy) internal pure returns (uint256) {
     return
-      policy
-        .coc
-        .wadMul(SECONDS_IN_YEAR)
-        .wadDiv((policy.expiration - policy.start) * policy.scr)
-        .wadToRay();
+      policy.coc.wadMul(SECONDS_IN_YEAR).wadDiv((policy.expiration - policy.start) * policy.scr);
   }
 
   function accruedInterest(PolicyData memory policy) internal view returns (uint256) {
     uint256 secs = block.timestamp - policy.start;
-    return
-      policy
-        .scr
-        .wadToRay()
-        .rayMul(secs * interestRate(policy))
-        .rayDiv(SECONDS_IN_YEAR_RAY)
-        .rayToWad();
+    return policy.scr.wadMul(secs * interestRate(policy)).wadDiv(SECONDS_IN_YEAR_WAD);
   }
 
   function hash(PolicyData memory policy) internal pure returns (bytes32) {

@@ -34,13 +34,13 @@ class RiskModule(AccessControlContract):
     policy_pool = ContractProxyField()
     premiums_account = ContractProxyField()
     name = StringField()
-    moc = RayField(default=_R(1))
-    jr_coll_ratio = RayField(default=Ray(0))
-    coll_ratio = RayField(default=Ray(0))
-    ensuro_pp_fee = RayField(default=Ray(0))   # Ensuro fee as % of pure_premium
-    ensuro_coc_fee = RayField(default=Ray(0))   # Ensuro fee as % of coc
-    jr_roc = RayField(default=Ray(0))
-    sr_roc = RayField(default=Ray(0))
+    moc = WadField(default=_W(1))
+    jr_coll_ratio = WadField(default=Wad(0))
+    coll_ratio = WadField(default=Wad(0))
+    ensuro_pp_fee = WadField(default=Wad(0))   # Ensuro fee as % of pure_premium
+    ensuro_coc_fee = WadField(default=Wad(0))   # Ensuro fee as % of coc
+    jr_roc = WadField(default=Wad(0))
+    sr_roc = WadField(default=Wad(0))
     max_payout_per_policy = WadField(default=_W(1000000))
     exposure_limit = WadField(default=_W(10000000))
     active_exposure = WadField(default=_W(0))
@@ -77,6 +77,7 @@ class RiskModule(AccessControlContract):
 
     @external
     def new_policy(self, payout, premium, loss_prob, expiration, customer, internal_id):
+        assert type(loss_prob) == Wad, "Loss prob MUST be wad"
         start = time_control.now
         require(self.policy_pool.currency.allowance(customer, self.policy_pool.contract_id) >= premium,
                 "You must allow ENSURO to transfer the premium")
@@ -94,12 +95,10 @@ class RiskModule(AccessControlContract):
         return policy
 
     def get_minimum_premium(self, payout, loss_prob, expiration):
-        pure_premium = (payout.to_ray() * loss_prob * self.moc).to_wad()
-        scr = payout * self.coll_ratio.to_wad() - pure_premium
-        coc = scr * (
-            self.sr_roc * _R(expiration - time_control.now) // _R(SECONDS_IN_YEAR)
-        ).to_wad()
-        ensuro_commission = pure_premium * self.ensuro_pp_fee.to_wad() + coc * self.ensuro_coc_fee.to_wad()
+        pure_premium = payout * loss_prob * self.moc
+        scr = payout * self.coll_ratio - pure_premium
+        coc = scr * self.sr_roc * _W(expiration - time_control.now) // _W(SECONDS_IN_YEAR)
+        ensuro_commission = pure_premium * self.ensuro_pp_fee + coc * self.ensuro_coc_fee
         return (pure_premium + ensuro_commission + coc)
 
     @external
@@ -125,7 +124,7 @@ class Policy(Model):
     payout = WadField()
     premium = WadField()
     scr = WadField(default=Wad(0))
-    loss_prob = RayField()
+    loss_prob = WadField()
     start = IntField()
     expiration = IntField()
     solvency_etoken = ContractProxyField(default=None, allow_none=True)
@@ -139,14 +138,14 @@ class Policy(Model):
         self._do_premium_split()
 
     def _do_premium_split(self):
-        self.pure_premium = (self.payout.to_ray() * self.loss_prob * self.risk_module.moc).to_wad()
-        self.scr = (self.payout * self.risk_module.coll_ratio.to_wad()) - self.pure_premium
+        self.pure_premium = self.payout * self.loss_prob * self.risk_module.moc
+        self.scr = self.payout * self.risk_module.coll_ratio - self.pure_premium
         self.coc = self.scr * (
-            self.risk_module.sr_roc * _R(self.expiration - self.start) // _R(SECONDS_IN_YEAR)
-        ).to_wad()
+            self.risk_module.sr_roc * _W(self.expiration - self.start) // _W(SECONDS_IN_YEAR)
+        )
         self.ensuro_commission = (
-            self.pure_premium * self.risk_module.ensuro_pp_fee.to_wad() +
-            self.coc * self.risk_module.ensuro_coc_fee.to_wad()
+            self.pure_premium * self.risk_module.ensuro_pp_fee +
+            self.coc * self.risk_module.ensuro_coc_fee
         )
         require(self.premium >= (self.pure_premium + self.coc + self.ensuro_commission),
                 "Premium less than minimum")
@@ -164,14 +163,13 @@ class Policy(Model):
             self.coc * _W(SECONDS_IN_YEAR) // (
                 _W(self.expiration - self.start) * self.scr
             )
-        ).to_ray()
+        )
 
     def accrued_interest(self):
-        seconds = Ray.from_value(time_control.now - self.start)
         return (
-            self.scr.to_ray() * seconds * self.interest_rate //
-            Ray.from_value(SECONDS_IN_YEAR)
-        ).to_wad()
+            self.scr * _W(time_control.now - self.start) * self.interest_rate //
+            _W(SECONDS_IN_YEAR)
+        )
 
 
 def non_negative(value):
@@ -285,12 +283,12 @@ class EToken(ReserveMixin, ERC20Token):
 
         if self.scr == 0:
             self.scr = scr_amount
-            self.scr_interest_rate = policy.interest_rate
+            self.scr_interest_rate = policy.interest_rate.to_ray()
         else:
             orig_scr = self.scr
             self.scr += scr_amount
             self.scr_interest_rate = (
-                self.scr_interest_rate * orig_scr.to_ray() + policy.interest_rate * scr_amount.to_ray()
+                self.scr_interest_rate * orig_scr.to_ray() + (policy.interest_rate * scr_amount).to_ray()
             ) // self.scr.to_ray()  # weighted average of previous and policy interest_rate
         self._update_token_interest_rate()
         self._check_balance()
@@ -307,7 +305,7 @@ class EToken(ReserveMixin, ERC20Token):
             orig_scr = self.scr
             self.scr -= scr_amount
             self.scr_interest_rate = (
-                self.scr_interest_rate * orig_scr.to_ray() - policy.interest_rate * scr_amount.to_ray()
+                self.scr_interest_rate * orig_scr.to_ray() - (policy.interest_rate * scr_amount).to_ray()
             ) // self.scr.to_ray()  # revert weighted average
         self._discrete_earning(adjustment)
         self._check_balance()

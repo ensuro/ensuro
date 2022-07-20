@@ -222,9 +222,9 @@ async function deployRiskModule({
   const RiskModule = await hre.ethers.getContractFactory(rmClass);
   const rm = await hre.upgrades.deployProxy(RiskModule, [
     rmName,
-    _R(collRatio),
-    _R(ensuroPpFee),
-    _R(roc),
+    _W(collRatio),
+    _W(ensuroPpFee),
+    _W(roc),
     _A(maxPayoutPerPolicy),
     _A(exposureLimit),
     wallet,
@@ -241,12 +241,12 @@ async function deployRiskModule({
     await verifyContract(hre, rm, true, [poolAddress, ...extraConstructorArgs]);
 
   if (moc != 1.0) {
-    moc = _R(moc);
-    await rm.setMoc(moc);
+    moc = _W(moc);
+    await rm.setParam(0, moc);
   }
   if (ensuroCocFee != 0) {
-    ensuroCocFee = _R(ensuroCocFee);
-    await rm.setEnsuroCocFee(ensuroCocFee);
+    ensuroCocFee = _W(ensuroCocFee);
+    await rm.setParam(4, ensuroCocFee);
   }
   const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
   const policyPoolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await policyPool.config());
@@ -368,7 +368,7 @@ async function trustfullPolicy({rmAddress, payout, premium, lossProb, expiration
   premium = _A(premium);
 
   await currency.approve(policyPool.address, premium);
-  lossProb = _R(lossProb);
+  lossProb = _W(lossProb);
   if (expiration === undefined) {
     expiration = 3600;
   }
@@ -407,7 +407,7 @@ async function flightDelayPolicy({rmAddress, flight, departure, expectedArrival,
   premium = _A(premium);
 
   await currency.approve(policyPool.address, premium);
-  lossProb = _R(lossProb);
+  lossProb = _W(lossProb);
   payout = _A(payout);
 
   const tx = await rm.newPolicy(

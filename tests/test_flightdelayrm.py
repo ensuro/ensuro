@@ -4,7 +4,7 @@ from collections import namedtuple
 import pytest
 from ethproto.contracts import RevertError
 from ethproto.wrappers import get_provider, IERC20, MethodAdapter
-from ethproto.wadray import _W, _R, Wad
+from ethproto.wadray import _W, Wad
 from prototype import wrappers
 from . import extract_vars, TEST_VARIANTS
 
@@ -119,7 +119,7 @@ def test_flightdelay_new_policy_resolved_payout0(tenv):
 
     new_policy_params = (
         "AR 1234", now + 3600, expected_arrival, 1800,  # flight, departure, expectedArrival, tolerance
-        _W(1000), _W(100), _R("0.1"), "CUST1",  # payout, premium, loss_prob, cust
+        _W(1000), _W(100), _W("0.1"), "CUST1",  # payout, premium, loss_prob, cust
         123
     )
 
@@ -156,7 +156,7 @@ def test_flightdelay_new_policy_resolved_payout_full(tenv):
 
     new_policy_params = (
         "AR 1234", now + 3600, expected_arrival, 1800,  # flight, departure, expectedArrival, tolerance
-        _W(1000), _W(100), _R("0.1"), "CUST1",  # payout, premium, loss_prob, cust
+        _W(1000), _W(100), _W("0.1"), "CUST1",  # payout, premium, loss_prob, cust
         111
     )
 
@@ -185,7 +185,7 @@ def test_flightdelay_new_policy_flight_cancelled(tenv):
 
     new_policy_params = (
         "AR 1234", now + 3600, expected_arrival, 1800,  # flight, departure, expectedArrival, tolerance
-        _W(1000), _W(100), _R("0.1"), "CUST1",  # payout, premium, loss_prob, cust
+        _W(1000), _W(100), _W("0.1"), "CUST1",  # payout, premium, loss_prob, cust
         1122
     )
 
@@ -214,7 +214,7 @@ def test_flightdelay_zero_arrival_date(tenv):
 
     new_policy_params = (
         "AR 1234", now + 3600, expected_arrival, 1800,  # flight, departure, expectedArrival, tolerance
-        _W(1000), _W(100), _R("0.1"), "CUST1",  # payout, premium, loss_prob, cust
+        _W(1000), _W(100), _W("0.1"), "CUST1",  # payout, premium, loss_prob, cust
         2323
     )
 
@@ -262,7 +262,7 @@ def test_flightdelay_resolve_manual_cancelled(tenv):
 
     new_policy_params = (
         "AR 1234", now + 3600, expected_arrival, 1800,  # flight, departure, expectedArrival, tolerance
-        _W(1000), _W(100), _R("0.1"), "CUST1",  # payout, premium, loss_prob, cust
+        _W(1000), _W(100), _W("0.1"), "CUST1",  # payout, premium, loss_prob, cust
         333
     )
 
@@ -299,7 +299,7 @@ def test_flightdelay_resolve_manual_on_time(tenv):
 
     new_policy_params = (
         "AR 1234", now + 3600, expected_arrival, 1800,  # flight, departure, expectedArrival, tolerance
-        _W(1000), _W(100), _R("0.1"), "CUST1",  # payout, premium, loss_prob, cust
+        _W(1000), _W(100), _W("0.1"), "CUST1",  # payout, premium, loss_prob, cust
         2121
     )
 
