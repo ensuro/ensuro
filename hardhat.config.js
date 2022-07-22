@@ -63,6 +63,12 @@ module.exports = {
       url: "http://ganache-cli:8545"
     },
     hardhat: {
+      hardfork: "london",
+      // base fee of 0 allows use of 0 gas price when testing
+      initialBaseFeePerGas: 0,
+      // brownie expects calls and transactions to throw on revert
+      throwOnTransactionFailures: true,
+      throwOnCallFailures: true
     },
     bsctestnet: {
       url: "https://data-seed-prebsc-1-s3.binance.org:8545/",
