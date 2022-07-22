@@ -1,0 +1,19 @@
+on:
+  # Manual run from github
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Docker image version tag (optional, the image will have the standard tags and you're encouraged to use the YYYYMMDD one)"
+        required: false
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Build and push
+        uses: ensuro/github-actions/build-docker@feature-schedule-tag
+        with:
+          image: "solid-range-319205/ensuro-public/eth-dev"
+          google_credentials: "${{ secrets.GOOGLE_CREDENTIALS }}"
+          additional_tag: "${{ github.event.inputs.version }}"
