@@ -1,0 +1,9 @@
+ipdb
+ipython
+rpdb
+colorama
+responses
+pytest
+pytest-cov
+pytest-timeout
+pip-tools
