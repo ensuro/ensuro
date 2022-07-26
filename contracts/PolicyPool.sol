@@ -145,7 +145,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     external
     onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
   {
-    require(_eTokens.contains(eToken), "Risk Module not found");
+    require(_eTokens.contains(eToken), "EToken not found");
     require(
       newStatus != DataTypes.ETokenStatus.suspended || _config.hasRole(GUARDIAN_ROLE, msg.sender),
       "Only GUARDIAN can suspend eTokens"

@@ -31,7 +31,11 @@ def tenv(request):
                 pass
 
         pool = PolicyPoolMock(currency=currency)
-        premiums_account = ensuro.PremiumsAccount(pool=pool)
+        premiums_account = ensuro.PremiumsAccount(
+            pool=pool, senior_etk=ensuro.EToken(
+                policy_pool=pool, name="eUSD1YEAR", expiration_period=365 * DAY
+            )
+        )
 
         return TEnv(
             currency=currency,
@@ -293,19 +297,19 @@ def test_new_policy(tenv):
     policy.payout.assert_equal(_W(36))
     policy.loss_prob.assert_equal(_W(1/37))
     policy.pure_premium.assert_equal(_W(36 * 1/37))
-    policy.scr.assert_equal(_W(36) - policy.pure_premium)
+    policy.sr_scr.assert_equal(_W(36) - policy.pure_premium)
     assert policy.id == rm.make_policy_id(123)
     assert policy.expiration == expiration
     assert (tenv.time_control.now - policy.start) < 60  # Must be now, giving 60 seconds tolerance
-    policy.coc.assert_equal(policy.scr * _W("0.01") * _W(7/365))
+    policy.sr_coc.assert_equal(policy.sr_scr * _W("0.01") * _W(7/365))
     policy.ensuro_commission.assert_equal(
         policy.pure_premium * _W("0.02") +
-        policy.coc * _W("0.03")
+        policy.sr_coc * _W("0.03")
     )
     policy.partner_commission.assert_equal(
-        _W(1) - policy.pure_premium - policy.coc - policy.ensuro_commission
+        _W(1) - policy.pure_premium - policy.sr_coc - policy.ensuro_commission
     )
-    policy.interest_rate.assert_equal(_W("0.01"))
+    policy.sr_interest_rate.assert_equal(_W("0.01"))
 
     with rm.as_("JOHN_DOE"), pytest.raises(RevertError, match="is missing role"):
         rm.resolve_policy(policy.id, True)

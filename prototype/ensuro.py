@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 from hashlib import md5
 from m9g import Model
-from m9g.fields import StringField, IntField, DictField, CompositeField
+from m9g.fields import StringField, IntField, DictField, CompositeField, ListField
 from ethproto.contracts import AccessControlContract, ERC20Token, external, view, RayField, \
     WadField, AddressField, ContractProxyField, ContractProxy, require, only_role, Contract
 from ethproto.contracts import ERC721Token
@@ -96,10 +96,12 @@ class RiskModule(AccessControlContract):
 
     def get_minimum_premium(self, payout, loss_prob, expiration):
         pure_premium = payout * loss_prob * self.moc
-        scr = payout * self.coll_ratio - pure_premium
-        coc = scr * self.sr_roc * _W(expiration - time_control.now) // _W(SECONDS_IN_YEAR)
-        ensuro_commission = pure_premium * self.ensuro_pp_fee + coc * self.ensuro_coc_fee
-        return (pure_premium + ensuro_commission + coc)
+        jr_scr = max(payout * self.jr_coll_ratio - pure_premium, _W(0))
+        sr_scr = max(payout * self.coll_ratio - pure_premium - jr_scr, _W(0))
+        jr_coc = jr_scr * self.jr_roc * _W(expiration - time_control.now) // _W(SECONDS_IN_YEAR)
+        sr_coc = sr_scr * self.sr_roc * _W(expiration - time_control.now) // _W(SECONDS_IN_YEAR)
+        ensuro_commission = pure_premium * self.ensuro_pp_fee + (jr_coc + sr_coc) * self.ensuro_coc_fee
+        return (pure_premium + ensuro_commission + jr_coc + sr_coc)
 
     @external
     def remove_policy(self, policy):
@@ -123,15 +125,16 @@ class Policy(Model):
     risk_module = ContractProxyField()
     payout = WadField()
     premium = WadField()
-    scr = WadField(default=Wad(0))
+    jr_scr = WadField(default=Wad(0))
+    sr_scr = WadField(default=Wad(0))
     loss_prob = WadField()
     start = IntField()
     expiration = IntField()
-    solvency_etoken = ContractProxyField(default=None, allow_none=True)
     pure_premium = WadField(default=Wad(0))
     ensuro_commission = WadField(default=Wad(0))
     partner_commission = WadField(default=Wad(0))
-    coc = WadField(default=Wad(0))
+    jr_coc = WadField(default=Wad(0))
+    sr_coc = WadField(default=Wad(0))
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -139,35 +142,51 @@ class Policy(Model):
 
     def _do_premium_split(self):
         self.pure_premium = self.payout * self.loss_prob * self.risk_module.moc
-        self.scr = self.payout * self.risk_module.coll_ratio - self.pure_premium
-        self.coc = self.scr * (
+        if not self.risk_module.jr_coll_ratio:
+            self.jr_scr = _W(0)
+        elif self.payout * self.risk_module.jr_coll_ratio < self.pure_premium:
+            self.jr_scr = _W(0)
+        else:
+            self.jr_scr = self.payout * self.risk_module.jr_coll_ratio - self.pure_premium
+        self.sr_scr = max(
+            self.payout * self.risk_module.coll_ratio - self.pure_premium - self.jr_scr,
+            _W(0)
+        )
+        self.sr_coc = self.sr_scr * (
             self.risk_module.sr_roc * _W(self.expiration - self.start) // _W(SECONDS_IN_YEAR)
+        )
+        self.jr_coc = self.jr_scr * (
+            self.risk_module.jr_roc * _W(self.expiration - self.start) // _W(SECONDS_IN_YEAR)
         )
         self.ensuro_commission = (
             self.pure_premium * self.risk_module.ensuro_pp_fee +
-            self.coc * self.risk_module.ensuro_coc_fee
+            (self.sr_coc + self.jr_coc) * self.risk_module.ensuro_coc_fee
         )
-        require(self.premium >= (self.pure_premium + self.coc + self.ensuro_commission),
+        require(self.premium >= (self.pure_premium + self.jr_coc + self.sr_coc + self.ensuro_commission),
                 "Premium less than minimum")
         self.partner_commission = (
-            self.premium - self.pure_premium - self.coc - self.ensuro_commission
+            self.premium - self.pure_premium - self.jr_coc - self.sr_coc - self.ensuro_commission
         )
-        self.interest_rate.assert_equal(self.risk_module.sr_roc)
-
-    def premium_split(self):
-        return self.pure_premium, self.ensuro_commission, self.partner_commission, self.coc
 
     @property
-    def interest_rate(self):
+    def sr_interest_rate(self):
         return (
-            self.coc * _W(SECONDS_IN_YEAR) // (
-                _W(self.expiration - self.start) * self.scr
+            self.sr_coc * _W(SECONDS_IN_YEAR) // (
+                _W(self.expiration - self.start) * self.sr_scr
             )
         )
 
-    def accrued_interest(self):
+    @property
+    def jr_interest_rate(self):
         return (
-            self.scr * _W(time_control.now - self.start) * self.interest_rate //
+            self.jr_coc * _W(SECONDS_IN_YEAR) // (
+                _W(self.expiration - self.start) * self.jr_scr
+            )
+        )
+
+    def sr_accrued_interest(self):
+        return (
+            self.sr_scr * _W(time_control.now - self.start) * self.sr_interest_rate //
             _W(SECONDS_IN_YEAR)
         )
 
@@ -275,25 +294,25 @@ class EToken(ReserveMixin, ERC20Token):
     def ocean_for_new_scr(self):
         return max(self.total_supply() - self.scr, _W(0)) * self.max_utilization_rate.to_wad()
 
-    def lock_scr(self, policy, scr_amount):
+    def lock_scr(self, scr_amount, interest_rate):
         self._update_current_scale()
         total_supply = self.total_supply()
         ocean = total_supply - self.scr
-        require(scr_amount <= ocean, "Not enought OCEAN to cover the SCR")
+        require(scr_amount <= ocean, "Not enought OCEAN to cover the SCR " + self.symbol)
 
         if self.scr == 0:
             self.scr = scr_amount
-            self.scr_interest_rate = policy.interest_rate.to_ray()
+            self.scr_interest_rate = interest_rate.to_ray()
         else:
             orig_scr = self.scr
             self.scr += scr_amount
             self.scr_interest_rate = (
-                self.scr_interest_rate * orig_scr.to_ray() + (policy.interest_rate * scr_amount).to_ray()
+                self.scr_interest_rate * orig_scr.to_ray() + (interest_rate * scr_amount).to_ray()
             ) // self.scr.to_ray()  # weighted average of previous and policy interest_rate
         self._update_token_interest_rate()
         self._check_balance()
 
-    def unlock_scr(self, policy, scr_amount, adjustment):
+    def unlock_scr(self, scr_amount, interest_rate, adjustment):
         # Pre condition: the pool needs to transfer the amount of the interests
         require(scr_amount <= self.scr, "Want to unlock more SCR than locked")
         self._update_current_scale()
@@ -305,7 +324,7 @@ class EToken(ReserveMixin, ERC20Token):
             orig_scr = self.scr
             self.scr -= scr_amount
             self.scr_interest_rate = (
-                self.scr_interest_rate * orig_scr.to_ray() - (policy.interest_rate * scr_amount).to_ray()
+                self.scr_interest_rate * orig_scr.to_ray() - (interest_rate * scr_amount).to_ray()
             ) // self.scr.to_ray()  # revert weighted average
         self._discrete_earning(adjustment)
         self._check_balance()
@@ -496,6 +515,8 @@ class PolicyPoolConfig(AccessControlContract):
 
 class PremiumsAccount(ReserveMixin, AccessControlContract):
     pool = ContractProxyField()
+    junior_etk = ContractProxyField(allow_none=True, default=None)
+    senior_etk = ContractProxyField()
     active_pure_premiums = WadField(default=Wad(0))
     borrowed_active_pp = WadField(default=Wad(0))
     won_pure_premiums = WadField(default=Wad(0))
@@ -555,8 +576,13 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
             self.borrowed_active_pp = self.active_pure_premiums
         return to_pay
 
-    def new_policy(self, policy):
+    @external
+    def policy_created(self, policy):
         self.active_pure_premiums += policy.pure_premium
+        if policy.sr_scr:
+            self.senior_etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
+        if policy.jr_scr:
+            self.junior_etk.lock_scr(policy.jr_scr, policy.jr_interest_rate)
 
     # TODO: restore repay_pool_loan?
 
@@ -571,12 +597,37 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
         else:
             borrow_from_scr = self._pay_from_pool(payout - policy.pure_premium)
             if borrow_from_scr > 0:
-                amount_left = policy.solvency_etoken.lend_to_pool(borrow_from_scr, customer)
-                require(amount_left <= self.NEGLIGIBLE_AMOUNT,
-                        "Don't know where to take the rest of the money")
+                if policy.jr_scr:
+                    amount_left = self.junior_etk.lend_to_pool(
+                        borrow_from_scr, customer,
+                        from_ocean=False  # TODO: check if remove from_ocean option or
+                                          # Have from_scr / from_total_supply
+                    )
+                else:
+                    amount_left = borrow_from_scr
+                if amount_left > self.NEGLIGIBLE_AMOUNT:
+                    amount_left = self.senior_etk.lend_to_pool(
+                        amount_left, customer,
+                        from_ocean=False  # TODO: check if remove from_ocean option or
+                                          # Have from_scr / from_total_supply
+                    )
+                    require(amount_left <= self.NEGLIGIBLE_AMOUNT,
+                            "Don't know where to take the rest of the money")
 
         self._transfer_to(customer, payout - borrow_from_scr)
+        self._unlock_scr(policy)
         return borrow_from_scr
+
+    def _repay_loan(self, pure_premium_won, etk):
+        if pure_premium_won < self.NEGLIGIBLE_AMOUNT:
+            return pure_premium_won
+        borrowed_from_etk = etk.get_pool_loan()
+        if not borrowed_from_etk:
+            return pure_premium_won
+        repay_amount = min(borrowed_from_etk, pure_premium_won)
+        self._transfer_to(etk, repay_amount)
+        etk.repay_pool_loan(repay_amount)
+        return pure_premium_won - repay_amount
 
     @external
     def policy_expired(self, policy):
@@ -590,16 +641,22 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
             self.borrowed_active_pp -= to_cover
             pure_premium_won -= to_cover
 
-        etk = policy.solvency_etoken
-
-        borrowed_from_etk = etk.get_pool_loan()
-        if borrowed_from_etk and pure_premium_won:  # if debt with token, repay from pure_premium
-            repay_amount = min(borrowed_from_etk, pure_premium_won)
-            self._transfer_to(etk, repay_amount)
-            etk.repay_pool_loan(repay_amount)
-            pure_premium_won -= repay_amount
+        pure_premium_won = self._repay_loan(pure_premium_won, self.senior_etk)
+        if self.junior_etk:
+            pure_premium_won = self._repay_loan(pure_premium_won, self.junior_etk)
 
         self._store_pure_premium_won(pure_premium_won)
+        self._unlock_scr(policy)
+
+    def _unlock_scr(self, policy):
+        # Unlock SCR and adjust eToken
+        if policy.sr_scr:
+            adjustment = policy.sr_coc - policy.sr_accrued_interest()
+            self.senior_etk.unlock_scr(policy.sr_scr, policy.sr_interest_rate, adjustment)
+
+        if policy.jr_scr:
+            adjustment = policy.jr_coc - policy.jr_accrued_interest()
+            self.junior_etk.unlock_scr(policy.jr_scr, policy.jr_interest_rate, adjustment)
 
 
 class PolicyPool(AccessControlContract):
@@ -607,6 +664,7 @@ class PolicyPool(AccessControlContract):
     policy_nft = ContractProxyField()
     currency = ContractProxyField()
     etokens = DictField(StringField(), ContractProxyField(), default={})
+    premiums_accounts = ListField(ContractProxyField(), default=[])
     policies = DictField(IntField(), CompositeField(Policy), default={})
 
     def __init__(self, *args, **kwargs):
@@ -619,6 +677,9 @@ class PolicyPool(AccessControlContract):
 
     def add_etoken(self, etoken):
         self.etokens[etoken.name] = ContractProxy(etoken.contract_id)
+
+    def add_premiums_account(self, premiums_account):
+        self.premiums_accounts.append(ContractProxy(premiums_account.contract_id))
 
     @external
     def deposit(self, etoken, provider, amount):
@@ -644,20 +705,23 @@ class PolicyPool(AccessControlContract):
         policy.id = policy.risk_module.make_policy_id(internal_id)
         self.policy_nft.safeMint(customer, policy.id)
 
-        assert policy.interest_rate >= 0
+        assert policy.sr_interest_rate >= 0
 
-        policy.risk_module.premiums_account.new_policy(policy)
-
-        self._lock_scr(policy)
+        pa = policy.risk_module.premiums_account
+        pa.policy_created(policy)
 
         self.policies[policy.id] = policy
         self.currency.transfer_from(
             self.contract_id, customer,
-            policy.risk_module.premiums_account, policy.pure_premium
+            pa, policy.pure_premium
         )
-        self.currency.transfer_from(
+        policy.sr_coc and self.currency.transfer_from(
             self.contract_id, customer,
-            policy.solvency_etoken, policy.coc
+            pa.senior_etk, policy.sr_coc
+        )
+        policy.jr_coc and self.currency.transfer_from(
+            self.contract_id, customer,
+            pa.junior_etk, policy.jr_coc
         )
         self.currency.transfer_from(
             self.contract_id, customer,
@@ -669,20 +733,6 @@ class PolicyPool(AccessControlContract):
                 policy.risk_module.wallet, policy.partner_commission
             )
         return policy.id
-
-    def _lock_scr(self, policy):
-        for etk_name in sorted(self.etokens.keys()):
-            etk = self.etokens[etk_name]
-            if not etk.accepts(policy):
-                continue
-            ocean_token = etk.ocean_for_new_scr
-            if ocean_token < policy.scr:
-                continue
-            policy.solvency_etoken = etk
-            etk.lock_scr(policy, policy.scr)
-            break
-        else:
-            require(False, "Not enought ocean to cover the policy")
 
     @external
     def expire_policy(self, policy_id):
@@ -699,12 +749,6 @@ class PolicyPool(AccessControlContract):
         customer_won = payout > Wad(0)
 
         require(payout == 0 or policy.expiration > time_control.now, "Can't pay expired policy")
-
-        # Unlock SCR and adjust eToken
-        for_lps = policy.coc
-        adjustment = for_lps - policy.accrued_interest()
-        etk = policy.solvency_etoken
-        etk.unlock_scr(policy, policy.scr, adjustment)
 
         if customer_won:
             policy_owner = self.policy_nft.owner_of(policy.id)
