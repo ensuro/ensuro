@@ -5,7 +5,7 @@ from collections import namedtuple
 import pytest
 from ethproto.contracts import RevertError
 from prototype import ensuro
-from ethproto.wadray import _W, _R
+from ethproto.wadray import _W, _R, Wad
 from prototype.utils import WEEK, DAY, MONTH
 from prototype import wrappers
 from . import TEST_VARIANTS
@@ -39,13 +39,17 @@ def tenv(request):
         )
         FakePolicy.time_control = ensuro.time_control
 
+        def fw_proxy_factory(name, etk):
+            currency.approve(name, etk, Wad(2**256 - 1))
+            return name
+
         return TEnv(
             time_control=ensuro.time_control,
             policy_factory=FakePolicy,
             etoken_class=partial(ensuro.EToken, policy_pool=policy_pool),
             currency=currency,
             kind="prototype",
-            fw_proxy_factory=lambda name: name
+            fw_proxy_factory=fw_proxy_factory
         )
     elif request.param == "ethereum":
         PolicyPoolMockForward = wrappers.get_provider().get_contract_factory("PolicyPoolMockForward")
@@ -62,9 +66,12 @@ def tenv(request):
             pool.setForwardTo(etoken.contract, {"from": currency.owner})
             return etoken
 
-        def fw_proxy_factory(name):
-            ForwardProxy = wrappers.get_provider().get_contract_factory("ForwardProxy")
+        def fw_proxy_factory(name, etk):
+            provider = wrappers.get_provider()
+            ForwardProxy = provider.get_contract_factory("ForwardProxy")
             fw_proxy = ForwardProxy.deploy({"from": currency.owner})
+            proxy_as_ERC20 = provider.build_contract(fw_proxy.address, "IERC20", "IERC20")
+            proxy_as_ERC20.approve(etk.contract, 2**256 - 1, {"from": currency.owner})
             return fw_proxy.address
 
         FakePolicy.time_control = wrappers.get_provider().time_control
@@ -355,8 +362,10 @@ def test_pool_loan(tenv):
                             pool_loan_interest_rate=_R("0.073"))
     tenv.currency.transfer(tenv.currency.owner, etk, _W(1000))
 
-    pa = tenv.fw_proxy_factory("PA")  # Premiums Account
-    pa2 = tenv.fw_proxy_factory("PA2")  # Other Premiums Account
+    pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account
+    pa2 = tenv.fw_proxy_factory("PA2", etk)  # Other Premiums Account
+    tenv.currency.transfer(tenv.currency.owner, pa, _W(2000))
+    pa_balance = _W(2000)
 
     with etk.thru_policy_pool():
         etk.deposit("LP1", _W(1000))
@@ -385,8 +394,9 @@ def test_pool_loan(tenv):
         assert tenv.currency.balance_of("SOMEONE") == lended
         assert etk.get_pool_loan(pa) == lended
 
-        tenv.currency.transfer("SOMEONE", etk, lended)
         etk.repay_pool_loan(pa, lended)
+        tenv.currency.balance_of(pa).assert_equal(pa_balance - lended)
+        pa_balance -= lended
         etk.get_pool_loan(pa).assert_equal(_W(0))
         etk.lend_to_pool(pa, _W(300), "SOMEONE").assert_equal(_W(0))
 
@@ -417,11 +427,14 @@ def test_pool_loan(tenv):
     pool_loan = pool_loan * _W(1 + 0.0001 * 3)
 
     with etk.thru(pa):
-        tenv.currency.transfer(tenv.currency.owner, etk, pool_loan // _W(3))
         etk.repay_pool_loan(pa, pool_loan // _W(3))
+        pa_balance -= pool_loan // _W(3)
+        tenv.currency.balance_of(pa).assert_equal(pa_balance)
+
         etk.get_pool_loan(pa).assert_equal(pool_loan * _W(2/3))
-        tenv.currency.transfer(tenv.currency.owner, etk, pool_loan * _W(2/3))
         etk.repay_pool_loan(pa, pool_loan * _W(2/3))
+        pa_balance -= pool_loan * _W(2/3)
+        tenv.currency.balance_of(pa).assert_equal(pa_balance)
         etk.get_pool_loan(pa).assert_equal(_W(0))
 
 

@@ -483,12 +483,14 @@ class EToken(ReserveMixin, ERC20Token):
         self._check_balance()
         return amount_asked - amount
 
+    @external
     def repay_pool_loan(self, borrower, amount):
         loan = self.pool_loans.get(ContractProxyField().adapt(borrower), None)
         require(loan is not None, "Borrower not registered")
         loan.sub(amount, self.pool_loan_interest_rate)
         self._update_current_scale()
         self._discrete_earning(amount)
+        self.currency.transfer_from(self, borrower, self, amount)
         self._check_balance()
 
     def get_pool_loan(self, borrower):
@@ -549,6 +551,14 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
     active_pure_premiums = WadField(default=Wad(0))
     borrowed_active_pp = WadField(default=Wad(0))
     won_pure_premiums = WadField(default=Wad(0))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Infinite approval for eTokens for pool loan repayment
+        if self.junior_etk:
+            self.currency.approve(self, self.junior_etk.contract_id, Wad(2**256 - 1))
+        if self.senior_etk:
+            self.currency.approve(self, self.senior_etk.contract_id, Wad(2**256 - 1))
 
     def has_role(self, role, account):
         return self.pool.config.has_role(role, account)
@@ -656,7 +666,7 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
         if not borrowed_from_etk:
             return pure_premium_won
         repay_amount = min(borrowed_from_etk, pure_premium_won)
-        self._transfer_to(etk, repay_amount)
+        # self._transfer_to(etk, repay_amount) - TODO: ensure enough balance
         etk.repay_pool_loan(self, repay_amount)
         return pure_premium_won - repay_amount
 
