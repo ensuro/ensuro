@@ -104,6 +104,17 @@ class EToken(IERC20):
         finally:
             self.contract = prev_contract
 
+    @contextmanager
+    def thru(self, address):
+        prev_contract = self.contract
+        contract_factory = self.provider.get_contract_factory(self.eth_contract)
+        self.contract = self.provider.build_contract(address, contract_factory, self.eth_contract)
+        try:
+            yield self
+        finally:
+            self.contract = prev_contract
+
+    policy_pool = MethodAdapter((), "address", is_property=True)
     ocean = MethodAdapter((), "amount", is_property=True)
     ocean_for_new_scr = MethodAdapter((), "amount", is_property=True)
     scr = MethodAdapter((), "amount", is_property=True)

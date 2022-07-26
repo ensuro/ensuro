@@ -10,7 +10,7 @@ from prototype.utils import WEEK, DAY, MONTH
 from prototype import wrappers
 from . import TEST_VARIANTS
 
-TEnv = namedtuple("TEnv", "time_control etoken_class policy_factory kind currency")
+TEnv = namedtuple("TEnv", "time_control etoken_class policy_factory kind currency fw_proxy_factory")
 SECONDS_IN_YEAR = 365 * 3600 * 24
 
 
@@ -44,7 +44,8 @@ def tenv(request):
             policy_factory=FakePolicy,
             etoken_class=partial(ensuro.EToken, policy_pool=policy_pool),
             currency=currency,
-            kind="prototype"
+            kind="prototype",
+            fw_proxy_factory=lambda name: name
         )
     elif request.param == "ethereum":
         PolicyPoolMockForward = wrappers.get_provider().get_contract_factory("PolicyPoolMockForward")
@@ -61,15 +62,20 @@ def tenv(request):
             pool.setForwardTo(etoken.contract, {"from": currency.owner})
             return etoken
 
+        def fw_proxy_factory(name):
+            ForwardProxy = wrappers.get_provider().get_contract_factory("ForwardProxy")
+            fw_proxy = ForwardProxy.deploy({"from": currency.owner})
+            return fw_proxy.address
+
         FakePolicy.time_control = wrappers.get_provider().time_control
 
         return TEnv(
             time_control=FakePolicy.time_control,
             policy_factory=FakePolicy,
-            # etoken_class=partial(ETokenETH, policy_pool="ensuro", symbol="ETK")
             etoken_class=etoken_factory,
             currency=currency,
-            kind="ethereum"
+            kind="ethereum",
+            fw_proxy_factory=fw_proxy_factory
         )
 
 
@@ -349,10 +355,16 @@ def test_pool_loan(tenv):
                             pool_loan_interest_rate=_R("0.073"))
     tenv.currency.transfer(tenv.currency.owner, etk, _W(1000))
 
+    pa = tenv.fw_proxy_factory("PA")  # Premiums Account
+    pa2 = tenv.fw_proxy_factory("PA2")  # Other Premiums Account
+
     with etk.thru_policy_pool():
         etk.deposit("LP1", _W(1000))
     assert etk.pool_loan_interest_rate == _R("0.073")
-    assert etk.get_pool_loan() == _W(0)
+    assert etk.get_pool_loan(pa) == _W(0)
+
+    with etk.thru_policy_pool():
+        etk.add_borrower(pa)
 
     policy = tenv.policy_factory(sr_scr=_W(600), sr_interest_rate=_W("0.04"),
                                  expiration=tenv.time_control.now + MONTH)
@@ -366,25 +378,27 @@ def test_pool_loan(tenv):
 
     assert ocean < _W(401)
 
-    with etk.thru_policy_pool():
-        not_lended = etk.lend_to_pool(_W(401), "SOMEONE")  # Can't lend more than ocean
+    with etk.thru(pa):
+        not_lended = etk.lend_to_pool(pa, _W(401), "SOMEONE")  # Can't lend more than ocean
         not_lended.assert_equal(_W(401) - ocean)
         lended = _W(401) - not_lended
         assert tenv.currency.balance_of("SOMEONE") == lended
-        assert etk.get_pool_loan() == lended
+        assert etk.get_pool_loan(pa) == lended
 
         tenv.currency.transfer("SOMEONE", etk, lended)
-        etk.repay_pool_loan(lended)
-        etk.get_pool_loan().assert_equal(_W(0))
-        etk.lend_to_pool(_W(300), "SOMEONE").assert_equal(_W(0))
+        etk.repay_pool_loan(pa, lended)
+        etk.get_pool_loan(pa).assert_equal(_W(0))
+        etk.lend_to_pool(pa, _W(300), "SOMEONE").assert_equal(_W(0))
 
-    etk.get_pool_loan().assert_equal(_W(300))
+    etk.get_pool_loan(pa).assert_equal(_W(300))
     tenv.time_control.fast_forward(7 * DAY)
 
+    etk.get_pool_loan(pa2).assert_equal(_W(0))
+
     # After 7 days increases at a rate of 7.3%/year (0.02% per day)
-    etk.get_pool_loan().assert_equal(_W(300) * _W(1 + 0.0002 * 7))
-    with etk.thru_policy_pool():
-        etk.lend_to_pool(_W(100), "OTHER").assert_equal(_W(0))
+    etk.get_pool_loan(pa).assert_equal(_W(300) * _W(1 + 0.0002 * 7))
+    with etk.thru(pa):
+        etk.lend_to_pool(pa, _W(100), "OTHER").assert_equal(_W(0))
         assert tenv.currency.balance_of("OTHER") == _W(100)
 
     tenv.time_control.fast_forward(1 * DAY)
@@ -396,19 +410,19 @@ def test_pool_loan(tenv):
 
     assert etk.pool_loan_interest_rate == _R("0.0365")
     pool_loan = _W(400) + _W(300) * _W(0.0002 * 8) + _W(100) * _W(0.0002)
-    etk.get_pool_loan().assert_equal(pool_loan)
+    etk.get_pool_loan(pa).assert_equal(pool_loan)
 
     tenv.time_control.fast_forward(3 * DAY)
-    etk.get_pool_loan().assert_equal(pool_loan * _W(1 + 0.0001 * 3))
+    etk.get_pool_loan(pa).assert_equal(pool_loan * _W(1 + 0.0001 * 3))
     pool_loan = pool_loan * _W(1 + 0.0001 * 3)
 
-    with etk.thru_policy_pool():
+    with etk.thru(pa):
         tenv.currency.transfer(tenv.currency.owner, etk, pool_loan // _W(3))
-        etk.repay_pool_loan(pool_loan // _W(3))
-        etk.get_pool_loan().assert_equal(pool_loan * _W(2/3))
+        etk.repay_pool_loan(pa, pool_loan // _W(3))
+        etk.get_pool_loan(pa).assert_equal(pool_loan * _W(2/3))
         tenv.currency.transfer(tenv.currency.owner, etk, pool_loan * _W(2/3))
-        etk.repay_pool_loan(pool_loan * _W(2/3))
-        etk.get_pool_loan().assert_equal(_W(0))
+        etk.repay_pool_loan(pa, pool_loan * _W(2/3))
+        etk.get_pool_loan(pa).assert_equal(_W(0))
 
 
 @skip_if_coverage_activated

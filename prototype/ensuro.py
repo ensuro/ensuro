@@ -212,6 +212,44 @@ class ReserveMixin:
         return self.currency.transfer(self.contract_id, target, amount)
 
 
+class ScaledAmount(Model):
+    amount = WadField(default=_W(0))
+    scale = RayField(default=_R(1))
+    last_update = IntField(default=None, allow_none=True)
+
+    def _update_scale(self, interest_rate):
+        if not self.last_update:
+            self.scale = _R(1)
+        else:
+            self.scale = self._get_scale(interest_rate)
+        self.last_update = time_control.now
+
+    def _get_scale(self, interest_rate):
+        seconds = time_control.now - self.last_update
+        if seconds <= 0:
+            return self.scale
+        increment = (
+            Ray.from_value(seconds) * interest_rate //
+            Ray.from_value(SECONDS_IN_YEAR)
+        )
+        return self.scale * (Ray(RAY) + increment)
+
+    def get_scaled_amount(self, interest_rate):
+        if self.amount == 0:
+            return self.amount
+        return (self.amount.to_ray() * self._get_scale(interest_rate)).to_wad()
+
+    def add(self, scaled_amount, interest_rate):
+        self._update_scale(interest_rate)
+        self.amount += (scaled_amount.to_ray() // self.scale).to_wad()
+
+    def sub(self, scaled_amount, interest_rate):
+        self._update_scale(interest_rate)
+        self.amount = (
+            (self.get_scaled_amount(interest_rate) - scaled_amount).to_ray() // self.scale
+        ).to_wad()
+
+
 class EToken(ReserveMixin, ERC20Token):
     MIN_SCALE = _R("0.0000000001")  # 1e-10
     policy_pool = ContractProxyField()
@@ -225,10 +263,8 @@ class EToken(ReserveMixin, ERC20Token):
     liquidity_requirement = RayField(default=_R(1))
     max_utilization_rate = RayField(default=_R(1))
 
-    pool_loan = WadField(default=_W(0))
     pool_loan_interest_rate = RayField(default=_R("0.05"))
-    pool_loan_scale = RayField(default=_R(1))
-    pool_loan_last_update = IntField(default=None, allow_none=True)
+    pool_loans = DictField(ContractProxyField(), CompositeField(ScaledAmount), default={})
 
     accept_all_rms = IntField(default=Wad(1))
     accept_exceptions = DictField(ContractProxyField(), IntField(), default={})
@@ -270,6 +306,10 @@ class EToken(ReserveMixin, ERC20Token):
 
     @contextmanager
     def thru_policy_pool(self):
+        yield self
+
+    @contextmanager
+    def thru(self, address):
         yield self
 
     @view
@@ -408,17 +448,19 @@ class EToken(ReserveMixin, ERC20Token):
             return False
         return policy.expiration <= (time_control.now + self.expiration_period)
 
-    def _update_pool_loan_scale(self):
-        self.pool_loan_scale = self._get_pool_loan_scale()
-        self.pool_loan_last_update = time_control.now
-
     def _max_negative_adjustment(self):
         return max(
             self.total_supply() - (self.MIN_SCALE * _R(10) * self._base_supply().to_ray()).to_wad(),
             _W(0)
         )
 
-    def lend_to_pool(self, amount, receiver, from_ocean=True):
+    def add_borrower(self, borrower):
+        # Must be called ONLY by the PolicyPool
+        borrower = ContractProxyField().adapt(borrower)
+        if borrower not in self.pool_loans:
+            self.pool_loans[borrower] = ScaledAmount()
+
+    def lend_to_pool(self, borrower, amount, receiver, from_ocean=True):
         amount_asked = amount
         amount = amount_asked
 
@@ -432,45 +474,32 @@ class EToken(ReserveMixin, ERC20Token):
             amount = self._max_negative_adjustment()
             if amount <= 0:
                 return amount_asked
-        if self.pool_loan == 0:
-            self.pool_loan = amount
-            self.pool_loan_scale = Ray(RAY)
-            self.pool_loan_last_update = time_control.now
-        else:
-            self._update_pool_loan_scale()
-            self.pool_loan += (amount.to_ray() // self.pool_loan_scale).to_wad()
+        loan = self.pool_loans.get(ContractProxyField().adapt(borrower), None)
+        require(loan is not None, "Borrower not registered")
+        loan.add(amount, self.pool_loan_interest_rate)
         self._update_current_scale()
         self._discrete_earning(-amount)
         self._transfer_to(receiver, amount)
         self._check_balance()
         return amount_asked - amount
 
-    def repay_pool_loan(self, amount):
-        self._update_pool_loan_scale()
-        self.pool_loan = (
-            (self.get_pool_loan() - amount).to_ray() // self.pool_loan_scale
-        ).to_wad()
+    def repay_pool_loan(self, borrower, amount):
+        loan = self.pool_loans.get(ContractProxyField().adapt(borrower), None)
+        require(loan is not None, "Borrower not registered")
+        loan.sub(amount, self.pool_loan_interest_rate)
         self._update_current_scale()
         self._discrete_earning(amount)
         self._check_balance()
 
-    def _get_pool_loan_scale(self):
-        seconds = time_control.now - self.pool_loan_last_update
-        if seconds <= 0:
-            return self.pool_loan_scale
-        increment = (
-            Ray.from_value(seconds) * self.pool_loan_interest_rate //
-            Ray.from_value(SECONDS_IN_YEAR)
-        )
-        return self.pool_loan_scale * (Ray(RAY) + increment)
-
-    def get_pool_loan(self):
-        if self.pool_loan == 0:
-            return self.pool_loan
-        return (self.pool_loan.to_ray() * self._get_pool_loan_scale()).to_wad()
+    def get_pool_loan(self, borrower):
+        loan = self.pool_loans.get(ContractProxyField().adapt(borrower), None)
+        if loan is None:
+            return _W(0)
+        return loan.get_scaled_amount(self.pool_loan_interest_rate)
 
     def set_pool_loan_interest_rate(self, new_rate):
-        self._update_pool_loan_scale()
+        for loan in self.pool_loans.values():
+            loan.add(_W(0), self.pool_loan_interest_rate)
         self.pool_loan_interest_rate = new_rate
 
     def set_max_utilization_rate(self, new_rate):
@@ -599,6 +628,7 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
             if borrow_from_scr > 0:
                 if policy.jr_scr:
                     amount_left = self.junior_etk.lend_to_pool(
+                        self,
                         borrow_from_scr, customer,
                         from_ocean=False  # TODO: check if remove from_ocean option or
                                           # Have from_scr / from_total_supply
@@ -607,6 +637,7 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
                     amount_left = borrow_from_scr
                 if amount_left > self.NEGLIGIBLE_AMOUNT:
                     amount_left = self.senior_etk.lend_to_pool(
+                        self,
                         amount_left, customer,
                         from_ocean=False  # TODO: check if remove from_ocean option or
                                           # Have from_scr / from_total_supply
@@ -621,12 +652,12 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
     def _repay_loan(self, pure_premium_won, etk):
         if pure_premium_won < self.NEGLIGIBLE_AMOUNT:
             return pure_premium_won
-        borrowed_from_etk = etk.get_pool_loan()
+        borrowed_from_etk = etk.get_pool_loan(self)
         if not borrowed_from_etk:
             return pure_premium_won
         repay_amount = min(borrowed_from_etk, pure_premium_won)
         self._transfer_to(etk, repay_amount)
-        etk.repay_pool_loan(repay_amount)
+        etk.repay_pool_loan(self, repay_amount)
         return pure_premium_won - repay_amount
 
     @external
@@ -680,6 +711,10 @@ class PolicyPool(AccessControlContract):
 
     def add_premiums_account(self, premiums_account):
         self.premiums_accounts.append(ContractProxy(premiums_account.contract_id))
+        if premiums_account.junior_etk:
+            premiums_account.junior_etk.add_borrower(premiums_account)
+        if premiums_account.senior_etk:
+            premiums_account.senior_etk.add_borrower(premiums_account)
 
     @external
     def deposit(self, etoken, provider, amount):
