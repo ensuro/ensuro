@@ -1,3 +1,5 @@
+name: Build and Push Docker Image to Google Artifact Registry
+
 on:
   # Manual run from github
   workflow_dispatch:
@@ -12,7 +14,7 @@ jobs:
 
     steps:
       - name: Build and push
-        uses: ensuro/github-actions/build-docker@feature-schedule-tag
+        uses: ensuro/github-actions/build-docker@main
         with:
           image: "solid-range-319205/ensuro-public/eth-dev"
           google_credentials: "${{ secrets.GOOGLE_CREDENTIALS }}"
