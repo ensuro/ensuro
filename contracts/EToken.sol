@@ -2,12 +2,14 @@
 pragma solidity ^0.8.0;
 
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {Reserve} from "./Reserve.sol";
 import {IEToken} from "../interfaces/IEToken.sol";
 import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
 import {IInsolvencyHook} from "../interfaces/IInsolvencyHook.sol";
 import {WadRayMath} from "./WadRayMath.sol";
+import {TimeScaled} from "./TimeScaled.sol";
 
 /**
  * @title Ensuro ERC20 EToken - interest-bearing token
@@ -23,6 +25,8 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   uint256 public constant MIN_SCALE = 1e17; // 0.0000000001 == 1e-10 in ray
 
   using WadRayMath for uint256;
+  using TimeScaled for TimeScaled.ScaledAmount;
+  using SafeERC20 for IERC20Metadata;
 
   uint256 internal constant SECONDS_PER_YEAR = 365 days;
 
@@ -44,17 +48,23 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   uint256 internal _liquidityRequirement; // in Ray - Liquidity requirement to lock more than SCR
   uint256 internal _maxUtilizationRate; // in Ray - Maximum SCR/totalSupply rate for backup up new policies
 
-  uint256 internal _poolLoan; // in Wad - Capital that was used to pay defaults of the premium pool. Took as a loan.
   uint256 internal _poolLoanInterestRate; // in Ray
-  uint256 internal _poolLoanScale; // in Ray
-  uint40 internal _poolLoanLastUpdate;
 
   bool internal _acceptAllRMs; // By defaults, accepts (backs up) any RiskModule;
   // Exceptions to the accept all or accept none policy defined before
   mapping(address => bool) internal _acceptExceptions;
 
-  event PoolLoan(uint256 value, uint256 amountAsked);
-  event PoolLoanRepaid(uint256 value);
+  // Mapping that keeps track of allowed borrowers (PremiumsAccount) and their current debt
+  mapping(address => TimeScaled.ScaledAmount) internal _poolLoans;
+
+  event PoolLoan(address indexed borrower, uint256 value, uint256 amountAsked);
+  event PoolLoanRepaid(address indexed borrower, uint256 value);
+  event PoolBorrowerAdded(address borrower);
+
+  modifier onlyBorrower() {
+    require(_poolLoans[_msgSender()].scale != 0, "The caller must be a borrower");
+    _;
+  }
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
@@ -109,10 +119,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     _maxUtilizationRate = maxUtilizationRate_;
     _acceptAllRMs = true;
 
-    _poolLoan = 0;
     _poolLoanInterestRate = poolLoanInterestRate_;
-    _poolLoanScale = WadRayMath.ray();
-    _poolLoanLastUpdate = uint40(block.timestamp);
     _validateParameters();
   }
 
@@ -490,7 +497,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     return _scr.wadDiv(this.totalSupply()).wadToRay();
   }
 
-  function lockScr(uint256 policyInterestRate, uint256 scrAmount) external override onlyPolicyPool {
+  function lockScr(uint256 scrAmount, uint256 policyInterestRate) external override onlyBorrower {
     require(scrAmount <= this.ocean(), "Not enought OCEAN to cover the SCR");
     // TODO: shouldn't be this.oceanForNewScr ???
     _updateCurrentScale();
@@ -508,10 +515,10 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   }
 
   function unlockScr(
-    uint256 policyInterestRate,
     uint256 scrAmount,
+    uint256 policyInterestRate,
     int256 adjustment
-  ) external override onlyPolicyPool {
+  ) external override onlyBorrower {
     require(scrAmount <= _scr, "Current SCR less than the amount you want to unlock");
     _updateCurrentScale();
 
@@ -595,12 +602,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     return policyExpiration < (uint40(block.timestamp) + _expirationPeriod);
   }
 
-  function _updatePoolLoanScale() internal {
-    if (uint40(block.timestamp) == _poolLoanLastUpdate) return;
-    _poolLoanScale = _getPoolLoanScale();
-    _poolLoanLastUpdate = uint40(block.timestamp);
-  }
-
   function _maxNegativeAdjustment() internal view returns (uint256) {
     uint256 ts = totalSupply();
     uint256 minTs = _totalSupply.wadToRay().rayMul(MIN_SCALE * 10).rayToWad();
@@ -608,17 +609,19 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     else return 0;
   }
 
+  function addBorrower(address borrower) external override onlyPolicyPool {
+    TimeScaled.ScaledAmount storage loan = _poolLoans[borrower];
+    if (loan.scale == 0) {
+      loan.init();
+      emit PoolBorrowerAdded(borrower);
+    }
+  }
+
   function lendToPool(
     uint256 amount,
     address receiver,
     bool fromOcean
-  )
-    external
-    override
-    returns (
-      uint256 // TODO: validate msg.sender !!!
-    )
-  {
+  ) external override onlyBorrower whenNotPaused returns (uint256) {
     uint256 amountAsked = amount;
     if (fromOcean && amount > ocean()) amount = ocean();
     if (!fromOcean && amount > totalSupply()) amount = totalSupply();
@@ -626,43 +629,30 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
       amount = _maxNegativeAdjustment();
       if (amount == 0) return amountAsked;
     }
-    if (_poolLoan == 0) {
-      _poolLoan = amount;
-      _poolLoanScale = WadRayMath.ray();
-      _poolLoanLastUpdate = uint40(block.timestamp);
-    } else {
-      _updatePoolLoanScale();
-      _poolLoan += amount.wadToRay().rayDiv(_poolLoanScale).rayToWad();
-    }
+    TimeScaled.ScaledAmount storage loan = _poolLoans[_msgSender()];
+    loan.add(amount, _poolLoanInterestRate);
     _updateCurrentScale(); // shouldn't do anything because lendToPool is after unlock_scr but doing anyway
     _discreteChange(-int256(amount));
     _transferTo(receiver, amount);
-    emit PoolLoan(amount, amountAsked);
+    emit PoolLoan(_msgSender(), amount, amountAsked);
     return amountAsked - amount;
   }
 
-  function repayPoolLoan(uint256 amount) external override {
-    // TODO: validate msg.sender !!!
-    // Assumes the caller transferred the amount of money
-    _updatePoolLoanScale();
-    _poolLoan = (getPoolLoan() - amount).wadToRay().rayDiv(_poolLoanScale).rayToWad();
+  function repayPoolLoan(uint256 amount, address onBehalfOf) external override {
+    // Anyone can call this method, since it has to pay
+    currency().safeTransferFrom(_msgSender(), address(this), amount);
+    TimeScaled.ScaledAmount storage loan = _poolLoans[onBehalfOf];
+    require(loan.scale != 0, "Not a registered borrower");
+    loan.sub(amount, _poolLoanInterestRate);
     _updateCurrentScale(); // shouldn't do anything because lendToPool is after unlock_scr but doing anyway
     _discreteChange(int256(amount));
-    emit PoolLoanRepaid(amount);
+    emit PoolLoanRepaid(onBehalfOf, amount);
   }
 
-  function _getPoolLoanScale() internal view returns (uint256) {
-    if (uint40(block.timestamp) <= _poolLoanLastUpdate) return _poolLoanScale;
-    uint256 timeDifference = block.timestamp - _poolLoanLastUpdate;
-    return
-      _poolLoanScale.rayMul(
-        ((_poolLoanInterestRate * timeDifference) / SECONDS_PER_YEAR) + WadRayMath.ray()
-      );
-  }
-
-  function getPoolLoan() public view virtual override returns (uint256) {
-    if (_poolLoan == 0) return 0;
-    return _poolLoan.wadToRay().rayMul(_getPoolLoanScale()).rayToWad();
+  function getPoolLoan(address borrower) public view virtual override returns (uint256) {
+    TimeScaled.ScaledAmount storage loan = _poolLoans[borrower];
+    if (loan.scale == 0) return 0;
+    return loan.getScaledAmount(_poolLoanInterestRate);
   }
 
   function poolLoanInterestRate() public view returns (uint256) {
@@ -686,7 +676,10 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
       !tweak || _isTweakRay(_poolLoanInterestRate, newRate, 3e26),
       "Tweak exceeded: poolLoanInterestRate tweaks only up to 30%"
     );
-    _updatePoolLoanScale();
+    // This call changes the interest rate without updating the current loans up to this point
+    // So, if interest rate goes from 5% to 6%, this change will be retroactive to the lastUpdate of each
+    // loan. Since it's a permissioned call, I'm ok with this. If a caller wants to reduce the impact, it can
+    // issue 1 wei repayPoolLoan to each active loan, forcing the update of the scales
     _poolLoanInterestRate = newRate;
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setPoolLoanInterestRate, newRate, tweak);
   }

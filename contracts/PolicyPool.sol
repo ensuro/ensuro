@@ -57,13 +57,16 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   DataTypes.ETokenStatusMap internal _eTokens;
 
   mapping(uint256 => bytes32) internal _policies;
-  mapping(uint256 => IEToken) internal _policySolvency;
 
   event NewPolicy(IRiskModule indexed riskModule, Policy.PolicyData policy);
   event PolicyRebalanced(IRiskModule indexed riskModule, uint256 indexed policyId);
   event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, uint256 payout);
 
   event ETokenStatusChanged(IEToken indexed eToken, DataTypes.ETokenStatus newStatus);
+  event PremiumsAccountStatusChanged(
+    IPremiumsAccount indexed premiumsAccount,
+    DataTypes.ETokenStatus newStatus
+  );
 
   modifier onlyRole(bytes32 role) {
     _config.checkRole(role, msg.sender);
@@ -158,6 +161,26 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     return _eTokens.get(eToken);
   }
 
+  function addPremiumsAccount(IPremiumsAccount pa) external onlyRole(LEVEL1_ROLE) {
+    // require(_eTokens.length() < MAX_ETOKENS, "Maximum number of ETokens reached");
+    // require(!_eTokens.contains(eToken), "eToken already in the pool");
+    require(address(pa) != address(0), "PremiumsAccount can't be zero");
+    require(
+      IPolicyPoolComponent(address(pa)).policyPool() == this,
+      "PremiumsAccount not linked to this pool"
+    );
+    IEToken etk = pa.juniorEtk();
+    if (address(etk) != address(0)) {
+      etk.addBorrower(address(pa));
+    }
+    etk = pa.seniorEtk();
+    if (address(etk) != address(0)) {
+      etk.addBorrower(address(pa));
+    }
+    emit PremiumsAccountStatusChanged(pa, DataTypes.ETokenStatus.active);
+    // TODO: functions for deactivating premiumsAccount (and remove them as borrower)
+  }
+
   /// #if_succeeds
   ///    {:msg "must take balance from sender"}
   ///    _currency.balanceOf(msg.sender) == old(_currency.balanceOf(msg.sender) - amount);
@@ -198,32 +221,21 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     policy.id = (uint256(uint160(address(rm))) << 96) + internalId;
     _policies[policy.id] = policy.hash();
     IPremiumsAccount pa = rm.premiumsAccount();
-    pa.newPolicy(policy.purePremium);
-    IEToken solvencyEtk = _lockScr(policy);
+    pa.policyCreated(policy);
     _policyNFT.safeMint(customer, policy.id);
+
+    // Distribute the premium
     _currency.safeTransferFrom(customer, address(pa), policy.purePremium);
-    _currency.safeTransferFrom(customer, address(solvencyEtk), policy.coc);
+    if (policy.srCoc > 0)
+      _currency.safeTransferFrom(customer, address(pa.seniorEtk()), policy.srCoc);
+    if (policy.jrCoc > 0)
+      _currency.safeTransferFrom(customer, address(pa.juniorEtk()), policy.jrCoc);
     _currency.safeTransferFrom(customer, _config.treasury(), policy.ensuroCommission);
     if (policy.partnerCommission > 0 && customer != rm.wallet())
       _currency.safeTransferFrom(customer, rm.wallet(), policy.partnerCommission);
+
     emit NewPolicy(rm, policy);
     return policy.id;
-  }
-
-  function _lockScr(Policy.PolicyData memory policy) internal returns (IEToken) {
-    // Initially I iterate over all eTokens and accumulate ocean of eligible ones
-    // saves the ocean in policyFunds, later will _distributeScr
-    for (uint256 i = 0; i < _eTokens.length(); i++) {
-      (IEToken etk, DataTypes.ETokenStatus etkStatus) = _eTokens.at(i);
-      if (etkStatus != DataTypes.ETokenStatus.active) continue;
-      if (!etk.accepts(address(policy.riskModule), policy.expiration)) continue;
-      uint256 etkOcean = etk.oceanForNewScr();
-      if (etkOcean < policy.scr) continue;
-      etk.lockScr(policy.interestRate(), policy.scr);
-      _policySolvency[policy.id] = etk;
-      return etk;
-    }
-    revert("Not enought ocean to cover the policy");
   }
 
   function _balance() internal view returns (uint256) {
@@ -269,26 +281,17 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
 
     bool customerWon = payout > 0;
 
-    // Unlock SCR and adjust eToken
-    IEToken etk = _policySolvency[policy.id];
-    etk.unlockScr(
-      policy.interestRate(),
-      policy.scr,
-      int256(policy.coc) - int256(policy.accruedInterest())
-    );
-
     if (customerWon) {
       address policyOwner = _policyNFT.ownerOf(policy.id);
-      rm.premiumsAccount().policyResolvedWithPayout(policyOwner, policy.purePremium, payout, etk);
+      rm.premiumsAccount().policyResolvedWithPayout(policyOwner, policy, payout);
     } else {
-      rm.premiumsAccount().policyExpired(policy.purePremium, etk);
+      rm.premiumsAccount().policyExpired(policy);
     }
 
     rm.releaseExposure(policy.payout);
 
     emit PolicyResolved(policy.riskModule, policy.id, payout);
     delete _policies[policy.id];
-    delete _policySolvency[policy.id];
     if (payout > 0) {
       _notifyPayout(policy.id, payout);
     } else {
@@ -341,10 +344,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
       ret += etk.totalSupply();
     }
     return ret;
-  }
-
-  function getSolvencyETK(uint256 policyId) external view returns (IEToken) {
-    return _policySolvency[policyId];
   }
 
   function getETokenCount() external view override returns (uint256) {

@@ -251,11 +251,27 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
   ) public view returns (uint256) {
     Params memory p = params();
     uint256 purePremium = payout.wadMul(lossProb.wadMul(p.moc));
-    uint256 scr = payout.wadMul(p.collRatio) - purePremium;
-    uint256 interestRate = ((p.srRoc * (expiration - block.timestamp)).wadDiv(SECONDS_IN_YEAR_WAD));
-    uint256 coc = scr.wadMul(interestRate);
-    uint256 ensuroCommission = purePremium.wadMul(p.ensuroPpFee) + coc.wadMul(p.ensuroCocFee);
-    return purePremium + ensuroCommission + coc;
+    uint256 jrScr = payout.wadMul(p.jrCollRatio);
+    if (jrScr > purePremium) {
+      jrScr -= purePremium;
+    } else {
+      jrScr = 0;
+    }
+    uint256 srScr = payout.wadMul(p.collRatio);
+    if (srScr > (purePremium + jrScr)) {
+      srScr -= purePremium + jrScr;
+    } else {
+      srScr = 0;
+    }
+    uint256 jrCoc = jrScr.wadMul(
+      (p.jrRoc * (expiration - block.timestamp)).wadDiv(SECONDS_IN_YEAR_WAD)
+    );
+    uint256 srCoc = srScr.wadMul(
+      (p.srRoc * (expiration - block.timestamp)).wadDiv(SECONDS_IN_YEAR_WAD)
+    );
+    uint256 ensuroCommission = purePremium.wadMul(p.ensuroPpFee) +
+      (jrCoc + srCoc).wadMul(p.ensuroCocFee);
+    return purePremium + ensuroCommission + (jrCoc + srCoc);
   }
 
   function _newPolicy(

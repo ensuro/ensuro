@@ -484,7 +484,8 @@ class EToken(ReserveMixin, ERC20Token):
         return amount_asked - amount
 
     @external
-    def repay_pool_loan(self, borrower, amount):
+    def repay_pool_loan(self, msg_sender, amount, on_behalf_of):
+        borrower = on_behalf_of
         loan = self.pool_loans.get(ContractProxyField().adapt(borrower), None)
         require(loan is not None, "Borrower not registered")
         loan.sub(amount, self.pool_loan_interest_rate)
@@ -619,11 +620,9 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
     def policy_created(self, policy):
         self.active_pure_premiums += policy.pure_premium
         if policy.sr_scr:
-            self.senior_etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
+            self.senior_etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)  # TODO take roc from RM
         if policy.jr_scr:
             self.junior_etk.lock_scr(policy.jr_scr, policy.jr_interest_rate)
-
-    # TODO: restore repay_pool_loan?
 
     @external
     def policy_resolved_with_payout(self, customer, policy, payout):
@@ -667,7 +666,7 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
             return pure_premium_won
         repay_amount = min(borrowed_from_etk, pure_premium_won)
         # self._transfer_to(etk, repay_amount) - TODO: ensure enough balance
-        etk.repay_pool_loan(self, repay_amount)
+        etk.repay_pool_loan(self, repay_amount, self)
         return pure_premium_won - repay_amount
 
     @external

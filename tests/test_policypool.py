@@ -24,6 +24,7 @@ def tenv(request):
         )
     elif request.param == "ethereum":
         from prototype import wrappers
+        get_provider().address_book.name_to_address = {}
         return TEnv(
             time_control=get_provider().time_control,
             module=wrappers,
@@ -95,8 +96,8 @@ def test_transfers(tenv):
     lp1_balance = etoken.balance_of("LP1")
 
     etoken.transfer("LP1", "LP2", lp1_balance // _W(2))
-    etoken.approve("LP1", "spender", lp1_balance // _W(6))
-    etoken.transfer_from("spender", "LP1", "LP3", lp1_balance // _W(6))
+    etoken.approve("LP1", "SPEND", lp1_balance // _W(6))
+    etoken.transfer_from("SPEND", "LP1", "LP3", lp1_balance // _W(6))
 
     # lp1_balance split in
     # LP2 1/2 = 50%
@@ -177,8 +178,8 @@ def test_transfers_usdc(tenv):
     lp1_balance = etoken.balance_of("LP1")
 
     etoken.transfer("LP1", "LP2", lp1_balance // _W(2))
-    etoken.approve("LP1", "spender", lp1_balance // _W(6))
-    etoken.transfer_from("spender", "LP1", "LP3", lp1_balance // _W(6))
+    etoken.approve("LP1", "SPEND", lp1_balance // _W(6))
+    etoken.transfer_from("SPEND", "LP1", "LP3", lp1_balance // _W(6))
 
     # lp1_balance split in
     # LP2 1/2 = 50%
@@ -703,10 +704,6 @@ def test_policy_holder_contract(tenv):
         - user: CUST1
           amount: 200
     etokens:
-      - name: eUSD1WEEK
-        expiration_period: 604800
-      - name: eUSD1MONTH
-        expiration_period: 2592000
       - name: eUSD1YEAR
         expiration_period: 31536000
     """
