@@ -16,18 +16,19 @@ export DEPLOY_AMOUNT_DECIMALS=6
 NETWORK=${NETWORK:-localhost}
 
 if [ $NETWORK == "localhost" ]; then
-    GANACHE_RUNNING=`ps aux | grep ganache-cli | grep -v grep  | cut -c10-15`
-    if [ -z $GANACHE_RUNNING ]; then
-        START_GANACHE=1
+    HHNODE_RUNNING=`ps aux | grep "npx hardhat node" | grep -v grep  | cut -c10-15`
+    if [ -z $HHNODE_RUNNING ]; then
+        START_HHNODE=1
     fi
 fi
 
-if [ ! -z $START_GANACHE ]; then
-    ganache-cli -q &
+if [ ! -z $START_HHNODE ]; then
+    echo "Starting hardhat node"
+    npx hardhat node >/dev/null &
 
-    GANACHE_PID=$!
-    sleep 2
-    kill -0 $GANACHE_PID || die "Error launching ganache-cli localhost"
+    HHNODE_PID=$!
+    sleep 5
+    kill -0 $HHNODE_PID || die "Error launching hardhat node localhost"
 fi
 
 TMPFILE=`mktemp`
@@ -81,6 +82,6 @@ npx hardhat --network $NETWORK deploy:exchange $VERIFY \
     --pool-address $POOL
 dieOnError "Error deploying Exchange"
 
-if [ ! -z $GANACHE_PID ]; then
-    kill $GANACHE_PID
+if [ ! -z $HHNODE_PID ]; then
+   kill $HHNODE_PID
 fi
