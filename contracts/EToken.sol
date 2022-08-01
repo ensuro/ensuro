@@ -578,7 +578,6 @@ contract EToken is PolicyPoolComponent, IERC20Metadata, IEToken {
   function totalWithdrawable() public view virtual override returns (uint256) {
     uint256 locked = _scr
       .wadToRay()
-      .rayMul(WadRayMath.ray() + _scrInterestRate)
       .rayMul(_liquidityRequirement)
       .rayToWad();
     uint256 totalSupply_ = totalSupply();
