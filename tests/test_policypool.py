@@ -24,7 +24,15 @@ def tenv(request):
         )
     elif request.param == "ethereum":
         from prototype import wrappers
-        get_provider().address_book.name_to_address = {}
+        # Resets the address book on every test, to avoid some strange errors
+        # like EOA addresses recognized as contracts
+        from brownie import accounts
+        from ethproto.brwrappers import AddressBook
+        from ethproto.brwrappers import BrownieAddressBook
+        address_book = BrownieAddressBook(accounts)
+        AddressBook.set_instance(address_book)
+        get_provider().address_book = address_book
+
         return TEnv(
             time_control=get_provider().time_control,
             module=wrappers,
@@ -140,10 +148,6 @@ def test_transfers_usdc(tenv):
     premiums_accounts:
     - senior_etk: eUSD1YEAR
     etokens:
-      - name: eUSD1WEEK
-        expiration_period: 604800
-      - name: eUSD1MONTH
-        expiration_period: 2592000
       - name: eUSD1YEAR
         expiration_period: 31536000
     """
