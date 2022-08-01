@@ -15,8 +15,8 @@ jobs:
           node-version: "16"
           cache: "npm"
       - run: npm install
-      - run: pip install -r /requirements.txt
-      - run: pip install -r /requirements-dev.txt
+      - run: pip install -r requirements.txt
+      - run: pip install -r requirements-dev.txt
       - run: npx hardhat compile
       - run: npx hardhat size-contracts
       - run: npm run solhint
