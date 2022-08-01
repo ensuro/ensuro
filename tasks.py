@@ -12,8 +12,9 @@ add_tasks(ns, util_tasks, "ramdisk")
 @task
 def gunicorn(c):
     docker_tasks.docker_exec(
-        c, "/usr/local/bin/gunicorn --config /usr/local/app/gunicorn.py "
-        "-b :8000 app.server:app"
+        c,
+        "/usr/local/bin/gunicorn --config /usr/local/app/gunicorn.py "
+        "-b :8000 app.server:app",
     )
 
 
@@ -40,4 +41,22 @@ def kill_flask(c):
 def test(c, coverage=False, longrun=False):
     # coverage = "--cov=app --cov-config=app/.coveragerc" if coverage else ""
     # longrun = "--longrun" if longrun else ""
-    docker_exec(c, f"brownie test")
+    docker_exec(c, f"brownie test --gas")
+    if longrun:
+        docker_exec(c, f"npm install")
+        docker_exec(c, f"npx hardhat compile")
+        docker_exec(c, f"npx hardhat test")
+
+
+@ns.add_task
+@task
+def refresh_requirements_txt(c, upgrade=False, package=None):
+    """Refresh requirements.txt and requirements-dev.txt using pip-tools
+
+    --upgrade will upgrade all packages to latest version
+    --package will upgrade a single package
+    """
+    upgrade = "--upgrade" if upgrade else ""
+    package = f"-P {package}" if package is not None else ""
+    docker_exec(c, f"pip-compile {upgrade} {package} requirements.in")
+    docker_exec(c, f"pip-compile {upgrade} {package} requirements-dev.in")

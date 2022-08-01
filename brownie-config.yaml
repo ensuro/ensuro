@@ -5,7 +5,10 @@ compiler:
       enabled: true
       runs: 200
     remappings:
-    - "@openzeppelin=node_modules/@openzeppelin"
-    - "@aave=node_modules/@aave"
-    - "@uniswap=node_modules/@uniswap"
-    - "@chainlink=node_modules/@chainlink"
+      - "@openzeppelin=node_modules/@openzeppelin"
+      - "@aave=node_modules/@aave"
+      - "@uniswap=node_modules/@uniswap"
+      - "@chainlink=node_modules/@chainlink"
+
+networks:
+  default: hardhat

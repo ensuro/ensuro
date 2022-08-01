@@ -2,8 +2,6 @@
 pragma solidity ^0.8.0;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-// Don't remove it - required to find the ERC1967Proxy in brownie
-import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {IMintableERC20} from "./IMintableERC20.sol";
 
 contract TestCurrency is ERC20, IMintableERC20 {

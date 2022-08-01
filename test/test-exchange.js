@@ -32,8 +32,8 @@ describe("Test Exchange contract - run at https://polygonscan.com/block/27090801
         },
       ],
     });
-    USDC = await ethers.getContractAt("IERC20Metadata", ADDRESSES.usdc);
-    WMATIC = await ethers.getContractAt("IERC20Metadata", ADDRESSES.wmatic);
+    USDC = await ethers.getContractAt("@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol:IERC20Metadata", ADDRESSES.usdc);
+    WMATIC = await ethers.getContractAt("@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol:IERC20Metadata", ADDRESSES.wmatic);
     pool = await deployPool(hre, {currency: ADDRESSES.usdc, grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"]});
   });
 
