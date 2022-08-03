@@ -34,7 +34,9 @@ describe("Test PriceRiskModule contract", function() {
     });
     pool._A = _A;
 
-    premiumsAccount = await deployPremiumsAccount(hre, pool);
+    etk = await addEToken(pool, {});
+
+    premiumsAccount = await deployPremiumsAccount(hre, pool, {srEtkAddr: etk.address});
 
     const PriceOracle = await ethers.getContractFactory("PriceOracle");
     priceOracle = await PriceOracle.deploy();
@@ -51,7 +53,6 @@ describe("Test PriceRiskModule contract", function() {
 
     PriceRiskModule = await ethers.getContractFactory("PriceRiskModule");
 
-    etk = await addEToken(pool, {});
     await currency.connect(lp).approve(pool.address, _A(5000));
     await pool.connect(lp).deposit(etk.address, _A(5000));
   });

@@ -186,12 +186,17 @@ exports.deployPool = async function(hre, options) {
 exports.deployPremiumsAccount = async function (hre, pool, options) {
   const PremiumsAccount = await ethers.getContractFactory("PremiumsAccount");
   const premiumsAccount = await hre.upgrades.deployProxy(PremiumsAccount, [], {
-    constructorArgs: [pool.address],
+    constructorArgs: [
+      pool.address,
+      options.jrEtkAddr || ethers.constants.AddressZero,
+      options.srEtkAddr || ethers.constants.AddressZero,
+    ],
     kind: 'uups',
     unsafeAllow: ["delegatecall"],
   });
 
   await premiumsAccount.deployed();
+  await pool.addPremiumsAccount(premiumsAccount.address);
   return premiumsAccount;
 }
 
