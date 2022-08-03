@@ -188,14 +188,13 @@ async function deployPolicyPool({saveAddr, verify, configAddress, nftAddress, cu
 }
 
 async function deployEToken({
-      saveAddr, verify, poolAddress, etkName, etkSymbol, expirationPeriod, liquidityRequirement,
+      saveAddr, verify, poolAddress, etkName, etkSymbol, liquidityRequirement,
       maxUtilizationRate, poolLoanInterestRate
   }, hre) {
   const EToken = await hre.ethers.getContractFactory("EToken");
   const etoken = await hre.upgrades.deployProxy(EToken, [
     etkName,
     etkSymbol,
-    expirationPeriod * 24 * 3600,
     _R(liquidityRequirement),
     _R(maxUtilizationRate),
     _R(poolLoanInterestRate),
@@ -530,7 +529,6 @@ function add_task() {
     .addParam("poolAddress", "PolicyPool Address", types.address)
     .addOptionalParam("etkName", "Name of EToken", "eUSD1WEEK", types.str)
     .addOptionalParam("etkSymbol", "Symbol of EToken", "eUSD1W", types.str)
-    .addOptionalParam("expirationPeriod", "Expiration period (in days)", 7, types.int)
     .addOptionalParam("liquidityRequirement", "Liquidity Requirement (to allow withdraws)",
                       1.0, types.float)
     .addOptionalParam("maxUtilizationRate", "Max Utilization Rate", 1.0, types.float)
@@ -662,7 +660,7 @@ function add_task() {
     .addParam("payout", "Payout for customer in case policy is triggered", undefined, types.int)
     .addParam("premium", "Premium the customer pays", undefined, types.int)
     .addParam("lossProb", "Probability of policy being triggered", undefined, types.float)
-    .addOptionalParam("expiration", "Probability of policy being triggered", undefined, types.float)
+    .addOptionalParam("expiration", "Expiration of the policy (relative or absolute)", undefined, types.int)
     .addOptionalParam("customer", "Customer", undefined, types.address)
     .setAction(trustfullPolicy);
 

@@ -69,7 +69,7 @@ exports.addRiskModule = async function(pool, premiumsAccount, contractFactory, {
 }
 
 exports.addEToken = async function(pool, {
-      etkName, etkSymbol, expirationPeriod, liquidityRequirement, maxUtilizationRate,
+      etkName, etkSymbol, liquidityRequirement, maxUtilizationRate,
       poolLoanInterestRate, extraArgs, extraConstructorArgs
       }) {
   const EToken = await ethers.getContractFactory("EToken");
@@ -78,7 +78,6 @@ exports.addEToken = async function(pool, {
   const etk = await hre.upgrades.deployProxy(EToken, [
     etkName || "EToken",
     etkSymbol || "eUSD1YEAR",
-    expirationPeriod || (3600 * 24 * 365),
     _R(liquidityRequirement) || _R(1),
     _R(maxUtilizationRate) || _R(1),
     _R(poolLoanInterestRate) || _R("0.05"),
