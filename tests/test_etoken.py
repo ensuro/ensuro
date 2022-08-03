@@ -88,7 +88,7 @@ def tenv(request):
 def test_only_policy_pool_validation(tenv):
     if tenv.kind == "prototype":
         return
-    etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
+    etk = tenv.etoken_class(name="eUSD1WEEK")
     with pytest.raises(RevertError, match="The caller must be the PolicyPool"):
         etk.deposit("LP1", _W(1000))
     with pytest.raises(RevertError, match="The caller must be the PolicyPool"):
@@ -112,7 +112,7 @@ def skip_if_coverage_activated(f):
 
 @skip_if_coverage_activated
 def test_deposit_withdraw(tenv):
-    etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
+    etk = tenv.etoken_class(name="eUSD1WEEK")
     tenv.currency.transfer(tenv.currency.owner, etk, _W(1000))
     with etk.thru_policy_pool():
         assert etk.deposit("LP1", _W(1000)) == _W(1000)
@@ -135,7 +135,7 @@ def test_deposit_withdraw(tenv):
 
 @skip_if_coverage_activated
 def test_lock_unlock_scr(tenv):
-    etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
+    etk = tenv.etoken_class(name="eUSD1WEEK")
     pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account
     tenv.currency.transfer(tenv.currency.owner, etk, _W(1000))
     with etk.thru_policy_pool():
@@ -176,7 +176,7 @@ def test_lock_unlock_scr(tenv):
 
 @skip_if_coverage_activated
 def test_etoken_erc20(tenv):
-    etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
+    etk = tenv.etoken_class(name="eUSD1WEEK")
     pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account
     tenv.currency.transfer(tenv.currency.owner, etk, _W(1000))
     with etk.thru_policy_pool():
@@ -229,7 +229,7 @@ def test_etoken_erc20(tenv):
 
 @skip_if_coverage_activated
 def test_multiple_policies(tenv):
-    etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
+    etk = tenv.etoken_class(name="eUSD1WEEK")
     pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account
     tenv.currency.transfer(tenv.currency.owner, etk, _W(1000))
     with etk.thru_policy_pool():
@@ -292,7 +292,7 @@ def test_multiple_policies(tenv):
 
 @skip_if_coverage_activated
 def test_multiple_lps(tenv):
-    etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
+    etk = tenv.etoken_class(name="eUSD1WEEK")
     pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account
     tenv.currency.transfer(tenv.currency.owner, etk, _W(1000))
     with etk.thru_policy_pool():
@@ -334,7 +334,7 @@ def test_multiple_lps(tenv):
 
 @skip_if_coverage_activated
 def test_lock_scr_validation(tenv):
-    etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
+    etk = tenv.etoken_class(name="eUSD1WEEK")
     pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account
     policy = tenv.policy_factory(sr_scr=_W(600), sr_interest_rate=_W("0.0365"),
                                  expiration=tenv.time_control.now + WEEK)
@@ -355,31 +355,8 @@ def test_lock_scr_validation(tenv):
 
 
 @skip_if_coverage_activated
-def test_accepts_policy(tenv):
-    etk_week = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
-    etk_year = tenv.etoken_class(name="eUSD1YEAR", expiration_period=365 * DAY)
-
-    tenv.currency.transfer(tenv.currency.owner, etk_week, _W(1000))
-    with etk_week.thru_policy_pool():
-        etk_week.deposit("LP1", _W(1000))
-    tenv.currency.transfer(tenv.currency.owner, etk_year, _W(2000))
-    with etk_year.thru_policy_pool():
-        etk_year.deposit("LP1", _W(2000))
-
-    policy_3_day = tenv.policy_factory(sr_scr=_W(600), sr_interest_rate=_W("0.0365"),
-                                       expiration=tenv.time_control.now + 3 * DAY)
-    policy_10_day = tenv.policy_factory(sr_scr=_W(600), sr_interest_rate=_W("0.0365"),
-                                        expiration=tenv.time_control.now + 10 * DAY)
-
-    assert etk_week.accepts(policy_3_day)
-    assert etk_year.accepts(policy_3_day)
-    assert not etk_week.accepts(policy_10_day)
-    assert etk_year.accepts(policy_10_day)
-
-
-@skip_if_coverage_activated
 def test_pool_loan(tenv):
-    etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK,
+    etk = tenv.etoken_class(name="eUSD1WEEK",
                             pool_loan_interest_rate=_R("0.073"))
     tenv.currency.transfer(tenv.currency.owner, etk, _W(1000))
 
@@ -467,7 +444,7 @@ def test_pool_loan(tenv):
 
 @skip_if_coverage_activated
 def xtest_asset_and_discrete_earnings(tenv):
-    etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
+    etk = tenv.etoken_class(name="eUSD1WEEK")
 
     # Initial setup
     tenv.currency.transfer(tenv.currency.owner, etk, _W(3000))
@@ -514,7 +491,7 @@ def xtest_asset_and_discrete_earnings(tenv):
 
 
 def test_name_and_others(tenv):
-    etk = tenv.etoken_class(name="eUSD One Week", symbol="eUSD1W", expiration_period=WEEK)
+    etk = tenv.etoken_class(name="eUSD One Week", symbol="eUSD1W")
     assert etk.name == "eUSD One Week"
     assert etk.symbol == "eUSD1W"
     assert etk.decimals == 18
@@ -522,7 +499,7 @@ def test_name_and_others(tenv):
 
 @skip_if_coverage_activated
 def test_max_utilization_rate(tenv):
-    etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK, max_utilization_rate=_R("0.9"))
+    etk = tenv.etoken_class(name="eUSD1WEEK", max_utilization_rate=_R("0.9"))
     pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account
     assert etk.max_utilization_rate == _R("0.9")
     tenv.currency.transfer(tenv.currency.owner, etk, _W(1000))
@@ -566,7 +543,7 @@ def test_max_utilization_rate(tenv):
 
 
 def test_unlock_scr(tenv):
-    etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
+    etk = tenv.etoken_class(name="eUSD1WEEK")
     pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account
     tenv.currency.transfer(tenv.currency.owner, etk, _W(1000))
     with etk.thru_policy_pool():
@@ -593,7 +570,7 @@ def test_unlock_scr(tenv):
 
 
 def test_unlock_scr_with_adjustment(tenv):
-    etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
+    etk = tenv.etoken_class(name="eUSD1WEEK")
     pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account
     tenv.currency.transfer(tenv.currency.owner, etk, _W(1000))
     with etk.thru_policy_pool():
@@ -620,7 +597,7 @@ def test_unlock_scr_with_adjustment(tenv):
 
 
 def test_unlock_scr_with_neg_adjustment(tenv):
-    etk = tenv.etoken_class(name="eUSD1WEEK", expiration_period=WEEK)
+    etk = tenv.etoken_class(name="eUSD1WEEK")
     pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account
     tenv.currency.transfer(tenv.currency.owner, etk, _W(1000))
     with etk.thru_policy_pool():
@@ -650,7 +627,7 @@ def test_getset_etk_parameters_tweaks(tenv):
     if tenv.kind != "ethereum":
         return
     etk = tenv.etoken_class(
-        name="eUSD1WEEK", expiration_period=WEEK, max_utilization_rate=_R("0.9"),
+        name="eUSD1WEEK", max_utilization_rate=_R("0.9"),
         liquidity_requirement=_R(1), pool_loan_interest_rate=_R("0.02")
     )
     with etk.as_("owner"):
@@ -707,12 +684,6 @@ def test_getset_etk_parameters_tweaks(tenv):
         with etk.as_("L2_USER"):
             setattr(etk, attr_name, attr_value)
         assert getattr(etk, attr_name) == attr_value
-
-    assert not etk.is_accept_exception("FOORM")
-    with etk.as_("L2_USER"):
-        etk.set_accept_exception("FOORM", True)
-    assert etk.is_accept_exception("FOORM")
-    assert not etk.is_accept_exception("BARRM")
 
     tenv.time_control.fast_forward(WEEK)  # To avoid repeated tweaks
 

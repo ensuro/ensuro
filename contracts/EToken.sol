@@ -38,7 +38,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   string private _name;
   string private _symbol;
 
-  uint40 internal _expirationPeriod; // in seconds, the maximum duration of policies this eToken can back up
   uint256 internal _scaleFactor; // in Ray
   uint40 internal _lastScaleUpdate;
 
@@ -49,10 +48,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   uint256 internal _maxUtilizationRate; // in Ray - Maximum SCR/totalSupply rate for backup up new policies
 
   uint256 internal _poolLoanInterestRate; // in Ray
-
-  bool internal _acceptAllRMs; // By defaults, accepts (backs up) any RiskModule;
-  // Exceptions to the accept all or accept none policy defined before
-  mapping(address => bool) internal _acceptExceptions;
 
   // Mapping that keeps track of allowed borrowers (PremiumsAccount) and their current debt
   mapping(address => TimeScaled.ScaledAmount) internal _poolLoans;
@@ -72,7 +67,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
 
   /**
    * @dev Initializes the eToken
-   * @param expirationPeriod_ Maximum expirationPeriod (from block.timestamp) of policies to be accepted
    * @param liquidityRequirement_ Liquidity requirement to allow withdrawal (in Ray - default=1 Ray)
    * @param maxUtilizationRate_ Max utilization rate (scr/totalSupply) (in Ray - default=1 Ray)
    * @param poolLoanInterestRate_ Rate of loans givencrto the policy pool (in Ray)
@@ -82,7 +76,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   function initialize(
     string memory name_,
     string memory symbol_,
-    uint40 expirationPeriod_,
     uint256 liquidityRequirement_,
     uint256 maxUtilizationRate_,
     uint256 poolLoanInterestRate_
@@ -91,7 +84,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     __EToken_init_unchained(
       name_,
       symbol_,
-      expirationPeriod_,
       liquidityRequirement_,
       maxUtilizationRate_,
       poolLoanInterestRate_
@@ -102,14 +94,12 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   function __EToken_init_unchained(
     string memory name_,
     string memory symbol_,
-    uint40 expirationPeriod_,
     uint256 liquidityRequirement_,
     uint256 maxUtilizationRate_,
     uint256 poolLoanInterestRate_
   ) internal initializer {
     _name = name_;
     _symbol = symbol_;
-    _expirationPeriod = expirationPeriod_;
     _scaleFactor = WadRayMath.ray();
     _lastScaleUpdate = uint40(block.timestamp);
     _scr = 0;
@@ -117,7 +107,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     _tokenInterestRate = 0;
     _liquidityRequirement = liquidityRequirement_;
     _maxUtilizationRate = maxUtilizationRate_;
-    _acceptAllRMs = true;
 
     _poolLoanInterestRate = poolLoanInterestRate_;
     _validateParameters();
@@ -489,10 +478,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     return _maxUtilizationRate;
   }
 
-  function expirationPeriod() public view returns (uint40) {
-    return _expirationPeriod;
-  }
-
   function utilizationRate() public view returns (uint256) {
     return _scr.wadDiv(this.totalSupply()).wadToRay();
   }
@@ -587,21 +572,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     return amount;
   }
 
-  function accepts(address riskModule, uint40 policyExpiration)
-    public
-    view
-    virtual
-    override
-    returns (bool)
-  {
-    if (paused()) return false;
-    if (_acceptAllRMs == _acceptExceptions[riskModule]) {
-      // all accepted except this one or all rejected and this one is not an exception
-      return false;
-    }
-    return policyExpiration < (uint40(block.timestamp) + _expirationPeriod);
-  }
-
   function _maxNegativeAdjustment() internal view returns (uint256) {
     uint256 ts = totalSupply();
     uint256 minTs = _totalSupply.wadToRay().rayMul(MIN_SCALE * 10).rayToWad();
@@ -659,14 +629,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     return _poolLoanInterestRate;
   }
 
-  function acceptAllRMs() public view returns (bool) {
-    return _acceptAllRMs;
-  }
-
-  function isAcceptException(address riskModule) public view returns (bool) {
-    return _acceptExceptions[riskModule];
-  }
-
   function setPoolLoanInterestRate(uint256 newRate)
     external
     onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
@@ -705,24 +667,5 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     );
     _maxUtilizationRate = newRate;
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setMaxUtilizationRate, newRate, tweak);
-  }
-
-  function setAcceptAllRMs(bool acceptAllRMs_) external onlyPoolRole(LEVEL2_ROLE) {
-    _acceptAllRMs = acceptAllRMs_;
-    _parameterChanged(
-      IPolicyPoolConfig.GovernanceActions.setAcceptAllRMs,
-      acceptAllRMs_ ? 1 : 0,
-      false
-    );
-  }
-
-  function setAcceptException(address riskModule, bool isException)
-    external
-    onlyPoolRole(LEVEL2_ROLE)
-  {
-    _acceptExceptions[riskModule] = isException;
-    uint256 value = uint160(riskModule);
-    if (!isException) value |= (1 << 255); // if changed to NOT exception activate first bit
-    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setAcceptException, value, false);
   }
 }

@@ -33,7 +33,7 @@ def tenv(request):
         pool = PolicyPoolMock(currency=currency)
         premiums_account = ensuro.PremiumsAccount(
             pool=pool, senior_etk=ensuro.EToken(
-                policy_pool=pool, name="eUSD1YEAR", expiration_period=365 * DAY
+                policy_pool=pool, name="eUSD1YEAR"
             )
         )
 

@@ -253,7 +253,6 @@ class ScaledAmount(Model):
 class EToken(ReserveMixin, ERC20Token):
     MIN_SCALE = _R("0.0000000001")  # 1e-10
     policy_pool = ContractProxyField()
-    expiration_period = IntField()
     scale_factor = RayField(default=_R(1), validation_hook=non_negative)
     last_scale_update = IntField(default=time_control.now)
 
@@ -265,9 +264,6 @@ class EToken(ReserveMixin, ERC20Token):
 
     pool_loan_interest_rate = RayField(default=_R("0.05"))
     pool_loans = DictField(ContractProxyField(), CompositeField(ScaledAmount), default={})
-
-    accept_all_rms = IntField(default=Wad(1))
-    accept_exceptions = DictField(ContractProxyField(), IntField(), default={})
 
     set_attr_roles = {
         "pool_loan_interest_rate": "LEVEL2_ROLE"
@@ -441,13 +437,6 @@ class EToken(ReserveMixin, ERC20Token):
 
         return amount
 
-    def accepts(self, policy):
-        if self.accept_all_rms and self.accept_exceptions.get(policy.risk_module, False):
-            return False
-        if not self.accept_all_rms and not self.accept_exceptions.get(policy.risk_module, False):
-            return False
-        return policy.expiration <= (time_control.now + self.expiration_period)
-
     def _max_negative_adjustment(self):
         return max(
             self.total_supply() - (self.MIN_SCALE * _R(10) * self._base_supply().to_ray()).to_wad(),
@@ -511,12 +500,6 @@ class EToken(ReserveMixin, ERC20Token):
     @property
     def utilization_rate(self):
         return (self.scr // self.total_supply()).to_ray()
-
-    def set_accept_exception(self, rm, is_exception):
-        self.accept_exceptions[rm] = is_exception
-
-    def is_accept_exception(self, rm):
-        return self.accept_exceptions.get(rm, False)
 
 
 class PolicyNFT(ERC721Token):

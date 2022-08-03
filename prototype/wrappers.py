@@ -71,12 +71,12 @@ class EToken(IERC20):
     proxy_kind = "uups"
     constructor_args = (("policy_pool", "address"), )
     initialize_args = (
-        ("name", "string"), ("symbol", "string"), ("expiration_period", "int"),
+        ("name", "string"), ("symbol", "string"),
         ("liquidity_requirement", "ray"), ("max_utilization_rate", "ray"),
         ("pool_loan_interest_rate", "ray"),
     )
 
-    def __init__(self, name, symbol, policy_pool, expiration_period, liquidity_requirement=_R(1),
+    def __init__(self, name, symbol, policy_pool, liquidity_requirement=_R(1),
                  max_utilization_rate=_R(1),
                  pool_loan_interest_rate=_R("0.05"), owner="owner"):
         pool_loan_interest_rate = _R(pool_loan_interest_rate)
@@ -85,7 +85,7 @@ class EToken(IERC20):
 
         super().__init__(
             owner, policy_pool,
-            name, symbol, expiration_period, liquidity_requirement,
+            name, symbol, liquidity_requirement,
             max_utilization_rate, pool_loan_interest_rate
         )
         if isinstance(policy_pool, ETHWrapper):
@@ -127,11 +127,6 @@ class EToken(IERC20):
     set_pool_loan_interest_rate = MethodAdapter((("new_rate", "ray"), ))
     set_max_utilization_rate = MethodAdapter((("new_rate", "ray"), ))
 
-    accept_all_rms = MethodAdapter((), "bool", is_property=True, eth_method="acceptAllRMs")
-
-    is_accept_exception = MethodAdapter((("risk_module", "address"),), "bool")
-    set_accept_exception = MethodAdapter((("risk_module", "address"), ("is_exception", "bool")))
-
     add_borrower = MethodAdapter((("borrower", "address"), ))
 
     lock_scr = MethodAdapter(
@@ -157,11 +152,6 @@ class EToken(IERC20):
             return Wad(receipt.events["Transfer"]["value"])
         else:
             return Wad(0)
-
-    accepts = MethodAdapter(
-        (("risk_module", "address"), ("policy_expiration", "int")), "bool",
-        adapt_args=lambda args, kwargs: ((None, args[0].expiration, ), {})
-    )
 
     lend_to_pool_ = MethodAdapter(
         (("borrower", "msg.sender"), ("amount", "amount"), ("receiver", "address"), ("from_ocean", "bool"))

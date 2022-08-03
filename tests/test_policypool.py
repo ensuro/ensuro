@@ -71,7 +71,6 @@ def test_transfers(tenv):
           amount: 100
     etokens:
       - name: eUSD1YEAR
-        expiration_period: 31536000
     """
 
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
@@ -149,7 +148,6 @@ def test_transfers_usdc(tenv):
     - senior_etk: eUSD1YEAR
     etokens:
       - name: eUSD1YEAR
-        expiration_period: 31536000
     """
 
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
@@ -229,11 +227,8 @@ def xtest_not_accept_rm(tenv):
           amount: 100
     etokens:
       - name: eUSD1WEEK
-        expiration_period: 604800
       - name: eUSD1MONTH
-        expiration_period: 2592000
       - name: eCASINO
-        expiration_period: 31536000
     """
 
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
@@ -352,7 +347,6 @@ def test_walkthrough(tenv):
           amount: 130
     etokens:
       - name: eUSD1YEAR
-        expiration_period: 31536000
     """
 
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
@@ -643,7 +637,6 @@ def test_nfts(tenv):
           amount: 200
     etokens:
       - name: eUSD1YEAR
-        expiration_period: 31536000
     """
 
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
@@ -709,7 +702,6 @@ def test_policy_holder_contract(tenv):
           amount: 200
     etokens:
       - name: eUSD1YEAR
-        expiration_period: 31536000
     """
 
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
@@ -804,7 +796,6 @@ def test_partial_payout(tenv):
           amount: 100
     etokens:
       - name: eUSD1YEAR
-        expiration_period: 31536000
     """
 
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
@@ -858,7 +849,6 @@ def test_pool_loan_partial_payout(tenv):
           amount: 2000
     etokens:
       - name: eUSD1YEAR
-        expiration_period: 31536000
     """
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
@@ -913,7 +903,6 @@ def test_increase_won_pure_premiums(tenv):
           amount: 2000
     etokens:
       - name: eUSD1YEAR
-        expiration_period: 31536000
     """
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
@@ -967,7 +956,6 @@ def test_payout_bigger_than_pure_premium(tenv):
           amount: 2000
     etokens:
       - name: eUSD1YEAR
-        expiration_period: 31536000
     """
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
@@ -1020,7 +1008,6 @@ def xtest_asset_manager(tenv):
           amount: 200
     etokens:
       - name: eUSD1YEAR
-        expiration_period: 31536000
     asset_manager:
         class: FixedRateAssetManager
         liquidity_min: 1000
@@ -1125,7 +1112,6 @@ def xtest_assets_under_liquidity_middle(tenv):
           amount: 200
     etokens:
       - name: eUSD1YEAR
-        expiration_period: 31536000
     asset_manager:
         class: FixedRateAssetManager
         liquidity_min: 1000
@@ -1213,7 +1199,6 @@ def xtest_distribute_negative_earnings(tenv):
           amount: 200
     etokens:
       - name: eUSD1YEAR
-        expiration_period: 31536000
     asset_manager:
         class: FixedRateAssetManager
         liquidity_min: 1000
@@ -1268,7 +1253,6 @@ def xtest_distribute_negative_earnings_full_capital_from_etokens(tenv):
           amount: 200
     etokens:
       - name: eUSD1YEAR
-        expiration_period: 31536000
     asset_manager:
         class: FixedRateAssetManager
         liquidity_min: 1000
@@ -1372,7 +1356,6 @@ def xtest_distribute_negative_earnings_from_pool_and_etokens(tenv):
           amount: 200
     etokens:
       - name: eUSD1YEAR
-        expiration_period: 31536000
     asset_manager:
         class: FixedRateAssetManager
         liquidity_min: 1000
@@ -1456,10 +1439,8 @@ def xtest_insolvency_without_hook(tenv):
           amount: 200
     etokens:
       - name: eUSD1YEAR
-        expiration_period: 31536000
         pool_loan_interest_rate: "0.06"
       - name: eUSD1MONTH
-        expiration_period: 2592000
         pool_loan_interest_rate: "0.04"
     """
 
@@ -1697,10 +1678,8 @@ def test_lp_whitelist(tenv):
           amount: 200
     etokens:
       - name: eUSD1YEAR
-        expiration_period: 31536000
         pool_loan_interest_rate: "0.06"
       - name: eUSD1MONTH
-        expiration_period: 2592000
         pool_loan_interest_rate: "0.04"
     """
 
@@ -1782,7 +1761,6 @@ def test_expire_policy(tenv):
           amount: 100
     etokens:
       - name: eUSD1YEAR
-        expiration_period: 31536000
     """
 
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
@@ -1868,7 +1846,6 @@ def test_expire_policy_payout(tenv):
           amount: 100
     etokens:
       - name: eUSD1YEAR
-        expiration_period: 31536000
     """
 
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
