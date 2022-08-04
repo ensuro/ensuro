@@ -97,7 +97,7 @@ eth-keys==0.3.4
     #   eth-account
     #   eth-brownie
     #   eth-keyfile
-eth-prototype[brownie]==0.7.0
+eth-prototype[brownie]==0.7.1
     # via -r requirements.in
 eth-rlp==0.2.1
     # via
