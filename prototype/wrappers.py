@@ -1,6 +1,6 @@
 from collections import namedtuple
 from contextlib import contextmanager
-from ethproto.wadray import Wad, _R, Ray, _W
+from ethproto.wadray import Wad, _W
 from ethproto.wrappers import AddressBook, IERC20, IERC721, ETHWrapper, MethodAdapter, get_provider
 
 
@@ -72,20 +72,19 @@ class EToken(IERC20):
     constructor_args = (("policy_pool", "address"), )
     initialize_args = (
         ("name", "string"), ("symbol", "string"),
-        ("liquidity_requirement", "ray"), ("max_utilization_rate", "ray"),
-        ("pool_loan_interest_rate", "ray"),
+        ("max_utilization_rate", "wad"),
+        ("pool_loan_interest_rate", "wad"),
     )
 
-    def __init__(self, name, symbol, policy_pool, liquidity_requirement=_R(1),
-                 max_utilization_rate=_R(1),
-                 pool_loan_interest_rate=_R("0.05"), owner="owner"):
-        pool_loan_interest_rate = _R(pool_loan_interest_rate)
-        liquidity_requirement = _R(liquidity_requirement)
-        max_utilization_rate = _R(max_utilization_rate)
+    def __init__(self, name, symbol, policy_pool,
+                 max_utilization_rate=_W(1),
+                 pool_loan_interest_rate=_W("0.05"), owner="owner"):
+        pool_loan_interest_rate = _W(pool_loan_interest_rate)
+        max_utilization_rate = _W(max_utilization_rate)
 
         super().__init__(
             owner, policy_pool,
-            name, symbol, liquidity_requirement,
+            name, symbol,
             max_utilization_rate, pool_loan_interest_rate
         )
         if isinstance(policy_pool, ETHWrapper):
@@ -120,12 +119,14 @@ class EToken(IERC20):
     scr = MethodAdapter((), "amount", is_property=True)
     scr_interest_rate = MethodAdapter((), "ray", is_property=True)
     token_interest_rate = MethodAdapter((), "ray", is_property=True)
-    pool_loan_interest_rate = MethodAdapter((), "ray", is_property=True)
-    liquidity_requirement = MethodAdapter((), "ray", is_property=True)
-    max_utilization_rate = MethodAdapter((), "ray", is_property=True)
-    utilization_rate = MethodAdapter((), "ray", is_property=True)
-    set_pool_loan_interest_rate = MethodAdapter((("new_rate", "ray"), ))
-    set_max_utilization_rate = MethodAdapter((("new_rate", "ray"), ))
+    pool_loan_interest_rate = MethodAdapter((), "wad", is_property=True)
+    liquidity_requirement = MethodAdapter((), "wad", is_property=True)
+    min_utilization_rate = MethodAdapter((), "wad", is_property=True)
+    max_utilization_rate = MethodAdapter((), "wad", is_property=True)
+    utilization_rate = MethodAdapter((), "wad", is_property=True)
+    set_pool_loan_interest_rate = MethodAdapter((("new_rate", "wad"), ))
+    set_max_utilization_rate = MethodAdapter((("new_rate", "wad"), ))
+    set_min_utilization_rate = MethodAdapter((("new_rate", "wad"), ))
 
     add_borrower = MethodAdapter((("borrower", "address"), ))
 

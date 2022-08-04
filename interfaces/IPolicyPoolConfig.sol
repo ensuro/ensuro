@@ -36,6 +36,7 @@ interface IPolicyPoolConfig is IAccessControlUpgradeable {
     setWallet,
     // EToken Governance Actions
     setLiquidityRequirement,
+    setMinUtilizationRate,
     setMaxUtilizationRate,
     setPoolLoanInterestRate,
     // AssetManager Governance Actions

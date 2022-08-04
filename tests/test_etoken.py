@@ -114,6 +114,7 @@ def skip_if_coverage_activated(f):
 def test_deposit_withdraw(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK")
     tenv.currency.transfer(tenv.currency.owner, etk, _W(1000))
+    assert etk.liquidity_requirement == _W(1)
     with etk.thru_policy_pool():
         assert etk.deposit("LP1", _W(1000)) == _W(1000)
     assert etk.balance_of("LP1") == _W(1000)
@@ -357,7 +358,7 @@ def test_lock_scr_validation(tenv):
 @skip_if_coverage_activated
 def test_pool_loan(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK",
-                            pool_loan_interest_rate=_R("0.073"))
+                            pool_loan_interest_rate=_W("0.073"))
     tenv.currency.transfer(tenv.currency.owner, etk, _W(1000))
 
     pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account
@@ -367,7 +368,7 @@ def test_pool_loan(tenv):
 
     with etk.thru_policy_pool():
         etk.deposit("LP1", _W(1000))
-    assert etk.pool_loan_interest_rate == _R("0.073")
+    assert etk.pool_loan_interest_rate == _W("0.073")
     assert etk.get_pool_loan(pa) == _W(0)
 
     with etk.thru_policy_pool():
@@ -419,9 +420,9 @@ def test_pool_loan(tenv):
 
     etk.repay_pool_loan(pa, Wad(1), pa)  # Does a minimal payment, so scale is updated
     with etk.as_("SETRATE"):
-        etk.set_pool_loan_interest_rate(_R("0.0365"))
+        etk.set_pool_loan_interest_rate(_W("0.0365"))
 
-    assert etk.pool_loan_interest_rate == _R("0.0365")
+    assert etk.pool_loan_interest_rate == _W("0.0365")
     etk.get_pool_loan(pa).assert_equal(pool_loan)
 
     tenv.time_control.fast_forward(3 * DAY)
@@ -499,9 +500,9 @@ def test_name_and_others(tenv):
 
 @skip_if_coverage_activated
 def test_max_utilization_rate(tenv):
-    etk = tenv.etoken_class(name="eUSD1WEEK", max_utilization_rate=_R("0.9"))
+    etk = tenv.etoken_class(name="eUSD1WEEK", max_utilization_rate=_W("0.9"))
     pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account
-    assert etk.max_utilization_rate == _R("0.9")
+    assert etk.max_utilization_rate == _W("0.9")
     tenv.currency.transfer(tenv.currency.owner, etk, _W(1000))
     with etk.thru_policy_pool():
         etk.deposit("LP1", _W(1000))
@@ -512,7 +513,7 @@ def test_max_utilization_rate(tenv):
     with etk.as_("owner"):
         etk.grant_role("LEVEL2_ROLE", "SETRATE")
     with etk.as_("SETRATE"):
-        etk.set_max_utilization_rate(_R("0.95"))
+        etk.set_max_utilization_rate(_W("0.95"))
 
     assert etk.ocean_for_new_scr == _W(950)
 
@@ -530,12 +531,20 @@ def test_max_utilization_rate(tenv):
     with etk.thru(pa):
         etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
 
-    etk.utilization_rate.assert_equal(_R("0.6"))
+    etk.utilization_rate.assert_equal(_W("0.6"))
     tenv.currency.transfer(tenv.currency.owner, etk, _W(1000))
     with etk.thru_policy_pool():
         etk.deposit("LP1", _W(1000))
 
-    etk.utilization_rate.assert_equal(_R("0.3"))
+    etk.utilization_rate.assert_equal(_W("0.3"))
+
+    with etk.as_("SETRATE"):
+        etk.set_min_utilization_rate(_W("0.3"))
+
+    tenv.currency.transfer(tenv.currency.owner, etk, _W(5))
+    with etk.thru_policy_pool(), pytest.raises(RevertError,
+                                               match="Deposit rejected - Utilization Rate < min"):
+        etk.deposit("LP1", _W(5))
 
     expected_balance = _W(2000) - _W("600")
     with etk.thru_policy_pool():
@@ -627,8 +636,8 @@ def test_getset_etk_parameters_tweaks(tenv):
     if tenv.kind != "ethereum":
         return
     etk = tenv.etoken_class(
-        name="eUSD1WEEK", max_utilization_rate=_R("0.9"),
-        liquidity_requirement=_R(1), pool_loan_interest_rate=_R("0.02")
+        name="eUSD1WEEK", max_utilization_rate=_W("0.9"),
+        pool_loan_interest_rate=_W("0.02")
     )
     with etk.as_("owner"):
         etk.grant_role("LEVEL2_ROLE", "L2_USER")
@@ -636,23 +645,28 @@ def test_getset_etk_parameters_tweaks(tenv):
 
     # Verifies hard-coded validations
     test_validations = [
-        ("liquidity_requirement", _R("0.7")),  # [0.8, 1.3]
-        ("liquidity_requirement", _R("1.4")),  # [0.8, 1.3]
-        ("max_utilization_rate", _R(1.01)),  # <= [0.5, 1]
-        ("max_utilization_rate", _R(0.3)),  # <= [0.5, 1]
-        ("pool_loan_interest_rate", _R("0.6")),  # <=50%
+        ("liquidity_requirement", _W("0.7")),  # [0.8, 1.3]
+        ("liquidity_requirement", _W("1.4")),  # [0.8, 1.3]
+        ("min_utilization_rate", _W(1.01)),  # <= [0, 1]
+        ("max_utilization_rate", _W(1.01)),  # <= [0.5, 1]
+        ("max_utilization_rate", _W(0.3)),  # <= [0.5, 1]
+        ("pool_loan_interest_rate", _W("0.6")),  # <=50%
     ]
 
     for attr_name, attr_value in test_validations:
         with etk.as_("L2_USER"), pytest.raises(RevertError, match="Validation: "):
             setattr(etk, attr_name, attr_value)
 
+    with etk.as_("L2_USER"):
+        etk.min_utilization_rate = _W("0.5")
+
     # Verifies exceeded tweaks
     test_exceeded_tweaks = [
-        ("liquidity_requirement", _R("0.6")),  # 10% allowed - previous 100%
-        ("liquidity_requirement", _R("1.5")),  # 10% allowed - previous 100%
-        ("max_utilization_rate", _R("0.4")),  # 30% allowed - previous 90%
-        ("pool_loan_interest_rate", _R("0.04")),  # 30% allowed - previous 2%
+        ("liquidity_requirement", _W("0.6")),  # 10% allowed - previous 100%
+        ("liquidity_requirement", _W("1.5")),  # 10% allowed - previous 100%
+        ("max_utilization_rate", _W("0.4")),  # 30% allowed - previous 90%
+        ("min_utilization_rate", _W("0.1")),  # 30% allowed - previous 10%
+        ("pool_loan_interest_rate", _W("0.04")),  # 30% allowed - previous 2%
     ]
 
     for attr_name, attr_value in test_exceeded_tweaks:
@@ -661,9 +675,9 @@ def test_getset_etk_parameters_tweaks(tenv):
 
     # Verifies OK tweaks
     test_ok_tweaks = [
-        ("liquidity_requirement", _R("1.09")),  # 10% allowed - previous 100%
-        ("max_utilization_rate", _R("0.8")),  # 30% allowed - previous 90%
-        ("pool_loan_interest_rate", _R("0.025")),  # 30% allowed - previous 2%
+        ("liquidity_requirement", _W("1.09")),  # 10% allowed - previous 100%
+        ("max_utilization_rate", _W("0.8")),  # 30% allowed - previous 90%
+        ("pool_loan_interest_rate", _W("0.025")),  # 30% allowed - previous 2%
     ]
 
     for attr_name, attr_value in test_ok_tweaks:
@@ -673,9 +687,9 @@ def test_getset_etk_parameters_tweaks(tenv):
 
     # Verifies L2_USER changes
     test_ok_l2_changes = [
-        ("liquidity_requirement", _R("0.8")),  # previous 109%
-        ("max_utilization_rate", _R("0.51")),  # previous 80%
-        ("pool_loan_interest_rate", _R("0.07")),  # previous 2.5%
+        ("liquidity_requirement", _W("0.8")),  # previous 109%
+        ("max_utilization_rate", _W("0.51")),  # previous 80%
+        ("pool_loan_interest_rate", _W("0.07")),  # previous 2.5%
         ("accept_all_rms", False),  # previous True
         ("accept_all_rms", True),  # previous False
     ]
@@ -689,9 +703,9 @@ def test_getset_etk_parameters_tweaks(tenv):
 
     # New OK tweaks
     test_ok_tweaks = [
-        ("liquidity_requirement", _R("0.87")),  # previous 80%
-        ("max_utilization_rate", _R("0.6")),  # previous 51%
-        ("pool_loan_interest_rate", _R("0.06")),  # previous 7%
+        ("liquidity_requirement", _W("0.87")),  # previous 80%
+        ("max_utilization_rate", _W("0.6")),  # previous 51%
+        ("pool_loan_interest_rate", _W("0.06")),  # previous 7%
     ]
 
     for attr_name, attr_value in test_ok_tweaks:
@@ -701,9 +715,9 @@ def test_getset_etk_parameters_tweaks(tenv):
 
     # Other tweaks
     test_ok_tweaks = [
-        ("liquidity_requirement", _R("0.9")),  # previous 87%
-        ("max_utilization_rate", _R("0.66")),  # previous 60%
-        ("pool_loan_interest_rate", _R("0.05")),  # previous 6%
+        ("liquidity_requirement", _W("0.9")),  # previous 87%
+        ("max_utilization_rate", _W("0.66")),  # previous 60%
+        ("pool_loan_interest_rate", _W("0.05")),  # previous 6%
     ]
 
     for attr_name, attr_value in test_ok_tweaks:

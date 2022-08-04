@@ -259,14 +259,18 @@ class EToken(ReserveMixin, ERC20Token):
     scr = WadField(default=_W(0))
     scr_interest_rate = RayField(default=_R(0))
     token_interest_rate = RayField(default=_R(0))
-    liquidity_requirement = RayField(default=_R(1))
-    max_utilization_rate = RayField(default=_R(1))
+    liquidity_requirement = WadField(default=_W(1))
+    min_utilization_rate = WadField(default=_W(0))
+    max_utilization_rate = WadField(default=_W(1))
 
-    pool_loan_interest_rate = RayField(default=_R("0.05"))
+    pool_loan_interest_rate = WadField(default=_W("0.05"))
     pool_loans = DictField(ContractProxyField(), CompositeField(ScaledAmount), default={})
 
     set_attr_roles = {
-        "pool_loan_interest_rate": "LEVEL2_ROLE"
+        "min_utilization_rate": "LEVEL2_ROLE",
+        "max_utilization_rate": "LEVEL2_ROLE",
+        "liquidity_requirement": "LEVEL2_ROLE",
+        "pool_loan_interest_rate": "LEVEL2_ROLE",
     }
 
     def __init__(self, **kwargs):
@@ -328,13 +332,13 @@ class EToken(ReserveMixin, ERC20Token):
 
     @property
     def ocean_for_new_scr(self):
-        return max(self.total_supply() - self.scr, _W(0)) * self.max_utilization_rate.to_wad()
+        return max(self.total_supply() - self.scr, _W(0)) * self.max_utilization_rate
 
+    @external
     def lock_scr(self, scr_amount, interest_rate):
         self._update_current_scale()
-        total_supply = self.total_supply()
-        ocean = total_supply - self.scr
-        require(scr_amount <= ocean, "Not enought OCEAN to cover the SCR " + self.symbol)
+        require(scr_amount <= self.ocean_for_new_scr,
+                "Not enought OCEAN to cover the SCR " + self.symbol)
 
         if self.scr == 0:
             self.scr = scr_amount
@@ -348,6 +352,7 @@ class EToken(ReserveMixin, ERC20Token):
         self._update_token_interest_rate()
         self._check_balance()
 
+    @external
     def unlock_scr(self, scr_amount, interest_rate, adjustment):
         # Pre condition: the pool needs to transfer the amount of the interests
         require(scr_amount <= self.scr, "Want to unlock more SCR than locked")
@@ -380,6 +385,7 @@ class EToken(ReserveMixin, ERC20Token):
             "Cash balance under total_supply"
         )
 
+    @external
     def deposit(self, provider, amount):
         # Pre condition: the pool needs to transfer the amount
         require(
@@ -392,6 +398,8 @@ class EToken(ReserveMixin, ERC20Token):
         self.mint(provider, scaled_amount)
         self._update_token_interest_rate()
         self._check_balance()
+        require(self.utilization_rate >= self.min_utilization_rate,
+                "Deposit rejected - Utilization Rate < min")
         return self.balance_of(provider)
 
     def balance_of(self, provider):
@@ -413,11 +421,10 @@ class EToken(ReserveMixin, ERC20Token):
     @view
     def total_withdrawable(self):
         """Returns the amount that's available to be withdrawed"""
-        locked = (
-            self.scr.to_ray() * self.liquidity_requirement
-        ).to_wad()
+        locked = self.scr * self.liquidity_requirement
         return max(_W(0), self.total_supply() - locked)
 
+    @external
     def withdraw(self, provider, amount):
         self._update_current_scale()
         balance = self.balance_of(provider)
@@ -443,12 +450,14 @@ class EToken(ReserveMixin, ERC20Token):
             _W(0)
         )
 
+    @external
     def add_borrower(self, borrower):
         # Must be called ONLY by the PolicyPool
         borrower = ContractProxyField().adapt(borrower)
         if borrower not in self.pool_loans:
             self.pool_loans[borrower] = ScaledAmount()
 
+    @external
     def lend_to_pool(self, borrower, amount, receiver, from_ocean=True):
         amount_asked = amount
         amount = amount_asked
@@ -465,7 +474,7 @@ class EToken(ReserveMixin, ERC20Token):
                 return amount_asked
         loan = self.pool_loans.get(ContractProxyField().adapt(borrower), None)
         require(loan is not None, "Borrower not registered")
-        loan.add(amount, self.pool_loan_interest_rate)
+        loan.add(amount, self.pool_loan_interest_rate.to_ray())
         self._update_current_scale()
         self._discrete_earning(-amount)
         self._transfer_to(receiver, amount)
@@ -477,7 +486,7 @@ class EToken(ReserveMixin, ERC20Token):
         borrower = on_behalf_of
         loan = self.pool_loans.get(ContractProxyField().adapt(borrower), None)
         require(loan is not None, "Borrower not registered")
-        loan.sub(amount, self.pool_loan_interest_rate)
+        loan.sub(amount, self.pool_loan_interest_rate.to_ray())
         self._update_current_scale()
         self._discrete_earning(amount)
         self.currency.transfer_from(self, borrower, self, amount)
@@ -487,19 +496,25 @@ class EToken(ReserveMixin, ERC20Token):
         loan = self.pool_loans.get(ContractProxyField().adapt(borrower), None)
         if loan is None:
             return _W(0)
-        return loan.get_scaled_amount(self.pool_loan_interest_rate)
+        return loan.get_scaled_amount(self.pool_loan_interest_rate.to_ray())
 
+    @external
     def set_pool_loan_interest_rate(self, new_rate):
         for loan in self.pool_loans.values():
             loan.add(_W(0), self.pool_loan_interest_rate)
         self.pool_loan_interest_rate = new_rate
 
+    @external
     def set_max_utilization_rate(self, new_rate):
         self.max_utilization_rate = new_rate
 
+    @external
+    def set_min_utilization_rate(self, new_rate):
+        self.min_utilization_rate = new_rate
+
     @property
     def utilization_rate(self):
-        return (self.scr // self.total_supply()).to_ray()
+        return self.scr // self.total_supply()
 
 
 class PolicyNFT(ERC721Token):

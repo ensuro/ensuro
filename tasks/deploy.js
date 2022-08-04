@@ -188,16 +188,15 @@ async function deployPolicyPool({saveAddr, verify, configAddress, nftAddress, cu
 }
 
 async function deployEToken({
-      saveAddr, verify, poolAddress, etkName, etkSymbol, liquidityRequirement,
+      saveAddr, verify, poolAddress, etkName, etkSymbol,
       maxUtilizationRate, poolLoanInterestRate
   }, hre) {
   const EToken = await hre.ethers.getContractFactory("EToken");
   const etoken = await hre.upgrades.deployProxy(EToken, [
     etkName,
     etkSymbol,
-    _R(liquidityRequirement),
-    _R(maxUtilizationRate),
-    _R(poolLoanInterestRate),
+    _W(maxUtilizationRate),
+    _W(poolLoanInterestRate),
   ], {
     kind: 'uups',
     constructorArgs: [poolAddress],
@@ -529,8 +528,6 @@ function add_task() {
     .addParam("poolAddress", "PolicyPool Address", types.address)
     .addOptionalParam("etkName", "Name of EToken", "eUSD1WEEK", types.str)
     .addOptionalParam("etkSymbol", "Symbol of EToken", "eUSD1W", types.str)
-    .addOptionalParam("liquidityRequirement", "Liquidity Requirement (to allow withdraws)",
-                      1.0, types.float)
     .addOptionalParam("maxUtilizationRate", "Max Utilization Rate", 1.0, types.float)
     .addOptionalParam("poolLoanInterestRate", "Interest rate when pool takes money from eToken",
                       .05, types.float)

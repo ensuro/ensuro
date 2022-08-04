@@ -468,7 +468,7 @@ def test_walkthrough(tenv):
     assert USD.balance_of(eUSD1YEAR).equal(_W(1000 + 2000 + 2000 + 2 - 35))
 
     borrow_from_scr.assert_equal(eUSD1YEAR.get_pool_loan(premiums_account))
-    daily_pool_loan_interest = eUSD1YEAR.pool_loan_interest_rate // _R(365)
+    daily_pool_loan_interest = eUSD1YEAR.pool_loan_interest_rate // _W(365)
 
     for lp in ("LP1", "LP2", "LP3"):
         balance = eUSD1YEAR.balance_of(lp)
@@ -511,7 +511,7 @@ def test_walkthrough(tenv):
     shares_1y = _calculate_shares(balances_1y, eUSD1YEAR.total_supply())
 
     assert eUSD1YEAR.get_pool_loan(premiums_account).equal((
-        borrow_from_scr.to_ray() * (_R(1) + daily_pool_loan_interest * _R(2))
+        borrow_from_scr * (_W(1) + daily_pool_loan_interest * _W(2))
     ).to_wad())  # pool_loan is the same but with 2 days interest
     eUSD1YEAR.total_supply().assert_equal(_W("4967"))
 
@@ -560,7 +560,7 @@ def test_walkthrough(tenv):
         timecontrol.fast_forward(DAY)
         policies.append(new_p)
         assert eUSD1YEAR.get_pool_loan(premiums_account).equal(
-            pool_loan * (_R(1) + daily_pool_loan_interest).to_wad()
+            pool_loan * (_W(1) + daily_pool_loan_interest)
         )
 
     pool_loan = eUSD1YEAR.get_pool_loan(premiums_account)
@@ -580,7 +580,7 @@ def test_walkthrough(tenv):
 
         timecontrol.fast_forward(DAY)
         assert eUSD1YEAR.get_pool_loan(premiums_account).equal(
-            ((pool_loan - repay).to_ray() * (_R(1) + daily_pool_loan_interest)).to_wad()
+            (pool_loan - repay) * (_W(1) + daily_pool_loan_interest)
         )
         pool_loan = eUSD1YEAR.get_pool_loan(premiums_account)
 
