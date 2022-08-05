@@ -76,8 +76,8 @@ def test_getset_rm_parameters(tenv):
     )
     assert rm.name == "Roulette"
     assert rm.coll_ratio == _W(1)
-    rm.ensuro_pp_fee.assert_equal(_W(3/100))
-    rm.sr_roc.assert_equal(_W(2/100))
+    rm.ensuro_pp_fee.assert_equal(_W("0.03"))
+    rm.sr_roc.assert_equal(_W("0.02"))
     assert rm.max_payout_per_policy == _W(1000)
     assert rm.exposure_limit == _W(1000000)
     assert rm.wallet == "CASINO"
@@ -133,7 +133,7 @@ def test_getset_rm_parameters_tweaks(tenv):
         rm.coll_ratio = _W(1.1)
     with rm.as_("L3_USER"), pytest.raises(RevertError, match="Validation: collRatio must be <=1"):
         rm.coll_ratio = _W("1.02")
-    with rm.as_("L3_USER"), pytest.raises(RevertError, match="Tweak exceeded: tweaks only up to 10%"):
+    with rm.as_("L3_USER"), pytest.raises(RevertError, match="Tweak exceeded"):
         rm.coll_ratio = _W(0.7)
 
     with rm.as_("L2_USER"):
@@ -146,8 +146,8 @@ def test_getset_rm_parameters_tweaks(tenv):
     test_validations = [
         ("coll_ratio", _W(1.01)),  # <= 1
         ("jr_coll_ratio", _W(1.01)),  # <= 1
-        ("moc", _W("0.4")),  # [0.5, 2]
-        ("moc", _W("2.1")),  # [0.5, 2]
+        ("moc", _W("0.4")),  # [0.5, 4]
+        ("moc", _W("4.1")),  # [0.5, 4]
         ("ensuro_pp_fee", _W("1.01")),  # <= 1
         ("jr_roc", _W("1.01")),  # <= 1
         ("sr_roc", _W("1.01")),  # <= 1
@@ -169,7 +169,7 @@ def test_getset_rm_parameters_tweaks(tenv):
     ]
 
     for attr_name, attr_value in test_exceeded_tweaks:
-        with rm.as_("L3_USER"), pytest.raises(RevertError, match="Tweak exceeded: "):
+        with rm.as_("L3_USER"), pytest.raises(RevertError, match="Tweak exceeded"):
             setattr(rm, attr_name, attr_value)
 
     rm.grant_role("RM_PROVIDER_ROLE", "CASINO")  # Grant the role to the casino owner
@@ -183,8 +183,8 @@ def test_getset_rm_parameters_tweaks(tenv):
         ("sr_roc", _W("0.0215")),  # 10% allowed - previous 2%
         ("jr_roc", _W("0.095")),  # 10% allowed - previous 10%
         ("ensuro_pp_fee", _W("0.027")),  # 10% allowed - previous 3%
-        ("exposure_limit", _W(1.05e6)),  # 10% allowed - previous 1.05e6
-        ("max_payout_per_policy", _W(1299)),  # 30% allowed - previous 1000
+        ("exposure_limit", _W("1050000")),  # 10% allowed - previous 1.05e6
+        ("max_payout_per_policy", _W(1099)),  # 10% allowed - previous 1000
     ]
 
     for attr_name, attr_value in test_ok_tweaks:
@@ -199,7 +199,7 @@ def test_getset_rm_parameters_tweaks(tenv):
         ("sr_roc", _W("0.01")),
         ("jr_roc", _W("0.3")),
         ("ensuro_pp_fee", _W("0.01")),
-        ("exposure_limit", _W(3e6)),
+        ("exposure_limit", _W("3000000")),
         ("max_payout_per_policy", _W(500)),
     ]
 
@@ -222,16 +222,16 @@ def test_getset_rm_parameters_tweaks(tenv):
 
     # Decreases are OK
     with rm.as_("L3_USER"):
-        rm.exposure_limit = _W(2.9e6)
-        assert rm.exposure_limit == _W(2.9e6)
+        rm.exposure_limit = _W("2900000")
+        assert rm.exposure_limit == _W("2900000")
     with rm.as_("L2_USER"):
-        rm.exposure_limit = _W(2e6)
-        assert rm.exposure_limit == _W(2e6)
+        rm.exposure_limit = _W("2000000")
+        assert rm.exposure_limit == _W("2000000")
 
     # L1_USER can increase over 10% liquidity
     with rm.as_("L1_USER"):
-        rm.exposure_limit = _W(4e6)
-        assert rm.exposure_limit == _W(4e6)
+        rm.exposure_limit = _W("4000000")
+        assert rm.exposure_limit == _W("4000000")
 
 
 def test_avoid_repeated_tweaks(tenv):

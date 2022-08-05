@@ -29,10 +29,22 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
   IPremiumsAccount internal immutable _premiumsAccount;
 
   string private _name;
-  uint256 internal _params;
 
-  uint256 internal _maxPayoutPerPolicy; // in wad - Max payout per policy
-  uint256 internal _exposureLimit; // in wad - Max exposure (sum of payouts) to be allocated to this module
+  struct PackedParams {
+    uint16 moc; // Margin Of Conservativism - factor that multiplies lossProb - 4 decimals
+    uint16 jrCollRatio; // Collateralization Ratio to compute Junior solvency as % of payout - 4 decimals
+    uint16 collRatio; // Collateralization Ratio to compute solvency requirement as % of payout - 4 decimals
+    uint16 ensuroPpFee; // % of pure premium that will go for Ensuro treasury - 4 decimals
+    uint16 ensuroCocFee; // % of CoC that will go for Ensuro treasury - 4 decimals
+    uint16 jrRoc; // Return on Capital paid to Junior LPs - Annualized Percentage - 4 decimals
+    uint16 srRoc; // Return on Capital paid to Senior LPs - Annualized Percentage - 4 decimals
+    uint32 maxPayoutPerPolicy; // Max Payout per Policy - 2 decimals
+    uint32 exposureLimit; // Max exposure (sum of payouts) to be allocated to this module - 0 decimals
+    uint16 maxDuration; // Max policy duration (in hours)
+  }
+
+  PackedParams internal _params;
+
   uint256 internal _activeExposure; // in wad - Current exposure of active policies
 
   address internal _wallet; // Address of the RiskModule provider
@@ -92,16 +104,18 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     address wallet_
   ) internal initializer {
     _name = name_;
-    _setParam(Parameter.moc, WadRayMath.WAD);
-    // _setParam(Parameter.jrCollRatio, 0);
-    _setParam(Parameter.collRatio, collRatio_);
-    _setParam(Parameter.ensuroPpFee, ensuroPpFee_);
-    // _setParam(Parameter.ensuroCocFee, ensuroCocFee_);
-    // _setParam(Parameter.jrRoc, jrRoc_);
-    _setParam(Parameter.srRoc, srRoc_);
-
-    _maxPayoutPerPolicy = maxPayoutPerPolicy_;
-    _exposureLimit = exposureLimit_;
+    _params = PackedParams({
+      moc: 1e4,
+      jrCollRatio: 0,
+      collRatio: _wadTo4(collRatio_),
+      ensuroPpFee: _wadTo4(ensuroPpFee_),
+      ensuroCocFee: 0,
+      jrRoc: 0,
+      srRoc: _wadTo4(srRoc_),
+      maxPayoutPerPolicy: _wadToX(2, maxPayoutPerPolicy_),
+      exposureLimit: _wadToX(0, exposureLimit_),
+      maxDuration: 24 * 365 // default = 1 year
+    });
     _activeExposure = 0;
     _wallet = wallet_;
     _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
@@ -110,22 +124,17 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
 
   // runs validation on RiskModule parameters
   function _validateParameters() internal view override {
-    Params memory p = params();
-
-    require(p.jrCollRatio <= WadRayMath.WAD, "Validation: jrCollRatio must be <=1");
-    require(p.collRatio <= WadRayMath.WAD && p.collRatio > 0, "Validation: collRatio must be <=1");
-    require(p.collRatio >= p.jrCollRatio, "Validation: collRatio >= jrCollRatio");
-    require(
-      p.moc <= (2 * WadRayMath.WAD) && p.moc >= (WadRayMath.WAD / 2),
-      "Validation: moc must be [0.5, 2]"
-    );
-    require(p.ensuroPpFee <= WadRayMath.WAD, "Validation: ensuroPpFee must be <= 1");
-    require(p.ensuroCocFee <= WadRayMath.WAD, "Validation: ensuroCocFee must be <= 1");
-    require(p.srRoc <= WadRayMath.WAD, "Validation: srRoc must be <= 1 (100%)");
-    require(p.jrRoc <= WadRayMath.WAD, "Validation: jrRoc must be <= 1 (100%)");
+    require(_params.jrCollRatio <= 1e4, "Validation: jrCollRatio must be <=1");
+    require(_params.collRatio <= 1e4 && _params.collRatio > 0, "Validation: collRatio must be <=1");
+    require(_params.collRatio >= _params.jrCollRatio, "Validation: collRatio >= jrCollRatio");
+    require(_params.moc <= 4e4 && _params.moc >= 5e3, "Validation: moc must be [0.5, 4]");
+    require(_params.ensuroPpFee <= 1e4, "Validation: ensuroPpFee must be <= 1");
+    require(_params.ensuroCocFee <= 1e4, "Validation: ensuroCocFee must be <= 1");
+    require(_params.srRoc <= 1e4, "Validation: srRoc must be <= 1 (100%)");
+    require(_params.jrRoc <= 1e4, "Validation: jrRoc must be <= 1 (100%)");
     // _maxPayoutPerPolicy no limits
     require(
-      _exposureLimit >= _activeExposure,
+      exposureLimit() >= _activeExposure,
       "Validation: exposureLimit can't be less than actual activeExposure"
     );
     require(_wallet != address(0), "Validation: Wallet can't be zero address");
@@ -135,12 +144,38 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     return _name;
   }
 
+  // solhint-disable-next-line func-name-mixedcase
+  function _4toWad(uint16 value) internal pure returns (uint256) {
+    // 4 decimals to Wad (18 decimals)
+    return uint256(value) * 1e14;
+  }
+
+  // solhint-disable-next-line func-name-mixedcase
+  function _XtoWad(uint8 decimals, uint32 value) internal pure returns (uint256) {
+    // X decimals to Wad (18 decimals)
+    return uint256(value) * 10**(18 - decimals);
+  }
+
+  function _wadTo4(uint256 value) internal pure returns (uint16) {
+    // Wad to 4 decimals
+    return uint16(value / 1e14);
+  }
+
+  function _wadToX(uint8 decimals, uint256 value) internal pure returns (uint32) {
+    // Wad to X decimals
+    return uint32(value / 10**(18 - decimals));
+  }
+
   function maxPayoutPerPolicy() public view override returns (uint256) {
-    return _maxPayoutPerPolicy;
+    return _XtoWad(2, _params.maxPayoutPerPolicy);
   }
 
   function exposureLimit() public view override returns (uint256) {
-    return _exposureLimit;
+    return _XtoWad(0, _params.exposureLimit);
+  }
+
+  function maxDuration() public view override returns (uint256) {
+    return _params.maxDuration;
   }
 
   function activeExposure() public view override returns (uint256) {
@@ -151,29 +186,58 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     return _wallet;
   }
 
-  function _getParam(Parameter param) internal view returns (uint256) {
-    uint256 startBitPosition = 32 * uint256(param);
-    uint256 mask = type(uint256).max ^ (0xFFFFFFFF << startBitPosition);
-    return ((_params & ~mask) >> startBitPosition) * 10**9; // 9+9 digits -> 18 digits (wad)
-  }
-
-  function _setParam(Parameter param, uint256 newValue) internal {
-    uint256 startBitPosition = 32 * uint256(param);
-    uint256 mask = type(uint256).max ^ (0xFFFFFFFF << startBitPosition);
-    require(newValue / 10**9 < 10**32, "Parameter overflow"); // TODO: keep?
-    _params = (_params & mask) | (~mask & ((newValue / 10**9) << startBitPosition));
-  }
-
   function setParam(Parameter param, uint256 newValue)
     external
-    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
+    onlyPoolRole3(LEVEL1_ROLE, LEVEL2_ROLE, LEVEL3_ROLE)
   {
-    bool tweak = !hasPoolRole(LEVEL2_ROLE);
-    require(
-      !tweak || _isTweakRay(_getParam(param), newValue, 1e26),
-      "Tweak exceeded: tweaks only up to 10%"
-    );
-    _setParam(param, newValue);
+    bool tweak = !hasPoolRole(LEVEL2_ROLE) && !hasPoolRole(LEVEL1_ROLE);
+    if (param == Parameter.moc) {
+      require(!tweak || _isTweakWad(_4toWad(_params.moc), newValue, 1e17), "Tweak exceeded");
+      _params.moc = _wadTo4(newValue);
+    } else if (param == Parameter.jrCollRatio) {
+      require(
+        !tweak || _isTweakWad(_4toWad(_params.jrCollRatio), newValue, 1e17),
+        "Tweak exceeded"
+      );
+      _params.jrCollRatio = _wadTo4(newValue);
+    } else if (param == Parameter.collRatio) {
+      require(!tweak || _isTweakWad(_4toWad(_params.collRatio), newValue, 1e17), "Tweak exceeded");
+      _params.collRatio = _wadTo4(newValue);
+    } else if (param == Parameter.ensuroPpFee) {
+      require(
+        !tweak || _isTweakWad(_4toWad(_params.ensuroPpFee), newValue, 1e17),
+        "Tweak exceeded"
+      );
+      _params.ensuroPpFee = _wadTo4(newValue);
+    } else if (param == Parameter.ensuroCocFee) {
+      require(
+        !tweak || _isTweakWad(_4toWad(_params.ensuroCocFee), newValue, 1e17),
+        "Tweak exceeded"
+      );
+      _params.ensuroCocFee = _wadTo4(newValue);
+    } else if (param == Parameter.jrRoc) {
+      require(!tweak || _isTweakWad(_4toWad(_params.jrRoc), newValue, 1e17), "Tweak exceeded");
+      _params.jrRoc = _wadTo4(newValue);
+    } else if (param == Parameter.srRoc) {
+      require(!tweak || _isTweakWad(_4toWad(_params.srRoc), newValue, 1e17), "Tweak exceeded");
+      _params.srRoc = _wadTo4(newValue);
+    } else if (param == Parameter.maxPayoutPerPolicy) {
+      require(!tweak || _isTweakWad(maxPayoutPerPolicy(), newValue, 1e17), "Tweak exceeded");
+      _params.maxPayoutPerPolicy = _wadToX(2, newValue);
+    } else if (param == Parameter.exposureLimit) {
+      require(newValue >= _activeExposure, "Can't set exposureLimit less than active exposure");
+      require(!tweak || _isTweakWad(exposureLimit(), newValue, 1e17), "Tweak exceeded");
+      require(
+        newValue <= exposureLimit() ||
+          hasPoolRole(LEVEL1_ROLE) ||
+          _policyPool.totalETokenSupply().wadMul(1e17) > newValue,
+        "Tweak exceeded: Increase, >=10% of the total liquidity, requires LEVEL1_ROLE"
+      );
+      _params.exposureLimit = _wadToX(0, newValue);
+    } else if (param == Parameter.maxDuration) {
+      require(!tweak, "Tweak exceeded");
+      _params.maxDuration = uint16(newValue);
+    }
     _parameterChanged(
       IPolicyPoolConfig.GovernanceActions(
         uint256(IPolicyPoolConfig.GovernanceActions.setMoc) + uint256(param)
@@ -184,55 +248,16 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
   }
 
   function params() public view override returns (Params memory ret) {
-    ret.moc = _getParam(Parameter.moc);
-    ret.jrCollRatio = _getParam(Parameter.jrCollRatio);
-    ret.collRatio = _getParam(Parameter.collRatio);
-    ret.ensuroPpFee = _getParam(Parameter.ensuroPpFee);
-    ret.ensuroCocFee = _getParam(Parameter.ensuroCocFee);
-    ret.jrRoc = _getParam(Parameter.jrRoc);
-    ret.srRoc = _getParam(Parameter.srRoc);
-    return ret;
-  }
-
-  function setMaxPayoutPerPolicy(uint256 newMaxPayoutPerPolicy)
-    external
-    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-  {
-    bool tweak = !hasPoolRole(LEVEL2_ROLE);
-    require(
-      !tweak || _isTweakWad(_maxPayoutPerPolicy, newMaxPayoutPerPolicy, 3e17),
-      "Tweak exceeded: maxPayoutPerPolicy tweaks only up to 30%"
-    );
-    _maxPayoutPerPolicy = newMaxPayoutPerPolicy;
-    _parameterChanged(
-      IPolicyPoolConfig.GovernanceActions.setMaxPayoutPerPolicy,
-      newMaxPayoutPerPolicy,
-      tweak
-    );
-  }
-
-  function setExposureLimit(uint256 newExposureLimit)
-    external
-    onlyPoolRole3(LEVEL1_ROLE, LEVEL2_ROLE, LEVEL3_ROLE)
-  {
-    bool tweak = !hasPoolRole(LEVEL2_ROLE) && !hasPoolRole(LEVEL1_ROLE);
-    require(
-      !tweak || _isTweakWad(_exposureLimit, newExposureLimit, 1e17),
-      "Tweak exceeded: exposureLimit tweaks only up to 10%"
-    );
-    require(
-      newExposureLimit <= _exposureLimit ||
-        hasPoolRole(LEVEL1_ROLE) ||
-        _policyPool.totalETokenSupply().wadMul(1e17) > newExposureLimit,
-      "Tweak exceeded: Increase, >=10% of the total liquidity, requires LEVEL1_ROLE"
-    );
-    require(newExposureLimit >= _activeExposure, "Can't set SCR less than current SCR allocation");
-    _exposureLimit = newExposureLimit;
-    _parameterChanged(
-      IPolicyPoolConfig.GovernanceActions.setExposureLimit,
-      newExposureLimit,
-      tweak
-    );
+    return
+      Params({
+        moc: _4toWad(_params.moc),
+        jrCollRatio: _4toWad(_params.jrCollRatio),
+        collRatio: _4toWad(_params.collRatio),
+        ensuroPpFee: _4toWad(_params.ensuroPpFee),
+        ensuroCocFee: _4toWad(_params.ensuroCocFee),
+        jrRoc: _4toWad(_params.jrRoc),
+        srRoc: _4toWad(_params.srRoc)
+      });
   }
 
   function setWallet(address wallet_) external onlyRole(RM_PROVIDER_ROLE) {
@@ -283,22 +308,25 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     uint96 internalId
   ) internal whenNotPaused returns (Policy.PolicyData memory) {
     require(premium < payout, "Premium must be less than payout");
-    require(expiration > uint40(block.timestamp), "Expiration must be in the future");
+    uint40 now_ = uint40(block.timestamp);
+    require(expiration > now_, "Expiration must be in the future");
+    require((expiration - now_) / 3600 < _params.maxDuration, "");
     require(customer != address(0), "Customer can't be zero address");
     require(
       _policyPool.currency().allowance(customer, address(_policyPool)) >= premium,
       "You must allow ENSURO to transfer the premium"
     );
-    require(payout <= _maxPayoutPerPolicy, "RiskModule: Payout is more than maximum per policy");
+    require(payout <= maxPayoutPerPolicy(), "RiskModule: Payout is more than maximum per policy");
     Policy.PolicyData memory policy = Policy.initialize(
       this,
+      params(),
       premium,
       payout,
       lossProb,
       expiration
     );
     _activeExposure += policy.payout;
-    require(_activeExposure <= _exposureLimit, "RiskModule: SCR limit exceeded");
+    require(_activeExposure <= exposureLimit(), "RiskModule: SCR limit exceeded");
     uint256 policyId = _policyPool.newPolicy(policy, customer, internalId);
     policy.id = policyId;
     return policy;

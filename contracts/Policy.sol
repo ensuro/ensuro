@@ -42,6 +42,7 @@ library Policy {
   ///                newPolicy.partnerCommission + newPolicy.ensuroCommission);
   function initialize(
     IRiskModule riskModule,
+    IRiskModule.Params memory rmParams,
     uint256 premium,
     uint256 payout,
     uint256 lossProb,
@@ -49,7 +50,6 @@ library Policy {
   ) internal view returns (PolicyData memory newPolicy) {
     require(premium <= payout, "Premium cannot be more than payout");
     PolicyData memory policy;
-    IRiskModule.Params memory rmParams = riskModule.params();
 
     policy.riskModule = riskModule;
     policy.premium = premium;

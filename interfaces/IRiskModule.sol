@@ -16,7 +16,10 @@ interface IRiskModule {
     ensuroPpFee,
     ensuroCocFee,
     jrRoc,
-    srRoc
+    srRoc,
+    maxPayoutPerPolicy,
+    exposureLimit,
+    maxDuration
   }
 
   struct Params {
@@ -36,6 +39,8 @@ interface IRiskModule {
   function maxPayoutPerPolicy() external view returns (uint256);
 
   function exposureLimit() external view returns (uint256);
+
+  function maxDuration() external view returns (uint256);
 
   function activeExposure() external view returns (uint256);
 

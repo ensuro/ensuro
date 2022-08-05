@@ -20,6 +20,10 @@ interface IPolicyPoolConfig is IAccessControlUpgradeable {
     setLPWhitelist, // Changes PolicyPool Liquidity Providers Whitelist
     addRiskModule,
     removeRiskModule,
+    cfgFiller1, // Reserve space for future PolicyPoolConfig actions
+    cfgFiller2, // Reserve space for future PolicyPoolConfig actions
+    cfgFiller3, // Reserve space for future PolicyPoolConfig actions
+    cfgFiller4, // Reserve space for future PolicyPoolConfig actions
     // RiskModule Governance Actions
     setMoc,
     setJrCollRatio,
@@ -28,17 +32,23 @@ interface IPolicyPoolConfig is IAccessControlUpgradeable {
     setEnsuroCocFee,
     setJrRoc,
     setSrRoc,
-    setParam7,
     setMaxPayoutPerPolicy,
     setExposureLimit,
-    setSharedCoverageMinPercentage,
-    setSharedCoveragePercentage,
+    setMaxDuration,
     setWallet,
+    rmFiller1, // Reserve space for future RM actions
+    rmFiller2, // Reserve space for future RM actions
+    rmFiller3, // Reserve space for future RM actions
+    rmFiller4, // Reserve space for future RM actions
     // EToken Governance Actions
     setLiquidityRequirement,
     setMinUtilizationRate,
     setMaxUtilizationRate,
     setPoolLoanInterestRate,
+    etkFiller1, // Reserve space for future EToken actions
+    etkFiller2, // Reserve space for future EToken actions
+    etkFiller3, // Reserve space for future EToken actions
+    etkFiller4, // Reserve space for future EToken actions
     // AssetManager Governance Actions
     setLiquidityMin,
     setLiquidityMiddle,
@@ -47,8 +57,6 @@ interface IPolicyPoolConfig is IAccessControlUpgradeable {
     setClaimRewardsMin,
     setReinvestRewardsMin,
     setMaxSlippage,
-    setAcceptAllRMs, // EToken Governance action  - value == boolean
-    setAcceptException, // EToken Governance action - value == (!isException << 255)|address
     setExchange, // Changes exchange helper contract
     setPriceOracle, // Changes exchange's PriceOracle
     setSwapRouter, // Changes exchange's SwapRouter

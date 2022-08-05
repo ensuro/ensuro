@@ -315,6 +315,7 @@ def xtest_not_accept_rm(tenv):
     total_scr.assert_equal(policy.sr_scr)
 
 
+@set_precision(Wad, 3)
 def test_walkthrough(tenv):
     YAML_SETUP = """
     risk_modules:
@@ -391,7 +392,7 @@ def test_walkthrough(tenv):
 
     assert policy.sr_scr.equal(_W(35 + 1/37))
     assert policy.pure_premium.equal(_W(36) * _W(1/37))
-    policy.sr_interest_rate.assert_equal(_W("0.0402336860"), decimals=6)
+    policy.sr_interest_rate.assert_equal(_W("0.0402336860"), decimals=4)
 
     assert eUSD1YEAR.balance_of('LP1').equal(_W("1000"))
     # After one day, balance increases because of accrued interest of policy
@@ -778,6 +779,7 @@ def test_policy_holder_contract(tenv):
     rm.resolve_policy(policy.id, False)
 
 
+@set_precision(Wad, 2)
 def test_partial_payout(tenv):
     YAML_SETUP = """
     risk_modules:

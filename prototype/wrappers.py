@@ -314,8 +314,21 @@ class RiskModule(ETHWrapper):
     jr_roc = property(GetParam(5), SetParam(5))
     sr_roc = property(GetParam(6), SetParam(6))
 
-    max_payout_per_policy = MethodAdapter((), "amount", is_property=True)
-    exposure_limit = MethodAdapter((), "amount", is_property=True)
+    class GetProperty:
+        def __init__(self, methodName):
+            self.methodName = methodName
+
+        def __call__(self, wrapper):
+            return getattr(wrapper, self.methodName)
+
+    max_payout_per_policy_ = MethodAdapter((), "amount", is_property=True)
+    exposure_limit_ = MethodAdapter((), "amount", is_property=True)
+    max_duration_ = MethodAdapter((), "int", is_property=True)
+
+    max_payout_per_policy = property(GetProperty("max_payout_per_policy_"), SetParam(7))
+    exposure_limit = property(GetProperty("exposure_limit_"), SetParam(8))
+    max_duration = property(GetProperty("max_duration_"), SetParam(9))
+
     active_exposure = MethodAdapter((), "amount", is_property=True)
     wallet = MethodAdapter((), "address", is_property=True)
     get_minimum_premium = MethodAdapter(
