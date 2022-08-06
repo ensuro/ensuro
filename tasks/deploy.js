@@ -225,7 +225,6 @@ async function deployPremiumsAccount({saveAddr, verify, poolAddress, juniorEtk, 
   await logContractCreated(hre, `PremiumsAccount`, pa.address);
   saveAddress(saveAddr, pa.address);
   if (verify)
-  if (verify)
     await verifyContract(hre, pa, true, [poolAddress]);
   return pa.address;
 }
