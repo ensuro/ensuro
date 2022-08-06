@@ -21,8 +21,8 @@ jobs:
       - run: npx hardhat size-contracts
       - run: npm run solhint
       - run: brownie test -v --gas
-      - run: ./deploySmokeTest.sh
-      - run: ./deploySmokeTest-fork.sh
+      - run: scripts/deploySmokeTest.sh
+      - run: scripts/deploySmokeTest-fork.sh
         env:
           ALCHEMY_URL: ${{ secrets.ALCHEMY_URL }}
       - run: npx hardhat test
