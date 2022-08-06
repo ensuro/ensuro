@@ -118,7 +118,7 @@ def test_deposit_withdraw(tenv):
     with etk.thru_policy_pool():
         assert etk.deposit("LP1", _W(1000)) == _W(1000)
     assert etk.balance_of("LP1") == _W(1000)
-    assert etk.ocean == _W(1000)
+    assert etk.funds_available == _W(1000)
     tenv.time_control.fast_forward(DAY)
     assert etk.balance_of("LP1") == _W(1000)  # unchanged because SCR=0
     with etk.thru_policy_pool():
@@ -142,7 +142,7 @@ def test_lock_unlock_scr(tenv):
     with etk.thru_policy_pool():
         assert etk.deposit("LP1", _W(1000)) == _W(1000)
         etk.add_borrower(pa)
-    assert etk.ocean == _W(1000)
+    assert etk.funds_available == _W(1000)
     policy = tenv.policy_factory(sr_scr=_W(600), sr_interest_rate=_W("0.0365"),
                                  expiration=tenv.time_control.now + WEEK)
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
@@ -151,7 +151,7 @@ def test_lock_unlock_scr(tenv):
     assert etk.scr == _W(600)
     assert etk.scr_interest_rate == _R("0.0365")
     etk.token_interest_rate.assert_equal(_R("0.0365") * _R(600/1000))
-    etk.ocean.assert_equal(_W(400))
+    etk.funds_available.assert_equal(_W(400))
 
     tenv.time_control.fast_forward(2 * DAY)
     etk.balance_of("LP1").assert_equal(_W(1000) + _W("0.06") * _W(2))
@@ -244,7 +244,7 @@ def test_multiple_policies(tenv):
         etk.lock_scr(policy1.sr_scr, policy1.sr_interest_rate)
     assert etk.scr_interest_rate == _R("0.0365")
     assert etk.scr == _W(300)
-    etk.ocean.assert_equal(_W(700))
+    etk.funds_available.assert_equal(_W(700))
 
     tenv.time_control.fast_forward(2 * DAY)
     etk.balance_of("LP1").assert_equal(_W(1000) + _W("0.03") * _W(2))
@@ -260,7 +260,7 @@ def test_multiple_policies(tenv):
     )
 
     assert etk.scr == _W(900)
-    etk.ocean.assert_equal(_W(100) + _W("0.03") * _W(2))
+    etk.funds_available.assert_equal(_W(100) + _W("0.03") * _W(2))
 
     tenv.time_control.fast_forward(3 * DAY)
 
@@ -299,14 +299,14 @@ def test_multiple_lps(tenv):
     with etk.thru_policy_pool():
         assert etk.deposit("LP1", _W(1000)) == _W(1000)
         etk.add_borrower(pa)
-    assert etk.ocean == _W(1000)
+    assert etk.funds_available == _W(1000)
     policy = tenv.policy_factory(sr_scr=_W(600), sr_interest_rate=_W("0.0365"),
                                  expiration=tenv.time_control.now + WEEK)
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
     with etk.thru(pa):
         etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
     assert etk.scr == _W(600)
-    assert etk.ocean == _W(400)
+    assert etk.funds_available == _W(400)
 
     tenv.time_control.fast_forward(2 * DAY)
     etk.balance_of("LP1").assert_equal(_W(1000) + _W("0.06") * _W(2))
@@ -344,14 +344,14 @@ def test_lock_scr_validation(tenv):
         etk.add_borrower(pa)
 
     with etk.thru(pa):
-        with pytest.raises(RevertError, match="Not enought OCEAN to cover the SCR"):
+        with pytest.raises(RevertError, match="Not enought funds available to cover the SCR"):
             etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
     with etk.thru_policy_pool():
         tenv.currency.transfer(tenv.currency.owner, etk, _W(200))
         etk.deposit("LP1", _W(200))
 
     with etk.thru(pa):
-        with pytest.raises(RevertError, match="Not enought OCEAN to cover the SCR"):
+        with pytest.raises(RevertError, match="Not enought funds available to cover the SCR"):
             etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
 
 
@@ -380,15 +380,15 @@ def test_pool_loan(tenv):
     with etk.thru(pa):
         etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
     tenv.time_control.fast_forward(7 * DAY)
-    etk.ocean.assert_equal(_W(400) + _W(600 * 0.04 * 7 / 365))
+    etk.funds_available.assert_equal(_W(400) + _W(600 * 0.04 * 7 / 365))
 
-    ocean = etk.ocean
+    funds_available = etk.funds_available
 
-    assert ocean < _W(401)
+    assert funds_available < _W(401)
 
     with etk.thru(pa):
-        not_lended = etk.lend_to_pool(pa, _W(401), "CUST1")  # Can't lend more than ocean
-        not_lended.assert_equal(_W(401) - ocean)
+        not_lended = etk.lend_to_pool(pa, _W(401), "CUST1")
+        not_lended.assert_equal(_W(401) - funds_available)
         lended = _W(401) - not_lended
         assert tenv.currency.balance_of("CUST1") == lended
         assert etk.get_pool_loan(pa) == lended
@@ -507,21 +507,21 @@ def test_max_utilization_rate(tenv):
     with etk.thru_policy_pool():
         etk.deposit("LP1", _W(1000))
         etk.add_borrower(pa)
-    assert etk.ocean == _W(1000)
-    assert etk.ocean_for_new_scr == _W(900)
+    assert etk.funds_available == _W(1000)
+    assert etk.funds_available_to_lock == _W(900)
 
     with etk.as_("owner"):
         etk.grant_role("LEVEL2_ROLE", "SETRATE")
     with etk.as_("SETRATE"):
         etk.set_max_utilization_rate(_W("0.95"))
 
-    assert etk.ocean_for_new_scr == _W(950)
+    assert etk.funds_available_to_lock == _W(950)
 
     policy = tenv.policy_factory(sr_scr=_W(1100), sr_interest_rate=_W("0.04"),
                                  expiration=tenv.time_control.now + WEEK)
 
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
-    with pytest.raises(RevertError, match="Not enought OCEAN to cover the SCR"):
+    with pytest.raises(RevertError, match="Not enought funds available to cover the SCR"):
         with etk.thru(pa):
             etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
 
@@ -558,7 +558,7 @@ def test_unlock_scr(tenv):
     with etk.thru_policy_pool():
         assert etk.deposit("LP1", _W(1000)) == _W(1000)
         etk.add_borrower(pa)
-    assert etk.ocean == _W(1000)
+    assert etk.funds_available == _W(1000)
     policy = tenv.policy_factory(sr_scr=_W(600), sr_interest_rate=_W("0.0365"),
                                  expiration=tenv.time_control.now + WEEK)
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
@@ -567,7 +567,7 @@ def test_unlock_scr(tenv):
     assert etk.scr == _W(600)
     assert etk.scr_interest_rate == _R("0.0365")
     etk.token_interest_rate.assert_equal(_R("0.0365") * _R(600/1000))
-    etk.ocean.assert_equal(_W(400))
+    etk.funds_available.assert_equal(_W(400))
 
     tenv.time_control.fast_forward(2 * DAY)
     etk.balance_of("LP1").assert_equal(_W(1000) + _W("0.06") * _W(2))
@@ -585,7 +585,7 @@ def test_unlock_scr_with_adjustment(tenv):
     with etk.thru_policy_pool():
         assert etk.deposit("LP1", _W(1000)) == _W(1000)
         etk.add_borrower(pa)
-    assert etk.ocean == _W(1000)
+    assert etk.funds_available == _W(1000)
     policy = tenv.policy_factory(sr_scr=_W(600), sr_interest_rate=_W("0.0365"),
                                  expiration=tenv.time_control.now + WEEK)
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
@@ -594,7 +594,7 @@ def test_unlock_scr_with_adjustment(tenv):
     assert etk.scr == _W(600)
     assert etk.scr_interest_rate == _R("0.0365")
     etk.token_interest_rate.assert_equal(_R("0.0365") * _R(600/1000))
-    etk.ocean.assert_equal(_W(400))
+    etk.funds_available.assert_equal(_W(400))
 
     tenv.time_control.fast_forward(2 * DAY)
     etk.balance_of("LP1").assert_equal(_W(1000) + _W("0.06") * _W(2))
@@ -612,7 +612,7 @@ def test_unlock_scr_with_neg_adjustment(tenv):
     with etk.thru_policy_pool():
         assert etk.deposit("LP1", _W(1000)) == _W(1000)
         etk.add_borrower(pa)
-    assert etk.ocean == _W(1000)
+    assert etk.funds_available == _W(1000)
     policy = tenv.policy_factory(sr_scr=_W(600), sr_interest_rate=_W("0.0365"),
                                  expiration=tenv.time_control.now + WEEK)
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
@@ -621,7 +621,7 @@ def test_unlock_scr_with_neg_adjustment(tenv):
     assert etk.scr == _W(600)
     assert etk.scr_interest_rate == _R("0.0365")
     etk.token_interest_rate.assert_equal(_R("0.0365") * _R(600/1000))
-    etk.ocean.assert_equal(_W(400))
+    etk.funds_available.assert_equal(_W(400))
 
     tenv.time_control.fast_forward(2 * DAY)
     etk.balance_of("LP1").assert_equal(_W(1000) + _W("0.06") * _W(2))

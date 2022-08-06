@@ -327,18 +327,18 @@ class EToken(ReserveMixin, ERC20Token):
         return (super().total_supply().to_ray() * self._calculate_current_scale()).to_wad()
 
     @property
-    def ocean(self):
+    def funds_available(self):
         return max(self.total_supply() - self.scr, _W(0))
 
     @property
-    def ocean_for_new_scr(self):
+    def funds_available_to_lock(self):
         return max(self.total_supply() - self.scr, _W(0)) * self.max_utilization_rate
 
     @external
     def lock_scr(self, scr_amount, interest_rate):
         self._update_current_scale()
-        require(scr_amount <= self.ocean_for_new_scr,
-                "Not enought OCEAN to cover the SCR " + self.symbol)
+        require(scr_amount <= self.funds_available_to_lock,
+                "Not enought funds available to cover the SCR " + self.symbol)
 
         if self.scr == 0:
             self.scr = scr_amount
@@ -458,13 +458,13 @@ class EToken(ReserveMixin, ERC20Token):
             self.pool_loans[borrower] = ScaledAmount()
 
     @external
-    def lend_to_pool(self, borrower, amount, receiver, from_ocean=True):
+    def lend_to_pool(self, borrower, amount, receiver, from_available=True):
         amount_asked = amount
         amount = amount_asked
 
-        if from_ocean:
-            if amount > self.ocean:
-                amount = self.ocean
+        if from_available:
+            if amount > self.funds_available:
+                amount = self.funds_available
         else:
             if amount > self.total_supply():
                 amount = self.total_supply()
@@ -628,17 +628,22 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
 
         borrow_from_scr = Wad(0)
         if policy.pure_premium >= payout:
-            self._store_pure_premium_won(policy.pure_premium - payout)
-            # TODO: repay debt?
+            pure_premium_won = policy.pure_premium - payout
+            if self.senior_etk:
+                pure_premium_won = self._repay_loan(pure_premium_won, self.senior_etk)
+            if self.junior_etk:
+                pure_premium_won = self._repay_loan(pure_premium_won, self.junior_etk)
+            self._store_pure_premium_won(pure_premium_won)
+            self._unlock_scr(policy)
         else:
             borrow_from_scr = self._pay_from_pool(payout - policy.pure_premium)
+            self._unlock_scr(policy)
             if borrow_from_scr > 0:
                 if policy.jr_scr:
                     amount_left = self.junior_etk.lend_to_pool(
                         self,
                         borrow_from_scr, customer,
-                        from_ocean=False  # TODO: check if remove from_ocean option or
-                                          # Have from_scr / from_total_supply
+                        False  # Consume Junior Pool until exhausted
                     )
                 else:
                     amount_left = borrow_from_scr
@@ -646,14 +651,12 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
                     amount_left = self.senior_etk.lend_to_pool(
                         self,
                         amount_left, customer,
-                        from_ocean=False  # TODO: check if remove from_ocean option or
-                                          # Have from_scr / from_total_supply
+                        True  # Consume Senior Pool only up to SCR
                     )
                     require(amount_left <= self.NEGLIGIBLE_AMOUNT,
                             "Don't know where to take the rest of the money")
 
         self._transfer_to(customer, payout - borrow_from_scr)
-        self._unlock_scr(policy)
         return borrow_from_scr
 
     def _repay_loan(self, pure_premium_won, etk):
@@ -679,7 +682,8 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
             self.borrowed_active_pp -= to_cover
             pure_premium_won -= to_cover
 
-        pure_premium_won = self._repay_loan(pure_premium_won, self.senior_etk)
+        if self.senior_etk:
+            pure_premium_won = self._repay_loan(pure_premium_won, self.senior_etk)
         if self.junior_etk:
             pure_premium_won = self._repay_loan(pure_premium_won, self.junior_etk)
 

@@ -12,10 +12,6 @@ interface IEToken is IERC20 {
   event SCRLocked(uint256 interestRate, uint256 value);
   event SCRUnlocked(uint256 interestRate, uint256 value);
 
-  function ocean() external view returns (uint256);
-
-  function oceanForNewScr() external view returns (uint256);
-
   function scr() external view returns (uint256);
 
   function lockScr(uint256 scrAmount, uint256 policyInterestRate) external;
@@ -37,7 +33,7 @@ interface IEToken is IERC20 {
   function lendToPool(
     uint256 amount,
     address receiver,
-    bool fromOcean
+    bool fromAvailable
   ) external returns (uint256);
 
   function repayPoolLoan(uint256 amount, address onBehalfOf) external;

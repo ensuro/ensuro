@@ -196,25 +196,32 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   ) external override onlyPolicyPool {
     _activePurePremiums -= policy.purePremium;
     if (policy.purePremium >= payout) {
-      _storePurePremiumWon(policy.purePremium - payout);
-      // TODO: repay debt?
+      uint256 purePremiumWon = policy.purePremium - payout;
+      if (address(_seniorEtk) != address(0))
+        purePremiumWon = _repayLoan(purePremiumWon, _seniorEtk);
+      if (address(_juniorEtk) != address(0))
+        purePremiumWon = _repayLoan(purePremiumWon, _juniorEtk);
+      _storePurePremiumWon(purePremiumWon);
+      _unlockScr(policy);
       _transferTo(policyOwner, payout);
     } else {
       uint256 borrowFromScr = _payFromPool(payout - policy.purePremium);
+      _unlockScr(policy);
       if (borrowFromScr > 0) {
         uint256 left;
         if (policy.jrScr > 0) {
+          // Consume Junior Pool until exhausted
           left = _juniorEtk.lendToPool(borrowFromScr, policyOwner, false);
         } else {
           left = borrowFromScr;
         }
         if (left > NEGLIGIBLE_AMOUNT) {
-          left = _seniorEtk.lendToPool(left, policyOwner, false); // TODO: fromOcean=false? or remove parameter
+          // Consume Senior Pool only up to SCR
+          left = _seniorEtk.lendToPool(left, policyOwner, true);
           require(left <= NEGLIGIBLE_AMOUNT, "Don't know where to take the rest of the money");
         }
       }
       _transferTo(policyOwner, payout - borrowFromScr);
-      _unlockScr(policy);
     }
   }
 

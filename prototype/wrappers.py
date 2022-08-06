@@ -114,8 +114,8 @@ class EToken(IERC20):
             self.contract = prev_contract
 
     policy_pool = MethodAdapter((), "address", is_property=True)
-    ocean = MethodAdapter((), "amount", is_property=True)
-    ocean_for_new_scr = MethodAdapter((), "amount", is_property=True)
+    funds_available = MethodAdapter((), "amount", is_property=True)
+    funds_available_to_lock = MethodAdapter((), "amount", is_property=True)
     scr = MethodAdapter((), "amount", is_property=True)
     scr_interest_rate = MethodAdapter((), "ray", is_property=True)
     token_interest_rate = MethodAdapter((), "ray", is_property=True)
@@ -155,11 +155,12 @@ class EToken(IERC20):
             return Wad(0)
 
     lend_to_pool_ = MethodAdapter(
-        (("borrower", "msg.sender"), ("amount", "amount"), ("receiver", "address"), ("from_ocean", "bool"))
+        (("borrower", "msg.sender"), ("amount", "amount"),
+         ("receiver", "address"), ("from_available", "bool"))
     )
 
-    def lend_to_pool(self, borrower, amount, receiver, from_ocean=True):
-        receipt = self.lend_to_pool_(borrower, amount, receiver, from_ocean)
+    def lend_to_pool(self, borrower, amount, receiver, from_available=True):
+        receipt = self.lend_to_pool_(borrower, amount, receiver, from_available)
         if "PoolLoan" in receipt.events:
             evt = receipt.events["PoolLoan"]
             return Wad(evt["amountAsked"]) - Wad(evt["value"])

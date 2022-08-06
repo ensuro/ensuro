@@ -446,13 +446,13 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     else return _scaleFactor;
   }
 
-  function ocean() public view virtual override returns (uint256) {
+  function fundsAvailable() public view returns (uint256) {
     uint256 totalSupply_ = this.totalSupply();
     if (totalSupply_ > _scr) return totalSupply_ - _scr;
     else return 0;
   }
 
-  function oceanForNewScr() public view virtual override returns (uint256) {
+  function fundsAvailableToLock() public view returns (uint256) {
     uint256 totalSupply_ = this.totalSupply();
     if (totalSupply_ > _scr) return (totalSupply_ - _scr).wadMul(maxUtilizationRate());
     else return 0;
@@ -487,8 +487,10 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   }
 
   function lockScr(uint256 scrAmount, uint256 policyInterestRate) external override onlyBorrower {
-    require(scrAmount <= this.oceanForNewScr(), "Not enought OCEAN to cover the SCR");
-    // TODO: shouldn't be this.oceanForNewScr ???
+    require(
+      scrAmount <= this.fundsAvailableToLock(),
+      "Not enought funds available to cover the SCR"
+    );
     _updateCurrentScale();
     if (_scr == 0) {
       _scr = scrAmount;
@@ -595,11 +597,11 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   function lendToPool(
     uint256 amount,
     address receiver,
-    bool fromOcean
+    bool fromAvailable
   ) external override onlyBorrower whenNotPaused returns (uint256) {
     uint256 amountAsked = amount;
-    if (fromOcean && amount > ocean()) amount = ocean();
-    if (!fromOcean && amount > totalSupply()) amount = totalSupply();
+    if (fromAvailable && amount > fundsAvailable()) amount = fundsAvailable();
+    if (!fromAvailable && amount > totalSupply()) amount = totalSupply();
     if (amount > _maxNegativeAdjustment()) {
       amount = _maxNegativeAdjustment();
       if (amount == 0) return amountAsked;
