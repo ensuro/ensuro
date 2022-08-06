@@ -112,8 +112,8 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
       ensuroCocFee: 0,
       jrRoc: 0,
       srRoc: _wadTo4(srRoc_),
-      maxPayoutPerPolicy: _wadToX(2, maxPayoutPerPolicy_),
-      exposureLimit: _wadToX(0, exposureLimit_),
+      maxPayoutPerPolicy: _amountToX(2, maxPayoutPerPolicy_),
+      exposureLimit: _amountToX(0, exposureLimit_),
       maxDuration: 24 * 365 // default = 1 year
     });
     _activeExposure = 0;
@@ -137,6 +137,10 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
       exposureLimit() >= _activeExposure,
       "Validation: exposureLimit can't be less than actual activeExposure"
     );
+    require(
+      _params.exposureLimit > 0 && _params.maxPayoutPerPolicy > 0,
+      "Exposure and MaxPayout must be >0"
+    );
     require(_wallet != address(0), "Validation: Wallet can't be zero address");
   }
 
@@ -150,28 +154,28 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     return uint256(value) * 1e14;
   }
 
-  // solhint-disable-next-line func-name-mixedcase
-  function _XtoWad(uint8 decimals, uint32 value) internal pure returns (uint256) {
-    // X decimals to Wad (18 decimals)
-    return uint256(value) * 10**(18 - decimals);
-  }
-
   function _wadTo4(uint256 value) internal pure returns (uint16) {
     // Wad to 4 decimals
     return uint16(value / 1e14);
   }
 
-  function _wadToX(uint8 decimals, uint256 value) internal pure returns (uint32) {
+  // solhint-disable-next-line func-name-mixedcase
+  function _XtoAmount(uint8 decimals, uint32 value) internal view returns (uint256) {
+    // X decimals to Wad (18 decimals)
+    return uint256(value) * 10**(currency().decimals() - decimals);
+  }
+
+  function _amountToX(uint8 decimals, uint256 value) internal view returns (uint32) {
     // Wad to X decimals
-    return uint32(value / 10**(18 - decimals));
+    return uint32(value / 10**(currency().decimals() - decimals));
   }
 
   function maxPayoutPerPolicy() public view override returns (uint256) {
-    return _XtoWad(2, _params.maxPayoutPerPolicy);
+    return _XtoAmount(2, _params.maxPayoutPerPolicy);
   }
 
   function exposureLimit() public view override returns (uint256) {
-    return _XtoWad(0, _params.exposureLimit);
+    return _XtoAmount(0, _params.exposureLimit);
   }
 
   function maxDuration() public view override returns (uint256) {
@@ -223,7 +227,7 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
       _params.srRoc = _wadTo4(newValue);
     } else if (param == Parameter.maxPayoutPerPolicy) {
       require(!tweak || _isTweakWad(maxPayoutPerPolicy(), newValue, 1e17), "Tweak exceeded");
-      _params.maxPayoutPerPolicy = _wadToX(2, newValue);
+      _params.maxPayoutPerPolicy = _amountToX(2, newValue);
     } else if (param == Parameter.exposureLimit) {
       require(newValue >= _activeExposure, "Can't set exposureLimit less than active exposure");
       require(!tweak || _isTweakWad(exposureLimit(), newValue, 1e17), "Tweak exceeded");
@@ -233,7 +237,7 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
           _policyPool.totalETokenSupply().wadMul(1e17) > newValue,
         "Tweak exceeded: Increase, >=10% of the total liquidity, requires LEVEL1_ROLE"
       );
-      _params.exposureLimit = _wadToX(0, newValue);
+      _params.exposureLimit = _amountToX(0, newValue);
     } else if (param == Parameter.maxDuration) {
       require(!tweak, "Tweak exceeded");
       _params.maxDuration = uint16(newValue);
