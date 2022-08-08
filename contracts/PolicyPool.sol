@@ -45,7 +45,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   bytes32 public constant LEVEL2_ROLE = keccak256("LEVEL2_ROLE");
   bytes32 public constant LEVEL3_ROLE = keccak256("LEVEL3_ROLE");
 
-  uint256 public constant MAX_ETOKENS = 10;
+  uint256 public constant MAX_ETOKENS = 10; // TODO: this limit still makes sense?
 
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IPolicyPoolConfig internal immutable _config;
@@ -162,8 +162,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   }
 
   function addPremiumsAccount(IPremiumsAccount pa) external onlyRole(LEVEL1_ROLE) {
-    // require(_eTokens.length() < MAX_ETOKENS, "Maximum number of ETokens reached");
-    // require(!_eTokens.contains(eToken), "eToken already in the pool");
+    // TODO: limit in # of PremiumsAccount?
+    // TODO: keep PremiumsAccount status?
     require(address(pa) != address(0), "PremiumsAccount can't be zero");
     require(
       IPolicyPoolComponent(address(pa)).policyPool() == this,
@@ -233,6 +233,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     _currency.safeTransferFrom(customer, _config.treasury(), policy.ensuroCommission);
     if (policy.partnerCommission > 0 && customer != rm.wallet())
       _currency.safeTransferFrom(customer, rm.wallet(), policy.partnerCommission);
+    // TODO: this code does up to 5 ERC20 transfers. How we can avoid this? Delayed transfers?
 
     emit NewPolicy(rm, policy);
     return policy.id;

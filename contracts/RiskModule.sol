@@ -314,7 +314,7 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     require(premium < payout, "Premium must be less than payout");
     uint40 now_ = uint40(block.timestamp);
     require(expiration > now_, "Expiration must be in the future");
-    require((expiration - now_) / 3600 < _params.maxDuration, "");
+    require(((expiration - now_) / 3600) < _params.maxDuration, "Policy exceeds max duration");
     require(customer != address(0), "Customer can't be zero address");
     require(
       _policyPool.currency().allowance(customer, address(_policyPool)) >= premium,
