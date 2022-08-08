@@ -44,7 +44,7 @@ library TimeScaled {
     uint256 timeDifference = uint256(now_ - scaledAmount.lastUpdate);
     return
       uint256(scaledAmount.scale).rayMul(
-        ((interestRate * timeDifference) / SECONDS_PER_YEAR) + WadRayMath.ray()
+        ((interestRate.wadToRay() * timeDifference) / SECONDS_PER_YEAR) + WadRayMath.ray()
       );
   }
 

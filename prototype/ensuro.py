@@ -229,7 +229,7 @@ class ScaledAmount(Model):
         if seconds <= 0:
             return self.scale
         increment = (
-            Ray.from_value(seconds) * interest_rate //
+            Ray.from_value(seconds) * interest_rate.to_ray() //
             Ray.from_value(SECONDS_IN_YEAR)
         )
         return self.scale * (Ray(RAY) + increment)
@@ -257,8 +257,8 @@ class EToken(ReserveMixin, ERC20Token):
     last_scale_update = IntField(default=time_control.now)
 
     scr = WadField(default=_W(0))
-    scr_interest_rate = RayField(default=_R(0))
-    token_interest_rate = RayField(default=_R(0))
+    scr_interest_rate = WadField(default=_W(0))
+    token_interest_rate = WadField(default=_W(0))
     liquidity_requirement = WadField(default=_W(1))
     min_utilization_rate = WadField(default=_W(0))
     max_utilization_rate = WadField(default=_W(1))
@@ -288,18 +288,18 @@ class EToken(ReserveMixin, ERC20Token):
 
     def _update_token_interest_rate(self):
         """Should be called each time total_supply changes or scr changes"""
-        total_supply = self.total_supply().to_ray()
+        total_supply = self.total_supply()
         if total_supply:
-            self.token_interest_rate = self.scr_interest_rate * self.scr.to_ray() // total_supply
+            self.token_interest_rate = self.scr_interest_rate * self.scr // total_supply
         else:
-            self.token_interest_rate = Ray(0)
+            self.token_interest_rate = Wad(0)
 
     def _calculate_current_scale(self):
         seconds = time_control.now - self.last_scale_update
         if seconds <= 0:
             return self.scale_factor
         increment = (
-            Ray.from_value(seconds) * self.token_interest_rate //
+            Ray.from_value(seconds) * self.token_interest_rate.to_ray() //
             Ray.from_value(SECONDS_IN_YEAR)
         )
         return self.scale_factor * (Ray(RAY) + increment)
@@ -342,13 +342,13 @@ class EToken(ReserveMixin, ERC20Token):
 
         if self.scr == 0:
             self.scr = scr_amount
-            self.scr_interest_rate = interest_rate.to_ray()
+            self.scr_interest_rate = interest_rate
         else:
             orig_scr = self.scr
             self.scr += scr_amount
             self.scr_interest_rate = (
-                self.scr_interest_rate * orig_scr.to_ray() + (interest_rate * scr_amount).to_ray()
-            ) // self.scr.to_ray()  # weighted average of previous and policy interest_rate
+                self.scr_interest_rate * orig_scr + interest_rate * scr_amount
+            ) // self.scr  # weighted average of previous and policy interest_rate
         self._update_token_interest_rate()
         self._check_balance()
 
@@ -360,13 +360,13 @@ class EToken(ReserveMixin, ERC20Token):
 
         if self.scr == scr_amount:
             self.scr = Wad(0)
-            self.scr_interest_rate = Ray(0)
+            self.scr_interest_rate = Wad(0)
         else:
             orig_scr = self.scr
             self.scr -= scr_amount
             self.scr_interest_rate = (
-                self.scr_interest_rate * orig_scr.to_ray() - (interest_rate * scr_amount).to_ray()
-            ) // self.scr.to_ray()  # revert weighted average
+                self.scr_interest_rate * orig_scr - interest_rate * scr_amount
+            ) // self.scr  # revert weighted average
         self._discrete_earning(adjustment)
         self._check_balance()
 
@@ -474,7 +474,7 @@ class EToken(ReserveMixin, ERC20Token):
                 return amount_asked
         loan = self.pool_loans.get(ContractProxyField().adapt(borrower), None)
         require(loan is not None, "Borrower not registered")
-        loan.add(amount, self.pool_loan_interest_rate.to_ray())
+        loan.add(amount, self.pool_loan_interest_rate)
         self._update_current_scale()
         self._discrete_earning(-amount)
         self._transfer_to(receiver, amount)
@@ -486,7 +486,7 @@ class EToken(ReserveMixin, ERC20Token):
         borrower = on_behalf_of
         loan = self.pool_loans.get(ContractProxyField().adapt(borrower), None)
         require(loan is not None, "Borrower not registered")
-        loan.sub(amount, self.pool_loan_interest_rate.to_ray())
+        loan.sub(amount, self.pool_loan_interest_rate)
         self._update_current_scale()
         self._discrete_earning(amount)
         self.currency.transfer_from(self, borrower, self, amount)
@@ -496,7 +496,7 @@ class EToken(ReserveMixin, ERC20Token):
         loan = self.pool_loans.get(ContractProxyField().adapt(borrower), None)
         if loan is None:
             return _W(0)
-        return loan.get_scaled_amount(self.pool_loan_interest_rate.to_ray())
+        return loan.get_scaled_amount(self.pool_loan_interest_rate)
 
     @external
     def set_pool_loan_interest_rate(self, new_rate):

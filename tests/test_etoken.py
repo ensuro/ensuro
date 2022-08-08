@@ -149,8 +149,8 @@ def test_lock_unlock_scr(tenv):
     with etk.thru(pa):
         etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
     assert etk.scr == _W(600)
-    assert etk.scr_interest_rate == _R("0.0365")
-    etk.token_interest_rate.assert_equal(_R("0.0365") * _R(600/1000))
+    assert etk.scr_interest_rate == _W("0.0365")
+    etk.token_interest_rate.assert_equal(_W("0.0365") * _W(600/1000))
     etk.funds_available.assert_equal(_W(400))
 
     tenv.time_control.fast_forward(2 * DAY)
@@ -242,7 +242,7 @@ def test_multiple_policies(tenv):
     tenv.currency.transfer(tenv.currency.owner, etk, policy1.sr_coc)
     with etk.thru(pa):
         etk.lock_scr(policy1.sr_scr, policy1.sr_interest_rate)
-    assert etk.scr_interest_rate == _R("0.0365")
+    assert etk.scr_interest_rate == _W("0.0365")
     assert etk.scr == _W(300)
     etk.funds_available.assert_equal(_W(700))
 
@@ -256,7 +256,7 @@ def test_multiple_policies(tenv):
     with etk.thru(pa):
         etk.lock_scr(policy2.sr_scr, policy2.sr_interest_rate)
     etk.scr_interest_rate.assert_equal(
-        (_R("0.0365") * _R(300) + _R("0.0730") * _R(600)) // _R(900)
+        (_W("0.0365") * _W(300) + _W("0.0730") * _W(600)) // _W(900)
     )
 
     assert etk.scr == _W(900)
@@ -279,7 +279,7 @@ def test_multiple_policies(tenv):
         etk.unlock_scr(policy3.sr_scr, policy3.sr_interest_rate, _W(0))
         etk.unlock_scr(policy1.sr_scr, policy1.sr_interest_rate, _W(0))
 
-    etk.scr_interest_rate.assert_equal(_R("0.0730"))
+    etk.scr_interest_rate.assert_equal(_W("0.0730"))
     assert etk.scr == policy2.sr_scr
     etk.balance_of("LP1").assert_equal(expected_balance)
     with etk.thru(pa), pytest.raises(RevertError, match="SCR"):
@@ -565,8 +565,8 @@ def test_unlock_scr(tenv):
     with etk.thru(pa):
         etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
     assert etk.scr == _W(600)
-    assert etk.scr_interest_rate == _R("0.0365")
-    etk.token_interest_rate.assert_equal(_R("0.0365") * _R(600/1000))
+    assert etk.scr_interest_rate == _W("0.0365")
+    etk.token_interest_rate.assert_equal(_W("0.0365") * _W(600/1000))
     etk.funds_available.assert_equal(_W(400))
 
     tenv.time_control.fast_forward(2 * DAY)
@@ -592,8 +592,8 @@ def test_unlock_scr_with_adjustment(tenv):
     with etk.thru(pa):
         etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
     assert etk.scr == _W(600)
-    assert etk.scr_interest_rate == _R("0.0365")
-    etk.token_interest_rate.assert_equal(_R("0.0365") * _R(600/1000))
+    assert etk.scr_interest_rate == _W("0.0365")
+    etk.token_interest_rate.assert_equal(_W("0.0365") * _W(600/1000))
     etk.funds_available.assert_equal(_W(400))
 
     tenv.time_control.fast_forward(2 * DAY)
@@ -619,8 +619,8 @@ def test_unlock_scr_with_neg_adjustment(tenv):
     with etk.thru(pa):
         etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
     assert etk.scr == _W(600)
-    assert etk.scr_interest_rate == _R("0.0365")
-    etk.token_interest_rate.assert_equal(_R("0.0365") * _R(600/1000))
+    assert etk.scr_interest_rate == _W("0.0365")
+    etk.token_interest_rate.assert_equal(_W("0.0365") * _W(600/1000))
     etk.funds_available.assert_equal(_W(400))
 
     tenv.time_control.fast_forward(2 * DAY)
