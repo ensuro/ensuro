@@ -189,17 +189,14 @@ async function deployPolicyPool({saveAddr, verify, configAddress, nftAddress, cu
 
 async function deployEToken({
       saveAddr, verify, poolAddress, etkName, etkSymbol,
-      expirationPeriod, liquidityRequirement,
       maxUtilizationRate, poolLoanInterestRate
   }, hre) {
   const EToken = await hre.ethers.getContractFactory("EToken");
   const etoken = await hre.upgrades.deployProxy(EToken, [
     etkName,
     etkSymbol,
-    expirationPeriod * 24 * 3600,
-    _R(liquidityRequirement),
-    _R(maxUtilizationRate),
-    _R(poolLoanInterestRate),
+    _W(maxUtilizationRate),
+    _W(poolLoanInterestRate),
   ], {
     kind: 'uups',
     constructorArgs: [poolAddress],
@@ -216,12 +213,12 @@ async function deployEToken({
   return etoken.address;
 }
 
-async function deployPremiumsAccount({saveAddr, verify, poolAddress}, hre) {
+async function deployPremiumsAccount({saveAddr, verify, poolAddress, juniorEtk, seniorEtk}, hre) {
   const PremiumsAccount = await hre.ethers.getContractFactory("PremiumsAccount");
   const pa = await hre.upgrades.deployProxy(PremiumsAccount, [], {
     kind: 'uups',
     unsafeAllow: ["delegatecall"],
-    constructorArgs: [poolAddress],
+    constructorArgs: [poolAddress, juniorEtk, seniorEtk],
   });
 
   await pa.deployed();
@@ -243,9 +240,9 @@ async function deployRiskModule({
   const RiskModule = await hre.ethers.getContractFactory(rmClass);
   const rm = await hre.upgrades.deployProxy(RiskModule, [
     rmName,
-    _R(collRatio),
-    _R(ensuroPpFee),
-    _R(roc),
+    _W(collRatio),
+    _W(ensuroPpFee),
+    _W(roc),
     _A(maxPayoutPerPolicy),
     _A(exposureLimit),
     wallet,
@@ -263,12 +260,12 @@ async function deployRiskModule({
     await verifyContract(hre, rm, true, [poolAddress, ...extraConstructorArgs]);
 
   if (moc != 1.0) {
-    moc = _R(moc);
-    await rm.setMoc(moc);
+    moc = _W(moc);
+    await rm.setParam(0, moc);
   }
   if (ensuroCocFee != 0) {
-    ensuroCocFee = _R(ensuroCocFee);
-    await rm.setEnsuroCocFee(ensuroCocFee);
+    ensuroCocFee = _W(ensuroCocFee);
+    await rm.setParam(4, ensuroCocFee);
   }
   const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
   const policyPoolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await policyPool.config());
@@ -393,7 +390,7 @@ async function trustfullPolicy({rmAddress, payout, premium, lossProb, expiration
   premium = _A(premium);
 
   await currency.approve(policyPool.address, premium);
-  lossProb = _R(lossProb);
+  lossProb = _W(lossProb);
   if (expiration === undefined) {
     expiration = 3600;
   }
@@ -432,7 +429,7 @@ async function flightDelayPolicy({rmAddress, flight, departure, expectedArrival,
   premium = _A(premium);
 
   await currency.approve(policyPool.address, premium);
-  lossProb = _R(lossProb);
+  lossProb = _W(lossProb);
   payout = _A(payout);
 
   const tx = await rm.newPolicy(
@@ -530,9 +527,6 @@ function add_task() {
     .addParam("poolAddress", "PolicyPool Address", types.address)
     .addOptionalParam("etkName", "Name of EToken", "eUSD1WEEK", types.str)
     .addOptionalParam("etkSymbol", "Symbol of EToken", "eUSD1W", types.str)
-    .addOptionalParam("expirationPeriod", "Expiration period (in days)", 7, types.int)
-    .addOptionalParam("liquidityRequirement", "Liquidity Requirement (to allow withdraws)",
-                      1.0, types.float)
     .addOptionalParam("maxUtilizationRate", "Max Utilization Rate", 1.0, types.float)
     .addOptionalParam("poolLoanInterestRate", "Interest rate when pool takes money from eToken",
                       .05, types.float)
@@ -542,6 +536,8 @@ function add_task() {
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addOptionalParam("saveAddr", "Save created contract address", "PA", types.str)
     .addParam("poolAddress", "PolicyPool Address", types.address)
+    .addParam("juniorEtk", "Junior EToken Address", types.address)
+    .addParam("seniorEtk", "Senior EToken Address", types.address)
     .setAction(deployPremiumsAccount);
 
   task("deploy:riskModule", "Deploys a RiskModule and adds it to the pool")

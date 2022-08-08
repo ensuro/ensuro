@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {IEToken} from "./IEToken.sol";
+import {Policy} from "../contracts/Policy.sol";
 
 /**
  * @title IPremiumsAccount interface
@@ -9,14 +10,17 @@ import {IEToken} from "./IEToken.sol";
  * @author Ensuro
  */
 interface IPremiumsAccount {
-  function newPolicy(uint256 purePremium) external;
+  function policyCreated(Policy.PolicyData memory policy) external;
 
   function policyResolvedWithPayout(
     address policyOwner,
-    uint256 purePremium,
-    uint256 payout,
-    IEToken etk
+    Policy.PolicyData memory policy,
+    uint256 payout
   ) external;
 
-  function policyExpired(uint256 purePremium, IEToken etk) external;
+  function policyExpired(Policy.PolicyData memory policy) external;
+
+  function seniorEtk() external view returns (IEToken);
+
+  function juniorEtk() external view returns (IEToken);
 }

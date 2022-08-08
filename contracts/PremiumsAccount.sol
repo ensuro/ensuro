@@ -6,6 +6,7 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {WadRayMath} from "./WadRayMath.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
+import {IEToken} from "../interfaces/IEToken.sol";
 import {Reserve} from "./Reserve.sol";
 import {IPremiumsAccount} from "../interfaces/IPremiumsAccount.sol";
 import {Policy} from "./Policy.sol";
@@ -25,6 +26,11 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
 
   bytes32 public constant WITHDRAW_WON_PREMIUMS_ROLE = keccak256("WITHDRAW_WON_PREMIUMS_ROLE");
 
+  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+  IEToken internal immutable _juniorEtk;
+  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+  IEToken internal immutable _seniorEtk;
+
   uint256 internal _activePurePremiums; // sum of pure-premiums of active policies - In Wad
   uint256 internal _borrowedActivePP; // amount borrowed from active pure premiums to pay defaulted policies
   uint256 internal _wonPurePremiums; // amount of pure premiums won from non-defaulted policies
@@ -37,7 +43,14 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
-  constructor(IPolicyPool policyPool_) Reserve(policyPool_) {}
+  constructor(
+    IPolicyPool policyPool_,
+    IEToken juniorEtk_,
+    IEToken seniorEtk_
+  ) Reserve(policyPool_) {
+    _juniorEtk = juniorEtk_;
+    _seniorEtk = seniorEtk_;
+  }
 
   /**
    * @dev Public initialize Initializes the PremiumsAccount
@@ -62,6 +75,10 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     _borrowedActivePP = 0;
     _wonPurePremiums = 0;
     */
+    if (address(_juniorEtk) != address(0))
+      currency().approve(address(_juniorEtk), type(uint256).max);
+    if (address(_seniorEtk) != address(0))
+      currency().approve(address(_seniorEtk), type(uint256).max);
     _validateParameters();
   }
 
@@ -82,6 +99,14 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
 
   function borrowedActivePP() external view returns (uint256) {
     return _borrowedActivePP;
+  }
+
+  function seniorEtk() external view override returns (IEToken) {
+    return _seniorEtk;
+  }
+
+  function juniorEtk() external view override returns (IEToken) {
+    return _juniorEtk;
   }
 
   function _payFromPool(uint256 toPay) internal returns (uint256) {
@@ -158,34 +183,78 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     return amount;
   }
 
-  function newPolicy(uint256 purePremium) external override onlyPolicyPool {
-    _activePurePremiums += purePremium;
+  function policyCreated(Policy.PolicyData memory policy) external override onlyPolicyPool {
+    _activePurePremiums += policy.purePremium;
+    if (policy.jrScr > 0) _juniorEtk.lockScr(policy.jrScr, policy.jrInterestRate());
+    if (policy.srScr > 0) _seniorEtk.lockScr(policy.srScr, policy.srInterestRate());
   }
 
   function policyResolvedWithPayout(
     address policyOwner,
-    uint256 purePremium,
-    uint256 payout,
-    IEToken etk
+    Policy.PolicyData memory policy,
+    uint256 payout
   ) external override onlyPolicyPool {
-    _activePurePremiums -= purePremium;
-    if (purePremium >= payout) {
-      _storePurePremiumWon(purePremium - payout);
-      // TODO: repay debt?
+    _activePurePremiums -= policy.purePremium;
+    if (policy.purePremium >= payout) {
+      uint256 purePremiumWon = policy.purePremium - payout;
+      if (address(_seniorEtk) != address(0))
+        purePremiumWon = _repayLoan(purePremiumWon, _seniorEtk);
+      if (address(_juniorEtk) != address(0))
+        purePremiumWon = _repayLoan(purePremiumWon, _juniorEtk);
+      _storePurePremiumWon(purePremiumWon);
+      _unlockScr(policy);
       _transferTo(policyOwner, payout);
     } else {
-      uint256 borrowFromScr = _payFromPool(payout - purePremium);
+      uint256 borrowFromScr = _payFromPool(payout - policy.purePremium);
+      _unlockScr(policy);
       if (borrowFromScr > 0) {
-        uint256 left = etk.lendToPool(borrowFromScr, policyOwner, true);
-        require(left <= NEGLIGIBLE_AMOUNT, "Don't know where to take the rest of the money");
+        uint256 left;
+        if (policy.jrScr > 0) {
+          // Consume Junior Pool until exhausted
+          left = _juniorEtk.lendToPool(borrowFromScr, policyOwner, false);
+        } else {
+          left = borrowFromScr;
+        }
+        if (left > NEGLIGIBLE_AMOUNT) {
+          // Consume Senior Pool only up to SCR
+          left = _seniorEtk.lendToPool(left, policyOwner, true);
+          require(left <= NEGLIGIBLE_AMOUNT, "Don't know where to take the rest of the money");
+        }
       }
       _transferTo(policyOwner, payout - borrowFromScr);
     }
   }
 
-  function policyExpired(uint256 purePremium, IEToken etk) external override onlyPolicyPool {
+  function _unlockScr(Policy.PolicyData memory policy) internal {
+    if (policy.jrScr > 0) {
+      _juniorEtk.unlockScr(
+        policy.jrScr,
+        policy.jrInterestRate(),
+        int256(policy.jrCoc) - int256(policy.jrAccruedInterest())
+      );
+    }
+    if (policy.srScr > 0) {
+      _seniorEtk.unlockScr(
+        policy.srScr,
+        policy.srInterestRate(),
+        int256(policy.srCoc) - int256(policy.srAccruedInterest())
+      );
+    }
+  }
+
+  function _repayLoan(uint256 purePremiumWon, IEToken etk) internal returns (uint256) {
+    if (purePremiumWon < NEGLIGIBLE_AMOUNT) return purePremiumWon;
+    uint256 borrowedFromEtk = etk.getPoolLoan(address(this));
+    if (borrowedFromEtk == 0) return purePremiumWon;
+    uint256 repayAmount = borrowedFromEtk > purePremiumWon ? purePremiumWon : borrowedFromEtk;
+    // TODO: make sure the balance is available or deinvest
+    etk.repayPoolLoan(repayAmount, address(this));
+    return purePremiumWon - repayAmount;
+  }
+
+  function policyExpired(Policy.PolicyData memory policy) external override onlyPolicyPool {
     uint256 aux;
-    uint256 purePremiumWon = purePremium;
+    uint256 purePremiumWon = policy.purePremium;
     _activePurePremiums -= purePremiumWon;
 
     // If negative _activePurePremiums, repay this first (shouldn't happen)
@@ -195,15 +264,11 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
       purePremiumWon -= aux;
     }
 
-    // Then repay loan
-    uint256 borrowedFromEtk = etk.getPoolLoan();
-    if (borrowedFromEtk > 0) {
-      uint256 etkRepayment = Math.min(purePremiumWon, borrowedFromEtk);
-      _transferTo(address(etk), etkRepayment);
-      etk.repayPoolLoan(etkRepayment);
-      purePremiumWon -= etkRepayment;
-    }
+    if (address(_seniorEtk) != address(0)) purePremiumWon = _repayLoan(purePremiumWon, _seniorEtk);
+    if (address(_juniorEtk) != address(0)) purePremiumWon = _repayLoan(purePremiumWon, _juniorEtk);
+
     // Finally store purePremiumWon
     _storePurePremiumWon(purePremiumWon);
+    _unlockScr(policy);
   }
 }

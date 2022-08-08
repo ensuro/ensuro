@@ -94,18 +94,7 @@ def load_config(yaml_config=None, module=None):
     pool = module.PolicyPool(**pool_params)
     pool.config.grant_role("LEVEL1_ROLE", pool_config.owner)
 
-    for premiums_account_dict in config.get("premiums_accounts", []):
-        premiums_account_dict["pool"] = pool
-        default_premiums_account = module.PremiumsAccount(**premiums_account_dict)
-    else:
-        default_premiums_account = module.PremiumsAccount(pool=pool)
-
-    for risk_module_dict in config.get("risk_modules", []):
-        risk_module_dict["policy_pool"] = pool
-        if "premiums_account" not in risk_module_dict:
-            risk_module_dict["premiums_account"] = default_premiums_account
-        rm = module.TrustfulRiskModule(**risk_module_dict)
-        pool.config.add_risk_module(rm)
+    default_etk = None
 
     for etoken_dict in config.get("etokens", []):
         if "symbol" not in etoken_dict:
@@ -114,5 +103,30 @@ def load_config(yaml_config=None, module=None):
         etoken_dict["owner"] = pool_config.owner
         etk = module.EToken(**etoken_dict)
         pool.add_etoken(etk)
+        if default_etk is None:
+            default_etk = etk
+
+    default_premiums_account = None
+    for premiums_account_dict in config.get("premiums_accounts", []):
+        premiums_account_dict["pool"] = pool
+        if "senior_etk" in premiums_account_dict:
+            premiums_account_dict["senior_etk"] = pool.etokens[premiums_account_dict["senior_etk"]]
+        else:
+            premiums_account_dict["senior_etk"] = default_etk
+        if "junior_etk" in premiums_account_dict:
+            premiums_account_dict["junior_etk"] = pool.etokens[premiums_account_dict["junior_etk"]]
+        default_premiums_account = module.PremiumsAccount(**premiums_account_dict)
+        pool.add_premiums_account(default_premiums_account)
+
+    if default_premiums_account is None:
+        default_premiums_account = module.PremiumsAccount(pool=pool, senior_etk=default_etk)
+        pool.add_premiums_account(default_premiums_account)
+
+    for risk_module_dict in config.get("risk_modules", []):
+        risk_module_dict["policy_pool"] = pool
+        if "premiums_account" not in risk_module_dict:
+            risk_module_dict["premiums_account"] = default_premiums_account
+        rm = module.TrustfulRiskModule(**risk_module_dict)
+        pool.config.add_risk_module(rm)
 
     return pool

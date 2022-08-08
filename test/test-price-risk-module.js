@@ -1,5 +1,5 @@
 const { expect } = require("chai");
-const { initCurrency, deployPool, deployPremiumsAccount, _E, _W, _R, addRiskModule,
+const { initCurrency, deployPool, deployPremiumsAccount, _E, _W, addRiskModule,
         amountFunction, grantRole, addEToken, getTransactionEvent } = require("./test-utils");
 
 
@@ -34,7 +34,9 @@ describe("Test PriceRiskModule contract", function() {
     });
     pool._A = _A;
 
-    premiumsAccount = await deployPremiumsAccount(hre, pool);
+    etk = await addEToken(pool, {});
+
+    premiumsAccount = await deployPremiumsAccount(hre, pool, {srEtkAddr: etk.address});
 
     const PriceOracle = await ethers.getContractFactory("PriceOracle");
     priceOracle = await PriceOracle.deploy();
@@ -51,7 +53,6 @@ describe("Test PriceRiskModule contract", function() {
 
     PriceRiskModule = await ethers.getContractFactory("PriceRiskModule");
 
-    etk = await addEToken(pool, {});
     await currency.connect(lp).approve(pool.address, _A(5000));
     await pool.connect(lp).deposit(etk.address, _A(5000));
   });
@@ -101,8 +102,8 @@ describe("Test PriceRiskModule contract", function() {
 
     const cdf = _makeArray(priceSlots, 0);
 
-    cdf[0] = _R("0.1");
-    cdf[priceSlots - 1] = _R("0.1");
+    cdf[0] = _W("0.1");
+    cdf[priceSlots - 1] = _W("0.1");
     await rm.connect(owner).setCDF(1, cdf);
 
     [price0, lossProb0] = await rm.pricePolicy(_A(1.1), true, _A(1000), start + 3600);
@@ -110,7 +111,7 @@ describe("Test PriceRiskModule contract", function() {
     expect(lossProb0).to.equal(0);
 
     const [premium, lossProb] = await rm.pricePolicy(_A(0.8), true, _A(1000), start + 3600);
-    expect(lossProb).to.be.equal(_R("0.1"));
+    expect(lossProb).to.be.equal(_W("0.1"));
 
     expect(await rm.getMinimumPremium(_A(1000), lossProb, start + 3600)).to.be.equal(premium);
   });
@@ -131,9 +132,9 @@ describe("Test PriceRiskModule contract", function() {
     // Set price
     const priceSlots = await rm.PRICE_SLOTS();
     const cdf = _makeArray(priceSlots, 0);
-    cdf[20] = _R("0.03");
-    cdf[21] = _R("0.05");
-    cdf[priceSlots - 1] = _R("0.1");
+    cdf[20] = _W("0.03");
+    cdf[21] = _W("0.05");
+    cdf[priceSlots - 1] = _W("0.1");
     await rm.connect(owner).setCDF(1, cdf);
 
     await expect(
@@ -141,7 +142,7 @@ describe("Test PriceRiskModule contract", function() {
     ).to.be.revertedWith("Either duration or percentage jump not supported");
 
     const [premium, lossProb] = await rm.pricePolicy(_A(1.1), true, _A(1000), start + 3600);
-    expect(lossProb).to.be.equal(_R("0.05"));
+    expect(lossProb).to.be.equal(_W("0.05"));
     await currency.connect(cust).approve(pool.address, premium);
     let tx = await rm.connect(cust).newPolicy(_A(1.1), true, _A(1000), start + 3600);
     let receipt = await tx.wait();
@@ -151,7 +152,7 @@ describe("Test PriceRiskModule contract", function() {
     const policyId = newPolicyEvt.args.policy.id;
     expect(newPolicyEvt.args.policy.premium).to.closeTo(premium, _A(0.0001));
     expect(newPolicyEvt.args.policy.payout).to.equal(_A(1000));
-    expect(newPolicyEvt.args.policy.lossProb).to.equal(_R("0.05"));
+    expect(newPolicyEvt.args.policy.lossProb).to.equal(_W("0.05"));
     expect(newPolicyEvt.args.policy.purePremium).to.equal(_A(1000 * 0.05));
 
     expect(newPricePolicyEvt.args.lower).to.be.equal(true);
@@ -185,13 +186,13 @@ describe("Test PriceRiskModule contract", function() {
     // Set price
     const priceSlots = await rm.PRICE_SLOTS();
     const cdf = _makeArray(priceSlots, 0);
-    cdf[20] = _R("0.02");
-    cdf[21] = _R("0.04");
-    cdf[priceSlots - 1] = _R("0.1");
+    cdf[20] = _W("0.02");
+    cdf[21] = _W("0.04");
+    cdf[priceSlots - 1] = _W("0.1");
     await rm.connect(owner).setCDF(-1, cdf);
 
     const [premium, lossProb] = await rm.pricePolicy(_A(1.7), false, _A(1000), start + 3600);
-    expect(lossProb).to.be.equal(_R("0.04"));
+    expect(lossProb).to.be.equal(_W("0.04"));
     await currency.connect(cust).approve(pool.address, premium);
 
     let tx = await rm.connect(cust).newPolicy(_A(1.7), false, _A(1000), start + 3600);
@@ -202,7 +203,7 @@ describe("Test PriceRiskModule contract", function() {
     const policyId = newPolicyEvt.args.policy.id;
     expect(newPolicyEvt.args.policy.premium).to.closeTo(premium, _A(0.0001));
     expect(newPolicyEvt.args.policy.payout).to.equal(_A(1000));
-    expect(newPolicyEvt.args.policy.lossProb).to.equal(_R("0.04"));
+    expect(newPolicyEvt.args.policy.lossProb).to.equal(_W("0.04"));
     expect(newPolicyEvt.args.policy.purePremium).to.equal(_A(1000 * 0.04));
 
     expect(newPricePolicyEvt.args.lower).to.be.equal(false);

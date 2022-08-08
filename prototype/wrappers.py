@@ -1,6 +1,6 @@
 from collections import namedtuple
 from contextlib import contextmanager
-from ethproto.wadray import Wad, _R, Ray, _W
+from ethproto.wadray import Wad, _W
 from ethproto.wrappers import AddressBook, IERC20, IERC721, ETHWrapper, MethodAdapter, get_provider
 
 
@@ -71,28 +71,27 @@ class EToken(IERC20):
     proxy_kind = "uups"
     constructor_args = (("policy_pool", "address"), )
     initialize_args = (
-        ("name", "string"), ("symbol", "string"), ("expiration_period", "int"),
-        ("liquidity_requirement", "ray"), ("max_utilization_rate", "ray"),
-        ("pool_loan_interest_rate", "ray"),
+        ("name", "string"), ("symbol", "string"),
+        ("max_utilization_rate", "wad"),
+        ("pool_loan_interest_rate", "wad"),
     )
 
-    def __init__(self, name, symbol, policy_pool, expiration_period, liquidity_requirement=_R(1),
-                 max_utilization_rate=_R(1),
-                 pool_loan_interest_rate=_R("0.05"), owner="owner"):
-        pool_loan_interest_rate = _R(pool_loan_interest_rate)
-        liquidity_requirement = _R(liquidity_requirement)
-        max_utilization_rate = _R(max_utilization_rate)
+    def __init__(self, name, symbol, policy_pool,
+                 max_utilization_rate=_W(1),
+                 pool_loan_interest_rate=_W("0.05"), owner="owner"):
+        pool_loan_interest_rate = _W(pool_loan_interest_rate)
+        max_utilization_rate = _W(max_utilization_rate)
 
         super().__init__(
             owner, policy_pool,
-            name, symbol, expiration_period, liquidity_requirement,
+            name, symbol,
             max_utilization_rate, pool_loan_interest_rate
         )
         if isinstance(policy_pool, ETHWrapper):
             self._policy_pool = policy_pool.contract
         else:  # is just an address or raw contract - for tests
             self._policy_pool = self._get_account(policy_pool)
-        self._auto_from = self._get_account("johhdoe")
+        self._auto_from = self._get_account("JOHNDOE")
 
     @contextmanager
     def thru_policy_pool(self):
@@ -104,38 +103,39 @@ class EToken(IERC20):
         finally:
             self.contract = prev_contract
 
-    ocean = MethodAdapter((), "amount", is_property=True)
-    ocean_for_new_scr = MethodAdapter((), "amount", is_property=True)
+    @contextmanager
+    def thru(self, address):
+        prev_contract = self.contract
+        contract_factory = self.provider.get_contract_factory(self.eth_contract)
+        self.contract = self.provider.build_contract(address, contract_factory, self.eth_contract)
+        try:
+            yield self
+        finally:
+            self.contract = prev_contract
+
+    policy_pool = MethodAdapter((), "address", is_property=True)
+    funds_available = MethodAdapter((), "amount", is_property=True)
+    funds_available_to_lock = MethodAdapter((), "amount", is_property=True)
     scr = MethodAdapter((), "amount", is_property=True)
-    scr_interest_rate = MethodAdapter((), "ray", is_property=True)
-    token_interest_rate = MethodAdapter((), "ray", is_property=True)
-    pool_loan_interest_rate = MethodAdapter((), "ray", is_property=True)
-    liquidity_requirement = MethodAdapter((), "ray", is_property=True)
-    max_utilization_rate = MethodAdapter((), "ray", is_property=True)
-    utilization_rate = MethodAdapter((), "ray", is_property=True)
-    set_pool_loan_interest_rate = MethodAdapter((("new_rate", "ray"), ))
-    set_max_utilization_rate = MethodAdapter((("new_rate", "ray"), ))
+    scr_interest_rate = MethodAdapter((), "wad", is_property=True)
+    token_interest_rate = MethodAdapter((), "wad", is_property=True)
+    pool_loan_interest_rate = MethodAdapter((), "wad", is_property=True)
+    liquidity_requirement = MethodAdapter((), "wad", is_property=True)
+    min_utilization_rate = MethodAdapter((), "wad", is_property=True)
+    max_utilization_rate = MethodAdapter((), "wad", is_property=True)
+    utilization_rate = MethodAdapter((), "wad", is_property=True)
+    set_pool_loan_interest_rate = MethodAdapter((("new_rate", "wad"), ))
+    set_max_utilization_rate = MethodAdapter((("new_rate", "wad"), ))
+    set_min_utilization_rate = MethodAdapter((("new_rate", "wad"), ))
 
-    accept_all_rms = MethodAdapter((), "bool", is_property=True, eth_method="acceptAllRMs")
-
-    is_accept_exception = MethodAdapter((("risk_module", "address"),), "bool")
-    set_accept_exception = MethodAdapter((("risk_module", "address"), ("is_exception", "bool")))
+    add_borrower = MethodAdapter((("borrower", "address"), ))
 
     lock_scr = MethodAdapter(
-        (("policy_interest_rate", "ray"), ("scr_amount", "amount")),
-        adapt_args=lambda args, kwargs: ((), {
-            "policy_interest_rate": (args[0] if args else kwargs["policy"]).interest_rate,
-            "scr_amount": args[1] if len(args) > 1 else kwargs["scr_amount"],
-        })
+        (("scr_amount", "amount"), ("policy_interest_rate", "wad"), ),
     )
 
     unlock_scr = MethodAdapter(
-        (("policy_interest_rate", "ray"), ("scr_amount", "amount"), ("adjustment", "amount")),
-        adapt_args=lambda args, kwargs: ([], {
-            "policy_interest_rate": (args[0] if args else kwargs["policy"]).interest_rate,
-            "scr_amount": args[1] if len(args) > 1 else kwargs["scr_amount"],
-            "adjustment": args[2] if len(args) > 2 else kwargs["adjustment"],
-        })
+        (("scr_amount", "amount"), ("policy_interest_rate", "wad"), ("adjustment", "amount")),
     )
 
     deposit_ = MethodAdapter((("provider", "address"), ("amount", "amount")))
@@ -154,23 +154,24 @@ class EToken(IERC20):
         else:
             return Wad(0)
 
-    accepts = MethodAdapter(
-        (("risk_module", "address"), ("policy_expiration", "int")), "bool",
-        adapt_args=lambda args, kwargs: ((None, args[0].expiration, ), {})
+    lend_to_pool_ = MethodAdapter(
+        (("borrower", "msg.sender"), ("amount", "amount"),
+         ("receiver", "address"), ("from_available", "bool"))
     )
 
-    lend_to_pool_ = MethodAdapter((("amount", "amount"), ("receiver", "address"), ("from_ocean", "bool")))
-
-    def lend_to_pool(self, amount, receiver, from_ocean=True):
-        receipt = self.lend_to_pool_(amount, receiver, from_ocean)
+    def lend_to_pool(self, borrower, amount, receiver, from_available=True):
+        receipt = self.lend_to_pool_(borrower, amount, receiver, from_available)
         if "PoolLoan" in receipt.events:
             evt = receipt.events["PoolLoan"]
             return Wad(evt["amountAsked"]) - Wad(evt["value"])
         else:
             return Wad(0)
 
-    repay_pool_loan = MethodAdapter((("amount", "amount"), ))
-    get_pool_loan = MethodAdapter((), "amount")
+    repay_pool_loan = MethodAdapter(
+        (("sender", "msg.sender"), ("amount", "amount"), ("on_behalf_of", "address"))
+    )
+
+    get_pool_loan = MethodAdapter((("borrower", "address"), ), "amount")
     get_investable = MethodAdapter((), "amount")
 
     get_current_scale = MethodAdapter((("updated", "bool"), ), "ray")
@@ -185,49 +186,67 @@ class EToken(IERC20):
 
 class Policy:
 
-    def __init__(self, id, payout, premium, scr, loss_prob,
-                 pure_premium, ensuro_commission, partner_commission, coc,
+    def __init__(self, id, payout, premium, jr_scr, sr_scr, loss_prob,
+                 pure_premium, ensuro_commission, partner_commission, jr_coc, sr_coc,
                  risk_module, start, expiration, address_book):
         self.id = id
         self._risk_module = risk_module
         self.risk_module = address_book.get_name(risk_module)
         self.payout = Wad(payout)
         self.premium = Wad(premium)
-        self.scr = Wad(scr)
-        self.loss_prob = Ray(loss_prob)
+        self.jr_scr = Wad(jr_scr)
+        self.sr_scr = Wad(sr_scr)
+        self.loss_prob = Wad(loss_prob)
         self.start = start
         self.expiration = expiration
         self.pure_premium = Wad(pure_premium)
         self.ensuro_commission = Wad(ensuro_commission)
         self.partner_commission = Wad(partner_commission)
-        self.coc = Wad(coc)
-
-    def premium_split(self):
-        return self.pure_premium, self.ensuro_commission, self.partner_commission, self.coc
+        self.sr_coc = Wad(sr_coc)
+        self.jr_coc = Wad(jr_coc)
 
     @property
-    def interest_rate(self):
+    def sr_interest_rate(self):
         return (
-            self.coc * _W(SECONDS_IN_YEAR) // (
-                _W(self.expiration - self.start) * self.scr
+            self.sr_coc * _W(SECONDS_IN_YEAR) // (
+                _W(self.expiration - self.start) * self.sr_scr
             )
-        ).to_ray()
+        )
 
-    def accrued_interest(self):
-        seconds = Ray.from_value(get_provider().time_control.now - self.start)
+    def sr_accrued_interest(self):
+        seconds = Wad.from_value(get_provider().time_control.now - self.start)
         return (
-            self.scr.to_ray() * seconds * self.interest_rate //
-            Ray.from_value(SECONDS_IN_YEAR)
-        ).to_wad()
+            self.sr_scr * seconds * self.sr_interest_rate // _W(SECONDS_IN_YEAR)
+        )
+
+    @property
+    def jr_interest_rate(self):
+        return (
+            self.jr_coc * _W(SECONDS_IN_YEAR) // (
+                _W(self.expiration - self.start) * self.jr_scr
+            )
+        )
+
+    def jr_accrued_interest(self):
+        seconds = Wad.from_value(get_provider().time_control.now - self.start)
+        return (
+            self.jr_scr * seconds * self.jr_interest_rate // _W(SECONDS_IN_YEAR)
+        )
 
     def as_tuple(self):
         return (
-            self.id, self.payout, self.premium, self.scr, self.loss_prob,
-            self.pure_premium, self.ensuro_commission, self.partner_commission, self.coc,
+            self.id, self.payout, self.premium,
+            self.jr_scr, self.sr_scr,
+            self.loss_prob,
+            self.pure_premium, self.ensuro_commission, self.partner_commission,
+            self.jr_coc, self.sr_coc,
             self._risk_module, self.start, self.expiration
         )
 
-    FIELDS = "(int, amount, amount, amount, ray, amount, amount, amount, amount, address, int, int)"
+    FIELDS = (
+        "(int, amount, amount, amount, amount, wad, "
+        "amount, amount, amount, amount, amount, address, int, int)"
+    )
 
 
 class PolicyDB:
@@ -249,38 +268,72 @@ class RiskModule(ETHWrapper):
 
     constructor_args = (("pool", "address"), ("premiums_account", "address"), )
     initialize_args = (
-        ("name", "string"), ("coll_ratio", "ray"), ("ensuro_pp_fee", "ray"),
-        ("roc", "ray"), ("max_payout_per_policy", "amount"), ("exposure_limit", "amount"),
+        ("name", "string"), ("coll_ratio", "wad"), ("ensuro_pp_fee", "wad"),
+        ("sr_roc", "wad"), ("max_payout_per_policy", "amount"), ("exposure_limit", "amount"),
         ("wallet", "address")
     )
 
-    def __init__(self, name, policy_pool, premiums_account, coll_ratio=_R(1), ensuro_pp_fee=_R(0),
-                 roc=_R(0), max_payout_per_policy=_W(1000000), exposure_limit=_W(1000000),
+    def __init__(self, name, policy_pool, premiums_account, coll_ratio=_W(1), ensuro_pp_fee=_W(0),
+                 sr_roc=_W(0), max_payout_per_policy=_W(1000000), exposure_limit=_W(1000000),
                  wallet="RM", owner="owner"):
-        coll_ratio = _R(coll_ratio)
-        ensuro_pp_fee = _R(ensuro_pp_fee)
-        roc = _R(roc)
+        coll_ratio = _W(coll_ratio)
+        ensuro_pp_fee = _W(ensuro_pp_fee)
+        sr_roc = _W(sr_roc)
         max_payout_per_policy = _W(max_payout_per_policy)
         exposure_limit = _W(exposure_limit)
         super().__init__(owner, policy_pool.contract, premiums_account, name, coll_ratio, ensuro_pp_fee,
-                         roc,
+                         sr_roc,
                          max_payout_per_policy, exposure_limit, wallet)
         self.policy_pool = policy_pool
         self._premiums_account = premiums_account
         self._auto_from = self.owner
 
     name = MethodAdapter((), "string", is_property=True)
-    coll_ratio = MethodAdapter((), "ray", is_property=True)
-    moc = MethodAdapter((), "ray", is_property=True)
-    ensuro_pp_fee = MethodAdapter((), "ray", is_property=True)
-    ensuro_coc_fee = MethodAdapter((), "ray", is_property=True)
-    roc = MethodAdapter((), "ray", is_property=True)
-    max_payout_per_policy = MethodAdapter((), "amount", is_property=True)
-    exposure_limit = MethodAdapter((), "amount", is_property=True)
+
+    params = MethodAdapter((), "tuple")
+    set_param = MethodAdapter((("param", "int"), ("value", "wad")))
+
+    class GetParam:
+        def __init__(self, paramIndex):
+            self.paramIndex = paramIndex
+
+        def __call__(self, wrapper):
+            return Wad(wrapper.params()[self.paramIndex])
+
+    class SetParam:
+        def __init__(self, paramIndex):
+            self.paramIndex = paramIndex
+
+        def __call__(self, wrapper, value):
+            return wrapper.set_param(self.paramIndex, value)
+
+    moc = property(GetParam(0), SetParam(0))
+    jr_coll_ratio = property(GetParam(1), SetParam(1))
+    coll_ratio = property(GetParam(2), SetParam(2))
+    ensuro_pp_fee = property(GetParam(3), SetParam(3))
+    ensuro_coc_fee = property(GetParam(4), SetParam(4))
+    jr_roc = property(GetParam(5), SetParam(5))
+    sr_roc = property(GetParam(6), SetParam(6))
+
+    class GetProperty:
+        def __init__(self, methodName):
+            self.methodName = methodName
+
+        def __call__(self, wrapper):
+            return getattr(wrapper, self.methodName)
+
+    max_payout_per_policy_ = MethodAdapter((), "amount", is_property=True)
+    exposure_limit_ = MethodAdapter((), "amount", is_property=True)
+    max_duration_ = MethodAdapter((), "int", is_property=True)
+
+    max_payout_per_policy = property(GetProperty("max_payout_per_policy_"), SetParam(7))
+    exposure_limit = property(GetProperty("exposure_limit_"), SetParam(8))
+    max_duration = property(GetProperty("max_duration_"), SetParam(9))
+
     active_exposure = MethodAdapter((), "amount", is_property=True)
     wallet = MethodAdapter((), "address", is_property=True)
     get_minimum_premium = MethodAdapter(
-        (("payout", "amount"), ("loss_prob", "ray"), ("expiration", "int")),
+        (("payout", "amount"), ("loss_prob", "wad"), ("expiration", "int")),
         "amount"
     )
 
@@ -312,7 +365,7 @@ class TrustfulRiskModule(RiskModule):
     proxy_kind = "uups"
 
     new_policy_ = MethodAdapter((
-        ("payout", "amount"), ("premium", "amount"), ("loss_prob", "ray"), ("expiration", "int"),
+        ("payout", "amount"), ("premium", "amount"), ("loss_prob", "wad"), ("expiration", "int"),
         ("customer", "address"), ("internal_id", "int"),
     ), "receipt")
 
@@ -338,7 +391,7 @@ class FlightDelayRiskModule(RiskModule):
 
     new_policy_ = MethodAdapter((
         ("flight", "string"), ("departure", "int"), ("expectedArrival", "int"), ("tolerance", "int"),
-        ("payout", "amount"), ("premium", "amount"), ("loss_prob", "ray"), ("customer", "address"),
+        ("payout", "amount"), ("premium", "amount"), ("loss_prob", "wad"), ("customer", "address"),
         ("internal_id", "int"),
     ), "receipt")
 
@@ -348,18 +401,18 @@ class FlightDelayRiskModule(RiskModule):
 
     oracle_params = MethodAdapter((), "(address, int, amount, bytes16, bytes16)", is_property=True)
 
-    def __init__(self, name, policy_pool, premiums_account, coll_ratio=_R(1), ensuro_pp_fee=_R(0),
-                 roc=_R(0), max_payout_per_policy=_W(1000000), exposure_limit=_W(1000000),
+    def __init__(self, name, policy_pool, premiums_account, coll_ratio=_W(1), ensuro_pp_fee=_W(0),
+                 sr_roc=_W(0), max_payout_per_policy=_W(1000000), exposure_limit=_W(1000000),
                  wallet="RM", owner="owner",
                  link_token=None, oracle_params=None):
-        coll_ratio = _R(coll_ratio)
-        ensuro_pp_fee = _R(ensuro_pp_fee)
-        roc = _R(roc)
+        coll_ratio = _W(coll_ratio)
+        ensuro_pp_fee = _W(ensuro_pp_fee)
+        sr_roc = _W(sr_roc)
         max_payout_per_policy = _W(max_payout_per_policy)
         exposure_limit = _W(exposure_limit)
         super(RiskModule, self).__init__(
             owner, policy_pool.contract, premiums_account, name, coll_ratio, ensuro_pp_fee,
-            roc,
+            sr_roc,
             max_payout_per_policy, exposure_limit, wallet,
             link_token, oracle_params
         )
@@ -512,6 +565,8 @@ class PolicyPool(ETHWrapper):
         self.add_etoken_(etoken)
         self.etokens[etoken.name] = etoken
 
+    add_premiums_account = MethodAdapter((("pa", "contract"), ))
+
     deposit_ = MethodAdapter((("etoken", "contract"), ("provider", "msg.sender"), ("amount", "amount")))
 
     def deposit(self, etoken_name, provider, amount):
@@ -551,12 +606,15 @@ class PolicyPool(ETHWrapper):
 class PremiumsAccount(ETHWrapper):
     eth_contract = "PremiumsAccount"
 
-    constructor_args = (("pool", "address"), )
+    constructor_args = (("pool", "address"), ("junior_etk", "address"), ("senior_etk", "address"))
     initialize_args = ()
     proxy_kind = "uups"
 
-    def __init__(self, pool, owner="owner"):
-        super().__init__(owner, pool.contract)
+    def __init__(self, pool, junior_etk=None, senior_etk=None, owner="owner"):
+        super().__init__(
+            owner, pool.contract, junior_etk and junior_etk.contract,
+            senior_etk and senior_etk.contract
+        )
 
     pure_premiums = MethodAdapter((), "amount", is_property=True)
     won_pure_premiums = MethodAdapter((), "amount", is_property=True)

@@ -2,59 +2,69 @@
 pragma solidity ^0.8.0;
 
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {Reserve} from "./Reserve.sol";
 import {IEToken} from "../interfaces/IEToken.sol";
 import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
 import {IInsolvencyHook} from "../interfaces/IInsolvencyHook.sol";
 import {WadRayMath} from "./WadRayMath.sol";
+import {TimeScaled} from "./TimeScaled.sol";
 
 /**
  * @title Ensuro ERC20 EToken - interest-bearing token
  * @dev Implementation of the interest/earnings bearing token for the Ensuro protocol.
- *      The _scaleFactor scales the balances stored in _balances. _scaleFactor grows continuoulsly at
- *      _tokenInterestRate.
- *      Every operation that changes the utilization rate (_scr/totalSupply) or the _scrInterestRate, updates
- *      first the _scaleFactor accumulating the interest accrued since _lastScaleUpdate.
+ *      `_tsScaled.scale` scales the balances stored in _balances. _tsScaled (totalSupply scaled) grows
+ *      continuoulsly at tokenInterestRate().
+ *      Every operation that changes the utilization rate (_scr.scr/totalSupply) or the _scr.interestRate, updates
+ *      first the _tsScaled.scale accumulating the interest accrued since _tsScaled.lastUpdate.
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
 contract EToken is Reserve, IERC20Metadata, IEToken {
-  uint256 public constant MIN_SCALE = 1e17; // 0.0000000001 == 1e-10 in ray
-
   using WadRayMath for uint256;
+  using TimeScaled for TimeScaled.ScaledAmount;
+  using SafeERC20 for IERC20Metadata;
 
   uint256 internal constant SECONDS_PER_YEAR = 365 days;
 
   // Attributes taken from ERC20
   mapping(address => uint256) private _balances;
   mapping(address => mapping(address => uint256)) private _allowances;
-  uint256 private _totalSupply; // non-scaled totalSupply
 
   string private _name;
   string private _symbol;
 
-  uint40 internal _expirationPeriod; // in seconds, the maximum duration of policies this eToken can back up
-  uint256 internal _scaleFactor; // in Ray
-  uint40 internal _lastScaleUpdate;
+  TimeScaled.ScaledAmount internal _tsScaled; // Total Supply scaled
 
-  uint256 internal _scr; // in Wad - Capital locked as Solvency Capital Requirement of backed up policies
-  uint256 internal _scrInterestRate; // in Ray - Interest rate received in exchange of solvency capital
-  uint256 internal _tokenInterestRate; // in Ray - Overall interest rate of the token
-  uint256 internal _liquidityRequirement; // in Ray - Liquidity requirement to lock more than SCR
-  uint256 internal _maxUtilizationRate; // in Ray - Maximum SCR/totalSupply rate for backup up new policies
+  struct Scr {
+    uint128 scr; // in Wad - Capital locked as Solvency Capital Requirement of backed up policies
+    uint64 interestRate; // in Wad - Interest rate received in exchange of solvency capital
+    uint64 tokenInterestRate; // in Wad - Overall interest rate of the token
+  }
 
-  uint256 internal _poolLoan; // in Wad - Capital that was used to pay defaults of the premium pool. Took as a loan.
-  uint256 internal _poolLoanInterestRate; // in Ray
-  uint256 internal _poolLoanScale; // in Ray
-  uint40 internal _poolLoanLastUpdate;
+  Scr internal _scr;
 
-  bool internal _acceptAllRMs; // By defaults, accepts (backs up) any RiskModule;
-  // Exceptions to the accept all or accept none policy defined before
-  mapping(address => bool) internal _acceptExceptions;
+  // Mapping that keeps track of allowed borrowers (PremiumsAccount) and their current debt
+  mapping(address => TimeScaled.ScaledAmount) internal _poolLoans;
 
-  event PoolLoan(uint256 value, uint256 amountAsked);
-  event PoolLoanRepaid(uint256 value);
+  struct PackedParams {
+    uint16 liquidityRequirement; // Liquidity requirement to lock more/less than SCR - 4 decimals
+    uint16 minUtilizationRate; // Min utilization rate, to reject deposits that leave UR under this value - 4 decimals
+    uint16 maxUtilizationRate; // Max utilization rate, to reject lockScr that leave UR above this value - 4 decimals
+    uint16 poolLoanInterestRate; // Annualized interest rate charged to internal borrowers (premiums accounts) - 4dec
+  }
+
+  PackedParams internal _params;
+
+  event PoolLoan(address indexed borrower, uint256 value, uint256 amountAsked);
+  event PoolLoanRepaid(address indexed borrower, uint256 value);
+  event PoolBorrowerAdded(address borrower);
+
+  modifier onlyBorrower() {
+    require(_poolLoans[_msgSender()].scale != 0, "The caller must be a borrower");
+    _;
+  }
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
@@ -62,8 +72,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
 
   /**
    * @dev Initializes the eToken
-   * @param expirationPeriod_ Maximum expirationPeriod (from block.timestamp) of policies to be accepted
-   * @param liquidityRequirement_ Liquidity requirement to allow withdrawal (in Ray - default=1 Ray)
    * @param maxUtilizationRate_ Max utilization rate (scr/totalSupply) (in Ray - default=1 Ray)
    * @param poolLoanInterestRate_ Rate of loans givencrto the policy pool (in Ray)
    * @param name_ Name of the eToken
@@ -72,61 +80,50 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   function initialize(
     string memory name_,
     string memory symbol_,
-    uint40 expirationPeriod_,
-    uint256 liquidityRequirement_,
     uint256 maxUtilizationRate_,
     uint256 poolLoanInterestRate_
   ) public initializer {
     __PolicyPoolComponent_init();
-    __EToken_init_unchained(
-      name_,
-      symbol_,
-      expirationPeriod_,
-      liquidityRequirement_,
-      maxUtilizationRate_,
-      poolLoanInterestRate_
-    );
+    __EToken_init_unchained(name_, symbol_, maxUtilizationRate_, poolLoanInterestRate_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
   function __EToken_init_unchained(
     string memory name_,
     string memory symbol_,
-    uint40 expirationPeriod_,
-    uint256 liquidityRequirement_,
     uint256 maxUtilizationRate_,
     uint256 poolLoanInterestRate_
   ) internal initializer {
     _name = name_;
     _symbol = symbol_;
-    _expirationPeriod = expirationPeriod_;
-    _scaleFactor = WadRayMath.ray();
-    _lastScaleUpdate = uint40(block.timestamp);
-    _scr = 0;
-    _scrInterestRate = 0;
-    _tokenInterestRate = 0;
-    _liquidityRequirement = liquidityRequirement_;
-    _maxUtilizationRate = maxUtilizationRate_;
-    _acceptAllRMs = true;
+    _tsScaled.init();
+    /* _scr = Scr({
+      scr: 0,
+      interestRate: 0,
+      tokenInterestRate: 0
+    }); */
+    _params = PackedParams({
+      maxUtilizationRate: uint16(maxUtilizationRate_ / 1e14),
+      liquidityRequirement: 1e4,
+      minUtilizationRate: 0,
+      poolLoanInterestRate: uint16(poolLoanInterestRate_ / 1e14)
+    });
 
-    _poolLoan = 0;
-    _poolLoanInterestRate = poolLoanInterestRate_;
-    _poolLoanScale = WadRayMath.ray();
-    _poolLoanLastUpdate = uint40(block.timestamp);
     _validateParameters();
   }
 
   // runs validation on EToken parameters
   function _validateParameters() internal view override {
     require(
-      _liquidityRequirement >= 8e26 && _liquidityRequirement <= 13e26,
+      _params.liquidityRequirement >= 8e3 && _params.liquidityRequirement <= 13e3,
       "Validation: liquidityRequirement must be [0.8, 1.3]"
     );
     require(
-      _maxUtilizationRate >= 5e26 && _maxUtilizationRate <= WadRayMath.RAY,
+      _params.maxUtilizationRate >= 5e3 && _params.maxUtilizationRate <= 1e4,
       "Validation: maxUtilizationRate must be [0.5, 1]"
     );
-    require(_poolLoanInterestRate <= 5e26, "Validation: poolLoanInterestRate must be <= 50%");
+    require(_params.minUtilizationRate <= 1e4, "Validation: minUtilizationRate must be [0, 1]");
+    require(_params.poolLoanInterestRate <= 5e3, "Validation: poolLoanInterestRate must be <= 50%");
   }
 
   /*** BEGIN ERC20 methods - mainly copied from OpenZeppelin but changes in events and scaledAmount */
@@ -167,7 +164,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
    * @dev See {IERC20-totalSupply}.
    */
   function totalSupply() public view virtual override returns (uint256) {
-    return _totalSupply.wadToRay().rayMul(_calculateCurrentScale()).rayToWad();
+    return _tsScaled.getScaledAmount(tokenInterestRate());
   }
 
   /**
@@ -176,7 +173,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   function balanceOf(address account) public view virtual override returns (uint256) {
     uint256 principalBalance = _balances[account];
     if (principalBalance == 0) return 0;
-    return principalBalance.wadToRay().rayMul(_calculateCurrentScale()).rayToWad();
+    return _tsScaled.getScale(tokenInterestRate()).rayMul(principalBalance.wadToRay()).rayToWad();
   }
 
   /**
@@ -287,10 +284,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     return true;
   }
 
-  function _scaleAmount(uint256 amount) internal view returns (uint256) {
-    return amount.wadToRay().rayDiv(_calculateCurrentScale()).rayToWad();
-  }
-
   /**
    * @dev Moves tokens `amount` from `sender` to `recipient`.
    *
@@ -314,7 +307,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     require(recipient != address(0), "EToken: transfer to the zero address");
 
     _beforeTokenTransfer(sender, recipient, amount);
-    uint256 scaledAmount = _scaleAmount(amount);
+    uint256 scaledAmount = _tsScaled.scaleAmountNow(tokenInterestRate(), amount);
 
     uint256 senderBalance = _balances[sender];
     require(senderBalance >= scaledAmount, "EToken: transfer amount exceeds balance");
@@ -337,9 +330,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     require(account != address(0), "EToken: mint to the zero address");
 
     _beforeTokenTransfer(address(0), account, amount);
-    uint256 scaledAmount = _scaleAmount(amount);
-
-    _totalSupply += scaledAmount;
+    uint256 scaledAmount = _tsScaled.add(amount, tokenInterestRate());
     _balances[account] += scaledAmount;
     emit Transfer(address(0), account, amount);
   }
@@ -359,11 +350,10 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     require(account != address(0), "EToken: burn from the zero address");
     _beforeTokenTransfer(account, address(0), amount);
 
-    uint256 scaledAmount = _scaleAmount(amount);
+    uint256 scaledAmount = _tsScaled.sub(amount, tokenInterestRate());
     uint256 accountBalance = _balances[account];
     require(accountBalance >= scaledAmount, "EToken: burn amount exceeds balance");
     _balances[account] = accountBalance - scaledAmount;
-    _totalSupply -= scaledAmount;
 
     emit Transfer(account, address(0), amount);
   }
@@ -423,115 +413,112 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
 
   /*** END ERC20 methods - mainly copied from OpenZeppelin but changes in events and scaledAmount */
 
-  function _updateCurrentScale() internal {
-    if (uint40(block.timestamp) == _lastScaleUpdate) return;
-    _scaleFactor = _calculateCurrentScale();
-    require(_scaleFactor >= MIN_SCALE, "Scale too small, can lead to rounding errors");
-    _lastScaleUpdate = uint40(block.timestamp);
-  }
-
   function _updateTokenInterestRate() internal {
-    uint256 totalSupply_ = this.totalSupply().wadToRay();
-    if (totalSupply_ == 0) _tokenInterestRate = 0;
-    else _tokenInterestRate = _scrInterestRate.rayMul(_scr.wadToRay()).rayDiv(totalSupply_);
-  }
-
-  function _calculateCurrentScale() internal view returns (uint256) {
-    if (uint40(block.timestamp) <= _lastScaleUpdate) return _scaleFactor;
-    uint256 timeDifference = block.timestamp - _lastScaleUpdate;
-    return
-      _scaleFactor.rayMul(
-        ((_tokenInterestRate * timeDifference) / SECONDS_PER_YEAR) + WadRayMath.ray()
+    uint256 totalSupply_ = this.totalSupply();
+    if (totalSupply_ == 0) _scr.tokenInterestRate = 0;
+    else {
+      _scr.tokenInterestRate = uint64(
+        uint256(_scr.interestRate).wadMul(uint256(_scr.scr)).wadDiv(totalSupply_)
       );
+    }
   }
 
   function getCurrentScale(bool updated) public view returns (uint256) {
-    if (updated) return _calculateCurrentScale();
-    else return _scaleFactor;
+    if (updated) return _tsScaled.getScale(tokenInterestRate());
+    else return uint256(_tsScaled.scale);
   }
 
-  function ocean() public view virtual override returns (uint256) {
+  function fundsAvailable() public view returns (uint256) {
     uint256 totalSupply_ = this.totalSupply();
-    if (totalSupply_ > _scr) return totalSupply_ - _scr;
+    if (totalSupply_ > uint256(_scr.scr)) return totalSupply_ - uint256(_scr.scr);
     else return 0;
   }
 
-  function oceanForNewScr() public view virtual override returns (uint256) {
+  function fundsAvailableToLock() public view returns (uint256) {
     uint256 totalSupply_ = this.totalSupply();
-    if (totalSupply_ > _scr) return (totalSupply_ - _scr).wadMul(_maxUtilizationRate.rayToWad());
+    if (totalSupply_ > uint256(_scr.scr))
+      return (totalSupply_ - uint256(_scr.scr)).wadMul(maxUtilizationRate());
     else return 0;
   }
 
   function scr() public view virtual override returns (uint256) {
-    return _scr;
+    return uint256(_scr.scr);
   }
 
   function scrInterestRate() public view override returns (uint256) {
-    return _scrInterestRate;
+    return uint256(_scr.interestRate);
   }
 
   function tokenInterestRate() public view override returns (uint256) {
-    return _tokenInterestRate;
+    return uint256(_scr.tokenInterestRate);
   }
 
   function liquidityRequirement() public view returns (uint256) {
-    return _liquidityRequirement;
+    return uint256(_params.liquidityRequirement) * 1e14; // 4 -> 18 decimals
   }
 
   function maxUtilizationRate() public view returns (uint256) {
-    return _maxUtilizationRate;
+    return uint256(_params.maxUtilizationRate) * 1e14; // 4 -> 18 decimals
   }
 
-  function expirationPeriod() public view returns (uint40) {
-    return _expirationPeriod;
+  function minUtilizationRate() public view returns (uint256) {
+    return uint256(_params.minUtilizationRate) * 1e14; // 4 -> 18 decimals
   }
 
   function utilizationRate() public view returns (uint256) {
-    return _scr.wadDiv(this.totalSupply()).wadToRay();
+    return uint256(_scr.scr).wadDiv(this.totalSupply());
   }
 
-  function lockScr(uint256 policyInterestRate, uint256 scrAmount) external override onlyPolicyPool {
-    require(scrAmount <= this.ocean(), "Not enought OCEAN to cover the SCR");
-    // TODO: shouldn't be this.oceanForNewScr ???
-    _updateCurrentScale();
-    if (_scr == 0) {
-      _scr = scrAmount;
-      _scrInterestRate = policyInterestRate;
+  function lockScr(uint256 scrAmount, uint256 policyInterestRate) external override onlyBorrower {
+    require(
+      scrAmount <= this.fundsAvailableToLock(),
+      "Not enought funds available to cover the SCR"
+    );
+    _tsScaled.updateScale(tokenInterestRate());
+    if (_scr.scr == 0) {
+      _scr.scr = uint128(scrAmount);
+      _scr.interestRate = uint64(policyInterestRate);
     } else {
-      uint256 origScr = _scr.wadToRay();
-      _scr += scrAmount;
-      _scrInterestRate = (_scrInterestRate.rayMul(origScr) +
-        policyInterestRate.rayMul(scrAmount.wadToRay())).rayDiv(_scr.wadToRay());
+      uint256 origScr = uint256(_scr.scr);
+      uint256 newScr = origScr + scrAmount;
+      _scr.interestRate = uint64(
+        (uint256(_scr.interestRate).wadMul(origScr) + policyInterestRate.wadMul(scrAmount)).wadDiv(
+          newScr
+        )
+      );
+      _scr.scr = uint128(newScr);
     }
     emit SCRLocked(policyInterestRate, scrAmount);
     _updateTokenInterestRate();
   }
 
   function unlockScr(
-    uint256 policyInterestRate,
     uint256 scrAmount,
+    uint256 policyInterestRate,
     int256 adjustment
-  ) external override onlyPolicyPool {
-    require(scrAmount <= _scr, "Current SCR less than the amount you want to unlock");
-    _updateCurrentScale();
+  ) external override onlyBorrower {
+    require(scrAmount <= uint256(_scr.scr), "Current SCR less than the amount you want to unlock");
+    _tsScaled.updateScale(tokenInterestRate());
 
-    if (_scr == scrAmount) {
-      _scr = 0;
-      _scrInterestRate = 0;
+    if (uint256(_scr.scr) == scrAmount) {
+      _scr.scr = 0;
+      _scr.interestRate = 0;
     } else {
-      uint256 origScr = _scr.wadToRay();
-      _scr -= scrAmount;
-      _scrInterestRate = (_scrInterestRate.rayMul(origScr) -
-        policyInterestRate.rayMul(scrAmount.wadToRay())).rayDiv(_scr.wadToRay());
+      uint256 origScr = uint256(_scr.scr);
+      uint256 newScr = origScr - scrAmount;
+      _scr.interestRate = uint64(
+        (uint256(_scr.interestRate).wadMul(origScr) - policyInterestRate.wadMul(scrAmount)).wadDiv(
+          newScr
+        )
+      );
+      _scr.scr = uint128(newScr);
     }
     emit SCRUnlocked(policyInterestRate, scrAmount);
     _discreteChange(adjustment);
   }
 
   function _discreteChange(int256 amount) internal {
-    uint256 newTotalSupply = uint256(int256(totalSupply()) + amount);
-    _scaleFactor = newTotalSupply.wadToRay().rayDiv(_totalSupply.wadToRay());
-    require(_scaleFactor >= MIN_SCALE, "Scale too small, can lead to rounding errors");
+    _tsScaled.discreteChange(amount, tokenInterestRate());
     _updateTokenInterestRate();
   }
 
@@ -547,14 +534,14 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
         policyPool().config().lpWhitelist().acceptsDeposit(this, provider, amount),
       "Liquidity Provider not whitelisted"
     );
-    _updateCurrentScale();
     _mint(provider, amount);
     _updateTokenInterestRate();
+    require(utilizationRate() >= minUtilizationRate(), "Deposit rejected - Utilization Rate < min");
     return balanceOf(provider);
   }
 
   function totalWithdrawable() public view virtual override returns (uint256) {
-    uint256 locked = _scr.wadToRay().rayMul(_liquidityRequirement).rayToWad();
+    uint256 locked = uint256(_scr.scr).wadMul(liquidityRequirement());
     uint256 totalSupply_ = totalSupply();
     if (totalSupply_ >= locked) return totalSupply_ - locked;
     else return 0;
@@ -567,7 +554,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     whenNotPaused
     returns (uint256)
   {
-    _updateCurrentScale();
     uint256 balance = balanceOf(provider);
     if (balance == 0) return 0;
     if (amount > balance) amount = balance;
@@ -580,101 +566,52 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     return amount;
   }
 
-  function accepts(address riskModule, uint40 policyExpiration)
-    public
-    view
-    virtual
-    override
-    returns (bool)
-  {
-    if (paused()) return false;
-    if (_acceptAllRMs == _acceptExceptions[riskModule]) {
-      // all accepted except this one or all rejected and this one is not an exception
-      return false;
+  function addBorrower(address borrower) external override onlyPolicyPool {
+    TimeScaled.ScaledAmount storage loan = _poolLoans[borrower];
+    if (loan.scale == 0) {
+      loan.init();
+      emit PoolBorrowerAdded(borrower);
     }
-    return policyExpiration < (uint40(block.timestamp) + _expirationPeriod);
-  }
-
-  function _updatePoolLoanScale() internal {
-    if (uint40(block.timestamp) == _poolLoanLastUpdate) return;
-    _poolLoanScale = _getPoolLoanScale();
-    _poolLoanLastUpdate = uint40(block.timestamp);
-  }
-
-  function _maxNegativeAdjustment() internal view returns (uint256) {
-    uint256 ts = totalSupply();
-    uint256 minTs = _totalSupply.wadToRay().rayMul(MIN_SCALE * 10).rayToWad();
-    if (ts > minTs) return ts - minTs;
-    else return 0;
   }
 
   function lendToPool(
     uint256 amount,
     address receiver,
-    bool fromOcean
-  )
-    external
-    override
-    returns (
-      uint256 // TODO: validate msg.sender !!!
-    )
-  {
+    bool fromAvailable
+  ) external override onlyBorrower whenNotPaused returns (uint256) {
     uint256 amountAsked = amount;
-    if (fromOcean && amount > ocean()) amount = ocean();
-    if (!fromOcean && amount > totalSupply()) amount = totalSupply();
-    if (amount > _maxNegativeAdjustment()) {
-      amount = _maxNegativeAdjustment();
+    if (fromAvailable && amount > fundsAvailable()) amount = fundsAvailable();
+    if (!fromAvailable && amount > totalSupply()) amount = totalSupply();
+    if (amount > _tsScaled.maxNegativeAdjustment(tokenInterestRate())) {
+      amount = _tsScaled.maxNegativeAdjustment(tokenInterestRate());
       if (amount == 0) return amountAsked;
     }
-    if (_poolLoan == 0) {
-      _poolLoan = amount;
-      _poolLoanScale = WadRayMath.ray();
-      _poolLoanLastUpdate = uint40(block.timestamp);
-    } else {
-      _updatePoolLoanScale();
-      _poolLoan += amount.wadToRay().rayDiv(_poolLoanScale).rayToWad();
-    }
-    _updateCurrentScale(); // shouldn't do anything because lendToPool is after unlock_scr but doing anyway
+    TimeScaled.ScaledAmount storage loan = _poolLoans[_msgSender()];
+    loan.add(amount, poolLoanInterestRate());
     _discreteChange(-int256(amount));
     _transferTo(receiver, amount);
-    emit PoolLoan(amount, amountAsked);
+    emit PoolLoan(_msgSender(), amount, amountAsked);
     return amountAsked - amount;
   }
 
-  function repayPoolLoan(uint256 amount) external override {
-    // TODO: validate msg.sender !!!
-    // Assumes the caller transferred the amount of money
-    _updatePoolLoanScale();
-    _poolLoan = (getPoolLoan() - amount).wadToRay().rayDiv(_poolLoanScale).rayToWad();
-    _updateCurrentScale(); // shouldn't do anything because lendToPool is after unlock_scr but doing anyway
+  function repayPoolLoan(uint256 amount, address onBehalfOf) external override {
+    // Anyone can call this method, since it has to pay
+    currency().safeTransferFrom(_msgSender(), address(this), amount);
+    TimeScaled.ScaledAmount storage loan = _poolLoans[onBehalfOf];
+    require(loan.scale != 0, "Not a registered borrower");
+    loan.sub(amount, poolLoanInterestRate());
     _discreteChange(int256(amount));
-    emit PoolLoanRepaid(amount);
+    emit PoolLoanRepaid(onBehalfOf, amount);
   }
 
-  function _getPoolLoanScale() internal view returns (uint256) {
-    if (uint40(block.timestamp) <= _poolLoanLastUpdate) return _poolLoanScale;
-    uint256 timeDifference = block.timestamp - _poolLoanLastUpdate;
-    return
-      _poolLoanScale.rayMul(
-        ((_poolLoanInterestRate * timeDifference) / SECONDS_PER_YEAR) + WadRayMath.ray()
-      );
-  }
-
-  function getPoolLoan() public view virtual override returns (uint256) {
-    if (_poolLoan == 0) return 0;
-    return _poolLoan.wadToRay().rayMul(_getPoolLoanScale()).rayToWad();
+  function getPoolLoan(address borrower) public view virtual override returns (uint256) {
+    TimeScaled.ScaledAmount storage loan = _poolLoans[borrower];
+    if (loan.scale == 0) return 0;
+    return loan.getScaledAmount(poolLoanInterestRate());
   }
 
   function poolLoanInterestRate() public view returns (uint256) {
-    return _poolLoanInterestRate;
-  }
-
-  function acceptAllRMs() public view returns (bool) {
-    return _acceptAllRMs;
-  }
-
-  function isAcceptException(address riskModule) public view returns (bool) {
-    return _acceptExceptions[riskModule];
+    return uint256(_params.poolLoanInterestRate) * 1e14; // to wad 4 -> 18 digits
   }
 
   function setPoolLoanInterestRate(uint256 newRate)
@@ -683,11 +620,14 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
-      !tweak || _isTweakRay(_poolLoanInterestRate, newRate, 3e26),
+      !tweak || _isTweakWad(poolLoanInterestRate(), newRate, 3e17),
       "Tweak exceeded: poolLoanInterestRate tweaks only up to 30%"
     );
-    _updatePoolLoanScale();
-    _poolLoanInterestRate = newRate;
+    // This call changes the interest rate without updating the current loans up to this point
+    // So, if interest rate goes from 5% to 6%, this change will be retroactive to the lastUpdate of each
+    // loan. Since it's a permissioned call, I'm ok with this. If a caller wants to reduce the impact, it can
+    // issue 1 wei repayPoolLoan to each active loan, forcing the update of the scales
+    _params.poolLoanInterestRate = uint16(newRate / 1e14);
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setPoolLoanInterestRate, newRate, tweak);
   }
 
@@ -697,39 +637,30 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
-      !tweak || _isTweakRay(_liquidityRequirement, newRate, 1e26),
+      !tweak || _isTweakWad(liquidityRequirement(), newRate, 1e17),
       "Tweak exceeded: liquidityRequirement tweaks only up to 10%"
     );
-    _liquidityRequirement = newRate;
+    _params.liquidityRequirement = uint16(newRate / 1e14);
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setLiquidityRequirement, newRate, tweak);
   }
 
   function setMaxUtilizationRate(uint256 newRate) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
-      !tweak || _isTweakRay(_maxUtilizationRate, newRate, 3e26),
+      !tweak || _isTweakWad(maxUtilizationRate(), newRate, 3e17),
       "Tweak exceeded: maxUtilizationRate tweaks only up to 30%"
     );
-    _maxUtilizationRate = newRate;
+    _params.maxUtilizationRate = uint16(newRate / 1e14);
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setMaxUtilizationRate, newRate, tweak);
   }
 
-  function setAcceptAllRMs(bool acceptAllRMs_) external onlyPoolRole(LEVEL2_ROLE) {
-    _acceptAllRMs = acceptAllRMs_;
-    _parameterChanged(
-      IPolicyPoolConfig.GovernanceActions.setAcceptAllRMs,
-      acceptAllRMs_ ? 1 : 0,
-      false
+  function setMinUtilizationRate(uint256 newRate) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
+    bool tweak = !hasPoolRole(LEVEL2_ROLE);
+    require(
+      !tweak || _isTweakWad(minUtilizationRate(), newRate, 3e17),
+      "Tweak exceeded: minUtilizationRate tweaks only up to 30%"
     );
-  }
-
-  function setAcceptException(address riskModule, bool isException)
-    external
-    onlyPoolRole(LEVEL2_ROLE)
-  {
-    _acceptExceptions[riskModule] = isException;
-    uint256 value = uint160(riskModule);
-    if (!isException) value |= (1 << 255); // if changed to NOT exception activate first bit
-    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setAcceptException, value, false);
+    _params.minUtilizationRate = uint16(newRate / 1e14);
+    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setMinUtilizationRate, newRate, tweak);
   }
 }

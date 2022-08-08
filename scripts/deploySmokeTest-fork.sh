@@ -36,6 +36,7 @@ JRETK=`readAddress JRETK`
 SRETK=`readAddress SRETK`
 
 npx hardhat --network $NETWORK deploy:premiumsAccount $VERIFY \
+    --junior-etk $JRETK --senior-etk $SRETK \
     --pool-address $POOL
 
 PREMIUMS_ACCOUNT=`readAddress PA`

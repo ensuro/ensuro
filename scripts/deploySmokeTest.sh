@@ -26,7 +26,8 @@ npx hardhat --network $NETWORK deploy:eToken  \
 JRETK=`readAddress JRETK`
 SRETK=`readAddress SRETK`
 
-npx hardhat --network $NETWORK deploy:premiumsAccount $VERIFY --pool-address $POOL
+npx hardhat --network $NETWORK deploy:premiumsAccount $VERIFY --pool-address $POOL \
+    --junior-etk $JRETK --senior-etk $SRETK
 
 PREMIUMS_ACCOUNT=`readAddress PA`
 dieOnError "Error deploying Premiums Account"

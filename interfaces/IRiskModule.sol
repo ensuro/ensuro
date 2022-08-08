@@ -9,21 +9,38 @@ import {IPremiumsAccount} from "./IPremiumsAccount.sol";
  * @author Ensuro
  */
 interface IRiskModule {
+  enum Parameter {
+    moc,
+    jrCollRatio,
+    collRatio,
+    ensuroPpFee,
+    ensuroCocFee,
+    jrRoc,
+    srRoc,
+    maxPayoutPerPolicy,
+    exposureLimit,
+    maxDuration
+  }
+
+  struct Params {
+    uint256 moc;
+    uint256 jrCollRatio;
+    uint256 collRatio;
+    uint256 ensuroPpFee;
+    uint256 ensuroCocFee;
+    uint256 jrRoc;
+    uint256 srRoc;
+  }
+
   function name() external view returns (string memory);
 
-  function collRatio() external view returns (uint256);
-
-  function moc() external view returns (uint256);
-
-  function ensuroPpFee() external view returns (uint256);
-
-  function ensuroCocFee() external view returns (uint256);
-
-  function roc() external view returns (uint256);
+  function params() external view returns (Params memory);
 
   function maxPayoutPerPolicy() external view returns (uint256);
 
   function exposureLimit() external view returns (uint256);
+
+  function maxDuration() external view returns (uint256);
 
   function activeExposure() external view returns (uint256);
 
