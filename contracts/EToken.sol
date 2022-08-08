@@ -14,16 +14,14 @@ import {TimeScaled} from "./TimeScaled.sol";
 /**
  * @title Ensuro ERC20 EToken - interest-bearing token
  * @dev Implementation of the interest/earnings bearing token for the Ensuro protocol.
- *      The _scaleFactor scales the balances stored in _balances. _scaleFactor grows continuoulsly at
- *      _tokenInterestRate.
+ *      `_tsScaled.scale` scales the balances stored in _balances. _tsScaled (totalSupply scaled) grows
+ *      continuoulsly at _tokenInterestRate.
  *      Every operation that changes the utilization rate (_scr/totalSupply) or the _scrInterestRate, updates
- *      first the _scaleFactor accumulating the interest accrued since _lastScaleUpdate.
+ *      first the _tsScaled.scale accumulating the interest accrued since _tsScaled.lastUpdate.
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
 contract EToken is Reserve, IERC20Metadata, IEToken {
-  uint256 public constant MIN_SCALE = 1e17; // 0.0000000001 == 1e-10 in ray
-
   using WadRayMath for uint256;
   using TimeScaled for TimeScaled.ScaledAmount;
   using SafeERC20 for IERC20Metadata;
@@ -38,8 +36,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   string private _name;
   string private _symbol;
 
-  uint256 internal _scaleFactor; // in Ray
-  uint40 internal _lastScaleUpdate;
+  TimeScaled.ScaledAmount internal _tsScaled; // Total Supply scaled
 
   uint256 internal _scr; // in Wad - Capital locked as Solvency Capital Requirement of backed up policies
   uint256 internal _scrInterestRate; // in Ray - Interest rate received in exchange of solvency capital
@@ -96,8 +93,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   ) internal initializer {
     _name = name_;
     _symbol = symbol_;
-    _scaleFactor = WadRayMath.ray();
-    _lastScaleUpdate = uint40(block.timestamp);
+    _tsScaled.init();
     _scr = 0;
     _scrInterestRate = 0;
     _tokenInterestRate = 0;
@@ -163,7 +159,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
    * @dev See {IERC20-totalSupply}.
    */
   function totalSupply() public view virtual override returns (uint256) {
-    return _totalSupply.wadToRay().rayMul(_calculateCurrentScale()).rayToWad();
+    return _tsScaled.getScaledAmount(_tokenInterestRate);
   }
 
   /**
@@ -172,7 +168,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   function balanceOf(address account) public view virtual override returns (uint256) {
     uint256 principalBalance = _balances[account];
     if (principalBalance == 0) return 0;
-    return principalBalance.wadToRay().rayMul(_calculateCurrentScale()).rayToWad();
+    return _tsScaled.getScale(_tokenInterestRate).rayMul(principalBalance.wadToRay()).rayToWad();
   }
 
   /**
@@ -283,10 +279,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     return true;
   }
 
-  function _scaleAmount(uint256 amount) internal view returns (uint256) {
-    return amount.wadToRay().rayDiv(_calculateCurrentScale()).rayToWad();
-  }
-
   /**
    * @dev Moves tokens `amount` from `sender` to `recipient`.
    *
@@ -310,7 +302,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     require(recipient != address(0), "EToken: transfer to the zero address");
 
     _beforeTokenTransfer(sender, recipient, amount);
-    uint256 scaledAmount = _scaleAmount(amount);
+    uint256 scaledAmount = _tsScaled.scaleAmountNow(_tokenInterestRate, amount);
 
     uint256 senderBalance = _balances[sender];
     require(senderBalance >= scaledAmount, "EToken: transfer amount exceeds balance");
@@ -333,9 +325,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     require(account != address(0), "EToken: mint to the zero address");
 
     _beforeTokenTransfer(address(0), account, amount);
-    uint256 scaledAmount = _scaleAmount(amount);
-
-    _totalSupply += scaledAmount;
+    uint256 scaledAmount = _tsScaled.add(amount, _tokenInterestRate);
     _balances[account] += scaledAmount;
     emit Transfer(address(0), account, amount);
   }
@@ -355,11 +345,10 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     require(account != address(0), "EToken: burn from the zero address");
     _beforeTokenTransfer(account, address(0), amount);
 
-    uint256 scaledAmount = _scaleAmount(amount);
+    uint256 scaledAmount = _tsScaled.sub(amount, _tokenInterestRate);
     uint256 accountBalance = _balances[account];
     require(accountBalance >= scaledAmount, "EToken: burn amount exceeds balance");
     _balances[account] = accountBalance - scaledAmount;
-    _totalSupply -= scaledAmount;
 
     emit Transfer(account, address(0), amount);
   }
@@ -419,31 +408,15 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
 
   /*** END ERC20 methods - mainly copied from OpenZeppelin but changes in events and scaledAmount */
 
-  function _updateCurrentScale() internal {
-    if (uint40(block.timestamp) == _lastScaleUpdate) return;
-    _scaleFactor = _calculateCurrentScale();
-    require(_scaleFactor >= MIN_SCALE, "Scale too small, can lead to rounding errors");
-    _lastScaleUpdate = uint40(block.timestamp);
-  }
-
   function _updateTokenInterestRate() internal {
     uint256 totalSupply_ = this.totalSupply().wadToRay();
     if (totalSupply_ == 0) _tokenInterestRate = 0;
     else _tokenInterestRate = _scrInterestRate.rayMul(_scr.wadToRay()).rayDiv(totalSupply_);
   }
 
-  function _calculateCurrentScale() internal view returns (uint256) {
-    if (uint40(block.timestamp) <= _lastScaleUpdate) return _scaleFactor;
-    uint256 timeDifference = block.timestamp - _lastScaleUpdate;
-    return
-      _scaleFactor.rayMul(
-        ((_tokenInterestRate * timeDifference) / SECONDS_PER_YEAR) + WadRayMath.ray()
-      );
-  }
-
   function getCurrentScale(bool updated) public view returns (uint256) {
-    if (updated) return _calculateCurrentScale();
-    else return _scaleFactor;
+    if (updated) return _tsScaled.getScale(_tokenInterestRate);
+    else return uint256(_tsScaled.scale);
   }
 
   function fundsAvailable() public view returns (uint256) {
@@ -491,7 +464,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
       scrAmount <= this.fundsAvailableToLock(),
       "Not enought funds available to cover the SCR"
     );
-    _updateCurrentScale();
+    _tsScaled.updateScale(_tokenInterestRate);
     if (_scr == 0) {
       _scr = scrAmount;
       _scrInterestRate = policyInterestRate.wadToRay();
@@ -511,7 +484,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     int256 adjustment
   ) external override onlyBorrower {
     require(scrAmount <= _scr, "Current SCR less than the amount you want to unlock");
-    _updateCurrentScale();
+    _tsScaled.updateScale(_tokenInterestRate);
 
     if (_scr == scrAmount) {
       _scr = 0;
@@ -527,9 +500,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   }
 
   function _discreteChange(int256 amount) internal {
-    uint256 newTotalSupply = uint256(int256(totalSupply()) + amount);
-    _scaleFactor = newTotalSupply.wadToRay().rayDiv(_totalSupply.wadToRay());
-    require(_scaleFactor >= MIN_SCALE, "Scale too small, can lead to rounding errors");
+    _tsScaled.discreteChange(amount, _tokenInterestRate);
     _updateTokenInterestRate();
   }
 
@@ -545,7 +516,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
         policyPool().config().lpWhitelist().acceptsDeposit(this, provider, amount),
       "Liquidity Provider not whitelisted"
     );
-    _updateCurrentScale();
     _mint(provider, amount);
     _updateTokenInterestRate();
     require(utilizationRate() >= minUtilizationRate(), "Deposit rejected - Utilization Rate < min");
@@ -566,7 +536,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     whenNotPaused
     returns (uint256)
   {
-    _updateCurrentScale();
     uint256 balance = balanceOf(provider);
     if (balance == 0) return 0;
     if (amount > balance) amount = balance;
@@ -577,13 +546,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     _updateTokenInterestRate();
     _transferTo(provider, amount);
     return amount;
-  }
-
-  function _maxNegativeAdjustment() internal view returns (uint256) {
-    uint256 ts = totalSupply();
-    uint256 minTs = _totalSupply.wadToRay().rayMul(MIN_SCALE * 10).rayToWad();
-    if (ts > minTs) return ts - minTs;
-    else return 0;
   }
 
   function addBorrower(address borrower) external override onlyPolicyPool {
@@ -602,13 +564,12 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     uint256 amountAsked = amount;
     if (fromAvailable && amount > fundsAvailable()) amount = fundsAvailable();
     if (!fromAvailable && amount > totalSupply()) amount = totalSupply();
-    if (amount > _maxNegativeAdjustment()) {
-      amount = _maxNegativeAdjustment();
+    if (amount > _tsScaled.maxNegativeAdjustment(_tokenInterestRate)) {
+      amount = _tsScaled.maxNegativeAdjustment(_tokenInterestRate);
       if (amount == 0) return amountAsked;
     }
     TimeScaled.ScaledAmount storage loan = _poolLoans[_msgSender()];
     loan.add(amount, _poolLoanInterestRateRay());
-    _updateCurrentScale(); // shouldn't do anything because lendToPool is after unlock_scr but doing anyway
     _discreteChange(-int256(amount));
     _transferTo(receiver, amount);
     emit PoolLoan(_msgSender(), amount, amountAsked);
@@ -621,7 +582,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     TimeScaled.ScaledAmount storage loan = _poolLoans[onBehalfOf];
     require(loan.scale != 0, "Not a registered borrower");
     loan.sub(amount, _poolLoanInterestRateRay());
-    _updateCurrentScale(); // shouldn't do anything because lendToPool is after unlock_scr but doing anyway
     _discreteChange(int256(amount));
     emit PoolLoanRepaid(onBehalfOf, amount);
   }
