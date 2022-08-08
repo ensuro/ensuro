@@ -7,7 +7,6 @@ import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {Reserve} from "./Reserve.sol";
 import {IEToken} from "../interfaces/IEToken.sol";
 import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
-import {IInsolvencyHook} from "../interfaces/IInsolvencyHook.sol";
 import {WadRayMath} from "./WadRayMath.sol";
 import {TimeScaled} from "./TimeScaled.sol";
 
