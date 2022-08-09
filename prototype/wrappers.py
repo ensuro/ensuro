@@ -737,5 +737,7 @@ class LPManualWhitelist(ETHWrapper):
 
     whitelist_address = MethodAdapter((("address", "address"), ("whitelisted", "bool")), )
 
+    whitelist_required = MethodAdapter((("eToken", "address"), ("whitelisted", "bool")), )
+
 
 ERC20Token = TestCurrency

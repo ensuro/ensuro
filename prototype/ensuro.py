@@ -338,7 +338,7 @@ class EToken(ERC20Token):
     def total_withdrawable(self):
         """Returns the amount that's available to be withdrawed"""
         locked = (
-            self.scr.to_ray() * (_R(1) + self.scr_interest_rate) * self.liquidity_requirement
+            self.scr.to_ray() * self.liquidity_requirement
         ).to_wad()
         return max(_W(0), self.total_supply() - locked)
 
@@ -930,6 +930,7 @@ class LPInsolvencyHook(Contract):
 class LPManualWhitelist(Contract):
     pool = ContractProxyField()
     whitelisted = DictField(AddressField(), IntField(), default={})
+    require_whitelist = DictField(ContractProxyField(), IntField(), default={})
 
     def has_role(self, role, account):
         return self.pool.config.has_role(role, account)
@@ -938,8 +939,14 @@ class LPManualWhitelist(Contract):
     def whitelist_address(self, address, whitelisted):
         self.whitelisted[address] = whitelisted
 
+    @only_role("LP_WHITELIST_ROLE")
+    def whitelist_required(self, eToken, whitelisted):
+        self.require_whitelist[ContractProxy(eToken.contract_id)] = whitelisted
+
     def accepts_deposit(self, etoken, provider, amount):
-        return self.whitelisted.get(provider, False)
+        is_open = not self.require_whitelist.get(ContractProxy(etoken.contract_id), False)
+        return is_open or self.whitelisted.get(provider, False)
 
     def accepts_transfer(self, etoken, from_, to_, amount):
-        return self.whitelisted.get(to_, False)
+        is_open = not self.require_whitelist.get(ContractProxy(etoken.contract_id), False)
+        return is_open or self.whitelisted.get(to_, False)

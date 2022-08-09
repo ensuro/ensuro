@@ -173,7 +173,7 @@ def test_etoken_erc20(tenv):
     with etk.thru_policy_pool():
         etk.withdraw("LP2", _W(100)).assert_equal(_W(100))
 
-    total_withdrawable = _W(1000) + _W("0.06") * _W(2) - policy.scr * _W("1.0365") - _W(100)
+    total_withdrawable = _W(1000) + _W("0.06") * _W(2) - policy.scr - _W(100)
     etk.total_withdrawable().assert_equal(total_withdrawable)
 
     # Max to withdraw is total_withdrawable
@@ -225,7 +225,7 @@ def test_multiple_policies(tenv):
                                   expiration=tenv.time_control.now + WEEK)
     with etk.thru_policy_pool():
         etk.lock_scr(policy3, policy3.scr)
-    etk.total_withdrawable().assert_equal(_W(0))
+    etk.total_withdrawable().assert_equal(_W("0.03") * _W(5) + _W("0.12") * _W(3))
 
     with etk.thru_policy_pool():
         etk.unlock_scr(policy3, policy3.scr)
@@ -457,7 +457,7 @@ def test_max_utilization_rate(tenv):
 
     etk.utilization_rate.assert_equal(_R("0.3"))
 
-    expected_balance = _W(2000) - _W("600") * _W("1.0365")
+    expected_balance = _W(2000) - _W("600")
     with etk.thru_policy_pool():
         etk.withdraw("LP1", _W(1400)).assert_equal(expected_balance)
 
