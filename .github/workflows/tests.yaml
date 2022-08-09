@@ -22,6 +22,6 @@ jobs:
         env:
           ALCHEMY_URL: ${{ secrets.ALCHEMY_URL }}
       - run: ./deploySmokeTest.sh
-      - run: ./deploySmokeTest-fork.sh
-        env:
-          ALCHEMY_URL: ${{ secrets.ALCHEMY_URL }}
+#      - run: ./deploySmokeTest-fork.sh
+#        env:
+#          ALCHEMY_URL: ${{ secrets.ALCHEMY_URL }}

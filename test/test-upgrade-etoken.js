@@ -61,7 +61,7 @@ describe("Test EToken Upgrade - run at block 31692000", function() {
     tx = await eUSD1YEAR.connect(adminsMultisig).upgradeTo(ADDRESSES.oldImpl);
   });
 
-  it.only("Should be able to withdraw 20k after upgrade", async function() {
+  it("Should be able to withdraw 20k after upgrade", async function() {
     let prevBalance = await USDC.balanceOf(lp.address);
     let usd20k = _BN(20000).mul(_BN(1e6));
     tx = await pool.connect(lp).withdraw(ADDRESSES.eUSD1YEAR, usd20k);
