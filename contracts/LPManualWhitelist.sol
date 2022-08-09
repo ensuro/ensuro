@@ -16,8 +16,10 @@ contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
   bytes32 public constant LP_WHITELIST_ROLE = keccak256("LP_WHITELIST_ROLE");
 
   mapping(address => bool) private _whitelisted;
+  mapping(IEToken => bool) private _whitelistRequired;
 
   event LPWhitelisted(address provider, bool whitelisted);
+  event ETokenRequiresWhitelist(IEToken eToken, bool whitelistRequired);
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
@@ -38,20 +40,28 @@ contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
     emit LPWhitelisted(provider, whitelisted);
   }
 
+  function whitelistRequired(IEToken eToken, bool whitelistRequired_)
+    external
+    onlyPoolRole(LP_WHITELIST_ROLE)
+  {
+    _whitelistRequired[eToken] = whitelistRequired_;
+    emit ETokenRequiresWhitelist(eToken, whitelistRequired_);
+  }
+
   function acceptsDeposit(
-    IEToken,
+    IEToken etk,
     address provider,
     uint256
   ) external view override returns (bool) {
-    return _whitelisted[provider];
+    return !_whitelistRequired[etk] || _whitelisted[provider];
   }
 
   function acceptsTransfer(
-    IEToken,
+    IEToken etk,
     address,
     address providerTo,
     uint256
   ) external view override returns (bool) {
-    return _whitelisted[providerTo];
+    return !_whitelistRequired[etk] || _whitelisted[providerTo];
   }
 }

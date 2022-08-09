@@ -1687,25 +1687,25 @@ def test_lp_whitelist(tenv):
         - user: LP1
           amount: 5000
         - user: LP2
-          amount: 3000
+          amount: 3500
         - user: CUST1
           amount: 200
     etokens:
-      - name: eUSD1YEAR
+      - name: eUSDKYC
         expiration_period: 31536000
         pool_loan_interest_rate: "0.06"
-      - name: eUSD1MONTH
+      - name: eUSDOPEN
         expiration_period: 2592000
         pool_loan_interest_rate: "0.04"
     """
 
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     USD = pool.currency
-    etk = pool.etokens["eUSD1YEAR"]
+    etk = pool.etokens["eUSDKYC"]
 
     # Without whitelist, anyone can deposit
     USD.approve("LP1", pool.contract_id, _W(1000))
-    assert pool.deposit("eUSD1YEAR", "LP1", _W(1000)) == _W(1000)
+    assert pool.deposit("eUSDKYC", "LP1", _W(1000)) == _W(1000)
 
     whitelist = tenv.module.LPManualWhitelist(pool=pool)
 
@@ -1716,10 +1716,19 @@ def test_lp_whitelist(tenv):
     with pool.config.as_("admin"):
         pool.config.set_lp_whitelist(whitelist)
 
+    USD.approve("LP2", pool.contract_id, _W(3500))
+
+    # Initially all ETK are open (don't require whitelist)
+    assert pool.deposit("eUSDOPEN", "LP2", _W(300)) == _W(300)
+
+    # Require whitelisting on eUSDKYC
+    pool.config.grant_role("LP_WHITELIST_ROLE", "amlcompliance")
+    with whitelist.as_("amlcompliance"):
+        whitelist.whitelist_required(etk, True)
+
     # Now only whitelisted can deposit
-    USD.approve("LP2", pool.contract_id, _W(3000))
     with pytest.raises(RevertError, match="Liquidity Provider not whitelisted"):
-        pool.deposit("eUSD1YEAR", "LP2", _W(1000))
+        pool.deposit("eUSDKYC", "LP2", _W(1000))
 
     # Whitelisting requires permission
     with whitelist.as_("johndoe"), pytest.raises(RevertError, match="AccessControl"):
@@ -1729,7 +1738,7 @@ def test_lp_whitelist(tenv):
     with whitelist.as_("amlcompliance"):
         whitelist.whitelist_address("LP2", True)
 
-    assert pool.deposit("eUSD1YEAR", "LP2", _W(2000)) == _W(2000)
+    assert pool.deposit("eUSDKYC", "LP2", _W(2000)) == _W(2000)
 
     # Transfer targets need to be whitelisted too
     with pytest.raises(RevertError, match="Transfer not allowed - Liquidity Provider not whitelisted"):
@@ -1743,16 +1752,18 @@ def test_lp_whitelist(tenv):
     etk.balance_of("LP3").assert_equal(_W(500))
     etk.balance_of("LP1").assert_equal(_W(1000))
 
-    pool.withdraw("eUSD1YEAR", "LP1", None).assert_equal(_W(1000))  # Non whitelisted can withdraw
+    pool.withdraw("eUSDKYC", "LP1", None).assert_equal(_W(1000))  # Non whitelisted can withdraw
 
     # De-whitelist can't deposit anymore
     with whitelist.as_("amlcompliance"):
         whitelist.whitelist_address("LP2", False)
     with pytest.raises(RevertError, match="Liquidity Provider not whitelisted"):
-        pool.deposit("eUSD1YEAR", "LP2", _W(1000))
+        pool.deposit("eUSDKYC", "LP2", _W(1000))
+    # Still can deposit in the open one
+    assert pool.deposit("eUSDOPEN", "LP2", _W(200)) == _W(500)
 
     # But can withdraw
-    pool.withdraw("eUSD1YEAR", "LP2", _W(300)).assert_equal(_W(300))
+    pool.withdraw("eUSDKYC", "LP2", _W(300)).assert_equal(_W(300))
 
 
 def test_expire_policy(tenv):
