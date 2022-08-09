@@ -74,6 +74,12 @@ interface IPolicyPoolConfig is IAccessControlUpgradeable {
 
   function checkRole(bytes32 role, address account) external view;
 
+  function checkComponentRole(
+    address component,
+    bytes32 role,
+    address account
+  ) external view;
+
   function checkRole2(
     bytes32 role1,
     bytes32 role2,

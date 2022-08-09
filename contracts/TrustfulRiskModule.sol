@@ -61,13 +61,13 @@ contract TrustfulRiskModule is RiskModule {
     uint40 expiration,
     address customer,
     uint96 internalId
-  ) external onlyRole(PRICER_ROLE) returns (uint256) {
+  ) external onlyComponentRole(PRICER_ROLE) returns (uint256) {
     return _newPolicy(payout, premium, lossProb, expiration, customer, internalId).id;
   }
 
   function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout)
     external
-    onlyRole(RESOLVER_ROLE)
+    onlyComponentRole(RESOLVER_ROLE)
     whenNotPaused
   {
     _policyPool.resolvePolicy(policy, payout);
@@ -75,7 +75,7 @@ contract TrustfulRiskModule is RiskModule {
 
   function resolvePolicyFullPayout(Policy.PolicyData calldata policy, bool customerWon)
     external
-    onlyRole(RESOLVER_ROLE)
+    onlyComponentRole(RESOLVER_ROLE)
     whenNotPaused
   {
     _policyPool.resolvePolicyFullPayout(policy, customerWon);

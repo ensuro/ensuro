@@ -71,6 +71,11 @@ abstract contract PolicyPoolComponent is
     _;
   }
 
+  modifier onlyComponentRole(bytes32 role) {
+    _policyPool.config().checkComponentRole(address(this), role, msg.sender);
+    _;
+  }
+
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(IPolicyPool policyPool_) {
     _policyPool = policyPool_;
