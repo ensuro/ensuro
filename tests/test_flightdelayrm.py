@@ -67,7 +67,7 @@ def test_flightdelay_set_oracle_params(tenv):
     with pytest.raises(RevertError, match="AccessControl"):
         rm.oracle_params = oracle_params
 
-    rm.grant_role("ORACLE_ADMIN_ROLE", "SYSADMIN")
+    tenv.pool_config.grant_component_role(rm, "ORACLE_ADMIN_ROLE", "SYSADMIN")
 
     with rm.as_("SYSADMIN"):
         rm.oracle_params = oracle_params
@@ -95,12 +95,12 @@ def test_flightdelay_setup_with_mock_oracle(tenv):
     mock_oracle = provider.deploy("ForwardProxy", (rm.contract.address,), rm.owner)
 
     # Change Oracle
-    rm.grant_role("ORACLE_ADMIN_ROLE", rm.owner)
+    tenv.pool_config.grant_component_role(rm, "ORACLE_ADMIN_ROLE", rm.owner)
     rm.oracle_params = rm.OracleParams(*rm.oracle_params)._replace(oracle=mock_oracle.address)
 
     now = tenv.time_control.now
 
-    rm.grant_role("PRICER_ROLE", "BACKEND")
+    tenv.pool_config.grant_component_role(rm, "PRICER_ROLE", "BACKEND")
     tenv.currency.approve("CUST1", rm.policy_pool, _W(100))
 
     thru_oracle_rm = provider.build_contract(
