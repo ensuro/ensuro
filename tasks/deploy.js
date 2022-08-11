@@ -452,7 +452,7 @@ async function flightDelayPolicy({rmAddress, flight, departure, expectedArrival,
   const poolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await policyPool.config());
   const currency = await hre.ethers.getContractAt("IERC20Metadata", await policyPool.currency());
 
-  await grantComponentRole(hre, poolConfig, rm, "RESOLVER_ROLE");
+  await grantComponentRole(hre, poolConfig, rm, "PRICER_ROLE");
   customer = customer || await _getDefaultSigner(hre);
   premium = _A(premium);
 
