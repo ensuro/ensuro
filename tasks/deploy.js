@@ -92,6 +92,26 @@ async function verifyContract(hre, contract, isProxy, constructorArguments) {
   }
 }
 
+async function grantComponentRole(hre, contract, component, role, user) {
+  let userAddress;
+  if (user === undefined) {
+    user = await _getDefaultSigner(hre);
+    userAddress = user.address;
+  } else {
+    userAddress = user;
+  }
+  const roleHex = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(role));
+  const componentRole = await contract.getComponentRole(component.address, roleHex);
+  if (!await contract.hasRole(componentRole, userAddress)) {
+    await contract.grantComponentRole(component.address, roleHex, userAddress);
+    console.log(`Role ${role} (${roleHex}) Component ${component.address} granted to ${userAddress}`);
+  } else {
+    console.log(
+      `Role ${role} (${roleHex}) Component ${component.address} already granted to ${userAddress}`
+    );
+  }
+}
+
 async function grantRole(hre, contract, role, user) {
   let userAddress;
   if (user === undefined) {
@@ -109,9 +129,13 @@ async function grantRole(hre, contract, role, user) {
   }
 }
 
-async function grantRoleTask({contractAddress, role, account}, hre) {
+async function grantRoleTask({contractAddress, role, account, component}, hre) {
   const contract = await hre.ethers.getContractAt("PolicyPoolConfig", contractAddress);
-  await grantRole(hre, contract, role, account);
+  if (component === ethers.constants.AddressZero) {
+    await grantRole(hre, contract, role, account);
+  } else {
+    await grantComponentRole(hre, contract, component, role, account);
+  }
 }
 
 async function deployTestCurrency({saveAddr, verify, currName, currSymbol, initialSupply}, hre) {
@@ -383,8 +407,9 @@ async function deployWhitelist({saveAddr, verify, wlClass, poolAddress, extraCon
 async function trustfullPolicy({rmAddress, payout, premium, lossProb, expiration, customer}, hre) {
   const rm = await hre.ethers.getContractAt("TrustfulRiskModule", rmAddress);
   const policyPool = await hre.ethers.getContractAt("PolicyPool", await rm.policyPool());
+  const poolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await policyPool.config());
   const currency = await hre.ethers.getContractAt("IERC20Metadata", await policyPool.currency());
-  await grantRole(hre, rm, "PRICER_ROLE");
+  await grantComponentRole(hre, poolConfig, rm, "PRICER_ROLE");
 
   customer = customer || await _getDefaultSigner(hre);
   premium = _A(premium);
@@ -405,7 +430,9 @@ async function trustfullPolicy({rmAddress, payout, premium, lossProb, expiration
 
 async function resolvePolicy({rmAddress, payout, fullPayout, policyId}, hre) {
   const rm = await hre.ethers.getContractAt("TrustfulRiskModule", rmAddress);
-  await grantRole(hre, rm, "RESOLVER_ROLE");
+  const policyPool = await hre.ethers.getContractAt("PolicyPool", await rm.policyPool());
+  const poolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await policyPool.config());
+  await grantComponentRole(hre, poolConfig, rm, "RESOLVER_ROLE");
 
   let tx;
 
@@ -422,9 +449,10 @@ async function flightDelayPolicy({rmAddress, flight, departure, expectedArrival,
                              lossProb, customer}, hre) {
   const rm = await hre.ethers.getContractAt("FlightDelayRiskModule", rmAddress);
   const policyPool = await hre.ethers.getContractAt("PolicyPool", await rm.policyPool());
+  const poolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await policyPool.config());
   const currency = await hre.ethers.getContractAt("IERC20Metadata", await policyPool.currency());
 
-  await grantRole(hre, rm, "PRICER_ROLE");
+  await grantComponentRole(hre, poolConfig, rm, "PRICER_ROLE");
   customer = customer || await _getDefaultSigner(hre);
   premium = _A(premium);
 
@@ -694,6 +722,8 @@ function add_task() {
     .addParam("contractAddress", "Contract", undefined, types.address)
     .addParam("role", "Role", types.str)
     .addParam("account", "Account", undefined, types.address)
+    .addOptionalParam("component", "Address of the component if it's a component role",
+                      ethers.constants.AddressZero, types.address)
     .setAction(grantRoleTask);
 }
 

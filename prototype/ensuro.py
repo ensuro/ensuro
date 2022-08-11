@@ -1,9 +1,10 @@
 from contextlib import contextmanager
 from hashlib import md5
+from functools import wraps
 from m9g import Model
 from m9g.fields import StringField, IntField, DictField, CompositeField, ListField
 from ethproto.contracts import AccessControlContract, ERC20Token, external, view, RayField, \
-    WadField, AddressField, ContractProxyField, ContractProxy, require, only_role, Contract
+    WadField, AddressField, ContractProxyField, ContractProxy, require, only_role, Contract, RevertError
 from ethproto.contracts import ERC721Token
 from ethproto.wadray import RAY, Ray, Wad, _W, _R
 import time
@@ -30,6 +31,23 @@ class TimeControl:
 time_control = TimeControl()
 
 
+def only_component_role(*roles):
+    def decorator(method):
+        @wraps(method)
+        def inner(self, *args, **kwargs):
+            contract_id = self.contract_id
+            for role in roles:
+                composed_role = f"{role}-{contract_id}"
+                if self.has_role(composed_role, self.running_as):
+                    break
+            else:
+                raise RevertError(f"AccessControl: account {self.running_as} is missing role {role}")
+            return method(self, *args, **kwargs)
+
+        return inner
+    return decorator
+
+
 class RiskModule(AccessControlContract):
     policy_pool = ContractProxyField()
     premiums_account = ContractProxyField()
@@ -47,7 +65,7 @@ class RiskModule(AccessControlContract):
 
     wallet = AddressField(default="RM")
 
-    set_attr_roles = {
+    pool_component_set_attr_roles = {
         "wallet": "RM_PROVIDER_ROLE",
     }
 
@@ -62,12 +80,22 @@ class RiskModule(AccessControlContract):
         "exposure_limit": "LEVEL2_ROLE",
     }
 
+    def has_role(self, role, account):
+        return self.policy_pool.config.has_role(role, account)
+
     def _validate_setattr(self, attr_name, value):
         if attr_name in self.pool_set_attr_roles:
             require(
                 self.policy_pool.config.has_role(self.pool_set_attr_roles[attr_name], self._running_as),
                 f"AccessControl: AccessControl: account {self._running_as} is missing role "
                 f"'{self.pool_set_attr_roles[attr_name]}'"
+            )
+        if attr_name in self.pool_component_set_attr_roles:
+            composed_role = f"{self.pool_component_set_attr_roles[attr_name]}-{self.contract_id}"
+            require(
+                self.policy_pool.config.has_role(composed_role, self._running_as),
+                f"AccessControl: AccessControl: account {self._running_as} is missing role "
+                f"'{composed_role}'"
             )
         return super()._validate_setattr(attr_name, value)
 
@@ -109,12 +137,12 @@ class RiskModule(AccessControlContract):
 
 
 class TrustfulRiskModule(RiskModule):
-    @only_role("PRICER_ROLE")
+    @only_component_role("PRICER_ROLE")
     def new_policy(self, *args, **kwargs):
         return super().new_policy(*args, **kwargs)
 
     @external
-    @only_role("RESOLVER_ROLE")
+    @only_component_role("RESOLVER_ROLE")
     def resolve_policy(self, policy_id, customer_won):
         with self.policy_pool.as_(self.contract_id):
             return self.policy_pool.resolve_policy(policy_id, customer_won)
@@ -541,6 +569,10 @@ class PolicyPoolConfig(AccessControlContract):
     @only_role("LEVEL1_ROLE", "GUARDIAN_ROLE")
     def set_lp_whitelist(self, lp_whitelist):
         self.lp_whitelist = ContractProxy(lp_whitelist.contract_id) if lp_whitelist else None
+
+    def grant_component_role(self, component, role, user):
+        composed_role = f"{role}-{component.contract_id}"
+        self.grant_role(composed_role, user)
 
 
 class PremiumsAccount(ReserveMixin, AccessControlContract):

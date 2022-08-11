@@ -457,19 +457,6 @@ class PolicyPoolConfig(ETHWrapper):
         self.add_risk_module_(risk_module)
         self._risk_modules[risk_module.name] = risk_module
 
-    set_asset_manager_ = MethodAdapter((("asset_manager", "contract"), ))
-
-    def set_asset_manager(self, asset_manager):
-        self.set_asset_manager_(asset_manager)
-        self._asset_manager = asset_manager
-
-    @property
-    def asset_manager(self):
-        am = eth_call(self, "assetManager")
-        if getattr(self, "_asset_manager", None) and self._asset_manager.contract.address == am:
-            return self._asset_manager
-        return BaseAssetManager.connect(am, self.owner)
-
     set_exchange_ = MethodAdapter((("exchange", "contract"), ))
 
     def set_exchange(self, exchange):
@@ -483,20 +470,11 @@ class PolicyPoolConfig(ETHWrapper):
             return self._exchange
         return Exchange.connect(ex, self.owner)
 
-    set_insolvency_hook_ = MethodAdapter((("insolvency_hook", "contract"), ))
-
-    def set_insolvency_hook(self, insolvency_hook):
-        self.set_insolvency_hook_(insolvency_hook)
-        self._insolvency_hook = insolvency_hook
-
-    @property
-    def insolvency_hook(self):
-        ih = eth_call(self, "insolvencyHook")
-        if getattr(self, "_insolvency_hook", None) and self._insolvency_hook.contract.address == ih:
-            return self._insolvency_hook
-        return FreeGrantInsolvencyHook.connect(ih, self.owner)
-
     set_lp_whitelist = MethodAdapter((("whitelist", "contract"), ), eth_method="setLPWhitelist")
+
+    grant_component_role = MethodAdapter(
+        (("component", "address"), ("role", "keccak256"), ("user", "address"))
+    )
 
 
 class PolicyPool(ETHWrapper):

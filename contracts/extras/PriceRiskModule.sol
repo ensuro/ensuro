@@ -224,7 +224,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
    */
   function setCDF(int40 duration, uint256[PRICE_SLOTS] calldata cdf)
     external
-    onlyRole(PRICER_ROLE)
+    onlyComponentRole(PRICER_ROLE)
     whenNotPaused
   {
     _cdf[duration] = cdf;

@@ -77,8 +77,8 @@ def test_transfers(tenv):
     timecontrol = tenv.time_control
     rm = pool.config.risk_modules["Roulette"]
 
-    rm.grant_role("PRICER_ROLE", rm.owner)
-    rm.grant_role("RESOLVER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
 
     scr = _W(3500 + (100/37)) + _W("0.0001")  # Rounding error
 
@@ -154,8 +154,8 @@ def test_transfers_usdc(tenv):
     timecontrol = tenv.time_control
     rm = pool.config.risk_modules["Roulette"]
 
-    rm.grant_role("PRICER_ROLE", rm.owner)
-    rm.grant_role("RESOLVER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
 
     scr = Wad(_D(3500 + (100/37)) + _D("0.0001"))  # Rounding error
 
@@ -234,8 +234,8 @@ def xtest_not_accept_rm(tenv):
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
     rm = pool.config.risk_modules["Roulette"]
-    rm.grant_role("PRICER_ROLE", rm.owner)
-    rm.grant_role("RESOLVER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
     pool.config.grant_role("LEVEL2_ROLE", rm.owner)
 
     eUSD1MONTH = pool.etokens["eUSD1MONTH"]
@@ -353,8 +353,8 @@ def test_walkthrough(tenv):
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
     rm = pool.config.risk_modules["Roulette"]
-    rm.grant_role("PRICER_ROLE", rm.owner)
-    rm.grant_role("RESOLVER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
     premiums_account = rm.premiums_account
     pool.config.grant_role("LEVEL2_ROLE", rm.owner)  # For setting sr_roc
 
@@ -644,8 +644,8 @@ def test_nfts(tenv):
     nft = pool.policy_nft
     timecontrol = tenv.time_control
     rm = pool.config.risk_modules["Roulette"]
-    rm.grant_role("PRICER_ROLE", rm.owner)
-    rm.grant_role("RESOLVER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
 
     usd = pool.currency
 
@@ -709,8 +709,8 @@ def test_policy_holder_contract(tenv):
     nft = pool.policy_nft
     timecontrol = tenv.time_control
     rm = pool.config.risk_modules["Roulette"]
-    rm.grant_role("PRICER_ROLE", rm.owner)
-    rm.grant_role("RESOLVER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
 
     PolicyHolderMock = get_provider().get_contract_factory("PolicyHolderMock")
     ph_mock = PolicyHolderMock.deploy(False, {"from": rm.owner})
@@ -803,8 +803,8 @@ def test_partial_payout(tenv):
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
     rm = pool.config.risk_modules["Roulette"]
-    rm.grant_role("PRICER_ROLE", rm.owner)
-    rm.grant_role("RESOLVER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
     premiums_account = rm.premiums_account
 
     usd = pool.currency
@@ -855,8 +855,8 @@ def test_pool_loan_partial_payout(tenv):
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
     rm = pool.config.risk_modules["Roulette"]
-    rm.grant_role("PRICER_ROLE", rm.owner)
-    rm.grant_role("RESOLVER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
     premiums_account = rm.premiums_account
 
     usd = pool.currency
@@ -909,8 +909,8 @@ def test_increase_won_pure_premiums(tenv):
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
     rm = pool.config.risk_modules["Roulette"]
-    rm.grant_role("PRICER_ROLE", rm.owner)
-    rm.grant_role("RESOLVER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
     premiums_account = rm.premiums_account
 
     usd = pool.currency
@@ -962,8 +962,8 @@ def test_payout_bigger_than_pure_premium(tenv):
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
     rm = pool.config.risk_modules["Roulette"]
-    rm.grant_role("PRICER_ROLE", rm.owner)
-    rm.grant_role("RESOLVER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
     premiums_account = rm.premiums_account
 
     usd = pool.currency
@@ -1021,8 +1021,8 @@ def xtest_asset_manager(tenv):
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
     rm = pool.config.risk_modules["Roulette"]
-    rm.grant_role("PRICER_ROLE", rm.owner)
-    rm.grant_role("RESOLVER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
     premiums_account = rm.premiums_account
 
     USD = pool.currency
@@ -1123,8 +1123,8 @@ def xtest_assets_under_liquidity_middle(tenv):
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
     rm = pool.config.risk_modules["Roulette"]
-    rm.grant_role("PRICER_ROLE", rm.owner)
-    rm.grant_role("RESOLVER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
     premiums_account = rm.premiums_account
 
     pool.config.grant_role("LEVEL2_ROLE", rm.owner)  # For setting moc
@@ -1210,8 +1210,8 @@ def xtest_distribute_negative_earnings(tenv):
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
     rm = pool.config.risk_modules["Roulette"]
-    rm.grant_role("PRICER_ROLE", rm.owner)
-    rm.grant_role("RESOLVER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
 
     asset_manager = pool.config.asset_manager
 
@@ -1264,8 +1264,8 @@ def xtest_distribute_negative_earnings_full_capital_from_etokens(tenv):
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
     rm = pool.config.risk_modules["Roulette"]
-    rm.grant_role("PRICER_ROLE", rm.owner)
-    rm.grant_role("RESOLVER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
 
     USD = pool.currency
     etk = pool.etokens["eUSD1YEAR"]
@@ -1367,8 +1367,8 @@ def xtest_distribute_negative_earnings_from_pool_and_etokens(tenv):
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
     rm = pool.config.risk_modules["Roulette"]
-    rm.grant_role("PRICER_ROLE", rm.owner)
-    rm.grant_role("RESOLVER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
 
     USD = pool.currency
     etk = pool.etokens["eUSD1YEAR"]
@@ -1449,8 +1449,8 @@ def xtest_insolvency_without_hook(tenv):
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
     rm = pool.config.risk_modules["Roulette"]
-    rm.grant_role("PRICER_ROLE", rm.owner)
-    rm.grant_role("RESOLVER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
 
     USD = pool.currency
     etk = pool.etokens["eUSD1YEAR"]
@@ -1770,8 +1770,8 @@ def test_expire_policy(tenv):
     etk = pool.etokens["eUSD1YEAR"]
     USD = pool.currency
     rm = pool.config.risk_modules["Flight Insurance"]
-    rm.grant_role("PRICER_ROLE", rm.owner)
-    rm.grant_role("RESOLVER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
     pool.config.grant_role("LEVEL2_ROLE", rm.owner)  # For setting moc
     premiums_account = rm.premiums_account
 
@@ -1855,8 +1855,8 @@ def test_expire_policy_payout(tenv):
     etk = pool.etokens["eUSD1YEAR"]  # noqa
     USD = pool.currency  # noqa
     rm = pool.config.risk_modules["Flight Insurance"]
-    rm.grant_role("PRICER_ROLE", rm.owner)
-    rm.grant_role("RESOLVER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.config.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
     pool.config.grant_role("LEVEL2_ROLE", rm.owner)  # For setting moc
 
     with rm.as_(rm.owner):

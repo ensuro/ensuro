@@ -82,8 +82,10 @@ def test_getset_rm_parameters(tenv):
     assert rm.exposure_limit == _W(1000000)
     assert rm.wallet == "CASINO"
 
-    rm.grant_role("RM_PROVIDER_ROLE", "CASINO")  # Grant the role to the casino owner
-    tenv.pool_config.grant_role("LEVEL2_ROLE", "L2_USER")  # Grant the role to the casino owner
+    # rm.grant_role("RM_PROVIDER_ROLE", "CASINO")  # Grant the role to the casino owner
+    # Grant the role to the casino owner
+    tenv.pool_config.grant_component_role(rm, "RM_PROVIDER_ROLE", "CASINO")
+    tenv.pool_config.grant_role("LEVEL2_ROLE", "L2_USER")
 
     users = ("CASINO", "L2_USER", "JOHNDOE")
 
@@ -172,7 +174,8 @@ def test_getset_rm_parameters_tweaks(tenv):
         with rm.as_("L3_USER"), pytest.raises(RevertError, match="Tweak exceeded"):
             setattr(rm, attr_name, attr_value)
 
-    rm.grant_role("RM_PROVIDER_ROLE", "CASINO")  # Grant the role to the casino owner
+    # Grant the role to the casino owner
+    tenv.pool_config.grant_component_role(rm, "RM_PROVIDER_ROLE", "CASINO")
 
     assert rm.moc == _W("1")
 
@@ -289,7 +292,7 @@ def test_new_policy(tenv):
     with rm.as_("JOHN_DOE"), pytest.raises(RevertError, match="is missing role"):
         policy = rm.new_policy(_W(36), _W(1), _W(1/37), expiration, "CUST1", 123)
 
-    rm.grant_role("PRICER_ROLE", "JOHN_SELLER")
+    tenv.pool_config.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
     with rm.as_("JOHN_SELLER"):
         policy = rm.new_policy(_W(36), _W(1), _W(1/37), expiration, "CUST1", 123)
 
@@ -314,7 +317,7 @@ def test_new_policy(tenv):
     with rm.as_("JOHN_DOE"), pytest.raises(RevertError, match="is missing role"):
         rm.resolve_policy(policy.id, True)
 
-    rm.grant_role("RESOLVER_ROLE", "JOE_THE_ORACLE")
+    tenv.pool_config.grant_component_role(rm, "RESOLVER_ROLE", "JOE_THE_ORACLE")
 
     with rm.as_("JOE_THE_ORACLE"):
         rm.resolve_policy(policy.id, True)
@@ -331,7 +334,7 @@ def test_moc(tenv):
     tenv.currency.approve("CUST1", rm.policy_pool, _W(1))
     expiration = tenv.time_control.now + WEEK
 
-    rm.grant_role("PRICER_ROLE", "JOHN_SELLER")
+    tenv.pool_config.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
     with rm.as_("JOHN_SELLER"):
         policy = rm.new_policy(_W(36), _W(1), _W(1/37), expiration, "CUST1", 111)
 
@@ -382,7 +385,7 @@ def test_minimum_premium(tenv):
     tenv.currency.transfer(tenv.currency.owner, "CUST1", _W(2))
     tenv.currency.approve("CUST1", rm.policy_pool, _W(2))
 
-    rm.grant_role("PRICER_ROLE", "JOHN_SELLER")
+    tenv.pool_config.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
     with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="less than minimum"):
         policy = rm.new_policy(_W(36), _W("1.28"), _W(1/37), expiration, "CUST1", 222)
 

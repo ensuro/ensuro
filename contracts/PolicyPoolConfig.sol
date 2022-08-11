@@ -96,6 +96,26 @@ contract PolicyPoolConfig is
   // solhint-disable-next-line no-empty-blocks
   function _authorizeUpgrade(address) internal override onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {}
 
+  function getComponentRole(address component, bytes32 role) public pure returns (bytes32) {
+    return bytes32(bytes20(component)) ^ role;
+  }
+
+  function checkComponentRole(
+    address component,
+    bytes32 role,
+    address account
+  ) external view override {
+    _checkRole(getComponentRole(component, role), account);
+  }
+
+  function grantComponentRole(
+    address component,
+    bytes32 role,
+    address account
+  ) external onlyRole(getRoleAdmin(getComponentRole(component, role))) {
+    _grantRole(getComponentRole(component, role), account);
+  }
+
   function checkRole(bytes32 role, address account) external view override {
     _checkRole(role, account);
   }

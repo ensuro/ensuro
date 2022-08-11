@@ -94,7 +94,10 @@ contract FlightDelayRiskModule is RiskModule, ChainlinkClientUpgradeable {
     _oracleParams = oracleParams_;
   }
 
-  function setOracleParams(OracleParams memory newParams) external onlyRole(ORACLE_ADMIN_ROLE) {
+  function setOracleParams(OracleParams memory newParams)
+    external
+    onlyComponentRole(ORACLE_ADMIN_ROLE)
+  {
     _oracleParams = newParams;
   }
 
@@ -123,7 +126,7 @@ contract FlightDelayRiskModule is RiskModule, ChainlinkClientUpgradeable {
     uint256 lossProb,
     address customer,
     uint96 internalId
-  ) external onlyRole(PRICER_ROLE) returns (uint256) {
+  ) external onlyComponentRole(PRICER_ROLE) returns (uint256) {
     require(expectedArrival > block.timestamp, "expectedArrival can't be in the past");
     require(departure != 0 && expectedArrival > departure, "expectedArrival <= departure!");
     uint40 expiration = expectedArrival +
@@ -178,7 +181,11 @@ contract FlightDelayRiskModule is RiskModule, ChainlinkClientUpgradeable {
    * @dev Forces the resolution of the policy (without waiting Chainlink scheduled on creation)
    * @param policyId The id of the policy previously created (in newPolicy)
    */
-  function resolvePolicy(uint256 policyId) external onlyRole(PRICER_ROLE) returns (uint256) {
+  function resolvePolicy(uint256 policyId)
+    external
+    onlyComponentRole(PRICER_ROLE)
+    returns (uint256)
+  {
     PolicyData storage policy = _policies[policyId];
     require(policy.expectedArrival != 0, "Policy not found!");
     _chainlinkRequest(policyId, policy, 0);

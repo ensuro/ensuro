@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const { initCurrency, deployPool, deployPremiumsAccount, _E, _W, addRiskModule,
-        amountFunction, grantRole, addEToken, getTransactionEvent } = require("./test-utils");
+        amountFunction, grantRole, grantComponentRole,
+        addEToken, getTransactionEvent } = require("./test-utils");
 
 
 describe("Test PriceRiskModule contract", function() {
@@ -13,6 +14,7 @@ describe("Test PriceRiskModule contract", function() {
   let owner, lp, cust;
   let _A;
   let etk;
+  let poolConfig;
 
   beforeEach(async () => {
     [owner, lp, cust] = await ethers.getSigners();
@@ -48,7 +50,7 @@ describe("Test PriceRiskModule contract", function() {
       ],
       {constructorArgs: [pool.address], kind: 'uups'}
     );
-    let poolConfig = await ethers.getContractAt("PolicyPoolConfig", await pool.config());
+    poolConfig = await ethers.getContractAt("PolicyPoolConfig", await pool.config());
     await poolConfig.setExchange(exchange.address);
 
     PriceRiskModule = await ethers.getContractFactory("PriceRiskModule");
@@ -96,7 +98,7 @@ describe("Test PriceRiskModule contract", function() {
     expect(price0).to.equal(0);
     expect(lossProb0).to.equal(0);
 
-    grantRole(hre, rm, "PRICER_ROLE", owner.address);
+    grantComponentRole(hre, poolConfig, rm, "PRICER_ROLE", owner.address);
 
     const priceSlots = await rm.PRICE_SLOTS();
 
@@ -121,7 +123,7 @@ describe("Test PriceRiskModule contract", function() {
       extraConstructorArgs: [wmatic.address, currency.address, _W("0.01")],
       scrPercentage: "0.5"
     });
-    grantRole(hre, rm, "PRICER_ROLE", owner.address);
+    grantComponentRole(hre, poolConfig, rm, "PRICER_ROLE", owner.address);
 
     const start = (await owner.provider.getBlock("latest")).timestamp;
 
@@ -175,7 +177,7 @@ describe("Test PriceRiskModule contract", function() {
       extraConstructorArgs: [wmatic.address, currency.address, _W("0.01")],
       scrPercentage: "0.5"
     });
-    grantRole(hre, rm, "PRICER_ROLE", owner.address);
+    grantComponentRole(hre, poolConfig, rm, "PRICER_ROLE", owner.address);
 
     const start = (await owner.provider.getBlock("latest")).timestamp;
 

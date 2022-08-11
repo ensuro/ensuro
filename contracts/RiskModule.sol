@@ -2,7 +2,6 @@
 pragma solidity ^0.8.0;
 
 import {WadRayMath} from "./WadRayMath.sol";
-import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
 import {IRiskModule} from "../interfaces/IRiskModule.sol";
@@ -16,7 +15,7 @@ import {Policy} from "./Policy.sol";
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
-abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoolComponent {
+abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   using Policy for Policy.PolicyData;
   using WadRayMath for uint256;
 
@@ -80,7 +79,6 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     uint256 exposureLimit_,
     address wallet_
   ) internal initializer {
-    __AccessControl_init();
     __PolicyPoolComponent_init();
     __RiskModule_init_unchained(
       name_,
@@ -118,7 +116,6 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
     });
     _activeExposure = 0;
     _wallet = wallet_;
-    _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
     _validateParameters();
   }
 
@@ -264,7 +261,7 @@ abstract contract RiskModule is IRiskModule, AccessControlUpgradeable, PolicyPoo
       });
   }
 
-  function setWallet(address wallet_) external onlyRole(RM_PROVIDER_ROLE) {
+  function setWallet(address wallet_) external onlyComponentRole(RM_PROVIDER_ROLE) {
     _wallet = wallet_;
     _parameterChanged(
       IPolicyPoolConfig.GovernanceActions.setWallet,
