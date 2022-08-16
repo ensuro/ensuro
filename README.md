@@ -2,14 +2,19 @@
 
 Ensuro is a decentralized protocol that manages the capital to support insurance products. 
 
-It allows liquidity providers (LPs) to deposit capital (using stable coins) that will fulfill solvency capital requirements of underwritten policies. This capital will be deposited in different pools (*eTokens*) according to provider's cashback period preferences. The capital will be locked for the duration of policies and will report profits to the LPs in the form of continous interest.
+It allows liquidity providers (LPs) to deposit capital (using stable coins) that will fulfill solvency capital requirements of underwritten policies. This capital will be deposited in different pools (*eTokens*) that are linked to different risks. The capital will be locked for the duration of policies and will report profits to the LPs in the form of continous interest.
 
 On the policy side, the policies are injected into the protocol by *Risk Modules*. Each risk module represent an Ensuro partner and a specific insurance product and is implemented with a smart contract (inherited from `RiskModule`). Each risk module has two responsabilities: pricing and policy resolution. Also, the RiskModule smart contract stores several parameters of the risk module such as Ensuro and Risk Module fees, capital allocation limits, etc.
+
+Each policy sold and active it's a *risk* or potential loss, a random variable that goes from 0 (no losses) to the maximum payout defined in the policy. The solvency capital to cover these risks comes from two sources:
+- **pure premiums**: the part of the premium that's equal to the estimated mean of the risk random variable (expected losses), paid by the policy holder.
+- **scr**: the rest of the solvency capital (unexpected losses), required to be able to cover the risks with a given *confidence level*, is locked from the *eTokens*.
 
 ![Architecture Diagram](Architecture.png "Architecture Diagram")
 
 
 ## Contracts
+
 <dl>
 <dt>PolicyPool</dt>
 <dd>This is the main contract that keeps track of active policies and manages the assets. It has the methods for LP to deposit/withdraw. The PolicyPool is connected to a set of eTokens and RiskModules.</dd>
@@ -22,7 +27,7 @@ On the policy side, the policies are injected into the protocol by *Risk Modules
 
 <dl>
 <dt>PolicyPoolConfig</dt>
-<dd>This contract holds some configurable components of the protocol such as treasury address, InsolvencyHook, AssetManager and the installed risk modules. Also this module holds the access control permissions for the governance actions.</dd>
+<dd>This contract holds some configurable components of the protocol such as treasury address and the installed risk modules. Also this module holds the access control permissions for the governance actions.</dd>
 </dl>
 
 <dl>
@@ -33,21 +38,16 @@ On the policy side, the policies are injected into the protocol by *Risk Modules
 <dl>
 <dt>RiskModule</dt>
 <dd>This is a base contract that needs to be reimplemented with the specific logic related with custom policy parameters, validation of the received price and with different strategies for policy resolution (e.g. using oracles). This is the contract that must be called by a customer for creating a new policy that, after doing validations and storing parameters needed for resolution, will submit the new policy to the PolicyPool.</dd>
-  </dl>
+</dl>
 
 <dl>
-<dt>AssetManager</dt>
-<dd>This component of the protocol is the one responsible for managing the assets and getting additional interest reinvesting the assets. Different implementations of the asset management can be done, depeding on the strategy to be applied. In the base class, has different liquidity parameters that affect how much liquidity to keep in the PolicyPool to avoid continous invest/deinvest operations.</dd>
+<dt>PremiumsAccount</dt>
+<dd>The risk modules are grouped in *premiums accounts* that keep track of the pure premiums (active and earned) their policies. The responsability of these contracts is keeping track of the premiums and releasing the payouts. When premiums are exhausted (losses more than expected), they borrow money from the *eTokens* to cover the payouts. This money will be repaid when/if later the premiums account has surplus (losses less than expected).</dd>
 </dl>
 
 <dl>
 <dt>LPWhitelist</dt>
 <dd>This is an optional component. If present it controls which Liquidity Providers can deposit or transfer their <i>eTokens</i>.</dd>
-</dl>
-
-<dl>
-<dt>InsolvencyHook</dt>
-<dd>This component of the protocol is the one responsible for handling situations where there is not enough money in the protocol to cover losses (something unlikely but possible, since we aren't fully collaterized). Possible implementations of this are trigger of reinsurance (excess loss) policy from another company, sell governance tokens or take a loan.</dd>
 </dl>
 
 <dl>
