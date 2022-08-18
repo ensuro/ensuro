@@ -573,7 +573,7 @@ class AccessManager(AccessControlContract):
 class PremiumsAccount(ReserveMixin, AccessControlContract):
     pool = ContractProxyField()
     junior_etk = ContractProxyField(allow_none=True, default=None)
-    senior_etk = ContractProxyField()
+    senior_etk = ContractProxyField(allow_none=True, default=None)
     active_pure_premiums = WadField(default=Wad(0))
     borrowed_active_pp = WadField(default=Wad(0))
     won_pure_premiums = WadField(default=Wad(0))
