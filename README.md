@@ -66,8 +66,35 @@ More info about governance in https://docs.google.com/spreadsheets/d/1LqlogRn8Al
 
 For coding the smart contracts the approach we took was prototyping initially in Python (see folder `prototype`), and later we coded in Solidity. The tests run the same test case both on the Python prototype code and the Solidity code. To adapt the Solidity code that is called using [brownie](https://eth-brownie.readthedocs.io/en/stable/), we have some glue code implemented in `tests/wrappers.py`.
 
+### Without docker
+
+You can also run the development environment without using docker, just Python (>=3.9) and Node v16 are required as pre-requisits.
+
+Initial setup:
+
+```bash
+# Setup a virtualenv
+python3 -m venv venv
+source venv/bin/activate
+# Install python dependencies
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
+# Install javascript dependencies
+nvm use  # To change to node v16
+npm install
+```
+
+Then, you can run the tests with:
+
+```bash
+brownie test -v
+npx hardhat test
+```
+
+### Using docker
+
 The development environment is prepared for running inside a docker container defined in the Dockerfile. Also you can launch the docker environment using [invoke tasks](http://www.pyinvoke.org/), but before you need to run `pip install inv-py-docker-k8s-tasks` to install a package with common tasks for coding inside docker. Then with `inv start-dev` you should be able to launch the docker environment. Then you can run specific tasks:
-- `inv tests`: runs the test suite
+- `inv test`: runs the test suite
 - `inv shell`: opens a shell inside the docker container 
 
 Also the docker container is prepared to run [hardhat](https://hardhat.org/). This will be used probably for deployment scripts and perhaps some aditional tests.

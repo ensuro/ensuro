@@ -1,0 +1,9 @@
+site_name: Ensuro Protocol
+nav:
+  - Home: index.md
+  - PolicyPool: PolicyPool.md
+  - EToken: EToken.md
+  - Policy: Policy.md
+  - RiskModule: RiskModule.md
+  - PremiumsAccount: PremiumsAccount.md
+theme: readthedocs

@@ -6,5 +6,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    ports:
+      - 18000:8000
     container_name: ensuro_devenv
     env_file: .env
