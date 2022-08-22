@@ -194,7 +194,6 @@ contract PolicyPoolConfig is
     emit RiskModuleStatusChanged(riskModule, RiskModuleStatus.inactive);
   }
 
-  // #if_succeeds_disabled _riskModules.get(riskModule) == newStatus;
   function changeRiskModuleStatus(IRiskModule riskModule, RiskModuleStatus newStatus)
     external
     onlyRole3(GUARDIAN_ROLE, LEVEL1_ROLE, LEVEL2_ROLE)

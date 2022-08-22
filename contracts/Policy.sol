@@ -34,11 +34,6 @@ library Policy {
     uint40 expiration;
   }
 
-  /// #if_succeeds {:msg "premium preserved"} premium == (newPolicy.premium);
-  /// #if_succeeds
-  ///    {:msg "premium distributed"}
-  ///    premium == (newPolicy.purePremium + newPolicy.coc +
-  ///                newPolicy.partnerCommission + newPolicy.ensuroCommission);
   function initialize(
     IRiskModule riskModule,
     IRiskModule.Params memory rmParams,

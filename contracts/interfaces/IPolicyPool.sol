@@ -13,6 +13,13 @@ interface IPolicyPool {
 
   function policyNFT() external view returns (address);
 
+  /**
+   * @dev Creates a new Policy. Must be called from an active RiskModule
+   * @param policy A policy created with {Policy-initialize}
+   * @param customer The address of the policy holder and the payer of the premiums
+   * @param internalId A unique id within the RiskModule, that will be used to compute the policy id
+   * @return The policy id, identifying the NFT and the policy
+   */
   function newPolicy(
     Policy.PolicyData memory policy,
     address customer,

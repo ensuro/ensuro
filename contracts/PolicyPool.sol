@@ -30,8 +30,6 @@ import {DataTypes} from "./DataTypes.sol";
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
-// #invariant_disabled {:msg "Borrow up to activePurePremiums"} _borrowedActivePP <= _activePurePremiums;
-// #invariant_disabled {:msg "Can't borrow if not exhausted before won"} (_borrowedActivePP > 0) ==> _wonPurePremiums == 0;
 contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   using EnumerableSet for EnumerableSet.AddressSet;
   using WadRayMath for uint256;
@@ -124,7 +122,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     return address(_policyNFT);
   }
 
-  // #if_succeeds_disabled {:msg "eToken added as active"} _eTokens.get(eToken) == DataTypes.ETokenStatus.active;
   function addEToken(IEToken eToken) external onlyRole(LEVEL1_ROLE) {
     require(_eTokens.length() < MAX_ETOKENS, "Maximum number of ETokens reached");
     require(!_eTokens.contains(eToken), "eToken already in the pool");
@@ -181,9 +178,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     // TODO: functions for deactivating premiumsAccount (and remove them as borrower)
   }
 
-  /// #if_succeeds
-  ///    {:msg "must take balance from sender"}
-  ///    _currency.balanceOf(msg.sender) == old(_currency.balanceOf(msg.sender) - amount);
   function deposit(IEToken eToken, uint256 amount) external override whenNotPaused {
     (bool found, DataTypes.ETokenStatus etkStatus) = _eTokens.tryGet(eToken);
     require(found && etkStatus == DataTypes.ETokenStatus.active, "eToken is not active");
