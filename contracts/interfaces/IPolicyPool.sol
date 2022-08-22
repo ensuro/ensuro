@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {Policy} from "../contracts/Policy.sol";
+import {Policy} from "../Policy.sol";
 import {IEToken} from "./IEToken.sol";
 import {IPolicyPoolConfig} from "./IPolicyPoolConfig.sol";
 

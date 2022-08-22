@@ -5,12 +5,12 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {WadRayMath} from "./WadRayMath.sol";
-import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
-import {IEToken} from "../interfaces/IEToken.sol";
+import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
+import {IEToken} from "./interfaces/IEToken.sol";
 import {Reserve} from "./Reserve.sol";
-import {IPremiumsAccount} from "../interfaces/IPremiumsAccount.sol";
+import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
 import {Policy} from "./Policy.sol";
-import {IEToken} from "../interfaces/IEToken.sol";
+import {IEToken} from "./interfaces/IEToken.sol";
 import {DataTypes} from "./DataTypes.sol";
 
 /**

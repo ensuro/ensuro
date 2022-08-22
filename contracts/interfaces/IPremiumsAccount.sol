@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {IEToken} from "./IEToken.sol";
-import {Policy} from "../contracts/Policy.sol";
+import {Policy} from "../Policy.sol";
 
 /**
  * @title IPremiumsAccount interface

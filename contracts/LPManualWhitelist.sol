@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
+import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
-import {ILPWhitelist} from "../interfaces/ILPWhitelist.sol";
-import {IEToken} from "../interfaces/IEToken.sol";
+import {ILPWhitelist} from "./interfaces/ILPWhitelist.sol";
+import {IEToken} from "./interfaces/IEToken.sol";
 
 /**
  * @title Manual Whitelisting contract

@@ -4,9 +4,9 @@ pragma solidity ^0.8.2;
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ERC721Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
-import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
+import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import {IPolicyNFT} from "../interfaces/IPolicyNFT.sol";
+import {IPolicyNFT} from "./interfaces/IPolicyNFT.sol";
 
 /**
  * @title PolicyNFT - NFT that keeps track of issued policies and its owners

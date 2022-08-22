@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import {IPolicyPool} from "../../interfaces/IPolicyPool.sol";
-import {IRiskModule} from "../../interfaces/IRiskModule.sol";
-import {IEToken} from "../../interfaces/IEToken.sol";
-import {IPolicyPoolConfig} from "../../interfaces/IPolicyPoolConfig.sol";
+import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
+import {IRiskModule} from "../interfaces/IRiskModule.sol";
+import {IEToken} from "../interfaces/IEToken.sol";
+import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {Policy} from "../Policy.sol";
