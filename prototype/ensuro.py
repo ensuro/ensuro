@@ -218,6 +218,12 @@ class Policy(Model):
             _W(SECONDS_IN_YEAR)
         )
 
+    def jr_accrued_interest(self):
+        return (
+            self.sr_scr * _W(time_control.now - self.start) * self.jr_interest_rate //
+            _W(SECONDS_IN_YEAR)
+        )
+
 
 def non_negative(value):
     if value < 0:
