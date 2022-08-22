@@ -7,6 +7,7 @@ fi
 
 npx hardhat docgen
 cp README.md docs/index.md
+cp -r CONTRIBUTING.md CODE_OF_CONDUCT.md audits docs/
 cp Architecture.png docs/
 
 if [ "xx$1" == "xxserve" ]; then

@@ -21,4 +21,5 @@ trash/
 data/
 venv/
 docs/
+site/
 .addresses.json
