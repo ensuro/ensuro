@@ -52,15 +52,38 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IPolicyNFT internal immutable _policyNFT;
 
+  /**
+   * @dev List of installed eTokens (see {EToken}) in the PolicyPool. For each one it keep an state
+   * {DataTypes-ETokenStatus}.
+   */
   DataTypes.ETokenStatusMap internal _eTokens;
 
+  /**
+   * @dev Mapping that stores the active policies (the policyId is the key). It just saves the hash of the policies,
+   * the full {Policy-PolicyData} struct has to be sent for each operation (hash is used to verify).
+   */
   mapping(uint256 => bytes32) internal _policies;
 
+  /**
+   * @dev Event emitted every time a new policy is added to the pool. Contains all the data about the policy that is
+   * later required for doing operations with the policy like resolution or expiration.
+   */
   event NewPolicy(IRiskModule indexed riskModule, Policy.PolicyData policy);
-  event PolicyRebalanced(IRiskModule indexed riskModule, uint256 indexed policyId);
+
+  /**
+   * @dev Event emitted every time a policy is removed from the pool. If the policy expired, the `payouy` is 0,
+   * otherwise is the amount transferred to the policyholder.
+   */
   event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, uint256 payout);
 
+  /**
+   * @dev Event emitted when a new eToken is added to the pool or the status changes. See {DataTypes-ETokenStatus}.
+   */
   event ETokenStatusChanged(IEToken indexed eToken, DataTypes.ETokenStatus newStatus);
+
+  /**
+   * @dev Event emitted when a new PremiumsAccount is added to the pool or the status changes. TODO
+   */
   event PremiumsAccountStatusChanged(
     IPremiumsAccount indexed premiumsAccount,
     DataTypes.ETokenStatus newStatus
@@ -241,7 +264,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     require(policy.id != 0 && policy.hash() == _policies[policy.id], "Policy not found");
   }
 
-  function expirePolicy(Policy.PolicyData calldata policy) external whenNotPaused {
+  function expirePolicy(Policy.PolicyData calldata policy) external override whenNotPaused {
     require(policy.expiration <= block.timestamp, "Policy not expired yet");
     return _resolvePolicy(policy, 0, true);
   }

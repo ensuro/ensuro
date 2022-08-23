@@ -1,9 +1,31 @@
 site_name: Ensuro Protocol
 nav:
   - Home: index.md
-  - PolicyPool: PolicyPool.md
-  - EToken: EToken.md
-  - Policy: Policy.md
-  - RiskModule: RiskModule.md
-  - PremiumsAccount: PremiumsAccount.md
+  - Interfaces:
+    - IPolicyPool: interfaces/IPolicyPool.md
+    - IEToken: interfaces/IEToken.md
+    - IRiskModule: interfaces/IRiskModule.md
+    - IPremiumsAccount: interfaces/IPremiumsAccount.md
+    - IPolicyHolder: interfaces/IPolicyHolder.md
+    - ILPWhitelist: interfaces/ILPWhitelist.md
+    - IPolicyPoolComponent: interfaces/IPolicyPoolComponent.md
+    - IPolicyPoolConfig: interfaces/IPolicyPoolConfig.md
+    - IPolicyNFT: interfaces/IPolicyNFT.md
+  - Contracts:
+    - PolicyPool: PolicyPool.md
+    - EToken: EToken.md
+    - RiskModule: RiskModule.md
+    - TrustfulRiskModule: TrustfulRiskModule.md
+    - PremiumsAccount: PremiumsAccount.md
+    - PolicyNFT: PolicyNFT.md
+    - LPManualWhitelist: LPManualWhitelist.md
+    - PolicyPoolConfig: PolicyPoolConfig.md
+  - Base contracts:
+    - PolicyPoolComponent: PolicyPoolComponent.md
+    - Reserve: Reserve.md
+  - Libraries:
+    - Policy: Policy.md
+    - TimeScaled: TimeScaled.md
+    - WadRayMath: WadRayMath.md
+    - DataTypes: DataTypes.md
 theme: readthedocs

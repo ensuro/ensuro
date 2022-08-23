@@ -7,14 +7,40 @@ import {IEToken} from "./IEToken.sol";
 import {IPolicyPoolConfig} from "./IPolicyPoolConfig.sol";
 
 interface IPolicyPool {
+
+  /**
+   * @dev Reference to the main currency (ERC20) used in the protocol
+   * @return The address of the currency (e.g. USDC) token used in the protocol
+   */
   function currency() external view returns (IERC20Metadata);
 
+  /**
+   * @dev Reference to the {PolicyPoolConfig} contract, this contract manages the access controls and installed risk
+   *      modules.
+   * @return The address of the PolicyPoolConfig contract
+   */
   function config() external view returns (IPolicyPoolConfig);
 
+  /**
+   * @dev Reference to the {PolicyNFT} contract. This contract it's an ERC721 Token that handles the ownership of the
+   *      policies.
+   * @return The address of the PolicyNFT contract
+   */
   function policyNFT() external view returns (address);
 
   /**
    * @dev Creates a new Policy. Must be called from an active RiskModule
+   *
+   * Requirements:
+   * - `msg.sender` must be an active RiskModule
+   * - `customer` approved the spending of `currency()` for at least `policy.premium`
+   * - `internalId` must be unique within `policy.riskModule` and not used before
+   *
+   * Events:
+   * - {PolicyPool-NewPolicy}: with all the details about the policy
+   * - {ERC20-Transfer}: does several transfers from customer address to the different receivers of the premium
+   * (see Premium Split in the docs)
+   *
    * @param policy A policy created with {Policy-initialize}
    * @param customer The address of the policy holder and the payer of the premiums
    * @param internalId A unique id within the RiskModule, that will be used to compute the policy id
@@ -26,17 +52,104 @@ interface IPolicyPool {
     uint96 internalId
   ) external returns (uint256);
 
+  /**
+   * @dev Resolves a policy with a payout. Must be called from an active RiskModule
+   *
+   * Requirements:
+   * - `policy`: must be a Policy previously created with `newPolicy` (checked with `policy.hash()`) and not
+   *   resolved before and not expired (if payout > 0).
+   * - `payout`: must be less than equal to `policy.payout`.
+   *
+   * Events:
+   * - {PolicyPool-PolicyResolved}: with the payout
+   * - {ERC20-Transfer}: to the policyholder with the payout
+   *
+   * @param policy A policy previously created with `newPolicy`
+   * @param payout The amount to paid to the policyholder
+   */
   function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external;
 
+  /**
+   * @dev Resolves a policy with a payout that can be either 0 or the maximum payout of the policy
+   *
+   * Requirements:
+   * - `policy`: must be a Policy previously created with `newPolicy` (checked with `policy.hash()`) and not
+   *   resolved before and not expired (if customerWon).
+   *
+   * Events:
+   * - {PolicyPool-PolicyResolved}: with the payout
+   * - {ERC20-Transfer}: to the policyholder with the payout
+   *
+   * @param policy A policy previously created with `newPolicy`
+   * @param customerWon Indicated if the payout is zero or the maximum payout
+   */
   function resolvePolicyFullPayout(Policy.PolicyData calldata policy, bool customerWon) external;
 
+  /**
+   * @dev Resolves a policy with a payout 0, unlocking the solvency. Can be called by anyone, but only after
+   * `Policy.expiration`.
+   *
+   * Requirements:
+   * - `policy`: must be a Policy previously created with `newPolicy` (checked with `policy.hash()`) and not resolved
+   * before
+   * - Policy expired: `Policy.expiration` <= block.timestamp
+   *
+   * Events:
+   * - {PolicyPool-PolicyResolved}: with payout == 0
+   *
+   * @param policy A policy previously created with `newPolicy`
+   */
+  function expirePolicy(Policy.PolicyData calldata policy) external;
+
+  /**
+   * @dev Returns the number of eTokens (see {EToken}) in the protocol
+   */
   function getETokenCount() external view returns (uint256);
 
+  /**
+   * @dev Access to the addresses of the tokens installed in the protocol
+   * @return The address of an eToken.
+   */
   function getETokenAt(uint256 index) external view returns (IEToken);
 
+  /**
+   * @dev Deposits liquidity into an eToken. Forwards the call to {EToken-deposit}, after transferring the funds.
+   * The user will receive etokens for the same amount deposited.
+   *
+   * Requirements:
+   * - `msg.sender` approved the spending of `currency()` for at least `amount`
+   * - `eToken` is an active eToken installed in the pool.
+   *
+   * Events:
+   * - {EToken-Transfer}: from 0x0 to `msg.sender`, reflects the eTokens minted.
+   * - {ERC20-Transfer}: from `msg.sender` to address(eToken)
+   *
+   * @param eToken The address of the eToken to which the user wants to provide liquidity
+   * @param amount The amount to deposit
+   */
   function deposit(IEToken eToken, uint256 amount) external;
 
+  /**
+   * @dev Withdraws an amount from an eToken. Forwards the call to {EToken-withdraw}.
+   * `amount` of eTokens will be burned and the user will receive the same amount in `currency()`.
+   *
+   * Requirements:
+   * - `eToken` is an active (or deprecated) eToken installed in the pool.
+   *
+   * Events:
+   * - {EToken-Transfer}: from `msg.sender` to `0x0`, reflects the eTokens burned.
+   * - {ERC20-Transfer}: from address(eToken) to `msg.sender`
+   *
+   * @param eToken The address of the eToken from where the user wants to withdraw liquidity
+   * @param amount The amount to withdraw. If equal to type(uint256).max, means full withdrawal.
+   *               If the balance is not enought or can't be withdrawn (locked as SCR), it withdraws
+   *               as much as it can, but doesn't fails.
+   * @return Returns the actual amount withdrawn.
+   */
   function withdraw(IEToken eToken, uint256 amount) external returns (uint256);
 
+  /**
+   * @dev Returns the sum of totalSupply of all the eTokens. Used to validate some limits in risk module parameters.
+   */
   function totalETokenSupply() external view returns (uint256);
 }

@@ -80,6 +80,10 @@ contract PolicyPoolMock is IPolicyPool {
     _resolvePolicy(policy, payout);
   }
 
+  function expirePolicy(Policy.PolicyData calldata policy) external override {
+    _resolvePolicy(policy, 0);
+  }
+
   function resolvePolicyFullPayout(Policy.PolicyData calldata policy, bool customerWon)
     external
     override
