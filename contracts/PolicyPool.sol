@@ -71,7 +71,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   event NewPolicy(IRiskModule indexed riskModule, Policy.PolicyData policy);
 
   /**
-   * @dev Event emitted every time a policy is removed from the pool. If the policy expired, the `payouy` is 0,
+   * @dev Event emitted every time a policy is removed from the pool. If the policy expired, the `payout` is 0,
    * otherwise is the amount transferred to the policyholder.
    */
   event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, uint256 payout);
@@ -285,6 +285,14 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     return _resolvePolicy(policy, customerWon ? policy.payout : 0, false);
   }
 
+  /**
+   * @dev Internal function that handles the different alternative resolutions for a policy, with or without payout and
+   * expiration.
+   *
+   * @param policy A policy created with {Policy-initialize}
+   * @param payout The amount to paid to the policyholder
+   * @param expired True for expiration resolution (`payout` must be 0)
+   */
   function _resolvePolicy(
     Policy.PolicyData memory policy,
     uint256 payout,
@@ -317,6 +325,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     }
   }
 
+  /**
+   * @dev Notifies the payout with a callback if the policyholder is a contract. Only reverts if the policyholder
+   * contract explicitly reverts. Doesn't reverts is the callback is not implemented.
+   */
   function _notifyPayout(uint256 policyId, uint256 payout) internal {
     address customer = _policyNFT.ownerOf(policyId);
     if (!AddressUpgradeable.isContract(customer)) return;
@@ -339,6 +351,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     }
   }
 
+  /**
+   * @dev Notifies the expiration with a callback if the policyholder is a contract. Never reverts.
+   */
   function _notifyExpiration(uint256 policyId) internal {
     address customer = _policyNFT.ownerOf(policyId);
     if (!AddressUpgradeable.isContract(customer)) return;
