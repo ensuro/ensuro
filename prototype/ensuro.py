@@ -54,7 +54,7 @@ class RiskModule(AccessControlContract):
     name = StringField()
     moc = WadField(default=_W(1))
     jr_coll_ratio = WadField(default=Wad(0))
-    coll_ratio = WadField(default=Wad(0))
+    coll_ratio = WadField(default=_W(1))
     ensuro_pp_fee = WadField(default=Wad(0))   # Ensuro fee as % of pure_premium
     ensuro_coc_fee = WadField(default=Wad(0))   # Ensuro fee as % of coc
     jr_roc = WadField(default=Wad(0))
@@ -733,6 +733,9 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
             adjustment = policy.jr_coc - policy.jr_accrued_interest()
             self.junior_etk.unlock_scr(policy.jr_scr, policy.jr_interest_rate, adjustment)
 
+    @contextmanager
+    def thru_policy_pool(self):
+        yield self
 
 class PolicyPool(AccessControlContract):
     access = ContractProxyField()

@@ -606,6 +606,16 @@ class PremiumsAccount(ETHWrapper):
         else:
             return Wad(0)
 
+    @contextmanager
+    def thru_policy_pool(self):
+        prev_contract = self.contract
+        contract_factory = self.provider.get_contract_factory(self.eth_contract)
+        self.contract = self.provider.build_contract(self._policy_pool, contract_factory, self.eth_contract)
+        try:
+            yield self
+        finally:
+            self.contract = prev_contract
+
 
 class Exchange(ETHWrapper):
     eth_contract = "Exchange"
