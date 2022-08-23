@@ -7,7 +7,6 @@ import {IEToken} from "./IEToken.sol";
 import {IPolicyPoolConfig} from "./IPolicyPoolConfig.sol";
 
 interface IPolicyPool {
-
   /**
    * @dev Reference to the main currency (ERC20) used in the protocol
    * @return The address of the currency (e.g. USDC) token used in the protocol
