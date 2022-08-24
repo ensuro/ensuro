@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import {IPriceOracle} from "../../interfaces/IExchange.sol";
+import {IPriceOracle} from "../interfaces/IExchange.sol";
 
 contract PriceOracle is IPriceOracle {
   mapping(address => uint256) internal _prices;

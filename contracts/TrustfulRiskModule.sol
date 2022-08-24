@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
-import {IPremiumsAccount} from "../interfaces/IPremiumsAccount.sol";
+import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
+import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
 import {RiskModule} from "./RiskModule.sol";
 import {Policy} from "./Policy.sol";
 

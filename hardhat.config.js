@@ -4,6 +4,8 @@ require("solidity-coverage");
 require("hardhat-contract-sizer");
 require('@openzeppelin/hardhat-upgrades');
 require("@nomiclabs/hardhat-etherscan");
+require('solidity-docgen');
+
 
 const deploy = require("./tasks/deploy");
 
@@ -107,6 +109,11 @@ module.exports = {
   },
   mocha: {
     timeout: 120000
+  },
+  docgen: {
+    pages: "files",
+    outputDir: "docs",
+    exclude: ["mocks", "dependencies", "upgraded"],
   }
 };
 

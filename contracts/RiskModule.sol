@@ -2,11 +2,11 @@
 pragma solidity ^0.8.0;
 
 import {WadRayMath} from "./WadRayMath.sol";
-import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
+import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
-import {IRiskModule} from "../interfaces/IRiskModule.sol";
-import {IPremiumsAccount} from "../interfaces/IPremiumsAccount.sol";
-import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
+import {IRiskModule} from "./interfaces/IRiskModule.sol";
+import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
+import {IPolicyPoolConfig} from "./interfaces/IPolicyPoolConfig.sol";
 import {Policy} from "./Policy.sol";
 
 /**

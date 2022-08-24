@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import {IPolicyHolder} from "../../interfaces/IPolicyHolder.sol";
+import {IPolicyHolder} from "../interfaces/IPolicyHolder.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 
 contract PolicyHolderMock is IPolicyHolder {

@@ -3,10 +3,10 @@ pragma solidity ^0.8.0;
 
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
-import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
-import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
+import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
+import {IPolicyPoolConfig} from "./interfaces/IPolicyPoolConfig.sol";
 import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
-import {IExchange, IPriceOracle} from "../interfaces/IExchange.sol";
+import {IExchange, IPriceOracle} from "./interfaces/IExchange.sol";
 import {WadRayMath} from "./WadRayMath.sol";
 
 /**

@@ -5,16 +5,16 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import {AddressUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
+import {IPolicyPoolConfig} from "./interfaces/IPolicyPoolConfig.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import {IPremiumsAccount} from "../interfaces/IPremiumsAccount.sol";
-import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
-import {IRiskModule} from "../interfaces/IRiskModule.sol";
-import {IPolicyPoolComponent} from "../interfaces/IPolicyPoolComponent.sol";
-import {IEToken} from "../interfaces/IEToken.sol";
-import {IPolicyNFT} from "../interfaces/IPolicyNFT.sol";
-import {IPolicyHolder} from "../interfaces/IPolicyHolder.sol";
+import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
+import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
+import {IRiskModule} from "./interfaces/IRiskModule.sol";
+import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
+import {IEToken} from "./interfaces/IEToken.sol";
+import {IPolicyNFT} from "./interfaces/IPolicyNFT.sol";
+import {IPolicyHolder} from "./interfaces/IPolicyHolder.sol";
 import {Policy} from "./Policy.sol";
 import {WadRayMath} from "./WadRayMath.sol";
 import {DataTypes} from "./DataTypes.sol";
@@ -30,8 +30,6 @@ import {DataTypes} from "./DataTypes.sol";
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
-// #invariant_disabled {:msg "Borrow up to activePurePremiums"} _borrowedActivePP <= _activePurePremiums;
-// #invariant_disabled {:msg "Can't borrow if not exhausted before won"} (_borrowedActivePP > 0) ==> _wonPurePremiums == 0;
 contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   using EnumerableSet for EnumerableSet.AddressSet;
   using WadRayMath for uint256;
@@ -54,15 +52,38 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IPolicyNFT internal immutable _policyNFT;
 
+  /**
+   * @dev List of installed eTokens (see {EToken}) in the PolicyPool. For each one it keep an state
+   * {DataTypes-ETokenStatus}.
+   */
   DataTypes.ETokenStatusMap internal _eTokens;
 
+  /**
+   * @dev Mapping that stores the active policies (the policyId is the key). It just saves the hash of the policies,
+   * the full {Policy-PolicyData} struct has to be sent for each operation (hash is used to verify).
+   */
   mapping(uint256 => bytes32) internal _policies;
 
+  /**
+   * @dev Event emitted every time a new policy is added to the pool. Contains all the data about the policy that is
+   * later required for doing operations with the policy like resolution or expiration.
+   */
   event NewPolicy(IRiskModule indexed riskModule, Policy.PolicyData policy);
-  event PolicyRebalanced(IRiskModule indexed riskModule, uint256 indexed policyId);
+
+  /**
+   * @dev Event emitted every time a policy is removed from the pool. If the policy expired, the `payout` is 0,
+   * otherwise is the amount transferred to the policyholder.
+   */
   event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, uint256 payout);
 
+  /**
+   * @dev Event emitted when a new eToken is added to the pool or the status changes. See {DataTypes-ETokenStatus}.
+   */
   event ETokenStatusChanged(IEToken indexed eToken, DataTypes.ETokenStatus newStatus);
+
+  /**
+   * @dev Event emitted when a new PremiumsAccount is added to the pool or the status changes. TODO
+   */
   event PremiumsAccountStatusChanged(
     IPremiumsAccount indexed premiumsAccount,
     DataTypes.ETokenStatus newStatus
@@ -124,7 +145,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     return address(_policyNFT);
   }
 
-  // #if_succeeds_disabled {:msg "eToken added as active"} _eTokens.get(eToken) == DataTypes.ETokenStatus.active;
   function addEToken(IEToken eToken) external onlyRole(LEVEL1_ROLE) {
     require(_eTokens.length() < MAX_ETOKENS, "Maximum number of ETokens reached");
     require(!_eTokens.contains(eToken), "eToken already in the pool");
@@ -181,9 +201,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     // TODO: functions for deactivating premiumsAccount (and remove them as borrower)
   }
 
-  /// #if_succeeds
-  ///    {:msg "must take balance from sender"}
-  ///    _currency.balanceOf(msg.sender) == old(_currency.balanceOf(msg.sender) - amount);
   function deposit(IEToken eToken, uint256 amount) external override whenNotPaused {
     (bool found, DataTypes.ETokenStatus etkStatus) = _eTokens.tryGet(eToken);
     require(found && etkStatus == DataTypes.ETokenStatus.active, "eToken is not active");
@@ -247,7 +264,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     require(policy.id != 0 && policy.hash() == _policies[policy.id], "Policy not found");
   }
 
-  function expirePolicy(Policy.PolicyData calldata policy) external whenNotPaused {
+  function expirePolicy(Policy.PolicyData calldata policy) external override whenNotPaused {
     require(policy.expiration <= block.timestamp, "Policy not expired yet");
     return _resolvePolicy(policy, 0, true);
   }
@@ -268,6 +285,14 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     return _resolvePolicy(policy, customerWon ? policy.payout : 0, false);
   }
 
+  /**
+   * @dev Internal function that handles the different alternative resolutions for a policy, with or without payout and
+   * expiration.
+   *
+   * @param policy A policy created with {Policy-initialize}
+   * @param payout The amount to paid to the policyholder
+   * @param expired True for expiration resolution (`payout` must be 0)
+   */
   function _resolvePolicy(
     Policy.PolicyData memory policy,
     uint256 payout,
@@ -300,6 +325,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     }
   }
 
+  /**
+   * @dev Notifies the payout with a callback if the policyholder is a contract. Only reverts if the policyholder
+   * contract explicitly reverts. Doesn't reverts is the callback is not implemented.
+   */
   function _notifyPayout(uint256 policyId, uint256 payout) internal {
     address customer = _policyNFT.ownerOf(policyId);
     if (!AddressUpgradeable.isContract(customer)) return;
@@ -322,6 +351,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     }
   }
 
+  /**
+   * @dev Notifies the expiration with a callback if the policyholder is a contract. Never reverts.
+   */
   function _notifyExpiration(uint256 policyId) internal {
     address customer = _policyNFT.ownerOf(policyId);
     if (!AddressUpgradeable.isContract(customer)) return;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 import {WadRayMath} from "./WadRayMath.sol";
-import {IRiskModule} from "../interfaces/IRiskModule.sol";
+import {IRiskModule} from "./interfaces/IRiskModule.sol";
 
 /**
  * @title Policy library
@@ -34,11 +34,6 @@ library Policy {
     uint40 expiration;
   }
 
-  /// #if_succeeds {:msg "premium preserved"} premium == (newPolicy.premium);
-  /// #if_succeeds
-  ///    {:msg "premium distributed"}
-  ///    premium == (newPolicy.purePremium + newPolicy.coc +
-  ///                newPolicy.partnerCommission + newPolicy.ensuroCommission);
   function initialize(
     IRiskModule riskModule,
     IRiskModule.Params memory rmParams,

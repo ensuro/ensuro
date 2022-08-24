@@ -60,3 +60,12 @@ def refresh_requirements_txt(c, upgrade=False, package=None):
     package = f"-P {package}" if package is not None else ""
     docker_exec(c, f"pip-compile {upgrade} {package} requirements.in")
     docker_exec(c, f"pip-compile {upgrade} {package} requirements-dev.in")
+
+
+@ns.add_task
+@task
+def docs(c, serve=True, clean=True, browser="brave-browser"):
+    serve = "serve" if serve else ""
+    clean = "clean" if clean else ""
+    c.run(f"sleep 5 && {browser} http://127.0.0.1:18000/", asynchronous=True)
+    docker_exec(c, f"scripts/build-docs.sh {clean} {serve}")

@@ -4,12 +4,12 @@ pragma solidity ^0.8.0;
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
-import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
-import {IRiskModule} from "../interfaces/IRiskModule.sol";
-import {ILPWhitelist} from "../interfaces/ILPWhitelist.sol";
-import {IExchange} from "../interfaces/IExchange.sol";
-import {IPolicyPoolComponent} from "../interfaces/IPolicyPoolComponent.sol";
+import {IPolicyPoolConfig} from "./interfaces/IPolicyPoolConfig.sol";
+import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
+import {IRiskModule} from "./interfaces/IRiskModule.sol";
+import {ILPWhitelist} from "./interfaces/ILPWhitelist.sol";
+import {IExchange} from "./interfaces/IExchange.sol";
+import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
 import {WadRayMath} from "./WadRayMath.sol";
 
 /**
@@ -194,7 +194,6 @@ contract PolicyPoolConfig is
     emit RiskModuleStatusChanged(riskModule, RiskModuleStatus.inactive);
   }
 
-  // #if_succeeds_disabled _riskModules.get(riskModule) == newStatus;
   function changeRiskModuleStatus(IRiskModule riskModule, RiskModuleStatus newStatus)
     external
     onlyRole3(GUARDIAN_ROLE, LEVEL1_ROLE, LEVEL2_ROLE)

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import {IPolicyPool} from "../../interfaces/IPolicyPool.sol";
-import {IPolicyPoolComponent} from "../../interfaces/IPolicyPoolComponent.sol";
+import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
+import {IPolicyPoolComponent} from "../interfaces/IPolicyPoolComponent.sol";
 
 contract PolicyPoolComponentMock is IPolicyPoolComponent {
   IPolicyPool internal immutable _policyPool;
