@@ -11,7 +11,7 @@ from prototype.utils import WEEK, DAY
 from . import TEST_VARIANTS
 
 MAX_UINT = Wad(2**256 - 1)
-TEnv = namedtuple("TEnv", "time_control currency module pa_class pool_config kind")
+TEnv = namedtuple("TEnv", "time_control currency module pa_class pool_config pool kind")
 
 # @pytest.fixture(params=TEST_VARIANTS)
 @pytest.fixture(params=["prototype"])
@@ -40,15 +40,16 @@ def tenv(request):
             pool_config=pool_config,
             module=ensuro,
             kind="prototype",
+            pool=pool,
             pa_class=partial(ensuro.PremiumsAccount, pool=pool),
         )
 
 
 def test_premiums_account_creation(tenv):
-    pool = tenv.pa_class().pool
+    pool = tenv.pool
     pa = tenv.pa_class(
-        junior_etk=ensuro.EToken(policy_pool=pool, name="eUSD1MONTH"),
-        senior_etk=ensuro.EToken(policy_pool=pool, name="eUSD1YEAR"),
+        junior_etk=tenv.module.EToken(policy_pool=pool, name="eUSD1MONTH"),
+        senior_etk=tenv.module.EToken(policy_pool=pool, name="eUSD1YEAR"),
     )
 
     pa.active_pure_premiums.assert_equal(_W(0))
@@ -58,15 +59,17 @@ def test_premiums_account_creation(tenv):
     jr_etk = pa.junior_etk
     sr_etk = pa.senior_etk
 
-    tenv.currency.allowance(pa, jr_etk.contract_id).assert_equal(MAX_UINT)
-    tenv.currency.allowance(pa, sr_etk.contract_id).assert_equal(MAX_UINT)
+    tenv.currency.allowance(pa, jr_etk).assert_equal(MAX_UINT)
+    tenv.currency.allowance(pa, sr_etk).assert_equal(MAX_UINT)
 
 
 def test_receive_grant(tenv):
     pa = tenv.pa_class()
 
     assert tenv.currency.balance_of(tenv.currency.owner) == _W(1000)
-    with pytest.raises(RevertError, match="transfer amount exceeds allowance"):
+    with pytest.raises(
+        RevertError, match="transfer amount exceeds allowance|insufficient allowance"
+    ):
         pa.receive_grant(tenv.currency.owner, _W(1000))
 
     tenv.currency.approve(tenv.currency.owner, pa, _W(1000))
@@ -106,12 +109,91 @@ def test_withdraw_won_premiums(tenv):
     treasury_balance.assert_equal(_W(200))
 
 
+def test_withdraw_won_premiums_with_borrowed_active_pp(tenv):
+    # Create policy
+    pool = tenv.pa_class().pool
+    senior_etk = tenv.module.EToken(policy_pool=pool, name="eUSD1YEAR")
+    pa = tenv.pa_class(
+        senior_etk=senior_etk,
+    )
+    senior_etk.add_borrower(pa)
+    tenv.pool_config.grant_role("WITHDRAW_WON_PREMIUMS_ROLE", tenv.currency.owner)
+    start = tenv.time_control.now
+    expiration = tenv.time_control.now + WEEK
+
+    tenv.currency.transfer(tenv.currency.owner, senior_etk, _W(300))
+    with senior_etk.thru_policy_pool():
+        assert senior_etk.deposit("LP1", _W(300)) == _W(300)
+
+    rm = tenv.module.TrustfulRiskModule(
+        policy_pool=pool, premiums_account=pa, name="Roulette"
+    )
+
+    pool.config.grant_role("LEVEL2_ROLE", rm.owner)  # For setting sr_roc
+    tenv.pool_config.grant_component_role(rm, "PRICER_ROLE", tenv.currency.owner)
+    tenv.pool_config.grant_component_role(rm, "RESOLVER_ROLE", tenv.currency.owner)
+
+    policy = ensuro.Policy(
+        id=1,
+        risk_module=rm,
+        payout=_W(36),
+        premium=_W(1),
+        loss_prob=_W(1 / 37),
+        start=start,
+        expiration=expiration,
+    )
+
+    policy_2 = ensuro.Policy(
+        id=2,
+        risk_module=rm,
+        payout=_W(72),
+        premium=_W(2),
+        loss_prob=_W(1 / 37),
+        start=start,
+        expiration=expiration,
+    )
+
+    with pa.thru_policy_pool():
+        pa.policy_created(policy)
+    pa.active_pure_premiums.assert_equal(policy.payout * policy.loss_prob * rm.moc)
+
+    with pa.thru_policy_pool():
+        pa.policy_created(policy_2)
+    pa.active_pure_premiums.assert_equal(
+        policy_2.payout * policy_2.loss_prob * rm.moc
+        + policy.payout * policy.loss_prob * rm.moc
+    )
+
+    tenv.time_control.fast_forward(2 * DAY)
+
+    # Resolve policy
+    tenv.currency.transfer(tenv.currency.owner, pa, _W(3))
+    tenv.currency.approve(tenv.currency.owner, pa, _W(100))
+    assert tenv.currency.allowance(tenv.currency.owner, pa) == _W(100)
+    pa.policy_resolved_with_payout(tenv.currency.owner, policy_2, _W(12))
+
+    pa.borrowed_active_pp.assert_equal(policy.payout * policy.loss_prob * rm.moc)
+    pa.active_pure_premiums.assert_equal(policy.payout * policy.loss_prob * rm.moc)
+    pa.won_pure_premiums.assert_equal(_W(0))
+
+    pa.receive_grant(tenv.currency.owner, _W(100))
+    pa.won_pure_premiums.assert_equal(_W(100) - pa.active_pure_premiums)
+
+    # Expire policy
+    pa.policy_expired(policy)
+    pa.active_pure_premiums.assert_equal(_W(0))
+    pa.borrowed_active_pp.assert_equal(_W(0))
+    pa.won_pure_premiums.assert_equal(
+        _W(100) - policy.payout * policy.loss_prob * rm.moc
+    )
+
+
 def test_policy_created_without_etokens(tenv):
     pa = tenv.pa_class()
 
     start = tenv.time_control.now
     expiration = tenv.time_control.now + WEEK
-    pool = tenv.pa_class().pool
+    pool = tenv.pool
 
     rm = tenv.module.TrustfulRiskModule(
         policy_pool=pool, premiums_account=pa, name="Roulette"
@@ -162,7 +244,7 @@ def test_policy_created_without_etokens(tenv):
 
 def test_create_and_expire_policy_with_sr_etk(tenv):
     # Create policy
-    pool = tenv.pa_class().pool
+    pool = tenv.pool
     senior_etk = ensuro.EToken(policy_pool=pool, name="eUSD1YEAR")
     pa = tenv.pa_class(
         senior_etk=senior_etk,
@@ -239,7 +321,7 @@ def test_create_and_expire_policy_with_sr_etk(tenv):
 
 def test_policy_resolved_with_payout(tenv):
     # Create policy
-    pool = tenv.pa_class().pool
+    pool = tenv.pool
     senior_etk = ensuro.EToken(policy_pool=pool, name="eUSD1YEAR")
     pa = tenv.pa_class(
         senior_etk=senior_etk,
@@ -288,7 +370,7 @@ def test_policy_resolved_with_payout(tenv):
 
 
 def test_policy_created_with_jr_etoken(tenv):
-    pool = tenv.pa_class().pool
+    pool = tenv.pool
     junior_etk = ensuro.EToken(policy_pool=pool, name="eUSD1MONTH")
     pa = tenv.pa_class(junior_etk=junior_etk)
     start = tenv.time_control.now
@@ -364,7 +446,7 @@ def test_policy_created_with_jr_etoken(tenv):
 
 
 def test_policy_created_with_sr_etoken(tenv):
-    pool = tenv.pa_class().pool
+    pool = tenv.pool
     senior_etk = ensuro.EToken(policy_pool=pool, name="eUSD1YEAR")
     pa = tenv.pa_class(senior_etk=senior_etk)
     start = tenv.time_control.now
@@ -398,7 +480,7 @@ def test_policy_created_with_sr_etoken(tenv):
 
 
 def test_policy_created_with_jr_and_sr_etoken(tenv):
-    pool = tenv.pa_class().pool
+    pool = tenv.pool
     junior_etk = ensuro.EToken(policy_pool=pool, name="eUSD1MONTH")
     senior_etk = ensuro.EToken(policy_pool=pool, name="eUSD1YEAR")
     pa = tenv.pa_class(junior_etk=junior_etk, senior_etk=senior_etk)
