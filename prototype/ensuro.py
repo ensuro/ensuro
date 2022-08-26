@@ -291,14 +291,14 @@ class EToken(ReserveMixin, ERC20Token):
     min_utilization_rate = WadField(default=_W(0))
     max_utilization_rate = WadField(default=_W(1))
 
-    pool_loan_interest_rate = WadField(default=_W("0.05"))
-    pool_loans = DictField(ContractProxyField(), CompositeField(ScaledAmount), default={})
+    internal_loan_interest_rate = WadField(default=_W("0.05"))
+    loans = DictField(ContractProxyField(), CompositeField(ScaledAmount), default={})
 
     set_attr_roles = {
         "min_utilization_rate": "LEVEL2_ROLE",
         "max_utilization_rate": "LEVEL2_ROLE",
         "liquidity_requirement": "LEVEL2_ROLE",
-        "pool_loan_interest_rate": "LEVEL2_ROLE",
+        "internal_loan_interest_rate": "LEVEL2_ROLE",
     }
 
     def __init__(self, **kwargs):
@@ -482,11 +482,11 @@ class EToken(ReserveMixin, ERC20Token):
     def add_borrower(self, borrower):
         # Must be called ONLY by the PolicyPool
         borrower = ContractProxyField().adapt(borrower)
-        if borrower not in self.pool_loans:
-            self.pool_loans[borrower] = ScaledAmount()
+        if borrower not in self.loans:
+            self.loans[borrower] = ScaledAmount()
 
     @external
-    def lend_to_pool(self, borrower, amount, receiver, from_available=True):
+    def internal_loan(self, borrower, amount, receiver, from_available=True):
         amount_asked = amount
         amount = amount_asked
 
@@ -500,9 +500,9 @@ class EToken(ReserveMixin, ERC20Token):
             amount = self._max_negative_adjustment()
             if amount <= 0:
                 return amount_asked
-        loan = self.pool_loans.get(ContractProxyField().adapt(borrower), None)
+        loan = self.loans.get(ContractProxyField().adapt(borrower), None)
         require(loan is not None, "Borrower not registered")
-        loan.add(amount, self.pool_loan_interest_rate)
+        loan.add(amount, self.internal_loan_interest_rate)
         self._update_current_scale()
         self._discrete_earning(-amount)
         self._transfer_to(receiver, amount)
@@ -510,27 +510,27 @@ class EToken(ReserveMixin, ERC20Token):
         return amount_asked - amount
 
     @external
-    def repay_pool_loan(self, msg_sender, amount, on_behalf_of):
+    def repay_loan(self, msg_sender, amount, on_behalf_of):
         borrower = on_behalf_of
-        loan = self.pool_loans.get(ContractProxyField().adapt(borrower), None)
+        loan = self.loans.get(ContractProxyField().adapt(borrower), None)
         require(loan is not None, "Borrower not registered")
-        loan.sub(amount, self.pool_loan_interest_rate)
+        loan.sub(amount, self.internal_loan_interest_rate)
         self._update_current_scale()
         self._discrete_earning(amount)
         self.currency.transfer_from(self, borrower, self, amount)
         self._check_balance()
 
-    def get_pool_loan(self, borrower):
-        loan = self.pool_loans.get(ContractProxyField().adapt(borrower), None)
+    def get_loan(self, borrower):
+        loan = self.loans.get(ContractProxyField().adapt(borrower), None)
         if loan is None:
             return _W(0)
-        return loan.get_scaled_amount(self.pool_loan_interest_rate)
+        return loan.get_scaled_amount(self.internal_loan_interest_rate)
 
     @external
-    def set_pool_loan_interest_rate(self, new_rate):
-        for loan in self.pool_loans.values():
-            loan.add(_W(0), self.pool_loan_interest_rate)
-        self.pool_loan_interest_rate = new_rate
+    def set_internal_loan_interest_rate(self, new_rate):
+        for loan in self.loans.values():
+            loan.add(_W(0), self.internal_loan_interest_rate)
+        self.internal_loan_interest_rate = new_rate
 
     @external
     def set_max_utilization_rate(self, new_rate):
@@ -672,7 +672,7 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
             self._unlock_scr(policy)
             if borrow_from_scr > 0:
                 if policy.jr_scr:
-                    amount_left = self.junior_etk.lend_to_pool(
+                    amount_left = self.junior_etk.internal_loan(
                         self,
                         borrow_from_scr, customer,
                         False  # Consume Junior Pool until exhausted
@@ -680,7 +680,7 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
                 else:
                     amount_left = borrow_from_scr
                 if amount_left > self.NEGLIGIBLE_AMOUNT:
-                    amount_left = self.senior_etk.lend_to_pool(
+                    amount_left = self.senior_etk.internal_loan(
                         self,
                         amount_left, customer,
                         True  # Consume Senior Pool only up to SCR
@@ -694,12 +694,12 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
     def _repay_loan(self, pure_premium_won, etk):
         if pure_premium_won < self.NEGLIGIBLE_AMOUNT:
             return pure_premium_won
-        borrowed_from_etk = etk.get_pool_loan(self)
+        borrowed_from_etk = etk.get_loan(self)
         if not borrowed_from_etk:
             return pure_premium_won
         repay_amount = min(borrowed_from_etk, pure_premium_won)
         # self._transfer_to(etk, repay_amount) - TODO: ensure enough balance
-        etk.repay_pool_loan(self, repay_amount, self)
+        etk.repay_loan(self, repay_amount, self)
         return pure_premium_won - repay_amount
 
     @external

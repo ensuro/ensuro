@@ -73,19 +73,19 @@ class EToken(IERC20):
     initialize_args = (
         ("name", "string"), ("symbol", "string"),
         ("max_utilization_rate", "wad"),
-        ("pool_loan_interest_rate", "wad"),
+        ("internal_loan_interest_rate", "wad"),
     )
 
     def __init__(self, name, symbol, policy_pool,
                  max_utilization_rate=_W(1),
-                 pool_loan_interest_rate=_W("0.05"), owner="owner"):
-        pool_loan_interest_rate = _W(pool_loan_interest_rate)
+                 internal_loan_interest_rate=_W("0.05"), owner="owner"):
+        internal_loan_interest_rate = _W(internal_loan_interest_rate)
         max_utilization_rate = _W(max_utilization_rate)
 
         super().__init__(
             owner, policy_pool,
             name, symbol,
-            max_utilization_rate, pool_loan_interest_rate
+            max_utilization_rate, internal_loan_interest_rate
         )
         if isinstance(policy_pool, ETHWrapper):
             self._policy_pool = policy_pool.contract
@@ -119,12 +119,12 @@ class EToken(IERC20):
     scr = MethodAdapter((), "amount", is_property=True)
     scr_interest_rate = MethodAdapter((), "wad", is_property=True)
     token_interest_rate = MethodAdapter((), "wad", is_property=True)
-    pool_loan_interest_rate = MethodAdapter((), "wad", is_property=True)
+    internal_loan_interest_rate = MethodAdapter((), "wad", is_property=True)
     liquidity_requirement = MethodAdapter((), "wad", is_property=True)
     min_utilization_rate = MethodAdapter((), "wad", is_property=True)
     max_utilization_rate = MethodAdapter((), "wad", is_property=True)
     utilization_rate = MethodAdapter((), "wad", is_property=True)
-    set_pool_loan_interest_rate = MethodAdapter((("new_rate", "wad"), ))
+    set_internal_loan_interest_rate = MethodAdapter((("new_rate", "wad"), ))
     set_max_utilization_rate = MethodAdapter((("new_rate", "wad"), ))
     set_min_utilization_rate = MethodAdapter((("new_rate", "wad"), ))
 
@@ -154,24 +154,24 @@ class EToken(IERC20):
         else:
             return Wad(0)
 
-    lend_to_pool_ = MethodAdapter(
+    internal_loan_ = MethodAdapter(
         (("borrower", "msg.sender"), ("amount", "amount"),
          ("receiver", "address"), ("from_available", "bool"))
     )
 
-    def lend_to_pool(self, borrower, amount, receiver, from_available=True):
-        receipt = self.lend_to_pool_(borrower, amount, receiver, from_available)
-        if "PoolLoan" in receipt.events:
-            evt = receipt.events["PoolLoan"]
+    def internal_loan(self, borrower, amount, receiver, from_available=True):
+        receipt = self.internal_loan_(borrower, amount, receiver, from_available)
+        if "InternalLoan" in receipt.events:
+            evt = receipt.events["InternalLoan"]
             return Wad(evt["amountAsked"]) - Wad(evt["value"])
         else:
             return Wad(0)
 
-    repay_pool_loan = MethodAdapter(
+    repay_loan = MethodAdapter(
         (("sender", "msg.sender"), ("amount", "amount"), ("on_behalf_of", "address"))
     )
 
-    get_pool_loan = MethodAdapter((("borrower", "address"), ), "amount")
+    get_loan = MethodAdapter((("borrower", "address"), ), "amount")
     get_investable = MethodAdapter((), "amount")
 
     get_current_scale = MethodAdapter((("updated", "bool"), ), "ray")
@@ -615,8 +615,8 @@ class PremiumsAccount(ETHWrapper):
     def repay_etoken_loan(self, etoken_name):
         etoken = self.etokens[etoken_name]
         receipt = self.repay_etoken_loan_(etoken)
-        if "PoolLoanRepaid" in receipt.events:
-            return Wad(receipt.events["PoolLoanRepaid"]["value"])
+        if "InternalLoanRepaid" in receipt.events:
+            return Wad(receipt.events["InternalLoanRepaid"]["value"])
         else:
             return Wad(0)
 

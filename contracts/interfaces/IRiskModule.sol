@@ -46,6 +46,14 @@ interface IRiskModule {
 
   function wallet() external view returns (address);
 
+  /**
+   * @dev Called when a policy expires or is resolved to update the exposure.
+   *
+   * Requirements:
+   * - Must be called by `policyPool()`
+   *
+   * @param payout The exposure (maximum payout) of the policy
+   */
   function releaseExposure(uint256 payout) external;
 
   function premiumsAccount() external view returns (IPremiumsAccount);
