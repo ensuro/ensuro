@@ -168,7 +168,7 @@ contract PolicyPoolConfig is
     return _exchange;
   }
 
-  function addRiskModule(IRiskModule riskModule) external onlyRole2(LEVEL1_ROLE, LEVEL2_ROLE) {
+  function addRiskModule(IRiskModule riskModule) external onlyRole(LEVEL1_ROLE) {
     require(
       _riskModules[riskModule] == RiskModuleStatus.inactive,
       "Risk Module already in the pool"
@@ -177,11 +177,6 @@ contract PolicyPoolConfig is
     require(
       IPolicyPoolComponent(address(riskModule)).policyPool() == _policyPool,
       "RiskModule not linked to this pool"
-    );
-    require(
-      hasRole(LEVEL1_ROLE, msg.sender) ||
-        _policyPool.totalETokenSupply() > (riskModule.exposureLimit().wadMul(L2_RM_LIMIT)),
-      "RiskModule Exposure Limit exceeds the limit for LEVEL2 user"
     );
     _riskModules[riskModule] = RiskModuleStatus.active;
     emit RiskModuleStatusChanged(riskModule, RiskModuleStatus.active);
@@ -196,7 +191,7 @@ contract PolicyPoolConfig is
 
   function changeRiskModuleStatus(IRiskModule riskModule, RiskModuleStatus newStatus)
     external
-    onlyRole3(GUARDIAN_ROLE, LEVEL1_ROLE, LEVEL2_ROLE)
+    onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
   {
     require(_riskModules[riskModule] != RiskModuleStatus.inactive, "Risk Module not found");
     require(
@@ -204,13 +199,8 @@ contract PolicyPoolConfig is
       "Only GUARDIAN can suspend modules"
     );
     // To activate LEVEL1 required or LEVEL2 if <5% of total liquidity
-    require(
-      newStatus != RiskModuleStatus.active ||
-        hasRole(LEVEL1_ROLE, msg.sender) ||
-        _policyPool.totalETokenSupply() > (riskModule.exposureLimit().wadMul(L2_RM_LIMIT)),
-      "RiskModule SCR Limit exceeds the limit for LEVEL2 user"
-    );
-    // Anyone (LEVEL1, LEVEL2, GUARDIAN) can deprecate
+    require(hasRole(LEVEL1_ROLE, msg.sender), "Only LEVEL1 can activate modules");
+    // Anyone (LEVEL1, GUARDIAN) can deprecate
     _riskModules[riskModule] = newStatus;
     emit RiskModuleStatusChanged(riskModule, newStatus);
   }

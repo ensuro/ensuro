@@ -101,17 +101,6 @@ interface IPolicyPool {
   function expirePolicy(Policy.PolicyData calldata policy) external;
 
   /**
-   * @dev Returns the number of eTokens (see {EToken}) in the protocol
-   */
-  function getETokenCount() external view returns (uint256);
-
-  /**
-   * @dev Access to the addresses of the tokens installed in the protocol
-   * @return The address of an eToken.
-   */
-  function getETokenAt(uint256 index) external view returns (IEToken);
-
-  /**
    * @dev Deposits liquidity into an eToken. Forwards the call to {EToken-deposit}, after transferring the funds.
    * The user will receive etokens for the same amount deposited.
    *
@@ -146,9 +135,4 @@ interface IPolicyPool {
    * @return Returns the actual amount withdrawn.
    */
   function withdraw(IEToken eToken, uint256 amount) external returns (uint256);
-
-  /**
-   * @dev Returns the sum of totalSupply of all the eTokens. Used to validate some limits in risk module parameters.
-   */
-  function totalETokenSupply() external view returns (uint256);
 }

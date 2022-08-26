@@ -77,7 +77,7 @@ class RiskModule(AccessControlContract):
         "jr_roc": "LEVEL2_ROLE",
         "sr_roc": "LEVEL2_ROLE",
         "max_payout_per_policy": "LEVEL2_ROLE",
-        "exposure_limit": "LEVEL2_ROLE",
+        "exposure_limit": "LEVEL1_ROLE",
     }
 
     def has_role(self, role, account):

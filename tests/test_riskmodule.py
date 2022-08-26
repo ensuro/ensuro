@@ -85,6 +85,7 @@ def test_getset_rm_parameters(tenv):
     # rm.grant_role("RM_PROVIDER_ROLE", "CASINO")  # Grant the role to the casino owner
     # Grant the role to the casino owner
     tenv.pool_config.grant_component_role(rm, "RM_PROVIDER_ROLE", "CASINO")
+    tenv.pool_config.grant_role("LEVEL1_ROLE", "L1_USER")
     tenv.pool_config.grant_role("LEVEL2_ROLE", "L2_USER")
 
     users = ("CASINO", "L2_USER", "JOHNDOE")
@@ -95,12 +96,15 @@ def test_getset_rm_parameters(tenv):
         ("sr_roc", "L2_USER", _W("0.03")),
         ("jr_roc", "L2_USER", _W("0.05")),
         ("max_payout_per_policy", "L2_USER", _W(2000)),
-        ("exposure_limit", "L2_USER", _W(10000000)),
+        ("exposure_limit", "L1_USER", _W(10000000)),
         ("wallet", "CASINO", "CASINO_POCKET"),
     ]
 
     for attr_name, authorized_user, new_value in test_attributes:
-        non_auth_users = [u for u in users if u != authorized_user]
+        if attr_name == "exposure_limit":
+            non_auth_users = ["CASINO", "JOHNDOE"]
+        else:
+            non_auth_users = [u for u in users if u != authorized_user]
         old_value = getattr(rm, attr_name)
         assert old_value != new_value
         for user in non_auth_users:
@@ -186,7 +190,7 @@ def test_getset_rm_parameters_tweaks(tenv):
         ("sr_roc", _W("0.0215")),  # 10% allowed - previous 2%
         ("jr_roc", _W("0.095")),  # 10% allowed - previous 10%
         ("ensuro_pp_fee", _W("0.027")),  # 10% allowed - previous 3%
-        ("exposure_limit", _W("1050000")),  # 10% allowed - previous 1.05e6
+        ("exposure_limit", _W("999900")),  # decrease 10% allowed - previous 999999
         ("max_payout_per_policy", _W(1099)),  # 10% allowed - previous 1000
     ]
 
@@ -202,7 +206,7 @@ def test_getset_rm_parameters_tweaks(tenv):
         ("sr_roc", _W("0.01")),
         ("jr_roc", _W("0.3")),
         ("ensuro_pp_fee", _W("0.01")),
-        ("exposure_limit", _W("3000000")),
+        ("exposure_limit", _W("700000")),
         ("max_payout_per_policy", _W(500)),
     ]
 
@@ -213,23 +217,19 @@ def test_getset_rm_parameters_tweaks(tenv):
 
     tenv.time_control.fast_forward(WEEK)  # To avoid repeated tweaks
 
-    # Set total liquidity
-    rm.policy_pool.contract.setTotalETokenSupply(_W(1e7))
-    Wad(rm.policy_pool.contract.totalETokenSupply()).assert_equal(_W(1e7))
-
-    # Increases require LEVEL1_ROLE because more than 10% of total liquidity
+    # Increases require LEVEL1_ROLE
     with rm.as_("L2_USER"), pytest.raises(RevertError, match="requires LEVEL1_ROLE"):
         rm.exposure_limit = _W(4e6)
     with rm.as_("L3_USER"), pytest.raises(RevertError, match="requires LEVEL1_ROLE"):
-        rm.exposure_limit = _W(3.1e6)
+        rm.exposure_limit = _W("710000")
 
     # Decreases are OK
     with rm.as_("L3_USER"):
-        rm.exposure_limit = _W("2900000")
-        assert rm.exposure_limit == _W("2900000")
+        rm.exposure_limit = _W("690000")
+        assert rm.exposure_limit == _W("690000")
     with rm.as_("L2_USER"):
-        rm.exposure_limit = _W("2000000")
-        assert rm.exposure_limit == _W("2000000")
+        rm.exposure_limit = _W("400000")
+        assert rm.exposure_limit == _W("400000")
 
     # L1_USER can increase over 10% liquidity
     with rm.as_("L1_USER"):

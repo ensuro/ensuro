@@ -17,7 +17,6 @@ import {IPolicyNFT} from "./interfaces/IPolicyNFT.sol";
 import {IPolicyHolder} from "./interfaces/IPolicyHolder.sol";
 import {Policy} from "./Policy.sol";
 import {WadRayMath} from "./WadRayMath.sol";
-import {DataTypes} from "./DataTypes.sol";
 
 /**
  * @title Ensuro PolicyPool contract
@@ -34,16 +33,12 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   using EnumerableSet for EnumerableSet.AddressSet;
   using WadRayMath for uint256;
   using Policy for Policy.PolicyData;
-  using DataTypes for DataTypes.ETokenToWadMap;
-  using DataTypes for DataTypes.ETokenStatusMap;
   using SafeERC20 for IERC20Metadata;
 
   bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
   bytes32 public constant LEVEL1_ROLE = keccak256("LEVEL1_ROLE");
   bytes32 public constant LEVEL2_ROLE = keccak256("LEVEL2_ROLE");
   bytes32 public constant LEVEL3_ROLE = keccak256("LEVEL3_ROLE");
-
-  uint256 public constant MAX_ETOKENS = 10; // TODO: this limit still makes sense?
 
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IPolicyPoolConfig internal immutable _config;
@@ -52,11 +47,18 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IPolicyNFT internal immutable _policyNFT;
 
+  enum ETokenStatus {
+    inactive, // doesn't exists - All operations rejected
+    active, // deposit / withdraw / lockScr / unlockScr OK
+    deprecated, // withdraw OK, unlockScr OK, deposit rejected, no new policies
+    suspended // all operations temporarily rejected
+  }
+
   /**
-   * @dev List of installed eTokens (see {EToken}) in the PolicyPool. For each one it keep an state
-   * {DataTypes-ETokenStatus}.
+   * @dev Mapping of installed eTokens (see {EToken}) in the PolicyPool. For each one it keep an state
+   * {ETokenStatus}.
    */
-  DataTypes.ETokenStatusMap internal _eTokens;
+  mapping(IEToken => ETokenStatus) private _eTokens;
 
   /**
    * @dev Mapping that stores the active policies (the policyId is the key). It just saves the hash of the policies,
@@ -77,16 +79,16 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, uint256 payout);
 
   /**
-   * @dev Event emitted when a new eToken is added to the pool or the status changes. See {DataTypes-ETokenStatus}.
+   * @dev Event emitted when a new eToken is added to the pool or the status changes. See {ETokenStatus}.
    */
-  event ETokenStatusChanged(IEToken indexed eToken, DataTypes.ETokenStatus newStatus);
+  event ETokenStatusChanged(IEToken indexed eToken, ETokenStatus newStatus);
 
   /**
    * @dev Event emitted when a new PremiumsAccount is added to the pool or the status changes. TODO
    */
   event PremiumsAccountStatusChanged(
     IPremiumsAccount indexed premiumsAccount,
-    DataTypes.ETokenStatus newStatus
+    ETokenStatus newStatus
   );
 
   modifier onlyRole(bytes32 role) {
@@ -146,39 +148,42 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   }
 
   function addEToken(IEToken eToken) external onlyRole(LEVEL1_ROLE) {
-    require(_eTokens.length() < MAX_ETOKENS, "Maximum number of ETokens reached");
-    require(!_eTokens.contains(eToken), "eToken already in the pool");
+    ETokenStatus status = _eTokens[eToken];
+    require(status == ETokenStatus.inactive, "eToken already in the pool");
     require(address(eToken) != address(0), "eToken can't be zero");
     require(
       IPolicyPoolComponent(address(eToken)).policyPool() == this,
       "EToken not linked to this pool"
     );
 
-    _eTokens.set(eToken, DataTypes.ETokenStatus.active);
-    emit ETokenStatusChanged(eToken, DataTypes.ETokenStatus.active);
+    _eTokens[eToken] = ETokenStatus.active;
+    emit ETokenStatusChanged(eToken, ETokenStatus.active);
   }
 
   function removeEToken(IEToken eToken) external onlyRole(LEVEL3_ROLE) {
-    require(_eTokens.get(eToken) == DataTypes.ETokenStatus.deprecated, "EToken not deprecated");
+    ETokenStatus status = _eTokens[eToken];
+    require(status == ETokenStatus.deprecated, "EToken not deprecated");
     require(eToken.totalSupply() == 0, "EToken has liquidity, can't be removed");
-    emit ETokenStatusChanged(eToken, DataTypes.ETokenStatus.inactive);
+    delete _eTokens[eToken];
+    emit ETokenStatusChanged(eToken, ETokenStatus.inactive);
   }
 
-  function changeETokenStatus(IEToken eToken, DataTypes.ETokenStatus newStatus)
+  function changeETokenStatus(IEToken eToken, ETokenStatus newStatus)
     external
     onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
   {
-    require(_eTokens.contains(eToken), "EToken not found");
+    ETokenStatus status = _eTokens[eToken];
+    require(status != ETokenStatus.inactive, "EToken not found");
     require(
-      newStatus != DataTypes.ETokenStatus.suspended || _config.hasRole(GUARDIAN_ROLE, msg.sender),
+      newStatus != ETokenStatus.suspended || _config.hasRole(GUARDIAN_ROLE, msg.sender),
       "Only GUARDIAN can suspend eTokens"
     );
-    _eTokens.set(eToken, newStatus);
+    _eTokens[eToken] = newStatus;
     emit ETokenStatusChanged(eToken, newStatus);
   }
 
-  function getETokenStatus(IEToken eToken) external view returns (DataTypes.ETokenStatus) {
-    return _eTokens.get(eToken);
+  function getETokenStatus(IEToken eToken) external view returns (ETokenStatus) {
+    return _eTokens[eToken];
   }
 
   function addPremiumsAccount(IPremiumsAccount pa) external onlyRole(LEVEL1_ROLE) {
@@ -197,13 +202,13 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     if (address(etk) != address(0)) {
       etk.addBorrower(address(pa));
     }
-    emit PremiumsAccountStatusChanged(pa, DataTypes.ETokenStatus.active);
+    emit PremiumsAccountStatusChanged(pa, ETokenStatus.active);
     // TODO: functions for deactivating premiumsAccount (and remove them as borrower)
   }
 
   function deposit(IEToken eToken, uint256 amount) external override whenNotPaused {
-    (bool found, DataTypes.ETokenStatus etkStatus) = _eTokens.tryGet(eToken);
-    require(found && etkStatus == DataTypes.ETokenStatus.active, "eToken is not active");
+    ETokenStatus etkStatus = _eTokens[eToken];
+    require(etkStatus == ETokenStatus.active, "eToken is not active");
     _currency.safeTransferFrom(msg.sender, address(eToken), amount);
     eToken.deposit(msg.sender, amount);
   }
@@ -214,13 +219,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     whenNotPaused
     returns (uint256)
   {
-    (bool found, DataTypes.ETokenStatus etkStatus) = _eTokens.tryGet(eToken);
+    ETokenStatus etkStatus = _eTokens[eToken];
     require(
-      found &&
-        (
-          (etkStatus == DataTypes.ETokenStatus.active ||
-            etkStatus == DataTypes.ETokenStatus.deprecated)
-        ),
+      etkStatus == ETokenStatus.active || etkStatus == ETokenStatus.deprecated,
       "eToken not found or withdraws not allowed"
     );
     address provider = msg.sender;
@@ -364,28 +365,5 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     } catch {
       return;
     }
-  }
-
-  function totalETokenSupply() public view override returns (uint256) {
-    uint256 ret = 0;
-    for (uint256 i = 0; i < _eTokens.length(); i++) {
-      (
-        IEToken etk, /* DataTypes.ETokenStatus etkStatus */
-
-      ) = _eTokens.at(i);
-      // TODO: define if not active are investable or not
-      ret += etk.totalSupply();
-    }
-    return ret;
-  }
-
-  function getETokenCount() external view override returns (uint256) {
-    return _eTokens.length();
-  }
-
-  function getETokenAt(uint256 index) external view override returns (IEToken) {
-    (IEToken etk, DataTypes.ETokenStatus etkStatus) = _eTokens.at(index);
-    if (etkStatus != DataTypes.ETokenStatus.inactive) return etk;
-    else return IEToken(address(0));
   }
 }

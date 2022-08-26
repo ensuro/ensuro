@@ -11,7 +11,6 @@ import {Reserve} from "./Reserve.sol";
 import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
 import {Policy} from "./Policy.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
-import {DataTypes} from "./DataTypes.sol";
 
 /**
  * @title Ensuro Premiums Account

@@ -19,7 +19,6 @@ contract PolicyPoolMock is IPolicyPool {
   IERC20Metadata internal _currency;
   IPolicyPoolConfig internal _config;
 
-  uint256 internal _totalETokenSupply;
   mapping(uint256 => Policy.PolicyData) internal policies;
   mapping(uint256 => bytes32) internal policyHashes;
 
@@ -30,7 +29,6 @@ contract PolicyPoolMock is IPolicyPool {
     _currency = currency_;
     _config = config_;
     _config.connect();
-    _totalETokenSupply = 1e40; // 1e22 = a lot...
   }
 
   function currency() external view override returns (IERC20Metadata) {
@@ -43,14 +41,6 @@ contract PolicyPoolMock is IPolicyPool {
 
   function policyNFT() external pure override returns (address) {
     return address(0);
-  }
-
-  function getETokenCount() external pure override returns (uint256) {
-    return 0;
-  }
-
-  function getETokenAt(uint256) external pure override returns (IEToken) {
-    return IEToken(address(0));
   }
 
   function newPolicy(
@@ -98,14 +88,6 @@ contract PolicyPoolMock is IPolicyPool {
   function withdraw(IEToken, uint256) external pure override returns (uint256) {
     revert("Not Implemented withdraw");
   }
-
-  function setTotalETokenSupply(uint256 value) external {
-    _totalETokenSupply = value;
-  }
-
-  function totalETokenSupply() external view override returns (uint256) {
-    return _totalETokenSupply;
-  }
 }
 
 /**
@@ -136,13 +118,5 @@ contract PolicyPoolMockForward is ForwardProxy {
 
   function config() external view returns (IPolicyPoolConfig) {
     return _config;
-  }
-
-  function getETokenCount() external pure returns (uint256) {
-    return 0;
-  }
-
-  function getETokenAt(uint256) external pure returns (IEToken) {
-    return IEToken(address(0));
   }
 }

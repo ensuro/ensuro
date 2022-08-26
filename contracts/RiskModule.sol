@@ -229,10 +229,8 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
       require(newValue >= _activeExposure, "Can't set exposureLimit less than active exposure");
       require(!tweak || _isTweakWad(exposureLimit(), newValue, 1e17), "Tweak exceeded");
       require(
-        newValue <= exposureLimit() ||
-          hasPoolRole(LEVEL1_ROLE) ||
-          _policyPool.totalETokenSupply().wadMul(1e17) > newValue,
-        "Tweak exceeded: Increase, >=10% of the total liquidity, requires LEVEL1_ROLE"
+        newValue <= exposureLimit() || hasPoolRole(LEVEL1_ROLE),
+        "Tweak exceeded: Increase requires LEVEL1_ROLE"
       );
       _params.exposureLimit = _amountToX(0, newValue);
     } else if (param == Parameter.maxDuration) {
