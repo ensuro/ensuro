@@ -300,6 +300,16 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     return purePremium + ensuroCommission + (jrCoc + srCoc);
   }
 
+  /**
+   * @dev Called from child contracts to create policies (after they validated the pricing)
+   *
+   * @param payout The exposure (maximum payout) of the policy
+   * @param premium The premium that will be paid by the policyHolder
+   * @param lossProb The probability of having to pay the maximum payout (wad)
+   * @param expiration The expiration of the policy (timestamp)
+   * @param customer The policy holder
+   * @param internalId An id that's unique within this module and it will be used to identify the policy
+   */
   function _newPolicy(
     uint256 payout,
     uint256 premium,

@@ -118,13 +118,13 @@ interface IEToken is IERC20 {
 
   /**
    * @dev Lends `amount` to the borrower (msg.sender), transferring the money to `receiver`. This reduces the
-   * `totalSupply()` of the eToken, and stores a debt that will be repaid (hopefully) with `repayPoolLoan`.
+   * `totalSupply()` of the eToken, and stores a debt that will be repaid (hopefully) with `repayLoan`.
    *
    * Requirements:
    * - Must be called by a _borrower_ previously added with `addBorrower`.
    *
    * Events:
-   * - Emits {PoolLoan}
+   * - Emits {InternalLoan}
    * - Emits {ERC20-Transfer} transferring `lent` to `receiver`
    *
    * @param amount The amount required
@@ -133,32 +133,32 @@ interface IEToken is IERC20 {
    * locked as `scr()`. If `false`, all the `totalSupply()` is available to be lent.
    * @return Returns the amount that wasn't able to fulfil. `amount - lent`
    */
-  function lendToPool(
+  function internalLoan(
     uint256 amount,
     address receiver,
     bool fromAvailable
   ) external returns (uint256);
 
   /**
-   * @dev Repays a loan taken with `lendToPool`.
+   * @dev Repays a loan taken with `internalLoan`.
    *
    * Requirements:
    * - `msg.sender` approved the spending of `currency()` for at least `amount`
 
    * Events:
-   * - Emits {PoolLoanRepaid}
+   * - Emits {InternalLoanRepaid}
    * - Emits {ERC20-Transfer} transferring `amount` from `msg.sender` to `this`
    *
    * @param amount The amount to repaid, that will be transferred from `msg.sender` balance.
    * @param onBehalfOf The address of the borrower that took the loan. Usually `onBehalfOf == msg.sender` but we keep it
    * open because in some cases with might need someone else pays the debt.
    */
-  function repayPoolLoan(uint256 amount, address onBehalfOf) external;
+  function repayLoan(uint256 amount, address onBehalfOf) external;
 
   /**
    * @dev Returns the updated debt (principal + interest) of the `borrower`.
    */
-  function getPoolLoan(address borrower) external view returns (uint256);
+  function getLoan(address borrower) external view returns (uint256);
 
   /**
    * @dev The annualized interest rate at which the `totalSupply()` grows

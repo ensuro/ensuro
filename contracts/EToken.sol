@@ -45,23 +45,23 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   Scr internal _scr;
 
   // Mapping that keeps track of allowed borrowers (PremiumsAccount) and their current debt
-  mapping(address => TimeScaled.ScaledAmount) internal _poolLoans;
+  mapping(address => TimeScaled.ScaledAmount) internal _loans;
 
   struct PackedParams {
     uint16 liquidityRequirement; // Liquidity requirement to lock more/less than SCR - 4 decimals
     uint16 minUtilizationRate; // Min utilization rate, to reject deposits that leave UR under this value - 4 decimals
     uint16 maxUtilizationRate; // Max utilization rate, to reject lockScr that leave UR above this value - 4 decimals
-    uint16 poolLoanInterestRate; // Annualized interest rate charged to internal borrowers (premiums accounts) - 4dec
+    uint16 internalLoanInterestRate; // Annualized interest rate charged to internal borrowers (premiums accounts) - 4dec
   }
 
   PackedParams internal _params;
 
-  event PoolLoan(address indexed borrower, uint256 value, uint256 amountAsked);
-  event PoolLoanRepaid(address indexed borrower, uint256 value);
+  event InternalLoan(address indexed borrower, uint256 value, uint256 amountAsked);
+  event InternalLoanRepaid(address indexed borrower, uint256 value);
   event PoolBorrowerAdded(address borrower);
 
   modifier onlyBorrower() {
-    require(_poolLoans[_msgSender()].scale != 0, "The caller must be a borrower");
+    require(_loans[_msgSender()].scale != 0, "The caller must be a borrower");
     _;
   }
 
@@ -72,7 +72,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   /**
    * @dev Initializes the eToken
    * @param maxUtilizationRate_ Max utilization rate (scr/totalSupply) (in Ray - default=1 Ray)
-   * @param poolLoanInterestRate_ Rate of loans givencrto the policy pool (in Ray)
+   * @param internalLoanInterestRate_ Rate of loans givencrto the policy pool (in Ray)
    * @param name_ Name of the eToken
    * @param symbol_ Symbol of the eToken
    */
@@ -80,10 +80,10 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     string memory name_,
     string memory symbol_,
     uint256 maxUtilizationRate_,
-    uint256 poolLoanInterestRate_
+    uint256 internalLoanInterestRate_
   ) public initializer {
     __PolicyPoolComponent_init();
-    __EToken_init_unchained(name_, symbol_, maxUtilizationRate_, poolLoanInterestRate_);
+    __EToken_init_unchained(name_, symbol_, maxUtilizationRate_, internalLoanInterestRate_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
@@ -91,7 +91,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     string memory name_,
     string memory symbol_,
     uint256 maxUtilizationRate_,
-    uint256 poolLoanInterestRate_
+    uint256 internalLoanInterestRate_
   ) internal initializer {
     _name = name_;
     _symbol = symbol_;
@@ -105,7 +105,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
       maxUtilizationRate: uint16(maxUtilizationRate_ / 1e14),
       liquidityRequirement: 1e4,
       minUtilizationRate: 0,
-      poolLoanInterestRate: uint16(poolLoanInterestRate_ / 1e14)
+      internalLoanInterestRate: uint16(internalLoanInterestRate_ / 1e14)
     });
 
     _validateParameters();
@@ -122,7 +122,10 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
       "Validation: maxUtilizationRate must be [0.5, 1]"
     );
     require(_params.minUtilizationRate <= 1e4, "Validation: minUtilizationRate must be [0, 1]");
-    require(_params.poolLoanInterestRate <= 5e3, "Validation: poolLoanInterestRate must be <= 50%");
+    require(
+      _params.internalLoanInterestRate <= 5e3,
+      "Validation: internalLoanInterestRate must be <= 50%"
+    );
   }
 
   /*** BEGIN ERC20 methods - mainly copied from OpenZeppelin but changes in events and scaledAmount */
@@ -566,14 +569,14 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   }
 
   function addBorrower(address borrower) external override onlyPolicyPool {
-    TimeScaled.ScaledAmount storage loan = _poolLoans[borrower];
+    TimeScaled.ScaledAmount storage loan = _loans[borrower];
     if (loan.scale == 0) {
       loan.init();
       emit PoolBorrowerAdded(borrower);
     }
   }
 
-  function lendToPool(
+  function internalLoan(
     uint256 amount,
     address receiver,
     bool fromAvailable
@@ -585,49 +588,53 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
       amount = _tsScaled.maxNegativeAdjustment(tokenInterestRate());
       if (amount == 0) return amountAsked;
     }
-    TimeScaled.ScaledAmount storage loan = _poolLoans[_msgSender()];
-    loan.add(amount, poolLoanInterestRate());
+    TimeScaled.ScaledAmount storage loan = _loans[_msgSender()];
+    loan.add(amount, internalLoanInterestRate());
     _discreteChange(-int256(amount));
     _transferTo(receiver, amount);
-    emit PoolLoan(_msgSender(), amount, amountAsked);
+    emit InternalLoan(_msgSender(), amount, amountAsked);
     return amountAsked - amount;
   }
 
-  function repayPoolLoan(uint256 amount, address onBehalfOf) external override {
+  function repayLoan(uint256 amount, address onBehalfOf) external override {
     // Anyone can call this method, since it has to pay
     currency().safeTransferFrom(_msgSender(), address(this), amount);
-    TimeScaled.ScaledAmount storage loan = _poolLoans[onBehalfOf];
+    TimeScaled.ScaledAmount storage loan = _loans[onBehalfOf];
     require(loan.scale != 0, "Not a registered borrower");
-    loan.sub(amount, poolLoanInterestRate());
+    loan.sub(amount, internalLoanInterestRate());
     _discreteChange(int256(amount));
-    emit PoolLoanRepaid(onBehalfOf, amount);
+    emit InternalLoanRepaid(onBehalfOf, amount);
   }
 
-  function getPoolLoan(address borrower) public view virtual override returns (uint256) {
-    TimeScaled.ScaledAmount storage loan = _poolLoans[borrower];
+  function getLoan(address borrower) public view virtual override returns (uint256) {
+    TimeScaled.ScaledAmount storage loan = _loans[borrower];
     if (loan.scale == 0) return 0;
-    return loan.getScaledAmount(poolLoanInterestRate());
+    return loan.getScaledAmount(internalLoanInterestRate());
   }
 
-  function poolLoanInterestRate() public view returns (uint256) {
-    return uint256(_params.poolLoanInterestRate) * 1e14; // to wad 4 -> 18 digits
+  function internalLoanInterestRate() public view returns (uint256) {
+    return uint256(_params.internalLoanInterestRate) * 1e14; // to wad 4 -> 18 digits
   }
 
-  function setPoolLoanInterestRate(uint256 newRate)
+  function setInternalLoanInterestRate(uint256 newRate)
     external
     onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
   {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
-      !tweak || _isTweakWad(poolLoanInterestRate(), newRate, 3e17),
-      "Tweak exceeded: poolLoanInterestRate tweaks only up to 30%"
+      !tweak || _isTweakWad(internalLoanInterestRate(), newRate, 3e17),
+      "Tweak exceeded: internalLoanInterestRate tweaks only up to 30%"
     );
     // This call changes the interest rate without updating the current loans up to this point
     // So, if interest rate goes from 5% to 6%, this change will be retroactive to the lastUpdate of each
     // loan. Since it's a permissioned call, I'm ok with this. If a caller wants to reduce the impact, it can
-    // issue 1 wei repayPoolLoan to each active loan, forcing the update of the scales
-    _params.poolLoanInterestRate = uint16(newRate / 1e14);
-    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setPoolLoanInterestRate, newRate, tweak);
+    // issue 1 wei repayLoan to each active loan, forcing the update of the scales
+    _params.internalLoanInterestRate = uint16(newRate / 1e14);
+    _parameterChanged(
+      IPolicyPoolConfig.GovernanceActions.setInternalLoanInterestRate,
+      newRate,
+      tweak
+    );
   }
 
   function setLiquidityRequirement(uint256 newRate)

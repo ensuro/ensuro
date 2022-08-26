@@ -44,7 +44,7 @@ interface IPolicyPoolConfig is IAccessControlUpgradeable {
     setLiquidityRequirement,
     setMinUtilizationRate,
     setMaxUtilizationRate,
-    setPoolLoanInterestRate,
+    setInternalLoanInterestRate,
     etkFiller1, // Reserve space for future EToken actions
     etkFiller2, // Reserve space for future EToken actions
     etkFiller3, // Reserve space for future EToken actions

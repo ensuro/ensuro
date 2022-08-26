@@ -191,7 +191,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   }
 
   function policyResolvedWithPayout(
-    address policyOwner,
+    address policyHolder,
     Policy.PolicyData memory policy,
     uint256 payout
   ) external override onlyPolicyPool {
@@ -204,7 +204,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
         purePremiumWon = _repayLoan(purePremiumWon, _juniorEtk);
       _storePurePremiumWon(purePremiumWon);
       _unlockScr(policy);
-      _transferTo(policyOwner, payout);
+      _transferTo(policyHolder, payout);
     } else {
       uint256 borrowFromScr = _payFromPool(payout - policy.purePremium);
       _unlockScr(policy);
@@ -212,17 +212,17 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
         uint256 left;
         if (policy.jrScr > 0) {
           // Consume Junior Pool until exhausted
-          left = _juniorEtk.lendToPool(borrowFromScr, policyOwner, false);
+          left = _juniorEtk.internalLoan(borrowFromScr, policyHolder, false);
         } else {
           left = borrowFromScr;
         }
         if (left > NEGLIGIBLE_AMOUNT) {
           // Consume Senior Pool only up to SCR
-          left = _seniorEtk.lendToPool(left, policyOwner, true);
+          left = _seniorEtk.internalLoan(left, policyHolder, true);
           require(left <= NEGLIGIBLE_AMOUNT, "Don't know where to take the rest of the money");
         }
       }
-      _transferTo(policyOwner, payout - borrowFromScr);
+      _transferTo(policyHolder, payout - borrowFromScr);
     }
   }
 
@@ -245,11 +245,11 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
 
   function _repayLoan(uint256 purePremiumWon, IEToken etk) internal returns (uint256) {
     if (purePremiumWon < NEGLIGIBLE_AMOUNT) return purePremiumWon;
-    uint256 borrowedFromEtk = etk.getPoolLoan(address(this));
+    uint256 borrowedFromEtk = etk.getLoan(address(this));
     if (borrowedFromEtk == 0) return purePremiumWon;
     uint256 repayAmount = borrowedFromEtk > purePremiumWon ? purePremiumWon : borrowedFromEtk;
     // TODO: make sure the balance is available or deinvest
-    etk.repayPoolLoan(repayAmount, address(this));
+    etk.repayLoan(repayAmount, address(this));
     return purePremiumWon - repayAmount;
   }
 
