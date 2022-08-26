@@ -576,10 +576,12 @@ class PremiumsAccount(ETHWrapper):
 
     def __init__(self, pool, junior_etk=None, senior_etk=None, owner="owner"):
         super().__init__(
-            owner, pool.contract, junior_etk and junior_etk.contract,
+            owner, pool, junior_etk and junior_etk.contract,
             senior_etk and senior_etk.contract
         )
 
+    junior_etk = MethodAdapter((), "address", is_property=True)
+    senior_etk = MethodAdapter((), "address", is_property=True)
     pure_premiums = MethodAdapter((), "amount", is_property=True)
     won_pure_premiums = MethodAdapter((), "amount", is_property=True)
     active_pure_premiums = MethodAdapter((), "amount", is_property=True)
