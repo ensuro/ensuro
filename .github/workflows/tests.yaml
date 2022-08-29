@@ -28,3 +28,4 @@ jobs:
       - run: npx hardhat test
         env:
           ALCHEMY_URL: ${{ secrets.ALCHEMY_URL }}
+      - run: node instrumented/coverage.js
