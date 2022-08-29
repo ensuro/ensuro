@@ -18,9 +18,7 @@ TEnv = namedtuple("TEnv", "currency time_control pool_config kind pa_class etk")
 @pytest.fixture(params=TEST_VARIANTS)
 def tenv(request):
     if request.param == "prototype":
-        currency = ERC20Token(
-            owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000)
-        )
+        currency = ERC20Token(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
         pool_config = ensuro.PolicyPoolConfig()
 
         class PolicyPoolMock(Contract):
@@ -40,43 +38,43 @@ def tenv(request):
             time_control=ensuro.time_control,
             pool_config=pool_config,
             kind="prototype",
-            # policy=partial(ensuro.Policy,),
             etk=partial(ensuro.EToken, policy_pool=pool),
             pa_class=partial(ensuro.PremiumsAccount, pool=pool),
         )
     elif request.param == "ethereum":
-        PolicyPoolMockForward = wrappers.get_provider().get_contract_factory(
-            "PolicyPoolMockForward"
-        )
-        currency = wrappers.TestCurrency(
-            owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000)
-        )
-        config = wrappers.PolicyPoolConfig(owner="owner")
-        #
-        pool = PolicyPoolMockForward.deploy(
-            wrappers.AddressBook.ZERO,
-            currency.contract,
-            config.contract,
-            {"from": currency.owner},
-        )
+        PolicyPoolMockForward = wrappers.get_provider().get_contract_factory("PolicyPoolMockForward")
+        currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
+        pa_config = wrappers.PolicyPoolConfig(owner="owner")
 
         def etoken_factory(**kwargs):
+            config = wrappers.PolicyPoolConfig(owner="owner")
+            pool = PolicyPoolMockForward.deploy(
+                wrappers.AddressBook.ZERO,
+                currency.contract,
+                config.contract,
+                {"from": currency.owner},
+            )
             symbol = kwargs.pop("symbol", "ETK")
             etoken = wrappers.EToken(policy_pool=pool, symbol=symbol, **kwargs)
             pool.setForwardTo(etoken.contract, {"from": currency.owner})
             return etoken
 
         def pa_factory(**kwargs):
-            pa = wrappers.PremiumsAccount(pool=pool, **kwargs)
-            pool.setForwardTo(pa.contract, {"from": currency.owner})
+            pa_pool = PolicyPoolMockForward.deploy(
+                wrappers.AddressBook.ZERO,
+                currency.contract,
+                pa_config.contract,
+                {"from": currency.owner},
+            )
+            pa = wrappers.PremiumsAccount(pool=pa_pool, **kwargs)
+            pa_pool.setForwardTo(pa.contract, {"from": currency.owner})
             return pa
 
         return TEnv(
             currency=currency,
             time_control=get_provider().time_control,
-            pool_config=config,
+            pool_config=pa_config,
             kind="ethereum",
-            # policy=partial(ensuro.Policy,),
             etk=etoken_factory,
             pa_class=pa_factory,
         )
@@ -103,9 +101,7 @@ def test_receive_grant(tenv):
     pa = tenv.pa_class()
 
     assert tenv.currency.balance_of(tenv.currency.owner) == _W(1000)
-    with pytest.raises(
-        RevertError, match="transfer amount exceeds allowance|insufficient allowance"
-    ):
+    with pytest.raises(RevertError, match="transfer amount exceeds allowance|insufficient allowance"):
         pa.receive_grant(tenv.currency.owner, _W(1000))
 
     tenv.currency.approve(tenv.currency.owner, pa, _W(1000))
@@ -197,7 +193,9 @@ def test_withdraw_won_premiums_with_borrowed_active_pp(tenv):
     tenv.currency.transfer(tenv.currency.owner, pa, _W(3))
     tenv.currency.approve(tenv.currency.owner, pa, _W(100))
     assert tenv.currency.allowance(tenv.currency.owner, pa) == _W(100)
-    pa.policy_resolved_with_payout(tenv.currency.owner, policy_2, _W(12))
+
+    with pa.thru_policy_pool():
+        pa.policy_resolved_with_payout(tenv.currency.owner, policy_2, _W(12))
 
     pa.borrowed_active_pp.assert_equal(policy.payout * policy.loss_prob * rm.moc)
     pa.active_pure_premiums.assert_equal(policy.payout * policy.loss_prob * rm.moc)
@@ -207,12 +205,11 @@ def test_withdraw_won_premiums_with_borrowed_active_pp(tenv):
     pa.won_pure_premiums.assert_equal(_W(100) - pa.active_pure_premiums)
 
     # Expire policy
-    pa.policy_expired(policy)
+    with pa.thru_policy_pool():
+        pa.policy_expired(policy)
     pa.active_pure_premiums.assert_equal(_W(0))
     pa.borrowed_active_pp.assert_equal(_W(0))
-    pa.won_pure_premiums.assert_equal(
-        _W(100) - policy.payout * policy.loss_prob * rm.moc
-    )
+    pa.won_pure_premiums.assert_equal(_W(100) - policy.payout * policy.loss_prob * rm.moc)
 
 
 def test_policy_created_without_etokens(tenv):
@@ -278,9 +275,9 @@ def test_create_and_expire_policy_with_sr_etk(tenv):
     start = tenv.time_control.now
     expiration = tenv.time_control.now + WEEK
 
-    tenv.currency.transfer(tenv.currency.owner, senior_etk, _W(700))
+    tenv.currency.transfer(tenv.currency.owner, senior_etk, _W(900))
     with senior_etk.thru_policy_pool():
-        assert senior_etk.deposit("LP1", _W(700)) == _W(700)
+        assert senior_etk.deposit("LP1", _W(900)) == _W(900)
         senior_etk.add_borrower(pa)
 
     rm = RiskModule(premiums_account="dummy", name="Roulette", policy_pool="dummy")
@@ -320,20 +317,23 @@ def test_create_and_expire_policy_with_sr_etk(tenv):
     tenv.time_control.fast_forward(5 * DAY)
 
     # Expire policy
-    pa.policy_expired(policy)
+    with pa.thru_policy_pool():
+        pa.policy_expired(policy)
     pa.active_pure_premiums.assert_equal(policy_2.payout * policy_2.loss_prob * rm.moc)
     pa.borrowed_active_pp.assert_equal(_W(0))
     pa.won_pure_premiums.assert_equal(policy.payout * policy.loss_prob * rm.moc)
 
     # Resolve policy_2
     with pytest.raises(RevertError, match="ERC20: transfer amount exceeds balance"):
-        pa.policy_resolved_with_payout(tenv.currency.owner, policy_2, _W(90))
+        with pa.thru_policy_pool():
+            pa.policy_resolved_with_payout(tenv.currency.owner, policy_2, _W(90))
 
     tenv.currency.approve(tenv.currency.owner, pa, _W(1000))
     assert tenv.currency.allowance(tenv.currency.owner, pa) == _W(1000)
     pa.receive_grant(tenv.currency.owner, _W(100))
 
-    pa.policy_resolved_with_payout(tenv.currency.owner, policy_2, _W(100))
+    with pa.thru_policy_pool():
+        pa.policy_resolved_with_payout(tenv.currency.owner, policy_2, _W(100))
     pa.active_pure_premiums.assert_equal(_W(0))
     pa.borrowed_active_pp.assert_equal(_W(0))
     pa.won_pure_premiums.assert_equal(
@@ -375,13 +375,15 @@ def test_policy_resolved_with_payout(tenv):
 
     # Resolve policy
     with pytest.raises(RevertError, match="ERC20: transfer amount exceeds balance"):
-        pa.policy_resolved_with_payout(tenv.currency.owner, policy, _W(90))
+        with pa.thru_policy_pool():
+            pa.policy_resolved_with_payout(tenv.currency.owner, policy, _W(90))
 
     tenv.currency.approve(tenv.currency.owner, pa, _W(1000))
     assert tenv.currency.allowance(tenv.currency.owner, pa) == _W(1000)
     pa.receive_grant(tenv.currency.owner, _W(100))
 
-    pa.policy_resolved_with_payout(tenv.currency.owner, policy, _W(90))
+    with pa.thru_policy_pool():
+        pa.policy_resolved_with_payout(tenv.currency.owner, policy, _W(90))
     pa.active_pure_premiums.assert_equal(_W(0))
     pa.borrowed_active_pp.assert_equal(_W(0))
     pa.won_pure_premiums.assert_equal(
@@ -398,6 +400,7 @@ def test_policy_created_with_jr_etoken(tenv):
     tenv.currency.transfer(tenv.currency.owner, junior_etk, _W(900))
     with junior_etk.thru_policy_pool():
         assert junior_etk.deposit("LP1", _W(900)) == _W(900)
+        junior_etk.add_borrower(pa)
 
     rm = RiskModule(
         premiums_account="dummy",
@@ -448,7 +451,8 @@ def test_policy_created_with_jr_etoken(tenv):
     tenv.time_control.fast_forward(5 * DAY)
 
     # Expire policy
-    pa.policy_expired(policy)
+    with pa.thru_policy_pool():
+        pa.policy_expired(policy)
     pa.active_pure_premiums.assert_equal(policy_2.payout * policy_2.loss_prob * rm.moc)
     pa.borrowed_active_pp.assert_equal(_W(0))
     pa.won_pure_premiums.assert_equal(policy.payout * policy.loss_prob * rm.moc)
@@ -458,7 +462,8 @@ def test_policy_created_with_jr_etoken(tenv):
     assert tenv.currency.allowance(tenv.currency.owner, pa) == _W(1000)
     pa.receive_grant(tenv.currency.owner, _W(100))
 
-    pa.policy_resolved_with_payout(tenv.currency.owner, policy_2, _W(100))
+    with pa.thru_policy_pool():
+        pa.policy_resolved_with_payout(tenv.currency.owner, policy_2, _W(100))
     pa.active_pure_premiums.assert_equal(_W(0))
     pa.borrowed_active_pp.assert_equal(_W(0))
     pa.won_pure_premiums.assert_equal(
@@ -476,6 +481,7 @@ def test_policy_created_with_sr_etoken(tenv):
     tenv.currency.transfer(tenv.currency.owner, senior_etk, _W(1000))
     with senior_etk.thru_policy_pool():
         assert senior_etk.deposit("LP1", _W(1000)) == _W(1000)
+        senior_etk.add_borrower(pa)
 
     rm = RiskModule(
         premiums_account="dummy",
@@ -536,11 +542,6 @@ def test_policy_created_with_jr_and_sr_etoken(tenv):
         expiration=expiration,
     )
 
-    with pytest.raises(
-        RevertError, match="Not enought funds available to cover the SCR"
-    ):
-        pa.policy_created(policy)
-
     tenv.currency.transfer(tenv.currency.owner, junior_etk, _W(300))
     with junior_etk.thru_policy_pool():
         assert junior_etk.deposit("LP1", _W(300)) == _W(300)
@@ -559,7 +560,9 @@ def test_policy_created_with_jr_and_sr_etoken(tenv):
     tenv.currency.approve(tenv.currency.owner, pa, _W(1000))
     pa.receive_grant(tenv.currency.owner, _W(100))
 
-    pa.policy_resolved_with_payout(tenv.currency.owner, policy, _W(90))
+    with pa.thru_policy_pool():
+        pa.policy_resolved_with_payout(tenv.currency.owner, policy, _W(90))
+
     pa.active_pure_premiums.assert_equal(_W(0))
     pa.borrowed_active_pp.assert_equal(_W(0))
     pa.won_pure_premiums.assert_equal(
