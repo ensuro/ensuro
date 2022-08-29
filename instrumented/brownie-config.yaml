@@ -1,0 +1,10 @@
+compiler:
+  solc:
+    version: 0.8.6
+    optimizer:
+      enabled: false
+    remappings:
+      - "@openzeppelin=node_modules/@openzeppelin"
+      - "@aave=node_modules/@aave"
+      - "@uniswap=node_modules/@uniswap"
+      - "@chainlink=node_modules/@chainlink"
