@@ -12,6 +12,7 @@ build:
     nodejs: "16"
   jobs:
     pre_build:
+      - npm ci
       - scripts/build-docs.sh
 
 mkdocs:
