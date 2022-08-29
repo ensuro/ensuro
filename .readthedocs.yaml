@@ -4,7 +4,6 @@
 
 version: 2
 
-# Set the version of Python and other tools you might need
 build:
   os: ubuntu-22.04
   tools:
@@ -18,7 +17,6 @@ build:
 mkdocs:
   configuration: mkdocs.yml
 
-# Optionally declare the Python requirements required to build your docs
 python:
   install:
     - requirements: docs/requirements.txt
