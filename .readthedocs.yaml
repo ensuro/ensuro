@@ -11,7 +11,8 @@ build:
     python: "3.10"
   jobs:
     pre_build:
-      - echo "pre build hook"
+      - npm --version
+      - node --version
 
 mkdocs:
   configuration: mkdocs.yml
