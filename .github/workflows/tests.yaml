@@ -1,4 +1,4 @@
-name: Ensuro SmartContract Tests
+name: Tests
 on: [push]
 
 jobs:
@@ -14,7 +14,7 @@ jobs:
         with:
           node-version: "16"
           cache: "npm"
-      - run: npm install
+      - run: npm ci
       - run: pip install -r requirements.txt
       - run: pip install -r requirements-dev.txt
       - run: npx hardhat compile
@@ -29,3 +29,10 @@ jobs:
         env:
           ALCHEMY_URL: ${{ secrets.ALCHEMY_URL }}
       - run: node instrumented/coverage.js
+      - run: |
+          mkdir -p badges
+          npx lcov-badge2 -o badges/coverage.svg coverage/lcov.info
+          git config --global user.name 'Tests workflow'
+          git config --global user.email 'test@users.noreply.github.com'
+          git commit -m "Add coverage badge" badges/coverage.svg
+          git push
