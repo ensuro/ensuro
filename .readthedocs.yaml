@@ -12,8 +12,7 @@ build:
     nodejs: "16"
   jobs:
     pre_build:
-      - npm --version
-      - node --version
+      - scripts/build-docs.sh
 
 mkdocs:
   configuration: mkdocs.yml
