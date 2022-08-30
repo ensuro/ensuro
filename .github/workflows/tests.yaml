@@ -37,8 +37,8 @@ jobs:
           git config --global user.name 'Tests workflow'
           git config --global user.email 'ensuro@users.noreply.github.com'
 
-          git diff -s --exit-code $COVERAGE_BADGE || {
+          if ! git diff HEAD -s --exit-code $COVERAGE_BADGE; then
             git add $COVERAGE_BADGE && \
               git commit -m "Add coverage badge" $COVERAGE_BADGE && \
               git push;
-          }
+          fi
