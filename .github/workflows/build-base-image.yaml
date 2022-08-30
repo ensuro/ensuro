@@ -1,4 +1,4 @@
-name: Build and Push Docker Image to Google Artifact Registry
+name: Build
 
 on:
   # Manual run from github
