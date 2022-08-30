@@ -309,6 +309,11 @@ class EToken(ReserveMixin, ERC20Token):
     def has_role(self, role, account):
         return self.policy_pool.config.has_role(role, account)
 
+    def grant_role(self, role, user):
+        """Adapter to save the roles in the config, not in this object, to simplify tests"""
+        with self.policy_pool.config.as_(self.running_as):
+            self.policy_pool.config.grant_role(role, user)
+
     @property
     def currency(self):
         return self.policy_pool.currency
