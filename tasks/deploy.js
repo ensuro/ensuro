@@ -381,7 +381,8 @@ async function deployExchange({saveAddr, verify, poolAddress, maxSlippage, swapR
   return exchange.address;
 }
 
-async function deployWhitelist({saveAddr, verify, wlClass, poolAddress, extraConstructorArgs, extraArgs}, hre) {
+async function deployWhitelist({saveAddr, verify, wlClass, poolAddress, extraConstructorArgs,
+                                extraArgs, eToken}, hre) {
   extraArgs = extraArgs || [];
   extraConstructorArgs = extraConstructorArgs || [];
   const Whitelist = await hre.ethers.getContractFactory(wlClass);
@@ -398,9 +399,10 @@ async function deployWhitelist({saveAddr, verify, wlClass, poolAddress, extraCon
   saveAddress(saveAddr, wl.address);
   if (verify)
     await verifyContract(hre, wl, true, [poolAddress, ...extraConstructorArgs]);
-  const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
-  const policyPoolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await policyPool.config());
-  await policyPoolConfig.setLPWhitelist(wl.address);
+  if (eToken !== undefined) {
+    const etk = await hre.ethers.getContractAt("EToken", eToken);
+    await etk.setWhitelist(wl.address);
+  }
   return wl.address;
 }
 
@@ -676,6 +678,7 @@ function add_task() {
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addOptionalParam("saveAddr", "Save created contract address", "WHITELIST", types.str)
     .addOptionalParam("wlClass", "Whitelisting contract", "LPManualWhitelist", types.str)
+    .addOptionalParam("eToken", "Set the Whitelist to a given eToken", undefined, types.address)
     .addParam("poolAddress", "PolicyPool Address", types.address)
     .setAction(deployWhitelist);
 

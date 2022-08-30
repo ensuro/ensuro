@@ -1695,11 +1695,11 @@ def test_lp_whitelist(tenv):
     whitelist = tenv.module.LPManualWhitelist(pool=pool)
 
     with pool.config.as_("johndoe"), pytest.raises(RevertError, match="AccessControl"):
-        pool.config.set_lp_whitelist(whitelist)
+        etk.set_whitelist(whitelist)
 
     pool.config.grant_role("GUARDIAN_ROLE", "admin")
-    with pool.config.as_("admin"):
-        pool.config.set_lp_whitelist(whitelist)
+    with etk.as_("admin"):
+        etk.set_whitelist(whitelist)
 
     # Now only whitelisted can deposit
     USD.approve("LP2", pool.contract_id, _W(3000))
@@ -1710,7 +1710,7 @@ def test_lp_whitelist(tenv):
     with whitelist.as_("johndoe"), pytest.raises(RevertError, match="AccessControl"):
         whitelist.whitelist_address("LP2", True)
 
-    pool.config.grant_role("LP_WHITELIST_ROLE", "amlcompliance")
+    pool.config.grant_component_role(whitelist, "LP_WHITELIST_ROLE", "amlcompliance")
     with whitelist.as_("amlcompliance"):
         whitelist.whitelist_address("LP2", True)
 

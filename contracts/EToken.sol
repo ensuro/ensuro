@@ -7,6 +7,8 @@ import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {Reserve} from "./Reserve.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
 import {IPolicyPoolConfig} from "./interfaces/IPolicyPoolConfig.sol";
+import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
+import {ILPWhitelist} from "./interfaces/ILPWhitelist.sol";
 import {WadRayMath} from "./WadRayMath.sol";
 import {TimeScaled} from "./TimeScaled.sol";
 
@@ -52,6 +54,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     uint16 minUtilizationRate; // Min utilization rate, to reject deposits that leave UR under this value - 4 decimals
     uint16 maxUtilizationRate; // Max utilization rate, to reject lockScr that leave UR above this value - 4 decimals
     uint16 internalLoanInterestRate; // Annualized interest rate charged to internal borrowers (premiums accounts) - 4dec
+    ILPWhitelist whitelist; // Whitelist for deposits and transfers
   }
 
   PackedParams internal _params;
@@ -105,7 +108,8 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
       maxUtilizationRate: uint16(maxUtilizationRate_ / 1e14),
       liquidityRequirement: 1e4,
       minUtilizationRate: 0,
-      internalLoanInterestRate: uint16(internalLoanInterestRate_ / 1e14)
+      internalLoanInterestRate: uint16(internalLoanInterestRate_ / 1e14),
+      whitelist: ILPWhitelist(address(0))
     });
 
     _validateParameters();
@@ -407,8 +411,8 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     require(
       from == address(0) ||
         to == address(0) ||
-        address(policyPool().config().lpWhitelist()) == address(0) ||
-        policyPool().config().lpWhitelist().acceptsTransfer(this, from, to, amount),
+        address(_params.whitelist) == address(0) ||
+        _params.whitelist.acceptsTransfer(this, from, to, amount),
       "Transfer not allowed - Liquidity Provider not whitelisted"
     );
   }
@@ -532,8 +536,8 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     returns (uint256)
   {
     require(
-      address(policyPool().config().lpWhitelist()) == address(0) ||
-        policyPool().config().lpWhitelist().acceptsDeposit(this, provider, amount),
+      address(_params.whitelist) == address(0) ||
+        _params.whitelist.acceptsDeposit(this, provider, amount),
       "Liquidity Provider not whitelisted"
     );
     _mint(provider, amount);
@@ -668,5 +672,25 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     );
     _params.minUtilizationRate = uint16(newRate / 1e14);
     _parameterChanged(IPolicyPoolConfig.GovernanceActions.setMinUtilizationRate, newRate, tweak);
+  }
+
+  function setWhitelist(ILPWhitelist lpWhitelist_)
+    external
+    onlyPoolRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
+  {
+    require(
+      address(lpWhitelist_) == address(0) ||
+        IPolicyPoolComponent(address(lpWhitelist_)).policyPool() == _policyPool,
+      "Component not linked to this PolicyPool"
+    );
+    _params.whitelist = lpWhitelist_;
+    emit ComponentChanged(
+      IPolicyPoolConfig.GovernanceActions.setLPWhitelist,
+      address(lpWhitelist_)
+    );
+  }
+
+  function whitelist() external view returns (ILPWhitelist) {
+    return _params.whitelist;
   }
 }

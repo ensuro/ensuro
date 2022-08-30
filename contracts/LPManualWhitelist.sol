@@ -32,7 +32,7 @@ contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
 
   function whitelistAddress(address provider, bool whitelisted)
     external
-    onlyPoolRole(LP_WHITELIST_ROLE)
+    onlyComponentRole(LP_WHITELIST_ROLE)
   {
     _whitelisted[provider] = whitelisted;
     emit LPWhitelisted(provider, whitelisted);

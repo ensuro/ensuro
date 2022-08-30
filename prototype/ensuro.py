@@ -290,6 +290,7 @@ class EToken(ReserveMixin, ERC20Token):
     liquidity_requirement = WadField(default=_W(1))
     min_utilization_rate = WadField(default=_W(0))
     max_utilization_rate = WadField(default=_W(1))
+    whitelist = ContractProxyField(default=None, allow_none=True)
 
     internal_loan_interest_rate = WadField(default=_W("0.05"))
     loans = DictField(ContractProxyField(), CompositeField(ScaledAmount), default={})
@@ -304,6 +305,9 @@ class EToken(ReserveMixin, ERC20Token):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._running_as = "ensuro"
+
+    def has_role(self, role, account):
+        return self.policy_pool.config.has_role(role, account)
 
     @property
     def currency(self):
@@ -417,8 +421,8 @@ class EToken(ReserveMixin, ERC20Token):
     def deposit(self, provider, amount):
         # Pre condition: the pool needs to transfer the amount
         require(
-            self.policy_pool.config.lp_whitelist is None or
-            self.policy_pool.config.lp_whitelist.accepts_deposit(self, provider, amount),
+            self.whitelist is None or
+            self.whitelist.accepts_deposit(self, provider, amount),
             "Liquidity Provider not whitelisted"
         )
         self._update_current_scale()
@@ -439,8 +443,8 @@ class EToken(ReserveMixin, ERC20Token):
 
     def _transfer(self, sender, recipient, amount):
         require(
-            self.policy_pool.config.lp_whitelist is None or
-            self.policy_pool.config.lp_whitelist.accepts_transfer(self, sender, recipient, amount),
+            self.whitelist is None or
+            self.whitelist.accepts_transfer(self, sender, recipient, amount),
             "Transfer not allowed - Liquidity Provider not whitelisted"
         )
         scaled_amount = (amount.to_ray() // self._calculate_current_scale()).to_wad()
@@ -544,6 +548,10 @@ class EToken(ReserveMixin, ERC20Token):
     def utilization_rate(self):
         return self.scr // self.total_supply()
 
+    @only_role("LEVEL1_ROLE", "GUARDIAN_ROLE")
+    def set_whitelist(self, whitelist):
+        self.whitelist = ContractProxy(whitelist.contract_id) if whitelist else None
+
 
 class PolicyNFT(ERC721Token):
     def safeMint(self, customer, policy_id):
@@ -554,7 +562,6 @@ class PolicyNFT(ERC721Token):
 class PolicyPoolConfig(AccessControlContract):
     policy_pool = ContractProxyField(allow_none=True, default=None)
     treasury = AddressField(default="ENS")
-    lp_whitelist = ContractProxyField(default=None, allow_none=True)
     risk_modules = DictField(StringField(), ContractProxyField(), default={})
 
     def connect(self, policy_pool):
@@ -565,10 +572,6 @@ class PolicyPoolConfig(AccessControlContract):
     def add_risk_module(self, risk_module):
         # TODO: validate risk_module.premiums_account.pool = self.policy_pool
         self.risk_modules[risk_module.name] = ContractProxy(risk_module.contract_id)
-
-    @only_role("LEVEL1_ROLE", "GUARDIAN_ROLE")
-    def set_lp_whitelist(self, lp_whitelist):
-        self.lp_whitelist = ContractProxy(lp_whitelist.contract_id) if lp_whitelist else None
 
     def grant_component_role(self, component, role, user):
         composed_role = f"{role}-{component.contract_id}"
@@ -847,7 +850,7 @@ class LPManualWhitelist(Contract):
     def has_role(self, role, account):
         return self.pool.config.has_role(role, account)
 
-    @only_role("LP_WHITELIST_ROLE")
+    @only_component_role("LP_WHITELIST_ROLE")
     def whitelist_address(self, address, whitelisted):
         self.whitelisted[address] = whitelisted
 
