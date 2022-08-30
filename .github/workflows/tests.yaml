@@ -31,10 +31,14 @@ jobs:
       - run: node instrumented/coverage.js
       - name: Create coverage badge
         run: |
+          COVERAGE_BADGE=badges/coverage.svg
           mkdir -p badges
-          npx lcov-badge2 -o badges/coverage.svg coverage/lcov.info
+          npx lcov-badge2 -o $COVERAGE_BADGE coverage/lcov.info
           git config --global user.name 'Tests workflow'
           git config --global user.email 'ensuro@users.noreply.github.com'
-          git add badges/coverage.svg
-          git commit -m "Add coverage badge" badges/coverage.svg
-          git push
+
+          git diff -s --exit-code $COVERAGE_BADGE || {
+            git add $COVERAGE_BADGE && \
+              git commit -m "Add coverage badge" $COVERAGE_BADGE && \
+              git push;
+          }
