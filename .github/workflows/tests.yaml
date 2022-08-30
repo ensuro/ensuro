@@ -17,22 +17,24 @@ jobs:
       - run: npm ci
       - run: pip install -r requirements.txt
       - run: pip install -r requirements-dev.txt
-      - run: npx hardhat compile
-      - run: npx hardhat size-contracts
-      - run: npm run solhint
-      - run: brownie test -v --gas
-      - run: scripts/deploySmokeTest.sh
-      - run: scripts/deploySmokeTest-fork.sh
-        env:
-          ALCHEMY_URL: ${{ secrets.ALCHEMY_URL }}
-      - run: npx hardhat test
-        env:
-          ALCHEMY_URL: ${{ secrets.ALCHEMY_URL }}
+      # - run: npx hardhat compile
+      # - run: npx hardhat size-contracts
+      # - run: npm run solhint
+      # - run: brownie test -v --gas
+      # - run: scripts/deploySmokeTest.sh
+      # - run: scripts/deploySmokeTest-fork.sh
+      #   env:
+      #     ALCHEMY_URL: ${{ secrets.ALCHEMY_URL }}
+      # - run: npx hardhat test
+      #   env:
+      #     ALCHEMY_URL: ${{ secrets.ALCHEMY_URL }}
       - run: node instrumented/coverage.js
-      - run: |
+      - name: Create coverage badge
+        run: |
           mkdir -p badges
           npx lcov-badge2 -o badges/coverage.svg coverage/lcov.info
           git config --global user.name 'Tests workflow'
           git config --global user.email 'test@users.noreply.github.com'
+          git add badges/coverage.svg
           git commit -m "Add coverage badge" badges/coverage.svg
           git push
