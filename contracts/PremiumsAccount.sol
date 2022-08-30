@@ -108,7 +108,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     return _juniorEtk;
   }
 
-  function _payFromPool(uint256 toPay) internal returns (uint256) {
+  function _payFromPremiums(uint256 toPay) internal returns (uint256) {
     // 1. take from won_pure_premiums
     if (toPay <= _wonPurePremiums) {
       _wonPurePremiums -= toPay;
@@ -124,9 +124,13 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
       } else {
         toPay -= _activePurePremiums - _borrowedActivePP;
         _borrowedActivePP = _activePurePremiums;
+        return toPay;
       }
+    } else {
+      uint256 ret = toPay + _borrowedActivePP - _activePurePremiums;
+      _borrowedActivePP = _activePurePremiums;
+      return ret;
     }
-    return toPay;
   }
 
   function _storePurePremiumWon(uint256 purePremiumWon) internal {
@@ -205,7 +209,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
       _unlockScr(policy);
       _transferTo(policyHolder, payout);
     } else {
-      uint256 borrowFromScr = _payFromPool(payout - policy.purePremium);
+      uint256 borrowFromScr = _payFromPremiums(payout - policy.purePremium);
       _unlockScr(policy);
       if (borrowFromScr > 0) {
         uint256 left;

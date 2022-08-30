@@ -573,3 +573,70 @@ def test_policy_created_with_jr_and_sr_etoken(tenv):
     policy.sr_scr.assert_equal(
         policy.payout * rm.coll_ratio - policy.pure_premium - policy.jr_scr
     )
+
+
+def test_pay_from_premium(tenv):
+    senior_etk = tenv.etk(name="eUSD1YEAR", symbol="ETK1")
+    pa = tenv.pa_class(senior_etk=senior_etk)
+    start = tenv.time_control.now
+    expiration = tenv.time_control.now + WEEK
+
+    tenv.currency.transfer(tenv.currency.owner, senior_etk, _W(800))
+    with senior_etk.thru_policy_pool():
+        assert senior_etk.deposit("LP1", _W(800)) == _W(800)
+        senior_etk.add_borrower(pa)
+
+    rm = RiskModule(
+        premiums_account="dummy",
+        name="Roulette",
+        policy_pool="dummy",
+        coll_ratio=_W("0.95"),
+    )
+    rm.coll_ratio.assert_equal(_W("0.95"))
+
+    policy = ensuro.Policy(
+        id=1,
+        risk_module=rm,
+        payout=_W(20),
+        premium=_W(10),
+        loss_prob=_W(1 / 2),
+        start=start,
+        expiration=expiration,
+    )
+
+    with pa.thru_policy_pool():
+        pa.policy_created(policy)
+    pa.active_pure_premiums.assert_equal(policy.payout * policy.loss_prob * rm.moc)
+
+    policy_2 = ensuro.Policy(
+        id=2,
+        risk_module=rm,
+        payout=_W(20),
+        premium=_W(10),
+        loss_prob=_W(1 / 2),
+        start=start,
+        expiration=expiration,
+    )
+
+    with pa.thru_policy_pool():
+        pa.policy_created(policy_2)
+
+    pa.active_pure_premiums.assert_equal(_W(20))
+    pa.borrowed_active_pp.assert_equal(_W(0))
+    pa.won_pure_premiums.assert_equal(_W(0))
+
+    # Resolve policy
+    tenv.currency.transfer(tenv.currency.owner, pa, _W(20))
+    tenv.currency.approve(tenv.currency.owner, pa, _W(20))
+    assert tenv.currency.allowance(tenv.currency.owner, pa) == _W(20)
+
+    with pa.thru_policy_pool():
+        pa.policy_resolved_with_payout(tenv.currency.owner, policy_2, _W(20))
+
+    pa.active_pure_premiums.assert_equal(_W(10))
+    pa.borrowed_active_pp.assert_equal(_W(10))
+    pa.won_pure_premiums.assert_equal(_W(0))
+
+    # with pytest.raises(RevertError, match="ERC20: transfer amount exceeds balance"):
+    with pa.thru_policy_pool():
+        pa.policy_resolved_with_payout(tenv.currency.owner, policy, _W(20))

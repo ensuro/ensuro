@@ -625,11 +625,11 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
         if amount > self.won_pure_premiums:
             amount = self.won_pure_premiums
         require(amount > 0, "No premiums to withdraw")
-        self._pay_from_pool(amount)
-        self._transfer_to(self.pool.treasury, amount)
+        self._pay_from_premiums(amount)
+        self._transfer_to(self.pool.config.treasury, amount)
         return amount
 
-    def _pay_from_pool(self, to_pay):
+    def _pay_from_premiums(self, to_pay):
         # 1. take from won_pure_premiums
         if to_pay <= self.won_pure_premiums:
             self.won_pure_premiums -= to_pay
@@ -638,20 +638,27 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
             to_pay -= self.won_pure_premiums
             self.won_pure_premiums = Wad(0)
         # 2. borrow from active pure premiums
-        if to_pay <= (self.active_pure_premiums - self.borrowed_active_pp):
-            self.borrowed_active_pp += to_pay
-            return Wad(0)
-        elif (self.active_pure_premiums - self.borrowed_active_pp) > 0:
-            # Borrow some
-            to_pay -= self.active_pure_premiums - self.borrowed_active_pp
+        if self.active_pure_premiums > self.borrowed_active_pp:
+            if to_pay <= (self.active_pure_premiums - self.borrowed_active_pp):
+                self.borrowed_active_pp += to_pay
+                return Wad(0)
+            elif (self.active_pure_premiums - self.borrowed_active_pp) > 0:
+                # Borrow some
+                to_pay -= self.active_pure_premiums - self.borrowed_active_pp
+                self.borrowed_active_pp = self.active_pure_premiums
+                return to_pay
+        else:
+            ret = to_pay + self.borrowed_active_pp - self.active_pure_premiums
             self.borrowed_active_pp = self.active_pure_premiums
-        return to_pay
+            return ret
 
     @external
     def policy_created(self, policy):
         self.active_pure_premiums += policy.pure_premium
         if policy.sr_scr:
-            self.senior_etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)  # TODO take roc from RM
+            self.senior_etk.lock_scr(
+                policy.sr_scr, policy.sr_interest_rate
+            )  # TODO take roc from RM
         if policy.jr_scr:
             self.junior_etk.lock_scr(policy.jr_scr, policy.jr_interest_rate)
 
@@ -669,25 +676,29 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
             self._store_pure_premium_won(pure_premium_won)
             self._unlock_scr(policy)
         else:
-            borrow_from_scr = self._pay_from_pool(payout - policy.pure_premium)
+            borrow_from_scr = self._pay_from_premiums(payout - policy.pure_premium)
             self._unlock_scr(policy)
             if borrow_from_scr > 0:
                 if policy.jr_scr:
                     amount_left = self.junior_etk.internal_loan(
                         self,
-                        borrow_from_scr, customer,
-                        False  # Consume Junior Pool until exhausted
+                        borrow_from_scr,
+                        customer,
+                        False,  # Consume Junior Pool until exhausted
                     )
                 else:
                     amount_left = borrow_from_scr
                 if amount_left > self.NEGLIGIBLE_AMOUNT:
                     amount_left = self.senior_etk.internal_loan(
                         self,
-                        amount_left, customer,
-                        True  # Consume Senior Pool only up to SCR
+                        amount_left,
+                        customer,
+                        True,  # Consume Senior Pool only up to SCR
                     )
-                    require(amount_left <= self.NEGLIGIBLE_AMOUNT,
-                            "Don't know where to take the rest of the money")
+                    require(
+                        amount_left <= self.NEGLIGIBLE_AMOUNT,
+                        "Don't know where to take the rest of the money",
+                    )
 
         self._transfer_to(customer, payout - borrow_from_scr)
         return borrow_from_scr
