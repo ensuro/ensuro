@@ -31,6 +31,7 @@ jobs:
       - run: node instrumented/coverage.js
       - name: Create coverage badge
         run: |
+          set -x
           COVERAGE_BADGE=badges/coverage.svg
           mkdir -p badges
           npx lcov-badge2 -o $COVERAGE_BADGE coverage/lcov.info
