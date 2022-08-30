@@ -17,17 +17,17 @@ jobs:
       - run: npm ci
       - run: pip install -r requirements.txt
       - run: pip install -r requirements-dev.txt
-      # - run: npx hardhat compile
-      # - run: npx hardhat size-contracts
-      # - run: npm run solhint
-      # - run: brownie test -v --gas
-      # - run: scripts/deploySmokeTest.sh
-      # - run: scripts/deploySmokeTest-fork.sh
-      #   env:
-      #     ALCHEMY_URL: ${{ secrets.ALCHEMY_URL }}
-      # - run: npx hardhat test
-      #   env:
-      #     ALCHEMY_URL: ${{ secrets.ALCHEMY_URL }}
+      - run: npx hardhat compile
+      - run: npx hardhat size-contracts
+      - run: npm run solhint
+      - run: brownie test -v --gas
+      - run: scripts/deploySmokeTest.sh
+      - run: scripts/deploySmokeTest-fork.sh
+        env:
+          ALCHEMY_URL: ${{ secrets.ALCHEMY_URL }}
+      - run: npx hardhat test
+        env:
+          ALCHEMY_URL: ${{ secrets.ALCHEMY_URL }}
       - run: node instrumented/coverage.js
       - name: Create coverage badge
         run: |
