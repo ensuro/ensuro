@@ -44,10 +44,4 @@ dieOnError "Error deploying Premiums Account"
 
 echo "PremiumsAccount = $PREMIUMS_ACCOUNT"
 
-# Exchange
-npx hardhat --network $NETWORK deploy:exchange $VERIFY \
-   --swap-router $SWAP_ROUTER \
-   --price-oracle $PRICE_ORACLE \
-    --pool-address $POOL || die "Error deploying Exchange"
-
 killPID $HHNODE_PID

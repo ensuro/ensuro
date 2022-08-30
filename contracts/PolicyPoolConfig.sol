@@ -8,7 +8,6 @@ import {IPolicyPoolConfig} from "./interfaces/IPolicyPoolConfig.sol";
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {IRiskModule} from "./interfaces/IRiskModule.sol";
 import {ILPWhitelist} from "./interfaces/ILPWhitelist.sol";
-import {IExchange} from "./interfaces/IExchange.sol";
 import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
 import {WadRayMath} from "./WadRayMath.sol";
 
@@ -37,7 +36,6 @@ contract PolicyPoolConfig is
   address internal _treasury; // address of Ensuro treasury
   IPolicyPool internal _policyPool;
   ILPWhitelist internal _lpWhitelist; // Contract that handles whitelisting of Liquidity Providers
-  IExchange internal _exchange; // Contract that handles exchange operations between assets
 
   mapping(IRiskModule => RiskModuleStatus) private _riskModules;
 
@@ -152,20 +150,6 @@ contract PolicyPoolConfig is
 
   function lpWhitelist() external view override returns (ILPWhitelist) {
     return _lpWhitelist;
-  }
-
-  function setExchange(IExchange exchange_) external onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {
-    require(
-      address(exchange_) == address(0) ||
-        IPolicyPoolComponent(address(exchange_)).policyPool() == _policyPool,
-      "Component not linked to this PolicyPool"
-    );
-    _exchange = exchange_;
-    emit ComponentChanged(GovernanceActions.setExchange, address(_exchange));
-  }
-
-  function exchange() external view override returns (IExchange) {
-    return _exchange;
   }
 
   function addRiskModule(IRiskModule riskModule) external onlyRole(LEVEL1_ROLE) {

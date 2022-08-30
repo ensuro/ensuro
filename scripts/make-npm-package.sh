@@ -13,12 +13,14 @@ mkdir -p $TARGET_DIR
 npx hardhat clean
 env COMPILE_MODE=production npx hardhat compile
 
-git archive --format tar HEAD README.md contracts/ interfaces/ | tar xv -C $TARGET_DIR
-rm -fR $TARGET_DIR/contracts/mocks/
+git archive --format tar HEAD README.md contracts/ | tar xv -C $TARGET_DIR
+# rm -fR $TARGET_DIR/contracts/mocks/
 
 mkdir $TARGET_DIR/build
-cp -r artifacts/contracts artifacts/interfaces $TARGET_DIR/build
-rm -fR $TARGET_DIR/build/contracts/mocks/
+cp -r artifacts/contracts $TARGET_DIR/build
+
+mkdir $TARGET_DIR/js
+cp test/test-utils.js $TARGET_DIR/js/
 
 find $TARGET_DIR -name "*.dbg.json" -delete
 cp npm-package/package.json $TARGET_DIR

@@ -53,9 +53,4 @@ npx hardhat --network $NETWORK deploy:whitelist $VERIFY \
     --pool-address $POOL
 dieOnError "Error deploying Whitelist"
 
-# Exchange
-npx hardhat --network $NETWORK deploy:exchange $VERIFY \
-    --pool-address $POOL
-dieOnError "Error deploying Exchange"
-
 killPID $HHNODE_PID

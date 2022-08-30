@@ -1,12 +1,12 @@
 {
   "name": "@ensuro/core",
   "description": "Ensuro - Decentralized insurance protocol",
-  "version": "1.2.7",
+  "version": "2.0.0-beta1",
   "files": [
     "**/*.sol",
     "/build/contracts/*.json",
     "/build/interfaces/*.json",
-    "!/mocks/**/*"
+    "/js/*.js"
   ],
   "repository": {
     "type": "git",
