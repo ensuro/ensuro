@@ -34,7 +34,7 @@ jobs:
           mkdir -p badges
           npx lcov-badge2 -o badges/coverage.svg coverage/lcov.info
           git config --global user.name 'Tests workflow'
-          git config --global user.email 'test@users.noreply.github.com'
+          git config --global user.email 'ensuro@users.noreply.github.com'
           git add badges/coverage.svg
           git commit -m "Add coverage badge" badges/coverage.svg
           git push
