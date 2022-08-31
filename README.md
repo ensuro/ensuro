@@ -1,5 +1,5 @@
 [![Tests](https://github.com/ensuro/ensuro/actions/workflows/tests.yaml/badge.svg)](https://github.com/ensuro/ensuro/actions/workflows/tests.yaml)
-[![cov](badges/coverage.svg)](https://github.com/ensuro/ensuro/actions/workflows/tests.yaml)
+[![cov](https://github.com/ensuro/ensuro/raw/main/badges/coverage.svg)](https://github.com/ensuro/ensuro/actions/workflows/tests.yaml)
 [![Build and Push Docker Image to Google Artifact Registry](https://github.com/ensuro/ensuro/actions/workflows/build-base-image.yaml/badge.svg)](https://github.com/ensuro/ensuro/actions/workflows/build-base-image.yaml)
 [![release](https://badgen.net/github/release/ensuro/ensuro)](https://github.com/ensuro/ensuro/releases)
 
