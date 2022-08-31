@@ -6,6 +6,10 @@ on:
     tags:
       - v*
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Package version"
+        required: true
 
 jobs:
   npm-upload:
