@@ -50,7 +50,7 @@ npx hardhat --network $NETWORK deploy:fdRiskModule $VERIFY --pool-address $POOL 
 
 # Whitelist
 npx hardhat --network $NETWORK deploy:whitelist $VERIFY \
-    --pool-address $POOL
+    --pool-address $POOL --e-token $SRETK
 dieOnError "Error deploying Whitelist"
 
 killPID $HHNODE_PID

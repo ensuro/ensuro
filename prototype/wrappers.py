@@ -127,6 +127,7 @@ class EToken(IERC20):
     set_internal_loan_interest_rate = MethodAdapter((("new_rate", "wad"), ))
     set_max_utilization_rate = MethodAdapter((("new_rate", "wad"), ))
     set_min_utilization_rate = MethodAdapter((("new_rate", "wad"), ))
+    set_whitelist = MethodAdapter((("whitelist", "contract"), ))
 
     add_borrower = MethodAdapter((("borrower", "address"), ))
 
@@ -469,8 +470,6 @@ class PolicyPoolConfig(ETHWrapper):
         if getattr(self, "_exchange", None) and self._exchange.contract.address == ex:
             return self._exchange
         return Exchange.connect(ex, self.owner)
-
-    set_lp_whitelist = MethodAdapter((("whitelist", "contract"), ), eth_method="setLPWhitelist")
 
     grant_component_role = MethodAdapter(
         (("component", "address"), ("role", "keccak256"), ("user", "address"))

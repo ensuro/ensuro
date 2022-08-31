@@ -7,7 +7,6 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {IPolicyPoolConfig} from "./interfaces/IPolicyPoolConfig.sol";
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {IRiskModule} from "./interfaces/IRiskModule.sol";
-import {ILPWhitelist} from "./interfaces/ILPWhitelist.sol";
 import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
 import {WadRayMath} from "./WadRayMath.sol";
 
@@ -35,7 +34,6 @@ contract PolicyPoolConfig is
 
   address internal _treasury; // address of Ensuro treasury
   IPolicyPool internal _policyPool;
-  ILPWhitelist internal _lpWhitelist; // Contract that handles whitelisting of Liquidity Providers
 
   mapping(IRiskModule => RiskModuleStatus) private _riskModules;
 
@@ -133,23 +131,6 @@ contract PolicyPoolConfig is
 
   function treasury() external view override returns (address) {
     return _treasury;
-  }
-
-  function setLPWhitelist(ILPWhitelist lpWhitelist_)
-    external
-    onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
-  {
-    require(
-      address(lpWhitelist_) == address(0) ||
-        IPolicyPoolComponent(address(lpWhitelist_)).policyPool() == _policyPool,
-      "Component not linked to this PolicyPool"
-    );
-    _lpWhitelist = lpWhitelist_;
-    emit ComponentChanged(GovernanceActions.setLPWhitelist, address(_lpWhitelist));
-  }
-
-  function lpWhitelist() external view override returns (ILPWhitelist) {
-    return _lpWhitelist;
   }
 
   function addRiskModule(IRiskModule riskModule) external onlyRole(LEVEL1_ROLE) {
