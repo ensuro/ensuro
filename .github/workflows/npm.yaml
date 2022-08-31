@@ -1,0 +1,28 @@
+name: NPM Package
+on:
+  push:
+    branches-ignore:
+      - "*"
+    tags:
+      - v*
+  workflow_dispatch:
+
+jobs:
+  npm-upload:
+    name: NPM Package Build and Upload
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - uses: actions/setup-node@v3
+        with:
+          node-version: "16"
+          cache: "npm"
+      - run: npm ci
+      - run: scripts/make-npm-package.sh ./build/npm-package
+      - run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTOMATION_TOKEN }}
+        working-directory: ./build/npm-package
