@@ -1,7 +1,16 @@
 #!/bin/bash
 
-TARGET_DIR=$1
+set -e
 
+VERSION=$1
+shift
+
+if [ -z $VERSION ]; then
+    echo "Usage: $0 <version> [<target dir>]" >&2
+    exit 13
+fi
+
+TARGET_DIR=$1
 if [ -z $TARGET_DIR ]; then
     TARGET_DIR=./build/npm-package/
 fi
@@ -23,7 +32,7 @@ mkdir $TARGET_DIR/js
 cp test/test-utils.js $TARGET_DIR/js/
 
 find $TARGET_DIR -name "*.dbg.json" -delete
-cp npm-package/package.json $TARGET_DIR
+sed "s/%%VERSION%%/$VERSION/" npm-package/package.json > "$TARGET_DIR/package.json"
 
 echo "
 
