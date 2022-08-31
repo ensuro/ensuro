@@ -30,6 +30,7 @@ jobs:
           ALCHEMY_URL: ${{ secrets.ALCHEMY_URL }}
       - run: node instrumented/coverage.js
       - name: Create coverage badge
+        if: github.ref == 'refs/heads/main'
         run: |
           set -x
           COVERAGE_BADGE=badges/coverage.svg
