@@ -22,7 +22,6 @@ jobs:
           cache: "npm"
       - run: npm ci
       - run: scripts/make-npm-package.sh ./build/npm-package
+      - run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_AUTOMATION_TOKEN }}" > ./build/npm-package/.npmrc
       - run: npm publish
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_AUTOMATION_TOKEN }}
         working-directory: ./build/npm-package
