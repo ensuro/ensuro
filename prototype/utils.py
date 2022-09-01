@@ -127,6 +127,6 @@ def load_config(yaml_config=None, module=None):
         if "premiums_account" not in risk_module_dict:
             risk_module_dict["premiums_account"] = default_premiums_account
         rm = module.TrustfulRiskModule(**risk_module_dict)
-        pool.config.add_risk_module(rm)
+        pool.add_risk_module(rm)
 
     return pool

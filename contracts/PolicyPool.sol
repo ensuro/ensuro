@@ -49,7 +49,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
 
   address internal _treasury; // address of Ensuro treasury
 
-  enum ETokenStatus {
+  enum ComponentStatus {
     inactive, // doesn't exists - All operations rejected
     active, // deposit / withdraw / lockScr / unlockScr OK
     deprecated, // withdraw OK, unlockScr OK, deposit rejected, no new policies
@@ -58,10 +58,15 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
 
   /**
    * @dev Mapping of installed eTokens (see {EToken}) in the PolicyPool. For each one it keep an state
-   * {ETokenStatus}.
+   * {ComponentStatus}.
    */
-  mapping(IEToken => ETokenStatus) private _eTokens;
+  mapping(IEToken => ComponentStatus) private _eTokens;
 
+  /**
+   * @dev Mapping of installed risk modules (see {RiskModule}) in the PolicyPool. For each one it keep an state
+   * {ComponentStatus}.
+   */
+  mapping(IRiskModule => ComponentStatus) private _riskModules;
   /**
    * @dev Mapping that stores the active policies (the policyId is the key). It just saves the hash of the policies,
    * the full {Policy-PolicyData} struct has to be sent for each operation (hash is used to verify).
@@ -81,16 +86,21 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, uint256 payout);
 
   /**
-   * @dev Event emitted when a new eToken is added to the pool or the status changes. See {ETokenStatus}.
+   * @dev Event emitted when a new eToken is added to the pool or the status changes. See {ComponentStatus}.
    */
-  event ETokenStatusChanged(IEToken indexed eToken, ETokenStatus newStatus);
+  event ETokenStatusChanged(IEToken indexed eToken, ComponentStatus newStatus);
+
+  /**
+   * @dev Event emitted when a new RiskModule is added to the pool or the status changes. See {ComponentStatus}.
+   */
+  event RiskModuleStatusChanged(IRiskModule indexed riskModule, ComponentStatus newStatus);
 
   /**
    * @dev Event emitted when a new PremiumsAccount is added to the pool or the status changes. TODO
    */
   event PremiumsAccountStatusChanged(
     IPremiumsAccount indexed premiumsAccount,
-    ETokenStatus newStatus
+    ComponentStatus newStatus
   );
 
   event ComponentChanged(IPolicyPoolConfig.GovernanceActions indexed action, address value);
@@ -162,42 +172,83 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   }
 
   function addEToken(IEToken eToken) external onlyRole(LEVEL1_ROLE) {
-    ETokenStatus status = _eTokens[eToken];
-    require(status == ETokenStatus.inactive, "eToken already in the pool");
+    ComponentStatus status = _eTokens[eToken];
+    require(status == ComponentStatus.inactive, "eToken already in the pool");
     require(address(eToken) != address(0), "eToken can't be zero");
     require(
       IPolicyPoolComponent(address(eToken)).policyPool() == this,
       "EToken not linked to this pool"
     );
 
-    _eTokens[eToken] = ETokenStatus.active;
-    emit ETokenStatusChanged(eToken, ETokenStatus.active);
+    _eTokens[eToken] = ComponentStatus.active;
+    emit ETokenStatusChanged(eToken, ComponentStatus.active);
   }
 
   function removeEToken(IEToken eToken) external onlyRole(LEVEL3_ROLE) {
-    ETokenStatus status = _eTokens[eToken];
-    require(status == ETokenStatus.deprecated, "EToken not deprecated");
+    ComponentStatus status = _eTokens[eToken];
+    require(status == ComponentStatus.deprecated, "EToken not deprecated");
     require(eToken.totalSupply() == 0, "EToken has liquidity, can't be removed");
     delete _eTokens[eToken];
-    emit ETokenStatusChanged(eToken, ETokenStatus.inactive);
+    emit ETokenStatusChanged(eToken, ComponentStatus.inactive);
   }
 
-  function changeETokenStatus(IEToken eToken, ETokenStatus newStatus)
+  function changeETokenStatus(IEToken eToken, ComponentStatus newStatus)
     external
     onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
   {
-    ETokenStatus status = _eTokens[eToken];
-    require(status != ETokenStatus.inactive, "EToken not found");
+    ComponentStatus status = _eTokens[eToken];
+    require(status != ComponentStatus.inactive, "EToken not found");
     require(
-      newStatus != ETokenStatus.suspended || _config.hasRole(GUARDIAN_ROLE, msg.sender),
+      newStatus != ComponentStatus.suspended || _config.hasRole(GUARDIAN_ROLE, msg.sender),
       "Only GUARDIAN can suspend eTokens"
     );
     _eTokens[eToken] = newStatus;
     emit ETokenStatusChanged(eToken, newStatus);
   }
 
-  function getETokenStatus(IEToken eToken) external view returns (ETokenStatus) {
+  function getETokenStatus(IEToken eToken) external view returns (ComponentStatus) {
     return _eTokens[eToken];
+  }
+
+  function addRiskModule(IRiskModule riskModule) external onlyRole(LEVEL1_ROLE) {
+    require(
+      _riskModules[riskModule] == ComponentStatus.inactive,
+      "Risk Module already in the pool"
+    );
+    require(address(riskModule) != address(0), "riskModule can't be zero");
+    require(
+      IPolicyPoolComponent(address(riskModule)).policyPool() == this,
+      "RiskModule not linked to this pool"
+    );
+    _riskModules[riskModule] = ComponentStatus.active;
+    emit RiskModuleStatusChanged(riskModule, ComponentStatus.active);
+  }
+
+  function removeRiskModule(IRiskModule riskModule) external onlyRole(LEVEL2_ROLE) {
+    require(_riskModules[riskModule] != ComponentStatus.inactive, "Risk Module not found");
+    require(riskModule.activeExposure() == 0, "Can't remove a module with active policies");
+    delete _riskModules[riskModule];
+    emit RiskModuleStatusChanged(riskModule, ComponentStatus.inactive);
+  }
+
+  function changeRiskModuleStatus(IRiskModule riskModule, ComponentStatus newStatus)
+    external
+    onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
+  {
+    require(_riskModules[riskModule] != ComponentStatus.inactive, "Risk Module not found");
+    require(
+      newStatus != ComponentStatus.suspended || _config.hasRole(GUARDIAN_ROLE, msg.sender),
+      "Only GUARDIAN can suspend modules"
+    );
+    // To activate LEVEL1 required or LEVEL2 if <5% of total liquidity
+    require(_config.hasRole(LEVEL1_ROLE, msg.sender), "Only LEVEL1 can activate modules");
+    // Anyone (LEVEL1, GUARDIAN) can deprecate
+    _riskModules[riskModule] = newStatus;
+    emit RiskModuleStatusChanged(riskModule, newStatus);
+  }
+
+  function getRiskModuleStatus(IRiskModule riskModule) external view returns (ComponentStatus) {
+    return _riskModules[riskModule];
   }
 
   function addPremiumsAccount(IPremiumsAccount pa) external onlyRole(LEVEL1_ROLE) {
@@ -216,13 +267,13 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     if (address(etk) != address(0)) {
       etk.addBorrower(address(pa));
     }
-    emit PremiumsAccountStatusChanged(pa, ETokenStatus.active);
+    emit PremiumsAccountStatusChanged(pa, ComponentStatus.active);
     // TODO: functions for deactivating premiumsAccount (and remove them as borrower)
   }
 
   function deposit(IEToken eToken, uint256 amount) external override whenNotPaused {
-    ETokenStatus etkStatus = _eTokens[eToken];
-    require(etkStatus == ETokenStatus.active, "eToken is not active");
+    ComponentStatus etkStatus = _eTokens[eToken];
+    require(etkStatus == ComponentStatus.active, "eToken is not active");
     _currency.safeTransferFrom(msg.sender, address(eToken), amount);
     eToken.deposit(msg.sender, amount);
   }
@@ -233,9 +284,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     whenNotPaused
     returns (uint256)
   {
-    ETokenStatus etkStatus = _eTokens[eToken];
+    ComponentStatus etkStatus = _eTokens[eToken];
     require(
-      etkStatus == ETokenStatus.active || etkStatus == ETokenStatus.deprecated,
+      etkStatus == ComponentStatus.active || etkStatus == ComponentStatus.deprecated,
       "eToken not found or withdraws not allowed"
     );
     address provider = msg.sender;
@@ -249,7 +300,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   ) external override whenNotPaused returns (uint256) {
     IRiskModule rm = policy.riskModule;
     require(address(rm) == msg.sender, "Only the RM can create new policies");
-    _config.checkAcceptsNewPolicy(rm);
+    require(_riskModules[rm] == ComponentStatus.active, "RM module not found or not active");
     policy.id = (uint256(uint160(address(rm))) << 96) + internalId;
     _policies[policy.id] = policy.hash();
     IPremiumsAccount pa = rm.premiumsAccount();
@@ -317,7 +368,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     IRiskModule rm = policy.riskModule;
     require(expired || address(rm) == msg.sender, "Only the RM can resolve policies");
     require(payout == 0 || policy.expiration > block.timestamp, "Can't pay expired policy");
-    _config.checkAcceptsResolvePolicy(rm);
+    require(
+      _riskModules[rm] == ComponentStatus.active || _riskModules[rm] == ComponentStatus.deprecated,
+      "Module must be active or deprecated to process resolutions"
+    );
     require(payout <= policy.payout, "payout > policy.payout");
 
     bool customerWon = payout > 0;

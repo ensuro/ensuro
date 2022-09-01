@@ -34,8 +34,6 @@ contract PolicyPoolConfig is
 
   IPolicyPool internal _policyPool;
 
-  mapping(IRiskModule => RiskModuleStatus) private _riskModules;
-
   modifier onlyRole2(bytes32 role1, bytes32 role2) {
     if (!hasRole(role1, _msgSender())) _checkRole(role2, _msgSender());
     _;
@@ -104,55 +102,5 @@ contract PolicyPoolConfig is
     address account
   ) external view override {
     if (!hasRole(role1, account)) _checkRole(role2, account);
-  }
-
-  function addRiskModule(IRiskModule riskModule) external onlyRole(LEVEL1_ROLE) {
-    require(
-      _riskModules[riskModule] == RiskModuleStatus.inactive,
-      "Risk Module already in the pool"
-    );
-    require(address(riskModule) != address(0), "riskModule can't be zero");
-    require(
-      IPolicyPoolComponent(address(riskModule)).policyPool() == _policyPool,
-      "RiskModule not linked to this pool"
-    );
-    _riskModules[riskModule] = RiskModuleStatus.active;
-    emit RiskModuleStatusChanged(riskModule, RiskModuleStatus.active);
-  }
-
-  function removeRiskModule(IRiskModule riskModule) external onlyRole(LEVEL2_ROLE) {
-    require(_riskModules[riskModule] != RiskModuleStatus.inactive, "Risk Module not found");
-    require(riskModule.activeExposure() == 0, "Can't remove a module with active policies");
-    delete _riskModules[riskModule];
-    emit RiskModuleStatusChanged(riskModule, RiskModuleStatus.inactive);
-  }
-
-  function changeRiskModuleStatus(IRiskModule riskModule, RiskModuleStatus newStatus)
-    external
-    onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
-  {
-    require(_riskModules[riskModule] != RiskModuleStatus.inactive, "Risk Module not found");
-    require(
-      newStatus != RiskModuleStatus.suspended || hasRole(GUARDIAN_ROLE, msg.sender),
-      "Only GUARDIAN can suspend modules"
-    );
-    // To activate LEVEL1 required or LEVEL2 if <5% of total liquidity
-    require(hasRole(LEVEL1_ROLE, msg.sender), "Only LEVEL1 can activate modules");
-    // Anyone (LEVEL1, GUARDIAN) can deprecate
-    _riskModules[riskModule] = newStatus;
-    emit RiskModuleStatusChanged(riskModule, newStatus);
-  }
-
-  function checkAcceptsNewPolicy(IRiskModule riskModule) external view override {
-    RiskModuleStatus rmStatus = _riskModules[riskModule];
-    require(rmStatus == RiskModuleStatus.active, "RM module not found or not active");
-  }
-
-  function checkAcceptsResolvePolicy(IRiskModule riskModule) external view override {
-    RiskModuleStatus rmStatus = _riskModules[riskModule];
-    require(
-      rmStatus == RiskModuleStatus.active || rmStatus == RiskModuleStatus.deprecated,
-      "Module must be active or deprecated to process resolutions"
-    );
   }
 }

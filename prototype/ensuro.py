@@ -566,16 +566,11 @@ class PolicyNFT(ERC721Token):
 
 class PolicyPoolConfig(AccessControlContract):
     policy_pool = ContractProxyField(allow_none=True, default=None)
-    risk_modules = DictField(StringField(), ContractProxyField(), default={})
 
     def connect(self, policy_pool):
         require(self.policy_pool is None, "PolicyPool already connected")
         require(self.contract_id == policy_pool.config.contract_id, "PolicyPool not connected to this config")
         self.policy_pool = policy_pool
-
-    def add_risk_module(self, risk_module):
-        # TODO: validate risk_module.premiums_account.pool = self.policy_pool
-        self.risk_modules[risk_module.name] = ContractProxy(risk_module.contract_id)
 
     def grant_component_role(self, component, role, user):
         composed_role = f"{role}-{component.contract_id}"
@@ -748,6 +743,7 @@ class PolicyPool(AccessControlContract):
     etokens = DictField(StringField(), ContractProxyField(), default={})
     premiums_accounts = ListField(ContractProxyField(), default=[])
     policies = DictField(IntField(), CompositeField(Policy), default={})
+    risk_modules = DictField(StringField(), ContractProxyField(), default={})
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -759,6 +755,10 @@ class PolicyPool(AccessControlContract):
 
     def add_etoken(self, etoken):
         self.etokens[etoken.name] = ContractProxy(etoken.contract_id)
+
+    def add_risk_module(self, risk_module):
+        # TODO: validate risk_module.premiums_account.pool = self.policy_pool
+        self.risk_modules[risk_module.name] = ContractProxy(risk_module.contract_id)
 
     def add_premiums_account(self, premiums_account):
         self.premiums_accounts.append(ContractProxy(premiums_account.contract_id))
