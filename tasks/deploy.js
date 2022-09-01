@@ -292,8 +292,7 @@ async function deployRiskModule({
     await rm.setParam(4, ensuroCocFee);
   }
   const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
-  const policyPoolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await policyPool.config());
-  await policyPoolConfig.addRiskModule(rm.address);
+  await policyPool.addRiskModule(rm.address);
   return rm.address;
 }
 

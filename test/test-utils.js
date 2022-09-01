@@ -63,8 +63,7 @@ exports.addRiskModule = async function(pool, premiumsAccount, contractFactory, {
     moc = _W(moc);
     await rm.setParam(0, moc);
   }
-  const policyPoolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await pool.config());
-  await policyPoolConfig.addRiskModule(rm.address);
+  await pool.addRiskModule(rm.address);
   return rm;
 }
 
@@ -158,16 +157,19 @@ exports.deployPool = async function(hre, options) {
   // Deploy PolicyPoolConfig
   const policyPoolConfig = await hre.upgrades.deployProxy(PolicyPoolConfig, [
     options.policyPoolDetAddress || ethers.constants.AddressZero,
-    options.treasuryAddress || ethers.constants.AddressZero
   ], {kind: 'uups'});
 
   await policyPoolConfig.deployed();
 
-  const policyPool = await hre.upgrades.deployProxy(PolicyPool, [], {
-    constructorArgs: [policyPoolConfig.address, policyNFT.address, options.currency],
-    kind: 'uups',
-    unsafeAllow: ["delegatecall"],
-  });
+  const policyPool = await hre.upgrades.deployProxy(
+    PolicyPool,
+    [options.treasuryAddress || ethers.constants.AddressZero],
+    {
+      constructorArgs: [policyPoolConfig.address, policyNFT.address, options.currency],
+      kind: 'uups',
+      unsafeAllow: ["delegatecall"],
+    }
+  );
 
   await policyPool.deployed();
 
