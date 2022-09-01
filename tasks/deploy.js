@@ -169,11 +169,10 @@ async function deployPolicyNFT({saveAddr, verify, nftName, nftSymbol, policyPool
   return policyNFT.address;
 }
 
-async function deployPolicyPoolConfig({saveAddr, verify, treasuryAddress, policyPoolDetAddress}, hre) {
+async function deployPolicyPoolConfig({saveAddr, verify, policyPoolDetAddress}, hre) {
   const PolicyPoolConfig = await hre.ethers.getContractFactory("PolicyPoolConfig");
   const policyPoolConfig = await hre.upgrades.deployProxy(PolicyPoolConfig, [
     policyPoolDetAddress || ethers.constants.AddressZero,
-    treasuryAddress,
   ], {kind: 'uups'});
 
   await policyPoolConfig.deployed();
@@ -189,9 +188,10 @@ async function _getDefaultSigner(hre) {
   return signers[0];
 }
 
-async function deployPolicyPool({saveAddr, verify, configAddress, nftAddress, currencyAddress}, hre) {
+async function deployPolicyPool({saveAddr, verify, configAddress, nftAddress,
+                                 currencyAddress, treasuryAddress}, hre) {
   const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
-  const policyPool = await hre.upgrades.deployProxy(PolicyPool, [], {
+  const policyPool = await hre.upgrades.deployProxy(PolicyPool, [treasuryAddress], {
     constructorArgs: [configAddress, nftAddress, currencyAddress],
     kind: 'uups',
     unsafeAllow: ["delegatecall"],
@@ -540,12 +540,12 @@ function add_task() {
   task("deploy:poolConfig", "Deploys the PolicyPoolConfig")
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addOptionalParam("saveAddr", "Save created contract address", "POOLCONFIG", types.str)
-    .addOptionalParam("treasuryAddress", "Treasury Address", ethers.constants.AddressZero, types.address)
     .setAction(deployPolicyPoolConfig);
 
   task("deploy:pool", "Deploys the PolicyPool")
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addOptionalParam("saveAddr", "Save created contract address", "POOL", types.str)
+    .addOptionalParam("treasuryAddress", "Treasury Address", ethers.constants.AddressZero, types.address)
     .addParam("nftAddress", "NFT Address", types.address)
     .addParam("currencyAddress", "Currency Address", types.address)
     .addParam("configAddress", "PolicyPoolConfig Address", types.address)

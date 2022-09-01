@@ -86,8 +86,6 @@ interface IPolicyPoolConfig is IAccessControlUpgradeable {
 
   function connect() external;
 
-  function treasury() external view returns (address);
-
   function checkAcceptsNewPolicy(IRiskModule riskModule) external view;
 
   function checkAcceptsResolvePolicy(IRiskModule riskModule) external view;

@@ -566,7 +566,6 @@ class PolicyNFT(ERC721Token):
 
 class PolicyPoolConfig(AccessControlContract):
     policy_pool = ContractProxyField(allow_none=True, default=None)
-    treasury = AddressField(default="ENS")
     risk_modules = DictField(StringField(), ContractProxyField(), default={})
 
     def connect(self, policy_pool):
@@ -633,7 +632,7 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
             amount = self.won_pure_premiums
         require(amount > 0, "No premiums to withdraw")
         self._pay_from_pool(amount)
-        self._transfer_to(self.pool.config.treasury, amount)
+        self._transfer_to(self.pool.treasury, amount)
         return amount
 
     def _pay_from_pool(self, to_pay):
@@ -743,6 +742,7 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
 
 class PolicyPool(AccessControlContract):
     config = ContractProxyField()
+    treasury = AddressField(default="ENS")
     policy_nft = ContractProxyField()
     currency = ContractProxyField()
     etokens = DictField(StringField(), ContractProxyField(), default={})
@@ -811,7 +811,7 @@ class PolicyPool(AccessControlContract):
         )
         self.currency.transfer_from(
             self.contract_id, customer,
-            self.config.treasury, policy.ensuro_commission
+            self.treasury, policy.ensuro_commission
         )
         if policy.partner_commission and policy.risk_module.wallet != customer:
             self.currency.transfer_from(

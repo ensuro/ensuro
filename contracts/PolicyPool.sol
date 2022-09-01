@@ -47,6 +47,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IPolicyNFT internal immutable _policyNFT;
 
+  address internal _treasury; // address of Ensuro treasury
+
   enum ETokenStatus {
     inactive, // doesn't exists - All operations rejected
     active, // deposit / withdraw / lockScr / unlockScr OK
@@ -91,6 +93,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     ETokenStatus newStatus
   );
 
+  event ComponentChanged(IPolicyPoolConfig.GovernanceActions indexed action, address value);
+
   modifier onlyRole(bytes32 role) {
     _config.checkRole(role, msg.sender);
     _;
@@ -112,16 +116,17 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     _currency = currency_;
   }
 
-  function initialize() public initializer {
+  function initialize(address treasury_) public initializer {
     __UUPSUpgradeable_init();
     __Pausable_init();
-    __PolicyPool_init_unchained();
+    __PolicyPool_init_unchained(treasury_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
-  function __PolicyPool_init_unchained() internal initializer {
+  function __PolicyPool_init_unchained(address treasury_) internal initializer {
     _config.connect();
     _policyNFT.connect();
+    _treasury = treasury_;
   }
 
   // solhint-disable-next-line no-empty-blocks
@@ -145,6 +150,15 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
 
   function policyNFT() external view virtual override returns (address) {
     return address(_policyNFT);
+  }
+
+  function setTreasury(address treasury_) external onlyRole(LEVEL1_ROLE) {
+    _treasury = treasury_;
+    emit ComponentChanged(IPolicyPoolConfig.GovernanceActions.setTreasury, _treasury);
+  }
+
+  function treasury() external view override returns (address) {
+    return _treasury;
   }
 
   function addEToken(IEToken eToken) external onlyRole(LEVEL1_ROLE) {
@@ -248,7 +262,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
       _currency.safeTransferFrom(customer, address(pa.seniorEtk()), policy.srCoc);
     if (policy.jrCoc > 0)
       _currency.safeTransferFrom(customer, address(pa.juniorEtk()), policy.jrCoc);
-    _currency.safeTransferFrom(customer, _config.treasury(), policy.ensuroCommission);
+    _currency.safeTransferFrom(customer, _treasury, policy.ensuroCommission);
     if (policy.partnerCommission > 0 && customer != rm.wallet())
       _currency.safeTransferFrom(customer, rm.wallet(), policy.partnerCommission);
     // TODO: this code does up to 5 ERC20 transfers. How we can avoid this? Delayed transfers?

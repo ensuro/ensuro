@@ -28,6 +28,12 @@ interface IPolicyPool {
   function policyNFT() external view returns (address);
 
   /**
+   * @dev Address of the treasury, that receives protocol fees.
+   * @return The address of the treasury
+   */
+  function treasury() external view returns (address);
+
+  /**
    * @dev Creates a new Policy. Must be called from an active RiskModule
    *
    * Requirements:

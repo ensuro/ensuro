@@ -43,6 +43,10 @@ contract PolicyPoolMock is IPolicyPool {
     return address(0);
   }
 
+  function treasury() external pure override returns (address) {
+    return address(0);
+  }
+
   function newPolicy(
     Policy.PolicyData memory policy,
     address, /* customer */

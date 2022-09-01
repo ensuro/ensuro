@@ -32,43 +32,25 @@ contract PolicyPoolConfig is
 
   uint256 public constant L2_RM_LIMIT = 5e16; // 5% in WAD
 
-  address internal _treasury; // address of Ensuro treasury
   IPolicyPool internal _policyPool;
 
   mapping(IRiskModule => RiskModuleStatus) private _riskModules;
-
-  event ComponentChanged(IPolicyPoolConfig.GovernanceActions indexed action, address value);
 
   modifier onlyRole2(bytes32 role1, bytes32 role2) {
     if (!hasRole(role1, _msgSender())) _checkRole(role2, _msgSender());
     _;
   }
 
-  modifier onlyRole3(
-    bytes32 role1,
-    bytes32 role2,
-    bytes32 role3
-  ) {
-    if (!hasRole(role1, _msgSender()) && !hasRole(role2, _msgSender())) {
-      _checkRole(role3, _msgSender());
-    }
-    _;
-  }
-
-  function initialize(IPolicyPool policyPool_, address treasury_) public initializer {
+  function initialize(IPolicyPool policyPool_) public initializer {
     __AccessControl_init();
     __UUPSUpgradeable_init();
-    __PolicyPoolConfig_init_unchained(policyPool_, treasury_);
+    __PolicyPoolConfig_init_unchained(policyPool_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
-  function __PolicyPoolConfig_init_unchained(IPolicyPool policyPool_, address treasury_)
-    internal
-    initializer
-  {
+  function __PolicyPoolConfig_init_unchained(IPolicyPool policyPool_) internal initializer {
     _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
     _policyPool = policyPool_;
-    _treasury = treasury_;
   }
 
   /**
@@ -122,15 +104,6 @@ contract PolicyPoolConfig is
     address account
   ) external view override {
     if (!hasRole(role1, account)) _checkRole(role2, account);
-  }
-
-  function setTreasury(address treasury_) external onlyRole(LEVEL1_ROLE) {
-    _treasury = treasury_;
-    emit ComponentChanged(GovernanceActions.setTreasury, _treasury);
-  }
-
-  function treasury() external view override returns (address) {
-    return _treasury;
   }
 
   function addRiskModule(IRiskModule riskModule) external onlyRole(LEVEL1_ROLE) {

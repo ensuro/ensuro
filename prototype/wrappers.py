@@ -426,10 +426,10 @@ class PolicyPoolConfig(ETHWrapper):
 
     proxy_kind = "uups"
 
-    initialize_args = (("policy_pool", "address"), ("treasury", "address"))
+    initialize_args = (("policy_pool", "address"), )
 
-    def __init__(self, owner, treasury="ENS"):
-        super().__init__(owner, AddressBook.ZERO, treasury)
+    def __init__(self, owner):
+        super().__init__(owner, AddressBook.ZERO)
         self._auto_from = self.owner
         self._risk_modules = {}
 
@@ -480,14 +480,14 @@ class PolicyPool(ETHWrapper):
     eth_contract = "PolicyPool"
 
     constructor_args = (("config", "address"), ("nftToken", "address"), ("currency", "address"))
-    initialize_args = ()
+    initialize_args = (("treasury", "address"), )
     proxy_kind = "uups"
 
-    def __init__(self, config, policy_nft, currency):
+    def __init__(self, config, policy_nft, currency, treasury="ENS"):
         self._config = config
         self._currency = currency
         self._policy_nft = policy_nft
-        super().__init__(config.owner, config.contract, policy_nft.contract, currency.contract)
+        super().__init__(config.owner, config.contract, policy_nft.contract, currency.contract, treasury)
         self._auto_from = self.owner
         self._etokens = {}
 
