@@ -51,7 +51,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
 
   enum ComponentStatus {
     inactive, // doesn't exists - All operations rejected
-    active, // deposit / withdraw / lockScr / unlockScr OK
+    active, // deposit / withdraw / lockScr / unlockScr / newPolicy / resolvePolicy OK
     deprecated, // withdraw OK, unlockScr OK, deposit rejected, no new policies
     suspended // all operations temporarily rejected
   }
@@ -67,6 +67,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
    * {ComponentStatus}.
    */
   mapping(IRiskModule => ComponentStatus) private _riskModules;
+
   /**
    * @dev Mapping that stores the active policies (the policyId is the key). It just saves the hash of the policies,
    * the full {Policy-PolicyData} struct has to be sent for each operation (hash is used to verify).
@@ -173,7 +174,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   function addEToken(IEToken eToken) external onlyRole(LEVEL1_ROLE) {
     ComponentStatus status = _eTokens[eToken];
     require(status == ComponentStatus.inactive, "eToken already in the pool");
-    require(address(eToken) != address(0), "eToken can't be zero");
     require(
       IPolicyPoolComponent(address(eToken)).policyPool() == this,
       "EToken not linked to this pool"
@@ -198,8 +198,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     ComponentStatus status = _eTokens[eToken];
     require(status != ComponentStatus.inactive, "EToken not found");
     require(
-      newStatus != ComponentStatus.suspended || _access.hasRole(GUARDIAN_ROLE, msg.sender),
-      "Only GUARDIAN can suspend eTokens"
+      (newStatus == ComponentStatus.active && _access.hasRole(LEVEL1_ROLE, msg.sender)) ||
+        (newStatus == ComponentStatus.suspended && _access.hasRole(GUARDIAN_ROLE, msg.sender)) ||
+        (newStatus == ComponentStatus.deprecated && _access.hasRole(LEVEL1_ROLE, msg.sender)),
+      "Only GUARDIAN can suspend / Only LEVEL1 can activate/deprecate"
     );
     _eTokens[eToken] = newStatus;
     emit ETokenStatusChanged(eToken, newStatus);
@@ -214,7 +216,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
       _riskModules[riskModule] == ComponentStatus.inactive,
       "Risk Module already in the pool"
     );
-    require(address(riskModule) != address(0), "riskModule can't be zero");
     require(
       IPolicyPoolComponent(address(riskModule)).policyPool() == this,
       "RiskModule not linked to this pool"
@@ -236,12 +237,11 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   {
     require(_riskModules[riskModule] != ComponentStatus.inactive, "Risk Module not found");
     require(
-      newStatus != ComponentStatus.suspended || _access.hasRole(GUARDIAN_ROLE, msg.sender),
-      "Only GUARDIAN can suspend modules"
+      (newStatus == ComponentStatus.active && _access.hasRole(LEVEL1_ROLE, msg.sender)) ||
+        (newStatus == ComponentStatus.suspended && _access.hasRole(GUARDIAN_ROLE, msg.sender)) ||
+        (newStatus == ComponentStatus.deprecated && _access.hasRole(LEVEL1_ROLE, msg.sender)),
+      "Only GUARDIAN can suspend / Only LEVEL1 can activate/deprecate"
     );
-    // To activate LEVEL1 required or LEVEL2 if <5% of total liquidity
-    require(_access.hasRole(LEVEL1_ROLE, msg.sender), "Only LEVEL1 can activate modules");
-    // Anyone (LEVEL1, GUARDIAN) can deprecate
     _riskModules[riskModule] = newStatus;
     emit RiskModuleStatusChanged(riskModule, newStatus);
   }
@@ -251,9 +251,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   }
 
   function addPremiumsAccount(IPremiumsAccount pa) external onlyRole(LEVEL1_ROLE) {
-    // TODO: limit in # of PremiumsAccount?
     // TODO: keep PremiumsAccount status?
-    require(address(pa) != address(0), "PremiumsAccount can't be zero");
     require(
       IPolicyPoolComponent(address(pa)).policyPool() == this,
       "PremiumsAccount not linked to this pool"
