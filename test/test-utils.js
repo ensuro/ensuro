@@ -63,8 +63,7 @@ exports.addRiskModule = async function(pool, premiumsAccount, contractFactory, {
     moc = _W(moc);
     await rm.setParam(0, moc);
   }
-  const policyPoolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await pool.config());
-  await policyPoolConfig.addRiskModule(rm.address);
+  await pool.addRiskModule(rm.address);
   return rm;
 }
 
@@ -140,7 +139,7 @@ exports.getTransactionEvent = function(interface, receipt, eventName) {
 
 exports.deployPool = async function(hre, options) {
   const PolicyPool = await ethers.getContractFactory("PolicyPool");
-  const PolicyPoolConfig = await ethers.getContractFactory("PolicyPoolConfig");
+  const AccessManager = await ethers.getContractFactory("AccessManager");
   const PolicyNFT = await ethers.getContractFactory("PolicyNFT");
 
   // Deploy PolicyNFT
@@ -155,29 +154,32 @@ exports.deployPool = async function(hre, options) {
   );
   await policyNFT.deployed();
 
-  // Deploy PolicyPoolConfig
-  const policyPoolConfig = await hre.upgrades.deployProxy(PolicyPoolConfig, [
+  // Deploy AccessManager
+  const accessManager = await hre.upgrades.deployProxy(AccessManager, [
     options.policyPoolDetAddress || ethers.constants.AddressZero,
-    options.treasuryAddress || ethers.constants.AddressZero
   ], {kind: 'uups'});
 
-  await policyPoolConfig.deployed();
+  await accessManager.deployed();
 
-  const policyPool = await hre.upgrades.deployProxy(PolicyPool, [], {
-    constructorArgs: [policyPoolConfig.address, policyNFT.address, options.currency],
-    kind: 'uups',
-    unsafeAllow: ["delegatecall"],
-  });
+  const policyPool = await hre.upgrades.deployProxy(
+    PolicyPool,
+    [options.treasuryAddress || ethers.constants.AddressZero],
+    {
+      constructorArgs: [accessManager.address, policyNFT.address, options.currency],
+      kind: 'uups',
+      unsafeAllow: ["delegatecall"],
+    }
+  );
 
   await policyPool.deployed();
 
   for (const role of (options.grantRoles || [])) {
-    await grantRole(hre, policyPoolConfig, role);
+    await grantRole(hre, accessManager, role);
   }
 
-  await grantRole(hre, policyPoolConfig, "LEVEL1_ROLE");
-  await grantRole(hre, policyPoolConfig, "LEVEL2_ROLE");
-  await grantRole(hre, policyPoolConfig, "LEVEL3_ROLE");
+  await grantRole(hre, accessManager, "LEVEL1_ROLE");
+  await grantRole(hre, accessManager, "LEVEL2_ROLE");
+  await grantRole(hre, accessManager, "LEVEL3_ROLE");
   return policyPool;
 }
 

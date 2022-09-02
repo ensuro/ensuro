@@ -130,7 +130,7 @@ async function grantRole(hre, contract, role, user) {
 }
 
 async function grantRoleTask({contractAddress, role, account, component}, hre) {
-  const contract = await hre.ethers.getContractAt("PolicyPoolConfig", contractAddress);
+  const contract = await hre.ethers.getContractAt("AccessManager", contractAddress);
   if (component === ethers.constants.AddressZero) {
     await grantRole(hre, contract, role, account);
   } else {
@@ -169,15 +169,12 @@ async function deployPolicyNFT({saveAddr, verify, nftName, nftSymbol, policyPool
   return policyNFT.address;
 }
 
-async function deployPolicyPoolConfig({saveAddr, verify, treasuryAddress, policyPoolDetAddress}, hre) {
-  const PolicyPoolConfig = await hre.ethers.getContractFactory("PolicyPoolConfig");
-  const policyPoolConfig = await hre.upgrades.deployProxy(PolicyPoolConfig, [
-    policyPoolDetAddress || ethers.constants.AddressZero,
-    treasuryAddress,
-  ], {kind: 'uups'});
+async function deployAccessManager({saveAddr, verify}, hre) {
+  const AccessManager = await hre.ethers.getContractFactory("AccessManager");
+  const policyPoolConfig = await hre.upgrades.deployProxy(AccessManager, [], {kind: 'uups'});
 
   await policyPoolConfig.deployed();
-  await logContractCreated(hre, "PolicyPoolConfig", policyPoolConfig.address);
+  await logContractCreated(hre, "AccessManager", policyPoolConfig.address);
   saveAddress(saveAddr, policyPoolConfig.address);
   if (verify)
     await verifyContract(hre, policyPoolConfig, true);
@@ -189,10 +186,11 @@ async function _getDefaultSigner(hre) {
   return signers[0];
 }
 
-async function deployPolicyPool({saveAddr, verify, configAddress, nftAddress, currencyAddress}, hre) {
+async function deployPolicyPool({saveAddr, verify, accessAddress, nftAddress,
+                                 currencyAddress, treasuryAddress}, hre) {
   const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
-  const policyPool = await hre.upgrades.deployProxy(PolicyPool, [], {
-    constructorArgs: [configAddress, nftAddress, currencyAddress],
+  const policyPool = await hre.upgrades.deployProxy(PolicyPool, [treasuryAddress], {
+    constructorArgs: [accessAddress, nftAddress, currencyAddress],
     kind: 'uups',
     unsafeAllow: ["delegatecall"],
   });
@@ -202,9 +200,9 @@ async function deployPolicyPool({saveAddr, verify, configAddress, nftAddress, cu
   saveAddress(saveAddr, policyPool.address);
 
   if (verify)
-    await verifyContract(hre, policyPool, true, [configAddress, nftAddress, currencyAddress]);
+    await verifyContract(hre, policyPool, true, [accessAddress, nftAddress, currencyAddress]);
 
-  const policyPoolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await policyPool.config());
+  const policyPoolConfig = await hre.ethers.getContractAt("AccessManager", await policyPool.access());
   await grantRole(hre, policyPoolConfig, "LEVEL1_ROLE");
   await grantRole(hre, policyPoolConfig, "LEVEL2_ROLE");
   await grantRole(hre, policyPoolConfig, "LEVEL3_ROLE");
@@ -292,8 +290,7 @@ async function deployRiskModule({
     await rm.setParam(4, ensuroCocFee);
   }
   const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
-  const policyPoolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await policyPool.config());
-  await policyPoolConfig.addRiskModule(rm.address);
+  await policyPool.addRiskModule(rm.address);
   return rm.address;
 }
 
@@ -335,7 +332,7 @@ async function deployAssetManager({
   if (verify)
     await verifyContract(hre, am, true, [poolAddress, ...extraConstructorArgs]);
   const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
-  const policyPoolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await policyPool.config());
+  const policyPoolConfig = await hre.ethers.getContractAt("AccessManager", await policyPool.access());
   await policyPoolConfig.setAssetManager(am.address);
   return am.address;
 }
@@ -376,7 +373,7 @@ async function deployExchange({saveAddr, verify, poolAddress, maxSlippage, swapR
   if (verify)
     await verifyContract(hre, exchange, true, [poolAddress]);
   const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
-  const policyPoolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await policyPool.config());
+  const policyPoolConfig = await hre.ethers.getContractAt("AccessManager", await policyPool.access());
   await policyPoolConfig.setExchange(exchange.address);
   return exchange.address;
 }
@@ -409,9 +406,9 @@ async function deployWhitelist({saveAddr, verify, wlClass, poolAddress, extraCon
 async function trustfullPolicy({rmAddress, payout, premium, lossProb, expiration, customer}, hre) {
   const rm = await hre.ethers.getContractAt("TrustfulRiskModule", rmAddress);
   const policyPool = await hre.ethers.getContractAt("PolicyPool", await rm.policyPool());
-  const poolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await policyPool.config());
+  const access = await hre.ethers.getContractAt("AccessManager", await policyPool.access());
   const currency = await hre.ethers.getContractAt("IERC20Metadata", await policyPool.currency());
-  await grantComponentRole(hre, poolConfig, rm, "PRICER_ROLE");
+  await grantComponentRole(hre, access, rm, "PRICER_ROLE");
 
   customer = customer || await _getDefaultSigner(hre);
   premium = _A(premium);
@@ -433,8 +430,8 @@ async function trustfullPolicy({rmAddress, payout, premium, lossProb, expiration
 async function resolvePolicy({rmAddress, payout, fullPayout, policyId}, hre) {
   const rm = await hre.ethers.getContractAt("TrustfulRiskModule", rmAddress);
   const policyPool = await hre.ethers.getContractAt("PolicyPool", await rm.policyPool());
-  const poolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await policyPool.config());
-  await grantComponentRole(hre, poolConfig, rm, "RESOLVER_ROLE");
+  const access = await hre.ethers.getContractAt("AccessManager", await policyPool.access());
+  await grantComponentRole(hre, access, rm, "RESOLVER_ROLE");
 
   let tx;
 
@@ -451,10 +448,10 @@ async function flightDelayPolicy({rmAddress, flight, departure, expectedArrival,
                              lossProb, customer}, hre) {
   const rm = await hre.ethers.getContractAt("FlightDelayRiskModule", rmAddress);
   const policyPool = await hre.ethers.getContractAt("PolicyPool", await rm.policyPool());
-  const poolConfig = await hre.ethers.getContractAt("PolicyPoolConfig", await policyPool.config());
+  const access = await hre.ethers.getContractAt("AccessManager", await policyPool.access());
   const currency = await hre.ethers.getContractAt("IERC20Metadata", await policyPool.currency());
 
-  await grantComponentRole(hre, poolConfig, rm, "PRICER_ROLE");
+  await grantComponentRole(hre, access, rm, "PRICER_ROLE");
   customer = customer || await _getDefaultSigner(hre);
   premium = _A(premium);
 
@@ -503,7 +500,7 @@ function add_task() {
     .addOptionalParam("nftSymbol", "Symbol of Policies NFT Token", "EPOL", types.str)
     .addOptionalParam("nftAddress", "NFT Address", undefined, types.address)
     .addOptionalParam("currencyAddress", "Currency Address", undefined, types.address)
-    .addOptionalParam("configAddress", "PolicyPoolConfig Address", undefined, types.address)
+    .addOptionalParam("accessAddress", "AccessManager Address", undefined, types.address)
     .addOptionalParam("treasuryAddress", "Treasury Address", ethers.constants.AddressZero, types.address)
     .setAction(async function(taskArgs, hre) {
       if (taskArgs.currencyAddress === undefined) {
@@ -514,9 +511,9 @@ function add_task() {
         taskArgs.saveAddr = "POLICYNFT";
         taskArgs.nftAddress = await deployPolicyNFT(taskArgs, hre);
       }
-      if (taskArgs.configAddress === undefined) {
-        taskArgs.saveAddr = "POOLCONFIG";
-        taskArgs.configAddress = await deployPolicyPoolConfig(taskArgs, hre);
+      if (taskArgs.accessAddress === undefined) {
+        taskArgs.saveAddr = "ACCESSMANAGER";
+        taskArgs.accessAddress = await deployAccessManager(taskArgs, hre);
       }
       taskArgs.saveAddr = "POOL";
       let policyPoolAddress = await deployPolicyPool(taskArgs, hre);
@@ -537,18 +534,18 @@ function add_task() {
     .addOptionalParam("nftSymbol", "Symbol of Policies NFT Token", "EPOL", types.str)
     .setAction(deployPolicyNFT);
 
-  task("deploy:poolConfig", "Deploys the PolicyPoolConfig")
+  task("deploy:accessManager", "Deploys the AccessManager")
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
-    .addOptionalParam("saveAddr", "Save created contract address", "POOLCONFIG", types.str)
-    .addOptionalParam("treasuryAddress", "Treasury Address", ethers.constants.AddressZero, types.address)
-    .setAction(deployPolicyPoolConfig);
+    .addOptionalParam("saveAddr", "Save created contract address", "ACCESSMANAGER", types.str)
+    .setAction(deployAccessManager);
 
   task("deploy:pool", "Deploys the PolicyPool")
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addOptionalParam("saveAddr", "Save created contract address", "POOL", types.str)
+    .addOptionalParam("treasuryAddress", "Treasury Address", ethers.constants.AddressZero, types.address)
     .addParam("nftAddress", "NFT Address", types.address)
     .addParam("currencyAddress", "Currency Address", types.address)
-    .addParam("configAddress", "PolicyPoolConfig Address", types.address)
+    .addParam("accessAddress", "AccessManager Address", types.address)
     .setAction(deployPolicyPool);
 
   task("deploy:eToken", "Deploy an EToken and adds it to the pool")

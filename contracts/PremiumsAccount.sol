@@ -177,7 +177,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     if (amount > _wonPurePremiums) amount = _wonPurePremiums;
     require(amount > 0, "No premiums to withdraw");
     _wonPurePremiums -= amount;
-    _transferTo(_policyPool.config().treasury(), amount); // TODO: discuss if destination shoud be msg.sender
+    _transferTo(_policyPool.treasury(), amount); // TODO: discuss if destination shoud be msg.sender
     // TODO: see if this will be a component role
     emit WonPremiumsInOut(false, amount);
     return amount;

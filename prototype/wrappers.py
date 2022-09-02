@@ -180,9 +180,9 @@ class EToken(IERC20):
     def grant_role(self, role, user):
         # EToken doesn't haves grant_role
         policy_pool = PolicyPool.connect(self._policy_pool)
-        config = policy_pool.config
-        with config.as_(self._auto_from):
-            return config.grant_role(role, user)
+        access = policy_pool.access
+        with access.as_(self._auto_from):
+            return access.grant_role(role, user)
 
 
 class Policy:
@@ -421,55 +421,16 @@ class FlightDelayRiskModule(RiskModule):
         self._auto_from = self.owner
 
 
-class PolicyPoolConfig(ETHWrapper):
-    eth_contract = "PolicyPoolConfig"
+class AccessManager(ETHWrapper):
+    eth_contract = "AccessManager"
 
     proxy_kind = "uups"
 
-    initialize_args = (("policy_pool", "address"), ("treasury", "address"))
+    initialize_args = ()
 
-    def __init__(self, owner, treasury="ENS"):
-        super().__init__(owner, AddressBook.ZERO, treasury)
+    def __init__(self, owner):
+        super().__init__(owner)
         self._auto_from = self.owner
-        self._risk_modules = {}
-
-    @property
-    def risk_modules(self):
-        if not hasattr(self, "_risk_modules"):
-            self._risk_modules = self.fetch_riskmodules(self)
-        return self._risk_modules
-
-    @classmethod
-    def fetch_riskmodules(cls, wrapper):
-        events = wrapper.provider.get_events(wrapper, "RiskModuleStatusChanged")
-        risk_modules = {}
-        for evt in events:
-            rm_address = evt["args"]["riskModule"]
-            rm_status = evt["args"]["newStatus"]
-            if rm_status == 1:  # active
-                risk_modules[rm_address] = RiskModule.connect(rm_address)
-            elif rm_address in risk_modules:
-                risk_modules.pop(rm_address)
-        return risk_modules
-
-    add_risk_module_ = MethodAdapter((("risk_module", "contract"), ))
-
-    def add_risk_module(self, risk_module):
-        self.add_risk_module_(risk_module)
-        self._risk_modules[risk_module.name] = risk_module
-
-    set_exchange_ = MethodAdapter((("exchange", "contract"), ))
-
-    def set_exchange(self, exchange):
-        self.set_exchange_(exchange)
-        self._exchange = exchange
-
-    @property
-    def exchange(self):
-        ex = eth_call(self, "exchange")
-        if getattr(self, "_exchange", None) and self._exchange.contract.address == ex:
-            return self._exchange
-        return Exchange.connect(ex, self.owner)
 
     grant_component_role = MethodAdapter(
         (("component", "address"), ("role", "keccak256"), ("user", "address"))
@@ -479,17 +440,18 @@ class PolicyPoolConfig(ETHWrapper):
 class PolicyPool(ETHWrapper):
     eth_contract = "PolicyPool"
 
-    constructor_args = (("config", "address"), ("nftToken", "address"), ("currency", "address"))
-    initialize_args = ()
+    constructor_args = (("access", "address"), ("nftToken", "address"), ("currency", "address"))
+    initialize_args = (("treasury", "address"), )
     proxy_kind = "uups"
 
-    def __init__(self, config, policy_nft, currency):
-        self._config = config
+    def __init__(self, access, policy_nft, currency, treasury="ENS"):
+        self._access = access
         self._currency = currency
         self._policy_nft = policy_nft
-        super().__init__(config.owner, config.contract, policy_nft.contract, currency.contract)
+        super().__init__(access.owner, access.contract, policy_nft.contract, currency.contract, treasury)
         self._auto_from = self.owner
         self._etokens = {}
+        self._risk_modules = {}
 
     @property
     def currency(self):
@@ -499,11 +461,11 @@ class PolicyPool(ETHWrapper):
             return IERC20.connect(eth_call(self, "currency"))
 
     @property
-    def config(self):
-        if hasattr(self, "_config"):
-            return self._config
+    def access(self):
+        if hasattr(self, "_access"):
+            return self._access
         else:
-            return PolicyPoolConfig.connect(eth_call(self, "config"))
+            return AccessManager.connect(eth_call(self, "access"))
 
     @property
     def policy_nft(self):
@@ -543,6 +505,31 @@ class PolicyPool(ETHWrapper):
         self.etokens[etoken.name] = etoken
 
     add_premiums_account = MethodAdapter((("pa", "contract"), ))
+
+    @property
+    def risk_modules(self):
+        if not hasattr(self, "_risk_modules"):
+            self._risk_modules = self.fetch_riskmodules(self)
+        return self._risk_modules
+
+    @classmethod
+    def fetch_riskmodules(cls, wrapper):
+        events = wrapper.provider.get_events(wrapper, "RiskModuleStatusChanged")
+        risk_modules = {}
+        for evt in events:
+            rm_address = evt["args"]["riskModule"]
+            rm_status = evt["args"]["newStatus"]
+            if rm_status == 1:  # active
+                risk_modules[rm_address] = RiskModule.connect(rm_address)
+            elif rm_address in risk_modules:
+                risk_modules.pop(rm_address)
+        return risk_modules
+
+    add_risk_module_ = MethodAdapter((("risk_module", "contract"), ))
+
+    def add_risk_module(self, risk_module):
+        self.add_risk_module_(risk_module)
+        self._risk_modules[risk_module.name] = risk_module
 
     deposit_ = MethodAdapter((("etoken", "contract"), ("provider", "msg.sender"), ("amount", "amount")))
 

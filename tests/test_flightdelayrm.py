@@ -1,5 +1,3 @@
-"""Unitary tests for eToken contract"""
-
 from collections import namedtuple
 import pytest
 from ethproto.contracts import RevertError
@@ -9,7 +7,7 @@ from prototype import wrappers
 from . import extract_vars, TEST_VARIANTS
 
 
-TEnv = namedtuple("TEnv", "time_control currency pool premiums_account pool_config kind module link_token")
+TEnv = namedtuple("TEnv", "time_control currency pool premiums_account pool_access kind module link_token")
 
 
 class LinkTokenMock(IERC20):
@@ -26,16 +24,16 @@ class LinkTokenMock(IERC20):
 @pytest.fixture(params=[x for x in TEST_VARIANTS if x == "ethereum"])
 def tenv(request):
     currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
-    config = wrappers.PolicyPoolConfig(owner="owner")
+    access = wrappers.AccessManager(owner="owner")
     link_token = LinkTokenMock()
 
-    pool = get_provider().deploy("PolicyPoolMock", (currency.contract, config.contract), currency.owner)
+    pool = get_provider().deploy("PolicyPoolMock", (currency.contract, access.contract), currency.owner)
     premiums_account = get_provider().deploy("PolicyPoolComponentMock", (pool, ), currency.owner)
 
     return TEnv(
         currency=currency,
         time_control=get_provider().time_control,
-        pool_config=config,
+        pool_access=access,
         pool=wrappers.PolicyPool.connect(pool, currency.owner),
         premiums_account=wrappers.PremiumsAccount.connect(premiums_account, currency.owner),
         link_token=link_token,
@@ -67,7 +65,7 @@ def test_flightdelay_set_oracle_params(tenv):
     with pytest.raises(RevertError, match="AccessControl"):
         rm.oracle_params = oracle_params
 
-    tenv.pool_config.grant_component_role(rm, "ORACLE_ADMIN_ROLE", "SYSADMIN")
+    tenv.pool_access.grant_component_role(rm, "ORACLE_ADMIN_ROLE", "SYSADMIN")
 
     with rm.as_("SYSADMIN"):
         rm.oracle_params = oracle_params
@@ -95,12 +93,12 @@ def test_flightdelay_setup_with_mock_oracle(tenv):
     mock_oracle = provider.deploy("ForwardProxy", (rm.contract.address,), rm.owner)
 
     # Change Oracle
-    tenv.pool_config.grant_component_role(rm, "ORACLE_ADMIN_ROLE", rm.owner)
+    tenv.pool_access.grant_component_role(rm, "ORACLE_ADMIN_ROLE", rm.owner)
     rm.oracle_params = rm.OracleParams(*rm.oracle_params)._replace(oracle=mock_oracle.address)
 
     now = tenv.time_control.now
 
-    tenv.pool_config.grant_component_role(rm, "PRICER_ROLE", "BACKEND")
+    tenv.pool_access.grant_component_role(rm, "PRICER_ROLE", "BACKEND")
     tenv.currency.approve("CUST1", rm.policy_pool, _W(100))
 
     thru_oracle_rm = provider.build_contract(

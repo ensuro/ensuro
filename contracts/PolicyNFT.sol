@@ -28,12 +28,12 @@ contract PolicyNFT is UUPSUpgradeable, ERC721Upgradeable, PausableUpgradeable, I
   }
 
   modifier onlyPoolRole2(bytes32 role1, bytes32 role2) {
-    _policyPool.config().checkRole2(role1, role2, msg.sender);
+    _policyPool.access().checkRole2(role1, role2, msg.sender);
     _;
   }
 
   modifier onlyPoolRole(bytes32 role) {
-    _policyPool.config().checkRole(role, msg.sender);
+    _policyPool.access().checkRole(role, msg.sender);
     _;
   }
 
@@ -75,7 +75,7 @@ contract PolicyNFT is UUPSUpgradeable, ERC721Upgradeable, PausableUpgradeable, I
     );
     _policyPool = IPolicyPool(_msgSender());
     // Not possible to do this validation because connect is called in _policyPool initialize :'(
-    // require(_policyPool.policyNFT() == address(this), "PolicyPool not connected to this config");
+    // require(_policyPool.policyNFT() == address(this), "PolicyPool not connected to this access");
   }
 
   function policyPool() external view returns (IPolicyPool) {

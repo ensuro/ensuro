@@ -2,15 +2,13 @@
 pragma solidity ^0.8.0;
 
 import {IAccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import {ILPWhitelist} from "./ILPWhitelist.sol";
-import {IRiskModule} from "./IRiskModule.sol";
 
 /**
- * @title IPolicyPoolAccess - Interface for the contract that handles roles for the PolicyPool and components
+ * @title IAccessManager - Interface for the contract that handles roles for the PolicyPool and components
  * @dev Interface for the contract that handles roles for the PolicyPool and components
  * @author Ensuro
  */
-interface IPolicyPoolConfig is IAccessControlUpgradeable {
+interface IAccessManager is IAccessControlUpgradeable {
   enum GovernanceActions {
     none,
     setTreasury, // Changes PolicyPool treasury address
@@ -61,15 +59,6 @@ interface IPolicyPoolConfig is IAccessControlUpgradeable {
     last
   }
 
-  enum RiskModuleStatus {
-    inactive, // newPolicy and resolvePolicy rejected
-    active, // newPolicy and resolvePolicy accepted
-    deprecated, // newPolicy rejected, resolvePolicy accepted
-    suspended // newPolicy and resolvePolicy rejected (temporarily)
-  }
-
-  event RiskModuleStatusChanged(IRiskModule indexed riskModule, RiskModuleStatus newStatus);
-
   function checkRole(bytes32 role, address account) external view;
 
   function checkComponentRole(
@@ -83,12 +72,4 @@ interface IPolicyPoolConfig is IAccessControlUpgradeable {
     bytes32 role2,
     address account
   ) external view;
-
-  function connect() external;
-
-  function treasury() external view returns (address);
-
-  function checkAcceptsNewPolicy(IRiskModule riskModule) external view;
-
-  function checkAcceptsResolvePolicy(IRiskModule riskModule) external view;
 }

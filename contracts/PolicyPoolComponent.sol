@@ -5,7 +5,7 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
-import {IPolicyPoolConfig} from "./interfaces/IPolicyPoolConfig.sol";
+import {IAccessManager} from "./interfaces/IAccessManager.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import {WadRayMath} from "./WadRayMath.sol";
 
@@ -42,8 +42,8 @@ abstract contract PolicyPoolComponent is
   uint40 internal _lastTweakTimestamp;
   uint56 internal _lastTweakActions; // bitwise map of applied actions
 
-  event GovernanceAction(IPolicyPoolConfig.GovernanceActions indexed action, uint256 value);
-  event ComponentChanged(IPolicyPoolConfig.GovernanceActions indexed action, address value);
+  event GovernanceAction(IAccessManager.GovernanceActions indexed action, uint256 value);
+  event ComponentChanged(IAccessManager.GovernanceActions indexed action, address value);
 
   modifier onlyPolicyPool() {
     require(_msgSender() == address(_policyPool), "The caller must be the PolicyPool");
@@ -56,23 +56,23 @@ abstract contract PolicyPoolComponent is
     bytes32 role3
   ) {
     if (!hasPoolRole(role1)) {
-      _policyPool.config().checkRole2(role2, role3, msg.sender);
+      _policyPool.access().checkRole2(role2, role3, msg.sender);
     }
     _;
   }
 
   modifier onlyPoolRole2(bytes32 role1, bytes32 role2) {
-    _policyPool.config().checkRole2(role1, role2, msg.sender);
+    _policyPool.access().checkRole2(role1, role2, msg.sender);
     _;
   }
 
   modifier onlyPoolRole(bytes32 role) {
-    _policyPool.config().checkRole(role, msg.sender);
+    _policyPool.access().checkRole(role, msg.sender);
     _;
   }
 
   modifier onlyComponentRole(bytes32 role) {
-    _policyPool.config().checkComponentRole(address(this), role, msg.sender);
+    _policyPool.access().checkComponentRole(address(this), role, msg.sender);
     _;
   }
 
@@ -107,7 +107,7 @@ abstract contract PolicyPoolComponent is
   }
 
   function hasPoolRole(bytes32 role) internal view returns (bool) {
-    return _policyPool.config().hasRole(role, msg.sender);
+    return _policyPool.access().hasRole(role, msg.sender);
   }
 
   function _isTweakRay(
@@ -144,7 +144,7 @@ abstract contract PolicyPoolComponent is
   function _validateParameters() internal view virtual {} // Must be reimplemented with specific validations
 
   function _parameterChanged(
-    IPolicyPoolConfig.GovernanceActions action,
+    IAccessManager.GovernanceActions action,
     uint256 value,
     bool tweak
   ) internal {
@@ -153,7 +153,7 @@ abstract contract PolicyPoolComponent is
     emit GovernanceAction(action, value);
   }
 
-  function _componentChanged(IPolicyPoolConfig.GovernanceActions action, address value) internal {
+  function _componentChanged(IAccessManager.GovernanceActions action, address value) internal {
     _validateParameters();
     emit ComponentChanged(action, value);
   }
@@ -162,7 +162,7 @@ abstract contract PolicyPoolComponent is
     return (_lastTweakTimestamp, _lastTweakActions);
   }
 
-  function _registerTweak(IPolicyPoolConfig.GovernanceActions action) internal {
+  function _registerTweak(IAccessManager.GovernanceActions action) internal {
     uint56 actionBitMap = uint56(1 << (uint8(action) - 1));
     if ((uint40(block.timestamp) - _lastTweakTimestamp) > TWEAK_EXPIRATION) {
       _lastTweakTimestamp = uint40(block.timestamp);
