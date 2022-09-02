@@ -1,28 +1,26 @@
-"""Unitary tests for eToken contract"""
-
 from functools import partial
 from collections import namedtuple
 import pytest
 from ethproto.contracts import RevertError, Contract, ERC20Token, ContractProxyField
 from ethproto.wrappers import get_provider
 from prototype import ensuro
-from ethproto.wadray import _W, Wad
+from ethproto.wadray import _W
 from prototype import wrappers
 from prototype.utils import WEEK, DAY
 from . import TEST_VARIANTS
 
-TEnv = namedtuple("TEnv", "time_control currency rm_class pool_config kind")
+TEnv = namedtuple("TEnv", "time_control currency rm_class pool_access kind")
 
 
 @pytest.fixture(params=TEST_VARIANTS)
 def tenv(request):
     if request.param == "prototype":
         currency = ERC20Token(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
-        pool_config = ensuro.PolicyPoolConfig()
+        pool_access = ensuro.AccessManager()
 
         class PolicyPoolMock(Contract):
             currency = ContractProxyField()
-            config = pool_config
+            access = pool_access
 
             def new_policy(self, policy, customer, internal_id):
                 return policy.risk_module.make_policy_id(internal_id)
@@ -40,7 +38,7 @@ def tenv(request):
         return TEnv(
             currency=currency,
             time_control=ensuro.time_control,
-            pool_config=pool_config,
+            pool_access=pool_access,
             kind="prototype",
             rm_class=partial(ensuro.TrustfulRiskModule, policy_pool=pool, premiums_account=premiums_account)
         )
@@ -49,15 +47,15 @@ def tenv(request):
         PremiumsAccountMock = get_provider().get_contract_factory("PolicyPoolComponentMock")
 
         currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
-        config = wrappers.PolicyPoolConfig(owner="owner")
+        access = wrappers.AccessManager(owner="owner")
 
-        pool = PolicyPoolMock.deploy(currency.contract, config.contract, {"from": currency.owner})
+        pool = PolicyPoolMock.deploy(currency.contract, access.contract, {"from": currency.owner})
         premiums_account = PremiumsAccountMock.deploy(pool, {"from": currency.owner})
 
         return TEnv(
             currency=currency,
             time_control=get_provider().time_control,
-            pool_config=config,
+            pool_access=access,
             kind="ethereum",
             rm_class=partial(
                 wrappers.TrustfulRiskModule,
@@ -84,9 +82,9 @@ def test_getset_rm_parameters(tenv):
 
     # rm.grant_role("RM_PROVIDER_ROLE", "CASINO")  # Grant the role to the casino owner
     # Grant the role to the casino owner
-    tenv.pool_config.grant_component_role(rm, "RM_PROVIDER_ROLE", "CASINO")
-    tenv.pool_config.grant_role("LEVEL1_ROLE", "L1_USER")
-    tenv.pool_config.grant_role("LEVEL2_ROLE", "L2_USER")
+    tenv.pool_access.grant_component_role(rm, "RM_PROVIDER_ROLE", "CASINO")
+    tenv.pool_access.grant_role("LEVEL1_ROLE", "L1_USER")
+    tenv.pool_access.grant_role("LEVEL2_ROLE", "L2_USER")
 
     users = ("CASINO", "L2_USER", "JOHNDOE")
 
@@ -130,9 +128,9 @@ def test_getset_rm_parameters_tweaks(tenv):
         max_payout_per_policy=_W(1000), exposure_limit=_W(1e6),  # 1m
         wallet="CASINO"
     )
-    tenv.pool_config.grant_role("LEVEL1_ROLE", "L1_USER")
-    tenv.pool_config.grant_role("LEVEL2_ROLE", "L2_USER")
-    tenv.pool_config.grant_role("LEVEL3_ROLE", "L3_USER")
+    tenv.pool_access.grant_role("LEVEL1_ROLE", "L1_USER")
+    tenv.pool_access.grant_role("LEVEL2_ROLE", "L2_USER")
+    tenv.pool_access.grant_role("LEVEL3_ROLE", "L3_USER")
 
     # Validate coll_ratio <= 1 in any case
     with rm.as_("L2_USER"), pytest.raises(RevertError, match="Validation: collRatio must be <=1"):
@@ -179,7 +177,7 @@ def test_getset_rm_parameters_tweaks(tenv):
             setattr(rm, attr_name, attr_value)
 
     # Grant the role to the casino owner
-    tenv.pool_config.grant_component_role(rm, "RM_PROVIDER_ROLE", "CASINO")
+    tenv.pool_access.grant_component_role(rm, "RM_PROVIDER_ROLE", "CASINO")
 
     assert rm.moc == _W("1")
 
@@ -246,7 +244,7 @@ def test_avoid_repeated_tweaks(tenv):
         max_payout_per_policy=_W(1000), exposure_limit=_W(1e6),  # 1m
         wallet="CASINO"
     )
-    tenv.pool_config.grant_role("LEVEL3_ROLE", "L3_USER")
+    tenv.pool_access.grant_role("LEVEL3_ROLE", "L3_USER")
 
     with rm.as_("L3_USER"):
         rm.coll_ratio = _W("0.95")
@@ -283,7 +281,7 @@ def test_new_policy(tenv):
     expiration = tenv.time_control.now + WEEK
 
     # Set ensuro_coc_fee
-    tenv.pool_config.grant_role("LEVEL2_ROLE", "DAO")
+    tenv.pool_access.grant_role("LEVEL2_ROLE", "DAO")
     with rm.as_("DAO"):
         rm.ensuro_coc_fee = _W("0.03")
 
@@ -292,7 +290,7 @@ def test_new_policy(tenv):
     with rm.as_("JOHN_DOE"), pytest.raises(RevertError, match="is missing role"):
         policy = rm.new_policy(_W(36), _W(1), _W(1/37), expiration, "CUST1", 123)
 
-    tenv.pool_config.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
+    tenv.pool_access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
     with rm.as_("JOHN_SELLER"):
         policy = rm.new_policy(_W(36), _W(1), _W(1/37), expiration, "CUST1", 123)
 
@@ -317,7 +315,7 @@ def test_new_policy(tenv):
     with rm.as_("JOHN_DOE"), pytest.raises(RevertError, match="is missing role"):
         rm.resolve_policy(policy.id, True)
 
-    tenv.pool_config.grant_component_role(rm, "RESOLVER_ROLE", "JOE_THE_ORACLE")
+    tenv.pool_access.grant_component_role(rm, "RESOLVER_ROLE", "JOE_THE_ORACLE")
 
     with rm.as_("JOE_THE_ORACLE"):
         rm.resolve_policy(policy.id, True)
@@ -334,7 +332,7 @@ def test_moc(tenv):
     tenv.currency.approve("CUST1", rm.policy_pool, _W(1))
     expiration = tenv.time_control.now + WEEK
 
-    tenv.pool_config.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
+    tenv.pool_access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
     with rm.as_("JOHN_SELLER"):
         policy = rm.new_policy(_W(36), _W(1), _W(1/37), expiration, "CUST1", 111)
 
@@ -347,7 +345,7 @@ def test_moc(tenv):
     with pytest.raises(RevertError, match="missing role"):
         rm.moc = _W("1.01")
 
-    tenv.pool_config.grant_role("LEVEL2_ROLE", "DAO")
+    tenv.pool_access.grant_role("LEVEL2_ROLE", "DAO")
     with rm.as_("DAO"):
         rm.moc = _W("1.01")
 
@@ -370,7 +368,7 @@ def test_minimum_premium(tenv):
         max_payout_per_policy=_W(1000), exposure_limit=_W(1000000),
         wallet="CASINO"
     )
-    tenv.pool_config.grant_role("LEVEL2_ROLE", "DAO")
+    tenv.pool_access.grant_role("LEVEL2_ROLE", "DAO")
     with rm.as_("DAO"):
         rm.moc = _W("1.3")
 
@@ -385,7 +383,7 @@ def test_minimum_premium(tenv):
     tenv.currency.transfer(tenv.currency.owner, "CUST1", _W(2))
     tenv.currency.approve("CUST1", rm.policy_pool, _W(2))
 
-    tenv.pool_config.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
+    tenv.pool_access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
     with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="less than minimum"):
         policy = rm.new_policy(_W(36), _W("1.28"), _W(1/37), expiration, "CUST1", 222)
 

@@ -83,16 +83,16 @@ def load_config(yaml_config=None, module=None):
     nft_params.setdefault("symbol", "EPOLI")
     nft = module.PolicyNFT(**nft_params)
 
-    pool_config_params = config.get("policy_pool_config", {})
+    pool_config_params = config.get("access_manager", {})
     pool_config_params.setdefault("owner", "owner")
-    pool_config = module.PolicyPoolConfig(**pool_config_params)
+    pool_config = module.AccessManager(**pool_config_params)
 
     pool_params = config.get("policy_pool", {})
     pool_params["policy_nft"] = nft
     pool_params["currency"] = currency
-    pool_params["config"] = pool_config
+    pool_params["access"] = pool_config
     pool = module.PolicyPool(**pool_params)
-    pool.config.grant_role("LEVEL1_ROLE", pool_config.owner)
+    pool.access.grant_role("LEVEL1_ROLE", pool_config.owner)
 
     default_etk = None
 

@@ -180,9 +180,9 @@ class EToken(IERC20):
     def grant_role(self, role, user):
         # EToken doesn't haves grant_role
         policy_pool = PolicyPool.connect(self._policy_pool)
-        config = policy_pool.config
-        with config.as_(self._auto_from):
-            return config.grant_role(role, user)
+        access = policy_pool.access
+        with access.as_(self._auto_from):
+            return access.grant_role(role, user)
 
 
 class Policy:
@@ -421,15 +421,15 @@ class FlightDelayRiskModule(RiskModule):
         self._auto_from = self.owner
 
 
-class PolicyPoolConfig(ETHWrapper):
-    eth_contract = "PolicyPoolConfig"
+class AccessManager(ETHWrapper):
+    eth_contract = "AccessManager"
 
     proxy_kind = "uups"
 
-    initialize_args = (("policy_pool", "address"), )
+    initialize_args = ()
 
     def __init__(self, owner):
-        super().__init__(owner, AddressBook.ZERO)
+        super().__init__(owner)
         self._auto_from = self.owner
 
     grant_component_role = MethodAdapter(
@@ -440,15 +440,15 @@ class PolicyPoolConfig(ETHWrapper):
 class PolicyPool(ETHWrapper):
     eth_contract = "PolicyPool"
 
-    constructor_args = (("config", "address"), ("nftToken", "address"), ("currency", "address"))
+    constructor_args = (("access", "address"), ("nftToken", "address"), ("currency", "address"))
     initialize_args = (("treasury", "address"), )
     proxy_kind = "uups"
 
-    def __init__(self, config, policy_nft, currency, treasury="ENS"):
-        self._config = config
+    def __init__(self, access, policy_nft, currency, treasury="ENS"):
+        self._access = access
         self._currency = currency
         self._policy_nft = policy_nft
-        super().__init__(config.owner, config.contract, policy_nft.contract, currency.contract, treasury)
+        super().__init__(access.owner, access.contract, policy_nft.contract, currency.contract, treasury)
         self._auto_from = self.owner
         self._etokens = {}
         self._risk_modules = {}
@@ -461,11 +461,11 @@ class PolicyPool(ETHWrapper):
             return IERC20.connect(eth_call(self, "currency"))
 
     @property
-    def config(self):
-        if hasattr(self, "_config"):
-            return self._config
+    def access(self):
+        if hasattr(self, "_access"):
+            return self._access
         else:
-            return PolicyPoolConfig.connect(eth_call(self, "config"))
+            return AccessManager.connect(eth_call(self, "access"))
 
     @property
     def policy_nft(self):

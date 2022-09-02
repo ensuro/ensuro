@@ -6,7 +6,7 @@ import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
 import {IRiskModule} from "./interfaces/IRiskModule.sol";
 import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
-import {IPolicyPoolConfig} from "./interfaces/IPolicyPoolConfig.sol";
+import {IAccessManager} from "./interfaces/IAccessManager.sol";
 import {Policy} from "./Policy.sol";
 
 /**
@@ -238,8 +238,8 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
       _params.maxDuration = uint16(newValue);
     }
     _parameterChanged(
-      IPolicyPoolConfig.GovernanceActions(
-        uint256(IPolicyPoolConfig.GovernanceActions.setMoc) + uint256(param)
+      IAccessManager.GovernanceActions(
+        uint256(IAccessManager.GovernanceActions.setMoc) + uint256(param)
       ),
       newValue,
       tweak
@@ -261,11 +261,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
 
   function setWallet(address wallet_) external onlyComponentRole(RM_PROVIDER_ROLE) {
     _wallet = wallet_;
-    _parameterChanged(
-      IPolicyPoolConfig.GovernanceActions.setWallet,
-      uint256(uint160(wallet_)),
-      false
-    );
+    _parameterChanged(IAccessManager.GovernanceActions.setWallet, uint256(uint160(wallet_)), false);
   }
 
   function getMinimumPremium(

@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {IRiskModule} from "../interfaces/IRiskModule.sol";
 import {IEToken} from "../interfaces/IEToken.sol";
-import {IPolicyPoolConfig} from "../interfaces/IPolicyPoolConfig.sol";
+import {IAccessManager} from "../interfaces/IAccessManager.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {Policy} from "../Policy.sol";
@@ -17,7 +17,7 @@ contract PolicyPoolMock is IPolicyPool {
     0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
 
   IERC20Metadata internal _currency;
-  IPolicyPoolConfig internal _config;
+  IAccessManager internal _access;
 
   mapping(uint256 => Policy.PolicyData) internal policies;
   mapping(uint256 => bytes32) internal policyHashes;
@@ -25,18 +25,17 @@ contract PolicyPoolMock is IPolicyPool {
   event NewPolicy(IRiskModule indexed riskModule, Policy.PolicyData policy);
   event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, uint256 payout);
 
-  constructor(IERC20Metadata currency_, IPolicyPoolConfig config_) {
+  constructor(IERC20Metadata currency_, IAccessManager access_) {
     _currency = currency_;
-    _config = config_;
-    _config.connect();
+    _access = access_;
   }
 
   function currency() external view override returns (IERC20Metadata) {
     return _currency;
   }
 
-  function config() external view override returns (IPolicyPoolConfig) {
-    return _config;
+  function access() external view override returns (IAccessManager) {
+    return _access;
   }
 
   function policyNFT() external pure override returns (address) {
@@ -104,23 +103,22 @@ contract PolicyPoolMockForward is ForwardProxy {
     0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
 
   IERC20Metadata internal _currency;
-  IPolicyPoolConfig internal _config;
+  IAccessManager internal _access;
 
   constructor(
     address forwardTo,
     IERC20Metadata currency_,
-    IPolicyPoolConfig config_
+    IAccessManager access_
   ) ForwardProxy(forwardTo) {
     _currency = currency_;
-    _config = config_;
-    _config.connect();
+    _access = access_;
   }
 
   function currency() external view returns (IERC20Metadata) {
     return _currency;
   }
 
-  function config() external view returns (IPolicyPoolConfig) {
-    return _config;
+  function access() external view returns (IAccessManager) {
+    return _access;
   }
 }

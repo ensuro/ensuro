@@ -5,7 +5,7 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import {AddressUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IPolicyPoolConfig} from "./interfaces/IPolicyPoolConfig.sol";
+import {IAccessManager} from "./interfaces/IAccessManager.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
@@ -41,7 +41,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   bytes32 public constant LEVEL3_ROLE = keccak256("LEVEL3_ROLE");
 
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
-  IPolicyPoolConfig internal immutable _config;
+  IAccessManager internal immutable _access;
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IERC20Metadata internal immutable _currency;
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
@@ -103,25 +103,25 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     ComponentStatus newStatus
   );
 
-  event ComponentChanged(IPolicyPoolConfig.GovernanceActions indexed action, address value);
+  event ComponentChanged(IAccessManager.GovernanceActions indexed action, address value);
 
   modifier onlyRole(bytes32 role) {
-    _config.checkRole(role, msg.sender);
+    _access.checkRole(role, msg.sender);
     _;
   }
 
   modifier onlyRole2(bytes32 role1, bytes32 role2) {
-    _config.checkRole2(role1, role2, msg.sender);
+    _access.checkRole2(role1, role2, msg.sender);
     _;
   }
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(
-    IPolicyPoolConfig config_,
+    IAccessManager access_,
     IPolicyNFT policyNFT_,
     IERC20Metadata currency_
   ) {
-    _config = config_;
+    _access = access_;
     _policyNFT = policyNFT_;
     _currency = currency_;
   }
@@ -134,7 +134,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
 
   // solhint-disable-next-line func-name-mixedcase
   function __PolicyPool_init_unchained(address treasury_) internal initializer {
-    _config.connect();
     _policyNFT.connect();
     _treasury = treasury_;
   }
@@ -150,8 +149,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     _unpause();
   }
 
-  function config() external view virtual override returns (IPolicyPoolConfig) {
-    return _config;
+  function access() external view virtual override returns (IAccessManager) {
+    return _access;
   }
 
   function currency() external view virtual override returns (IERC20Metadata) {
@@ -164,7 +163,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
 
   function setTreasury(address treasury_) external onlyRole(LEVEL1_ROLE) {
     _treasury = treasury_;
-    emit ComponentChanged(IPolicyPoolConfig.GovernanceActions.setTreasury, _treasury);
+    emit ComponentChanged(IAccessManager.GovernanceActions.setTreasury, _treasury);
   }
 
   function treasury() external view override returns (address) {
@@ -199,7 +198,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     ComponentStatus status = _eTokens[eToken];
     require(status != ComponentStatus.inactive, "EToken not found");
     require(
-      newStatus != ComponentStatus.suspended || _config.hasRole(GUARDIAN_ROLE, msg.sender),
+      newStatus != ComponentStatus.suspended || _access.hasRole(GUARDIAN_ROLE, msg.sender),
       "Only GUARDIAN can suspend eTokens"
     );
     _eTokens[eToken] = newStatus;
@@ -237,11 +236,11 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   {
     require(_riskModules[riskModule] != ComponentStatus.inactive, "Risk Module not found");
     require(
-      newStatus != ComponentStatus.suspended || _config.hasRole(GUARDIAN_ROLE, msg.sender),
+      newStatus != ComponentStatus.suspended || _access.hasRole(GUARDIAN_ROLE, msg.sender),
       "Only GUARDIAN can suspend modules"
     );
     // To activate LEVEL1 required or LEVEL2 if <5% of total liquidity
-    require(_config.hasRole(LEVEL1_ROLE, msg.sender), "Only LEVEL1 can activate modules");
+    require(_access.hasRole(LEVEL1_ROLE, msg.sender), "Only LEVEL1 can activate modules");
     // Anyone (LEVEL1, GUARDIAN) can deprecate
     _riskModules[riskModule] = newStatus;
     emit RiskModuleStatusChanged(riskModule, newStatus);
