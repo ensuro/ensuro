@@ -606,7 +606,7 @@ def test_pay_from_premium(tenv):
 
     with pa.thru_policy_pool():
         pa.policy_created(policy)
-    pa.active_pure_premiums.assert_equal(policy.payout * policy.loss_prob * rm.moc)
+    pa.active_pure_premiums.assert_equal(_W(10))
 
     policy_2 = ensuro.Policy(
         id=2,

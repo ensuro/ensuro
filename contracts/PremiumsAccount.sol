@@ -31,8 +31,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   IEToken internal immutable _seniorEtk;
 
   uint256 internal _activePurePremiums; // sum of pure-premiums of active policies - In Wad
-  uint256 internal _borrowedActivePP; // amount borrowed from active pure premiums to pay defaulted policies
-  uint256 internal _wonPurePremiums; // amount of pure premiums won from non-defaulted policies
+  int256 internal _surplus;
 
   /*
    * Premiums can come in (for free, without liability) with receiveGrant.
@@ -71,8 +70,6 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   function __PremiumsAccount_init_unchained() internal initializer {
     /*
     _activePurePremiums = 0;
-    _borrowedActivePP = 0;
-    _wonPurePremiums = 0;
     */
     if (address(_juniorEtk) != address(0))
       currency().approve(address(_juniorEtk), type(uint256).max);
@@ -85,7 +82,9 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   function _validateParameters() internal view override {}
 
   function purePremiums() public view returns (uint256) {
-    return _activePurePremiums + _wonPurePremiums - _borrowedActivePP;
+    uint256 borrowedPP = _surplus < 0 ? uint256(-_surplus) : 0;
+    uint256 wonPP = _surplus >= 0 ? uint256(_surplus) : 0;
+    return _activePurePremiums + wonPP - borrowedPP;
   }
 
   function activePurePremiums() external view returns (uint256) {
@@ -93,11 +92,11 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   }
 
   function wonPurePremiums() external view returns (uint256) {
-    return _wonPurePremiums;
+    return _surplus >= 0 ? uint256(_surplus) : 0;
   }
 
   function borrowedActivePP() external view returns (uint256) {
-    return _borrowedActivePP;
+    return _surplus > 0 ? 0 : uint256(-_surplus);
   }
 
   function seniorEtk() external view override returns (IEToken) {
@@ -109,26 +108,28 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   }
 
   function _payFromPremiums(uint256 toPay) internal returns (uint256) {
-    // 1. take from won_pure_premiums
-    if (toPay <= _wonPurePremiums) {
-      _wonPurePremiums -= toPay;
-      return 0;
+    if (_surplus >= 0) {
+      if (int256(toPay) <= _surplus) {
+        _surplus -= int256(toPay);
+        return 0;
+      }
+      toPay -= uint256(_surplus);
     }
-    toPay -= _wonPurePremiums;
-    _wonPurePremiums = 0;
+
+    uint256 surplus = _surplus < 0 ? uint256(-_surplus) : 0;
     // 2. borrow from active pure premiums
-    if (_activePurePremiums > _borrowedActivePP) {
-      if (toPay <= (_activePurePremiums - _borrowedActivePP)) {
-        _borrowedActivePP += toPay;
+    if (_activePurePremiums > surplus) {
+      if (toPay <= (_activePurePremiums - surplus)) {
+        _surplus -= int256(toPay);
         return 0;
       } else {
-        toPay -= _activePurePremiums - _borrowedActivePP;
-        _borrowedActivePP = _activePurePremiums;
+        toPay -= _activePurePremiums - surplus;
+        _surplus = -int256(_activePurePremiums);
         return toPay;
       }
     } else {
-      uint256 ret = toPay + _borrowedActivePP - _activePurePremiums;
-      _borrowedActivePP = _activePurePremiums;
+      uint256 ret = toPay + surplus - _activePurePremiums;
+      _surplus = -int256(_activePurePremiums);
       return ret;
     }
   }
@@ -137,12 +138,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     // TODO: merge _wonPurePremiums and _borrowedActivePP into single int256 variable
     // and this will be just `_wonPurePremiums += purePremiumWon;`
     if (purePremiumWon == 0) return;
-    if (_borrowedActivePP >= purePremiumWon) {
-      _borrowedActivePP -= purePremiumWon;
-    } else {
-      _wonPurePremiums += (purePremiumWon - _borrowedActivePP);
-      _borrowedActivePP = 0;
-    }
+    _surplus += int256(purePremiumWon);
   }
 
   // TODO: restore repayETokenLoan?
@@ -178,10 +174,11 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     onlyPoolRole(WITHDRAW_WON_PREMIUMS_ROLE)
     returns (uint256)
   {
-    if (amount > _wonPurePremiums) amount = _wonPurePremiums;
+    uint256 surplus = _surplus >= 0 ? uint256(_surplus) : 0;
+    if (amount > surplus) amount = surplus;
     require(amount > 0, "No premiums to withdraw");
-    _wonPurePremiums -= amount;
-    _transferTo(_policyPool.treasury(), amount); // TODO: discuss if destination shoud be msg.sender
+    _surplus -= int256(amount);
+    _transferTo(_policyPool.config().treasury(), amount); // TODO: discuss if destination shoud be msg.sender
     // TODO: see if this will be a component role
     emit WonPremiumsInOut(false, amount);
     return amount;
@@ -262,9 +259,10 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     _activePurePremiums -= purePremiumWon;
 
     // If negative _activePurePremiums, repay this first (shouldn't happen)
-    if (_borrowedActivePP > _activePurePremiums) {
-      aux = Math.min(_borrowedActivePP - _activePurePremiums, purePremiumWon);
-      _borrowedActivePP -= aux;
+    uint256 surplus = _surplus > 0 ? 0 : uint256(-_surplus);
+    if (surplus > _activePurePremiums) {
+      aux = Math.min(surplus - _activePurePremiums, purePremiumWon);
+      _surplus += int256(aux);
       purePremiumWon -= aux;
     }
 
