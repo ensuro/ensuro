@@ -54,7 +54,7 @@ class RiskModule(AccessControlContract):
     name = StringField()
     moc = WadField(default=_W(1))
     jr_coll_ratio = WadField(default=Wad(0))
-    coll_ratio = WadField(default=Wad(0))
+    coll_ratio = WadField(default=_W(1))
     ensuro_pp_fee = WadField(default=Wad(0))   # Ensuro fee as % of pure_premium
     ensuro_coc_fee = WadField(default=Wad(0))   # Ensuro fee as % of coc
     jr_roc = WadField(default=Wad(0))
@@ -215,6 +215,12 @@ class Policy(Model):
     def sr_accrued_interest(self):
         return (
             self.sr_scr * _W(time_control.now - self.start) * self.sr_interest_rate //
+            _W(SECONDS_IN_YEAR)
+        )
+
+    def jr_accrued_interest(self):
+        return (
+            self.sr_scr * _W(time_control.now - self.start) * self.jr_interest_rate //
             _W(SECONDS_IN_YEAR)
         )
 
@@ -573,7 +579,7 @@ class AccessManager(AccessControlContract):
 class PremiumsAccount(ReserveMixin, AccessControlContract):
     pool = ContractProxyField()
     junior_etk = ContractProxyField(allow_none=True, default=None)
-    senior_etk = ContractProxyField()
+    senior_etk = ContractProxyField(allow_none=True, default=None)
     active_pure_premiums = WadField(default=Wad(0))
     borrowed_active_pp = WadField(default=Wad(0))
     won_pure_premiums = WadField(default=Wad(0))
@@ -614,16 +620,16 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
         self._store_pure_premium_won(amount)
 
     @external
-    @only_role("WITHDRAW_WON_PREMIUMS_ROLE")
-    def withdraw_won_premiums(self, amount):
+    @only_component_role("WITHDRAW_WON_PREMIUMS_ROLE")
+    def withdraw_won_premiums(self, amount, destination):
         if amount > self.won_pure_premiums:
             amount = self.won_pure_premiums
         require(amount > 0, "No premiums to withdraw")
-        self._pay_from_pool(amount)
-        self._transfer_to(self.pool.treasury, amount)
+        self._pay_from_premiums(amount)
+        self._transfer_to(destination, amount)
         return amount
 
-    def _pay_from_pool(self, to_pay):
+    def _pay_from_premiums(self, to_pay):
         # 1. take from won_pure_premiums
         if to_pay <= self.won_pure_premiums:
             self.won_pure_premiums -= to_pay
@@ -632,20 +638,27 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
             to_pay -= self.won_pure_premiums
             self.won_pure_premiums = Wad(0)
         # 2. borrow from active pure premiums
-        if to_pay <= (self.active_pure_premiums - self.borrowed_active_pp):
-            self.borrowed_active_pp += to_pay
-            return Wad(0)
-        elif (self.active_pure_premiums - self.borrowed_active_pp) > 0:
-            # Borrow some
-            to_pay -= self.active_pure_premiums - self.borrowed_active_pp
+        if self.active_pure_premiums > self.borrowed_active_pp:
+            if to_pay <= (self.active_pure_premiums - self.borrowed_active_pp):
+                self.borrowed_active_pp += to_pay
+                return Wad(0)
+            elif (self.active_pure_premiums - self.borrowed_active_pp) > 0:
+                # Borrow some
+                to_pay -= self.active_pure_premiums - self.borrowed_active_pp
+                self.borrowed_active_pp = self.active_pure_premiums
+                return to_pay
+        else:
+            ret = to_pay + self.borrowed_active_pp - self.active_pure_premiums
             self.borrowed_active_pp = self.active_pure_premiums
-        return to_pay
+            return ret
 
     @external
     def policy_created(self, policy):
         self.active_pure_premiums += policy.pure_premium
         if policy.sr_scr:
-            self.senior_etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)  # TODO take roc from RM
+            self.senior_etk.lock_scr(
+                policy.sr_scr, policy.sr_interest_rate
+            )  # TODO take roc from RM
         if policy.jr_scr:
             self.junior_etk.lock_scr(policy.jr_scr, policy.jr_interest_rate)
 
@@ -663,25 +676,29 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
             self._store_pure_premium_won(pure_premium_won)
             self._unlock_scr(policy)
         else:
-            borrow_from_scr = self._pay_from_pool(payout - policy.pure_premium)
+            borrow_from_scr = self._pay_from_premiums(payout - policy.pure_premium)
             self._unlock_scr(policy)
             if borrow_from_scr > 0:
                 if policy.jr_scr:
                     amount_left = self.junior_etk.internal_loan(
                         self,
-                        borrow_from_scr, customer,
-                        False  # Consume Junior Pool until exhausted
+                        borrow_from_scr,
+                        customer,
+                        False,  # Consume Junior Pool until exhausted
                     )
                 else:
                     amount_left = borrow_from_scr
                 if amount_left > self.NEGLIGIBLE_AMOUNT:
                     amount_left = self.senior_etk.internal_loan(
                         self,
-                        amount_left, customer,
-                        True  # Consume Senior Pool only up to SCR
+                        amount_left,
+                        customer,
+                        True,  # Consume Senior Pool only up to SCR
                     )
-                    require(amount_left <= self.NEGLIGIBLE_AMOUNT,
-                            "Don't know where to take the rest of the money")
+                    require(
+                        amount_left <= self.NEGLIGIBLE_AMOUNT,
+                        "Don't know where to take the rest of the money",
+                    )
 
         self._transfer_to(customer, payout - borrow_from_scr)
         return borrow_from_scr
@@ -727,6 +744,9 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
             adjustment = policy.jr_coc - policy.jr_accrued_interest()
             self.junior_etk.unlock_scr(policy.jr_scr, policy.jr_interest_rate, adjustment)
 
+    @contextmanager
+    def thru_policy_pool(self):
+        yield self
 
 class PolicyPool(AccessControlContract):
     access = ContractProxyField()

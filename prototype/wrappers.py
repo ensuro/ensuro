@@ -249,6 +249,20 @@ class Policy:
         "amount, amount, amount, amount, amount, address, int, int)"
     )
 
+    @classmethod
+    def from_prototype_policy(cls, policy, address_book):
+        fake_rm_address = "0x7291Ba1DC551b666c49Da22dE76eC7ceEB51AeDC"
+        return cls(
+            policy.id, policy.payout, policy.premium,
+            policy.jr_scr, policy.sr_scr,
+            policy.loss_prob,
+            policy.pure_premium, policy.ensuro_commission, policy.partner_commission,
+            policy.jr_coc, policy.sr_coc,
+            fake_rm_address, policy.start, policy.expiration,
+            address_book
+        )
+
+
 
 class PolicyDB:
     def __init__(self):
@@ -576,27 +590,43 @@ class PremiumsAccount(ETHWrapper):
 
     def __init__(self, pool, junior_etk=None, senior_etk=None, owner="owner"):
         super().__init__(
-            owner, pool.contract, junior_etk and junior_etk.contract,
+            owner, pool, junior_etk and junior_etk.contract,
             senior_etk and senior_etk.contract
         )
+        if isinstance(pool, ETHWrapper):
+            self._policy_pool = pool.contract
+        else:  # is just an address or raw contract - for tests
+            self._policy_pool = self._get_account(pool)
 
+    junior_etk = MethodAdapter((), "address", is_property=True)
+    senior_etk = MethodAdapter((), "address", is_property=True)
     pure_premiums = MethodAdapter((), "amount", is_property=True)
     won_pure_premiums = MethodAdapter((), "amount", is_property=True)
     active_pure_premiums = MethodAdapter((), "amount", is_property=True)
-    borrowed_active_pp = MethodAdapter((), "amount", is_property=True, eth_method="borrowedActivePP")
+    borrowed_active_pp = MethodAdapter(
+        (), "amount", is_property=True, eth_method="borrowedActivePP"
+    )
 
-    withdraw_won_premiums_ = MethodAdapter((("amount", "amount"), ))
+    withdraw_won_premiums_ = MethodAdapter(
+        (("amount", "amount"), ("destination", "address"))
+    )
+    policy_created_ = MethodAdapter((("policy", "tuple"),))
+    policy_expired_ = MethodAdapter((("policy", "tuple"),))
+    policy_resolved_with_payout_ = MethodAdapter(
+        (("customer", "address"), ("policy", "tuple"), ("payout", "amount"))
+    )
 
-    def withdraw_won_premiums(self, amount):
-        receipt = self.withdraw_won_premiums_(amount)
+    def withdraw_won_premiums(self, amount, destination):
+        receipt = self.withdraw_won_premiums_(amount, destination)
         if "WonPremiumsInOut" in receipt.events:
             return Wad(receipt.events["WonPremiumsInOut"]["value"])
         else:
             return Wad(0)
 
     receive_grant = MethodAdapter((("sender", "msg.sender"), ("amount", "amount")))
-
-    repay_etoken_loan_ = MethodAdapter((("etoken", "contract"), ), eth_method="repayETokenLoan")
+    repay_etoken_loan_ = MethodAdapter(
+        (("etoken", "contract"),), eth_method="repayETokenLoan"
+    )
 
     def repay_etoken_loan(self, etoken_name):
         etoken = self.etokens[etoken_name]
@@ -605,6 +635,28 @@ class PremiumsAccount(ETHWrapper):
             return Wad(receipt.events["InternalLoanRepaid"]["value"])
         else:
             return Wad(0)
+
+    def policy_created(self, policy):
+        p = Policy.from_prototype_policy(policy, self.provider.address_book)
+        return self.policy_created_(p.as_tuple())
+
+    def policy_expired(self, policy):
+        p = Policy.from_prototype_policy(policy, self.provider.address_book)
+        return self.policy_expired_(p.as_tuple())
+
+    def policy_resolved_with_payout(self, customer, policy, payout):
+        p = Policy.from_prototype_policy(policy, self.provider.address_book)
+        return self.policy_resolved_with_payout_(customer, p.as_tuple(), payout)
+
+    @contextmanager
+    def thru_policy_pool(self):
+        prev_contract = self.contract
+        contract_factory = self.provider.get_contract_factory(self.eth_contract)
+        self.contract = self.provider.build_contract(self._policy_pool, contract_factory, self.eth_contract)
+        try:
+            yield self
+        finally:
+            self.contract = prev_contract
 
 
 class Exchange(ETHWrapper):
