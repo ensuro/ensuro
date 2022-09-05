@@ -176,9 +176,7 @@ exports.deployPool = async function (hre, options) {
   await policyNFT.deployed();
 
   // Deploy AccessManager
-  const accessManager = await hre.upgrades.deployProxy(AccessManager, [
-    options.policyPoolDetAddress || ethers.constants.AddressZero,
-  ], {kind: 'uups'});
+  const accessManager = await hre.upgrades.deployProxy(AccessManager, [], { kind: "uups" });
 
   await accessManager.deployed();
 
@@ -187,14 +185,14 @@ exports.deployPool = async function (hre, options) {
     [options.treasuryAddress || ethers.constants.AddressZero],
     {
       constructorArgs: [accessManager.address, policyNFT.address, options.currency],
-      kind: 'uups',
+      kind: "uups",
       unsafeAllow: ["delegatecall"],
     }
   );
 
   await policyPool.deployed();
 
-  for (const role of (options.grantRoles || [])) {
+  for (const role of options.grantRoles || []) {
     await grantRole(hre, accessManager, role);
   }
 
