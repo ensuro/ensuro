@@ -82,9 +82,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   function _validateParameters() internal view override {}
 
   function purePremiums() public view returns (uint256) {
-    uint256 borrowedPP = _surplus < 0 ? uint256(-_surplus) : 0;
-    uint256 wonPP = _surplus >= 0 ? uint256(_surplus) : 0;
-    return _activePurePremiums + wonPP - borrowedPP;
+    return uint256(int256(_activePurePremiums) + _surplus);
   }
 
   function activePurePremiums() external view returns (uint256) {
@@ -96,7 +94,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   }
 
   function borrowedActivePP() external view returns (uint256) {
-    return _surplus > 0 ? 0 : uint256(-_surplus);
+    return _surplus >= 0 ? 0 : uint256(-_surplus);
   }
 
   function seniorEtk() external view override returns (IEToken) {
