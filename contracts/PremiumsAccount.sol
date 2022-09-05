@@ -108,30 +108,14 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   }
 
   function _payFromPremiums(uint256 toPay) internal returns (uint256) {
-    if (_surplus >= 0) {
-      if (int256(toPay) <= _surplus) {
-        _surplus -= int256(toPay);
-        return 0;
-      }
-      toPay -= uint256(_surplus);
+    int256 surplus = _surplus - int256(toPay);
+    int256 maxDeficit = -int256(_activePurePremiums);
+    if (surplus >= maxDeficit) {
+      _surplus = surplus;
+      return 0;
     }
-
-    uint256 surplus = _surplus < 0 ? uint256(-_surplus) : 0;
-    // 2. borrow from active pure premiums
-    if (_activePurePremiums > surplus) {
-      if (toPay <= (_activePurePremiums - surplus)) {
-        _surplus -= int256(toPay);
-        return 0;
-      } else {
-        toPay -= _activePurePremiums - surplus;
-        _surplus = -int256(_activePurePremiums);
-        return toPay;
-      }
-    } else {
-      uint256 ret = toPay + surplus - _activePurePremiums;
-      _surplus = -int256(_activePurePremiums);
-      return ret;
-    }
+    _surplus = maxDeficit;
+    return uint256(-surplus + maxDeficit);
   }
 
   function _storePurePremiumWon(uint256 purePremiumWon) internal {
@@ -169,16 +153,16 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * - onlyPoolRole(WITHDRAW_WON_PREMIUMS_ROLE)
    * - _wonPurePremiums > 0
    */
-  function withdrawWonPremiums(uint256 amount)
+  function withdrawWonPremiums(uint256 amount, address destination)
     external
-    onlyPoolRole(WITHDRAW_WON_PREMIUMS_ROLE)
+    onlyComponentRole(WITHDRAW_WON_PREMIUMS_ROLE)
     returns (uint256)
   {
     uint256 surplus = _surplus >= 0 ? uint256(_surplus) : 0;
     if (amount > surplus) amount = surplus;
     require(amount > 0, "No premiums to withdraw");
     _surplus -= int256(amount);
-    _transferTo(_policyPool.config().treasury(), amount); // TODO: discuss if destination shoud be msg.sender
+    _transferTo(destination, amount); // TODO: discuss if destination shoud be msg.sender
     // TODO: see if this will be a component role
     emit WonPremiumsInOut(false, amount);
     return amount;
@@ -254,16 +238,15 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   }
 
   function policyExpired(Policy.PolicyData memory policy) external override onlyPolicyPool {
-    uint256 aux;
     uint256 purePremiumWon = policy.purePremium;
     _activePurePremiums -= purePremiumWon;
 
     // If negative _activePurePremiums, repay this first (shouldn't happen)
-    uint256 surplus = _surplus > 0 ? 0 : uint256(-_surplus);
-    if (surplus > _activePurePremiums) {
-      aux = Math.min(surplus - _activePurePremiums, purePremiumWon);
-      _surplus += int256(aux);
-      purePremiumWon -= aux;
+    int256 maxDeficit = -int256(_activePurePremiums);
+    if (_surplus < maxDeficit) {
+      // Covers the excess of deficit first
+      purePremiumWon -= uint256(-_surplus + maxDeficit);
+      _surplus = maxDeficit;
     }
 
     if (address(_seniorEtk) != address(0)) purePremiumWon = _repayLoan(purePremiumWon, _seniorEtk);

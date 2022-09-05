@@ -12,18 +12,20 @@ from prototype.utils import WEEK, DAY
 from . import TEST_VARIANTS
 
 MAX_UINT = Wad(2**256 - 1)
-TEnv = namedtuple("TEnv", "currency time_control pool_config kind pa_class etk")
+TEnv = namedtuple("TEnv", "currency time_control pool_access kind pa_class etk")
 
 
 @pytest.fixture(params=TEST_VARIANTS)
 def tenv(request):
     if request.param == "prototype":
-        currency = ERC20Token(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
-        pool_config = ensuro.PolicyPoolConfig()
+        currency = ERC20Token(
+            owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000)
+        )
+        pool_access = ensuro.AccessManager()
 
         class PolicyPoolMock(Contract):
             currency = ContractProxyField()
-            config = pool_config
+            access = pool_access
 
             def new_policy(self, policy, customer, internal_id):
                 return policy.risk_module.make_policy_id(internal_id)
@@ -36,22 +38,26 @@ def tenv(request):
         return TEnv(
             currency=currency,
             time_control=ensuro.time_control,
-            pool_config=pool_config,
+            pool_access=pool_access,
             kind="prototype",
             etk=partial(ensuro.EToken, policy_pool=pool),
             pa_class=partial(ensuro.PremiumsAccount, pool=pool),
         )
     elif request.param == "ethereum":
-        PolicyPoolMockForward = wrappers.get_provider().get_contract_factory("PolicyPoolMockForward")
-        currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
-        pa_config = wrappers.PolicyPoolConfig(owner="owner")
+        PolicyPoolMockForward = wrappers.get_provider().get_contract_factory(
+            "PolicyPoolMockForward"
+        )
+        currency = wrappers.TestCurrency(
+            owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000)
+        )
+        pa_access = wrappers.AccessManager(owner="owner")
 
         def etoken_factory(**kwargs):
-            config = wrappers.PolicyPoolConfig(owner="owner")
+            access = wrappers.AccessManager(owner="owner")
             pool = PolicyPoolMockForward.deploy(
                 wrappers.AddressBook.ZERO,
                 currency.contract,
-                config.contract,
+                access.contract,
                 {"from": currency.owner},
             )
             symbol = kwargs.pop("symbol", "ETK")
@@ -63,7 +69,7 @@ def tenv(request):
             pa_pool = PolicyPoolMockForward.deploy(
                 wrappers.AddressBook.ZERO,
                 currency.contract,
-                pa_config.contract,
+                pa_access.contract,
                 {"from": currency.owner},
             )
             pa = wrappers.PremiumsAccount(pool=pa_pool, **kwargs)
@@ -73,7 +79,7 @@ def tenv(request):
         return TEnv(
             currency=currency,
             time_control=get_provider().time_control,
-            pool_config=pa_config,
+            pool_access=pa_access,
             kind="ethereum",
             etk=etoken_factory,
             pa_class=pa_factory,
@@ -101,7 +107,9 @@ def test_receive_grant(tenv):
     pa = tenv.pa_class()
 
     assert tenv.currency.balance_of(tenv.currency.owner) == _W(1000)
-    with pytest.raises(RevertError, match="transfer amount exceeds allowance|insufficient allowance"):
+    with pytest.raises(
+        RevertError, match="transfer amount exceeds allowance|insufficient allowance"
+    ):
         pa.receive_grant(tenv.currency.owner, _W(1000))
 
     tenv.currency.approve(tenv.currency.owner, pa, _W(1000))
@@ -119,10 +127,13 @@ def test_receive_grant(tenv):
 
 def test_withdraw_won_premiums(tenv):
     pa = tenv.pa_class()
-    tenv.pool_config.grant_role("WITHDRAW_WON_PREMIUMS_ROLE", tenv.currency.owner)
+    treasury = "ENS"
+    tenv.pool_access.grant_component_role(
+        pa, "WITHDRAW_WON_PREMIUMS_ROLE", tenv.currency.owner
+    )
 
     with pytest.raises(RevertError, match="No premiums to withdraw"):
-        pa.withdraw_won_premiums(_W(100))
+        pa.withdraw_won_premiums(_W(100), treasury)
 
     tenv.currency.approve(tenv.currency.owner, pa, _W(1000))
     assert tenv.currency.allowance(tenv.currency.owner, pa) == _W(1000)
@@ -130,14 +141,14 @@ def test_withdraw_won_premiums(tenv):
     pa.receive_grant(tenv.currency.owner, _W(200))
     pa.won_pure_premiums.assert_equal(_W(200))
 
-    pa.withdraw_won_premiums(_W(50))
+    pa.withdraw_won_premiums(_W(50), treasury)
     pa.won_pure_premiums.assert_equal(_W(150))
-    treasury_balance = tenv.currency.balance_of("ENS")
+    treasury_balance = tenv.currency.balance_of(treasury)
     treasury_balance.assert_equal(_W(50))
 
-    pa.withdraw_won_premiums(_W(500))
+    pa.withdraw_won_premiums(_W(500), treasury)
     pa.won_pure_premiums.assert_equal(_W(0))
-    treasury_balance = tenv.currency.balance_of("ENS")
+    treasury_balance = tenv.currency.balance_of(treasury)
     treasury_balance.assert_equal(_W(200))
 
 
@@ -145,7 +156,7 @@ def test_withdraw_won_premiums_with_borrowed_active_pp(tenv):
     # Create policy
     senior_etk = tenv.etk(name="eUSD1YEAR")
     pa = tenv.pa_class(senior_etk=senior_etk)
-    tenv.pool_config.grant_role("WITHDRAW_WON_PREMIUMS_ROLE", tenv.currency.owner)
+    tenv.pool_access.grant_role("WITHDRAW_WON_PREMIUMS_ROLE", tenv.currency.owner)
     start = tenv.time_control.now
     expiration = tenv.time_control.now + WEEK
 
@@ -209,7 +220,9 @@ def test_withdraw_won_premiums_with_borrowed_active_pp(tenv):
         pa.policy_expired(policy)
     pa.active_pure_premiums.assert_equal(_W(0))
     pa.borrowed_active_pp.assert_equal(_W(0))
-    pa.won_pure_premiums.assert_equal(_W(100) - policy.payout * policy.loss_prob * rm.moc)
+    pa.won_pure_premiums.assert_equal(
+        _W(100) - policy.payout * policy.loss_prob * rm.moc
+    )
 
 
 def test_policy_created_without_etokens(tenv):
@@ -411,7 +424,7 @@ def test_policy_created_with_jr_etoken(tenv):
     )
 
     rm.coll_ratio.assert_equal(_W("0.5"))
-    tenv.pool_config.grant_role("LEVEL2_ROLE", tenv.currency.owner)
+    tenv.pool_access.grant_role("LEVEL2_ROLE", tenv.currency.owner)
 
     rm.jr_coll_ratio.assert_equal(_W("0.8"))
     policy = ensuro.Policy(
@@ -528,7 +541,7 @@ def test_policy_created_with_jr_and_sr_etoken(tenv):
         coll_ratio=_W("0.95"),
         jr_coll_ratio=_W("0.1"),
     )
-    tenv.pool_config.grant_role("LEVEL2_ROLE", tenv.currency.owner)
+    tenv.pool_access.grant_role("LEVEL2_ROLE", tenv.currency.owner)
     rm.jr_coll_ratio.assert_equal(_W("0.1"))
     rm.coll_ratio.assert_equal(_W("0.95"))
 

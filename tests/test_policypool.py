@@ -1882,25 +1882,26 @@ def test_withdraw_won_premiums(tenv):
     if is_brownie_coverage_enabled(tenv):
         return  # This test never ends if coverage is activated
     vars = test_expire_policy(tenv)
-    pool, premiums_account, USD = extract_vars(
-        vars, "pool,premiums_account,USD"
-    )
+    pool, premiums_account, USD = extract_vars(vars, "pool,premiums_account,USD")
     treasury_balance = USD.balance_of("ENS")
     won_pure_premiums = premiums_account.won_pure_premiums
 
     with pytest.raises(RevertError, match="AccessControl"):
-        premiums_account.withdraw_won_premiums(_W(1))
+        premiums_account.withdraw_won_premiums(_W(1), "ENS")
 
-    pool.access.grant_role("WITHDRAW_WON_PREMIUMS_ROLE", "PREMIUM_WITHDRAWER")
-
+    pool.access.grant_component_role(
+        premiums_account, "WITHDRAW_WON_PREMIUMS_ROLE", "PREMIUM_WITHDRAWER"
+    )
     with premiums_account.as_("PREMIUM_WITHDRAWER"):
-        premiums_account.withdraw_won_premiums(_W(10)).assert_equal(_W(10))
+        premiums_account.withdraw_won_premiums(_W(10), "ENS").assert_equal(_W(10))
 
     USD.balance_of("ENS").assert_equal(treasury_balance + _W(10))
     premiums_account.won_pure_premiums.assert_equal(won_pure_premiums - _W(10))
 
     with premiums_account.as_("PREMIUM_WITHDRAWER"):
-        premiums_account.withdraw_won_premiums(_W(999999)).assert_equal(won_pure_premiums - _W(10))
+        premiums_account.withdraw_won_premiums(_W(999999), "ENS").assert_equal(
+            won_pure_premiums - _W(10)
+        )
 
     USD.balance_of("ENS").assert_equal(treasury_balance + won_pure_premiums)
     premiums_account.won_pure_premiums.assert_equal(0)

@@ -603,22 +603,30 @@ class PremiumsAccount(ETHWrapper):
     pure_premiums = MethodAdapter((), "amount", is_property=True)
     won_pure_premiums = MethodAdapter((), "amount", is_property=True)
     active_pure_premiums = MethodAdapter((), "amount", is_property=True)
-    borrowed_active_pp = MethodAdapter((), "amount", is_property=True, eth_method="borrowedActivePP")
+    borrowed_active_pp = MethodAdapter(
+        (), "amount", is_property=True, eth_method="borrowedActivePP"
+    )
 
-    withdraw_won_premiums_ = MethodAdapter((("amount", "amount"), ))
-    policy_created_ = MethodAdapter((("policy", "tuple"), ))
-    policy_expired_ = MethodAdapter((("policy", "tuple"), ))
-    policy_resolved_with_payout_ = MethodAdapter((("customer", "address"),("policy", "tuple"), ("payout", "amount")))
+    withdraw_won_premiums_ = MethodAdapter(
+        (("amount", "amount"), ("destination", "address"))
+    )
+    policy_created_ = MethodAdapter((("policy", "tuple"),))
+    policy_expired_ = MethodAdapter((("policy", "tuple"),))
+    policy_resolved_with_payout_ = MethodAdapter(
+        (("customer", "address"), ("policy", "tuple"), ("payout", "amount"))
+    )
 
-    def withdraw_won_premiums(self, amount):
-        receipt = self.withdraw_won_premiums_(amount)
+    def withdraw_won_premiums(self, amount, destination):
+        receipt = self.withdraw_won_premiums_(amount, destination)
         if "WonPremiumsInOut" in receipt.events:
             return Wad(receipt.events["WonPremiumsInOut"]["value"])
         else:
             return Wad(0)
 
     receive_grant = MethodAdapter((("sender", "msg.sender"), ("amount", "amount")))
-    repay_etoken_loan_ = MethodAdapter((("etoken", "contract"), ), eth_method="repayETokenLoan")
+    repay_etoken_loan_ = MethodAdapter(
+        (("etoken", "contract"),), eth_method="repayETokenLoan"
+    )
 
     def repay_etoken_loan(self, etoken_name):
         etoken = self.etokens[etoken_name]

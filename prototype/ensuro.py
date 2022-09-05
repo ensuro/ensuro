@@ -620,13 +620,13 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
         self._store_pure_premium_won(amount)
 
     @external
-    @only_role("WITHDRAW_WON_PREMIUMS_ROLE")
-    def withdraw_won_premiums(self, amount):
+    @only_component_role("WITHDRAW_WON_PREMIUMS_ROLE")
+    def withdraw_won_premiums(self, amount, destination):
         if amount > self.won_pure_premiums:
             amount = self.won_pure_premiums
         require(amount > 0, "No premiums to withdraw")
         self._pay_from_premiums(amount)
-        self._transfer_to(self.pool.config.treasury, amount)
+        self._transfer_to(destination, amount)
         return amount
 
     def _pay_from_premiums(self, to_pay):
