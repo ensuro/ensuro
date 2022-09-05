@@ -1,0 +1,45 @@
+name: NPM Package
+on:
+  push:
+    branches-ignore:
+      - "*"
+    tags:
+      - v*
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Package version"
+        required: true
+
+jobs:
+  npm-upload:
+    name: NPM Package Build and Upload
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: "16"
+          cache: "npm"
+
+      - run: npm ci
+
+      - id: semver
+        run: |
+          SEMVER="${{ github.event.inputs.version }}"
+          if [ -z "$SEMVER" ]; then
+            # No manual input, we must be running on a tag
+            SEMVER="${GITHUB_REF/refs\/tags\/v/}"
+          fi
+          echo "::set-output name=semver::${SEMVER}"
+
+      - run: scripts/make-npm-package.sh "${{ steps.semver.outputs.semver }}" ./build/npm-package
+
+      - run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_AUTOMATION_TOKEN }}" > ./build/npm-package/.npmrc
+
+      - run: npm publish
+        working-directory: ./build/npm-package

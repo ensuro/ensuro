@@ -30,10 +30,10 @@ def tenv(request):
             )
 
     if request.param == "prototype":
-        pp_config = ensuro.PolicyPoolConfig()
+        pp_access = ensuro.AccessManager()
         currency = ensuro.ERC20Token(name="Test", symbol="TEST", initial_supply=_W(10000))
         policy_pool = ensuro.PolicyPool(
-            config=pp_config,
+            access=pp_access,
             currency=currency,
             policy_nft="required-not-used"
         )
@@ -57,9 +57,9 @@ def tenv(request):
         currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(10000))
 
         def etoken_factory(**kwargs):
-            config = wrappers.PolicyPoolConfig(owner="owner")
+            access = wrappers.AccessManager(owner="owner")
             pool = PolicyPoolMockForward.deploy(
-                wrappers.AddressBook.ZERO, currency.contract, config.contract, {"from": currency.owner}
+                wrappers.AddressBook.ZERO, currency.contract, access.contract, {"from": currency.owner}
             )
             symbol = kwargs.pop("symbol", "ETK")
             etoken = wrappers.EToken(policy_pool=pool, symbol=symbol, **kwargs)

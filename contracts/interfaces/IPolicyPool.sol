@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {Policy} from "../Policy.sol";
 import {IEToken} from "./IEToken.sol";
-import {IPolicyPoolConfig} from "./IPolicyPoolConfig.sol";
+import {IAccessManager} from "./IAccessManager.sol";
 
 interface IPolicyPool {
   /**
@@ -14,11 +14,10 @@ interface IPolicyPool {
   function currency() external view returns (IERC20Metadata);
 
   /**
-   * @dev Reference to the {PolicyPoolConfig} contract, this contract manages the access controls and installed risk
-   *      modules.
-   * @return The address of the PolicyPoolConfig contract
+   * @dev Reference to the {AccessManager} contract, this contract manages the access controls.
+   * @return The address of the AccessManager contract
    */
-  function config() external view returns (IPolicyPoolConfig);
+  function access() external view returns (IAccessManager);
 
   /**
    * @dev Reference to the {PolicyNFT} contract. This contract it's an ERC721 Token that handles the ownership of the
@@ -26,6 +25,12 @@ interface IPolicyPool {
    * @return The address of the PolicyNFT contract
    */
   function policyNFT() external view returns (address);
+
+  /**
+   * @dev Address of the treasury, that receives protocol fees.
+   * @return The address of the treasury
+   */
+  function treasury() external view returns (address);
 
   /**
    * @dev Creates a new Policy. Must be called from an active RiskModule

@@ -81,19 +81,19 @@ class RiskModule(AccessControlContract):
     }
 
     def has_role(self, role, account):
-        return self.policy_pool.config.has_role(role, account)
+        return self.policy_pool.access.has_role(role, account)
 
     def _validate_setattr(self, attr_name, value):
         if attr_name in self.pool_set_attr_roles:
             require(
-                self.policy_pool.config.has_role(self.pool_set_attr_roles[attr_name], self._running_as),
+                self.policy_pool.access.has_role(self.pool_set_attr_roles[attr_name], self._running_as),
                 f"AccessControl: AccessControl: account {self._running_as} is missing role "
                 f"'{self.pool_set_attr_roles[attr_name]}'"
             )
         if attr_name in self.pool_component_set_attr_roles:
             composed_role = f"{self.pool_component_set_attr_roles[attr_name]}-{self.contract_id}"
             require(
-                self.policy_pool.config.has_role(composed_role, self._running_as),
+                self.policy_pool.access.has_role(composed_role, self._running_as),
                 f"AccessControl: AccessControl: account {self._running_as} is missing role "
                 f"'{composed_role}'"
             )
@@ -307,12 +307,12 @@ class EToken(ReserveMixin, ERC20Token):
         self._running_as = "ensuro"
 
     def has_role(self, role, account):
-        return self.policy_pool.config.has_role(role, account)
+        return self.policy_pool.access.has_role(role, account)
 
     def grant_role(self, role, user):
-        """Adapter to save the roles in the config, not in this object, to simplify tests"""
-        with self.policy_pool.config.as_(self.running_as):
-            self.policy_pool.config.grant_role(role, user)
+        """Adapter to save the roles in the access, not in this object, to simplify tests"""
+        with self.policy_pool.access.as_(self.running_as):
+            self.policy_pool.access.grant_role(role, user)
 
     @property
     def currency(self):
@@ -564,20 +564,7 @@ class PolicyNFT(ERC721Token):
         return policy_id
 
 
-class PolicyPoolConfig(AccessControlContract):
-    policy_pool = ContractProxyField(allow_none=True, default=None)
-    treasury = AddressField(default="ENS")
-    risk_modules = DictField(StringField(), ContractProxyField(), default={})
-
-    def connect(self, policy_pool):
-        require(self.policy_pool is None, "PolicyPool already connected")
-        require(self.contract_id == policy_pool.config.contract_id, "PolicyPool not connected to this config")
-        self.policy_pool = policy_pool
-
-    def add_risk_module(self, risk_module):
-        # TODO: validate risk_module.premiums_account.pool = self.policy_pool
-        self.risk_modules[risk_module.name] = ContractProxy(risk_module.contract_id)
-
+class AccessManager(AccessControlContract):
     def grant_component_role(self, component, role, user):
         composed_role = f"{role}-{component.contract_id}"
         self.grant_role(composed_role, user)
@@ -600,7 +587,7 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
             self.currency.approve(self, self.senior_etk.contract_id, Wad(2**256 - 1))
 
     def has_role(self, role, account):
-        return self.pool.config.has_role(role, account)
+        return self.pool.access.has_role(role, account)
 
     @property
     def currency(self):
@@ -633,7 +620,7 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
             amount = self.won_pure_premiums
         require(amount > 0, "No premiums to withdraw")
         self._pay_from_pool(amount)
-        self._transfer_to(self.pool.config.treasury, amount)
+        self._transfer_to(self.pool.treasury, amount)
         return amount
 
     def _pay_from_pool(self, to_pay):
@@ -742,23 +729,28 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
 
 
 class PolicyPool(AccessControlContract):
-    config = ContractProxyField()
+    access = ContractProxyField()
+    treasury = AddressField(default="ENS")
     policy_nft = ContractProxyField()
     currency = ContractProxyField()
     etokens = DictField(StringField(), ContractProxyField(), default={})
     premiums_accounts = ListField(ContractProxyField(), default=[])
     policies = DictField(IntField(), CompositeField(Policy), default={})
+    risk_modules = DictField(StringField(), ContractProxyField(), default={})
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.config.connect(self)
         self.NEGLIGIBLE_AMOUNT = Wad(10**(self.currency.decimals // 2))
 
     def has_role(self, role, account):
-        return self.config.has_role(role, account)
+        return self.access.has_role(role, account)
 
     def add_etoken(self, etoken):
         self.etokens[etoken.name] = ContractProxy(etoken.contract_id)
+
+    def add_risk_module(self, risk_module):
+        # TODO: validate risk_module.premiums_account.pool = self.policy_pool
+        self.risk_modules[risk_module.name] = ContractProxy(risk_module.contract_id)
 
     def add_premiums_account(self, premiums_account):
         self.premiums_accounts.append(ContractProxy(premiums_account.contract_id))
@@ -811,7 +803,7 @@ class PolicyPool(AccessControlContract):
         )
         self.currency.transfer_from(
             self.contract_id, customer,
-            self.config.treasury, policy.ensuro_commission
+            self.treasury, policy.ensuro_commission
         )
         if policy.partner_commission and policy.risk_module.wallet != customer:
             self.currency.transfer_from(
@@ -853,7 +845,7 @@ class LPManualWhitelist(Contract):
     whitelisted = DictField(AddressField(), IntField(), default={})
 
     def has_role(self, role, account):
-        return self.pool.config.has_role(role, account)
+        return self.pool.access.has_role(role, account)
 
     @only_component_role("LP_WHITELIST_ROLE")
     def whitelist_address(self, address, whitelisted):

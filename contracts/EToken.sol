@@ -6,7 +6,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {Reserve} from "./Reserve.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
-import {IPolicyPoolConfig} from "./interfaces/IPolicyPoolConfig.sol";
+import {IAccessManager} from "./interfaces/IAccessManager.sol";
 import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
 import {ILPWhitelist} from "./interfaces/ILPWhitelist.sol";
 import {WadRayMath} from "./WadRayMath.sol";
@@ -634,11 +634,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     // loan. Since it's a permissioned call, I'm ok with this. If a caller wants to reduce the impact, it can
     // issue 1 wei repayLoan to each active loan, forcing the update of the scales
     _params.internalLoanInterestRate = uint16(newRate / 1e14);
-    _parameterChanged(
-      IPolicyPoolConfig.GovernanceActions.setInternalLoanInterestRate,
-      newRate,
-      tweak
-    );
+    _parameterChanged(IAccessManager.GovernanceActions.setInternalLoanInterestRate, newRate, tweak);
   }
 
   function setLiquidityRequirement(uint256 newRate)
@@ -651,7 +647,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
       "Tweak exceeded: liquidityRequirement tweaks only up to 10%"
     );
     _params.liquidityRequirement = uint16(newRate / 1e14);
-    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setLiquidityRequirement, newRate, tweak);
+    _parameterChanged(IAccessManager.GovernanceActions.setLiquidityRequirement, newRate, tweak);
   }
 
   function setMaxUtilizationRate(uint256 newRate) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
@@ -661,7 +657,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
       "Tweak exceeded: maxUtilizationRate tweaks only up to 30%"
     );
     _params.maxUtilizationRate = uint16(newRate / 1e14);
-    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setMaxUtilizationRate, newRate, tweak);
+    _parameterChanged(IAccessManager.GovernanceActions.setMaxUtilizationRate, newRate, tweak);
   }
 
   function setMinUtilizationRate(uint256 newRate) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
@@ -671,7 +667,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
       "Tweak exceeded: minUtilizationRate tweaks only up to 30%"
     );
     _params.minUtilizationRate = uint16(newRate / 1e14);
-    _parameterChanged(IPolicyPoolConfig.GovernanceActions.setMinUtilizationRate, newRate, tweak);
+    _parameterChanged(IAccessManager.GovernanceActions.setMinUtilizationRate, newRate, tweak);
   }
 
   function setWhitelist(ILPWhitelist lpWhitelist_)
@@ -684,10 +680,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
       "Component not linked to this PolicyPool"
     );
     _params.whitelist = lpWhitelist_;
-    emit ComponentChanged(
-      IPolicyPoolConfig.GovernanceActions.setLPWhitelist,
-      address(lpWhitelist_)
-    );
+    emit ComponentChanged(IAccessManager.GovernanceActions.setLPWhitelist, address(lpWhitelist_));
   }
 
   function whitelist() external view returns (ILPWhitelist) {
