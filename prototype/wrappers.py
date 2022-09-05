@@ -396,45 +396,6 @@ class TrustfulRiskModule(RiskModule):
             return self.resolve_policy_(policy.as_tuple(), customer_won_or_amount)
 
 
-class FlightDelayRiskModule(RiskModule):
-    eth_contract = "FlightDelayRiskModule"
-    proxy_kind = "uups"
-
-    initialize_args = RiskModule.initialize_args + (
-        ("linkToken", "address"), ("oracleParams", "(address, int, amount, bytes16, bytes16)")
-    )
-
-    new_policy_ = MethodAdapter((
-        ("flight", "string"), ("departure", "int"), ("expectedArrival", "int"), ("tolerance", "int"),
-        ("payout", "amount"), ("premium", "amount"), ("loss_prob", "wad"), ("customer", "address"),
-        ("internal_id", "int"),
-    ), "receipt")
-
-    resolve_policy = MethodAdapter((("policy_id", "int"), ))
-
-    OracleParams = namedtuple("OracleParams", "oracle delay_time fee data_job_id sleep_job_id")
-
-    oracle_params = MethodAdapter((), "(address, int, amount, bytes16, bytes16)", is_property=True)
-
-    def __init__(self, name, policy_pool, premiums_account, coll_ratio=_W(1), ensuro_pp_fee=_W(0),
-                 sr_roc=_W(0), max_payout_per_policy=_W(1000000), exposure_limit=_W(1000000),
-                 wallet="RM", owner="owner",
-                 link_token=None, oracle_params=None):
-        coll_ratio = _W(coll_ratio)
-        ensuro_pp_fee = _W(ensuro_pp_fee)
-        sr_roc = _W(sr_roc)
-        max_payout_per_policy = _W(max_payout_per_policy)
-        exposure_limit = _W(exposure_limit)
-        super(RiskModule, self).__init__(
-            owner, policy_pool.contract, premiums_account, name, coll_ratio, ensuro_pp_fee,
-            sr_roc,
-            max_payout_per_policy, exposure_limit, wallet,
-            link_token, oracle_params
-        )
-        self.policy_pool = policy_pool
-        self._auto_from = self.owner
-
-
 class AccessManager(ETHWrapper):
     eth_contract = "AccessManager"
 
