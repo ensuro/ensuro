@@ -16,6 +16,8 @@ const config = {
     // TODO: probably should get this from brownie-config
     copyDependencies: ["@openzeppelin", "@uniswap", "@chainlink"],
   },
+  skipFiles: ["dependencies/", "mocks/"],
+  logger: console,
 };
 
 let exitCode = 0;
@@ -23,13 +25,15 @@ let exitCode = 0;
 async function instrumentAndTest() {
   const api = new API(config);
 
-  const { targets } = utils.assembleFiles(config);
+  const { targets, skipped } = utils.assembleFiles(config, api.skipFiles);
 
   const instrumented = api.instrument(targets);
 
+  utils.reportSkipped(config, skipped);
+
   setupDirectories(config);
 
-  utils.save(instrumented, config.contractsDir, path.join(config.instrumentedDir, "contracts"));
+  utils.save([...instrumented, ...skipped], config.contractsDir, path.join(config.instrumentedDir, "contracts"));
 
   await api.ganache();
 
@@ -59,6 +63,9 @@ function setupDirectories(config) {
 
   // Ensure no old deps left remaining
   shell.rm("-rf", path.join(config.instrumentedDir, "node_modules"));
+
+  // Cleanup previous builds
+  shell.rm("-rf", path.join(config.instrumentedDir, "build"));
 
   shell.mkdir(path.join(config.instrumentedDir, "node_modules"));
   if (config.hacks?.copyDependencies) {
