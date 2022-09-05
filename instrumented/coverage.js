@@ -14,7 +14,7 @@ const config = {
   port: 8545,
   hacks: {
     // TODO: probably should get this from brownie-config
-    copyDependencies: ["@openzeppelin", "@uniswap", "@chainlink"],
+    copyDependencies: ["@openzeppelin", "@uniswap"],
   },
 };
 
