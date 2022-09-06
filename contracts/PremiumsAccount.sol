@@ -144,13 +144,17 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     } else {
       _surplus += maxDeficit;
       _params.ratio = uint16(newRatio / 1e14);
-      _borrowFromEtk(uint256(-_surplus), address(this));
+      _borrowFromEtk(uint256(-_surplus), address(this), address(_juniorEtk) != address(0));
     }
   }
 
-  function _borrowFromEtk(uint256 borrow, address receiver) internal {
+  function _borrowFromEtk(
+    uint256 borrow,
+    address receiver,
+    bool jrEtk
+  ) internal {
     uint256 left;
-    if (address(_juniorEtk) != address(0)) {
+    if (jrEtk) {
       // Consume Junior Pool until exhausted
       left = _juniorEtk.internalLoan(borrow, receiver, false);
     } else {
@@ -248,7 +252,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
       uint256 borrowFromScr = _payFromPremiums(payout - policy.purePremium);
       _unlockScr(policy);
       if (borrowFromScr > 0) {
-        _borrowFromEtk(borrowFromScr, policyHolder);
+        _borrowFromEtk(borrowFromScr, policyHolder, policy.jrScr > 0);
         // uint256 left;
         // if (policy.jrScr > 0) {
         //   // Consume Junior Pool until exhausted
