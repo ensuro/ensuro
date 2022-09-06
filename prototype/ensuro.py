@@ -581,8 +581,8 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
     junior_etk = ContractProxyField(allow_none=True, default=None)
     senior_etk = ContractProxyField(allow_none=True, default=None)
     active_pure_premiums = WadField(default=Wad(0))
-    borrowed_active_pp = WadField(default=Wad(0))
-    won_pure_premiums = WadField(default=Wad(0))
+    surplus = WadField(default=Wad(0))
+    ratio = WadField(default=_W(1))
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -601,18 +601,26 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
 
     @property
     def pure_premiums(self):
-        return self.active_pure_premiums + self.won_pure_premiums - self.borrowed_active_pp
+        return self.active_pure_premiums + self.surplus
+
+    @property
+    def borrowed_active_pp(self):
+        return -self.surplus if self.surplus < 0 else Wad(0)
+
+    @property
+    def won_pure_premiums(self):
+        return self.surplus if self.surplus >= 0 else Wad(0)
+
+    @external
+    @only_component_role("WITHDRAW_WON_PREMIUMS_ROLE")
+    def set_ratio(self, new_rate):
+        # TODO Fix this
+        self.ratio = new_rate
 
     def _store_pure_premium_won(self, pure_premium_won):
         if not pure_premium_won:
             return
-        if self.borrowed_active_pp >= pure_premium_won:
-            self.borrowed_active_pp -= pure_premium_won
-            return
-        elif self.borrowed_active_pp > 0:
-            pure_premium_won -= self.borrowed_active_pp
-            self.borrowed_active_pp = Wad(0)
-        self.won_pure_premiums += pure_premium_won
+        self.surplus += pure_premium_won
 
     @external
     def receive_grant(self, sender, amount):
@@ -622,35 +630,23 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
     @external
     @only_component_role("WITHDRAW_WON_PREMIUMS_ROLE")
     def withdraw_won_premiums(self, amount, destination):
-        if amount > self.won_pure_premiums:
-            amount = self.won_pure_premiums
+        s = self.surplus if self.surplus >= 0 else 0
+        if amount > s:
+            amount = s
         require(amount > 0, "No premiums to withdraw")
         self._pay_from_premiums(amount)
         self._transfer_to(destination, amount)
         return amount
 
     def _pay_from_premiums(self, to_pay):
-        # 1. take from won_pure_premiums
-        if to_pay <= self.won_pure_premiums:
-            self.won_pure_premiums -= to_pay
+        s = self.surplus - to_pay
+        r = self.ratio
+        maxDeficit = -self.active_pure_premiums * r
+        if s >= maxDeficit:
+            self.surplus = s
             return Wad(0)
-        elif self.won_pure_premiums > 0:
-            to_pay -= self.won_pure_premiums
-            self.won_pure_premiums = Wad(0)
-        # 2. borrow from active pure premiums
-        if self.active_pure_premiums > self.borrowed_active_pp:
-            if to_pay <= (self.active_pure_premiums - self.borrowed_active_pp):
-                self.borrowed_active_pp += to_pay
-                return Wad(0)
-            elif (self.active_pure_premiums - self.borrowed_active_pp) > 0:
-                # Borrow some
-                to_pay -= self.active_pure_premiums - self.borrowed_active_pp
-                self.borrowed_active_pp = self.active_pure_premiums
-                return to_pay
-        else:
-            ret = to_pay + self.borrowed_active_pp - self.active_pure_premiums
-            self.borrowed_active_pp = self.active_pure_premiums
-            return ret
+        self.surplus = maxDeficit
+        return -s + maxDeficit
 
     @external
     def policy_created(self, policy):
@@ -717,14 +713,12 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
     @external
     def policy_expired(self, policy):
         self.active_pure_premiums -= policy.pure_premium
-
         # Pay Ensuro and RM
         pure_premium_won = policy.pure_premium
-        # Cover first borrowed_active_pp
-        if self.borrowed_active_pp > self.active_pure_premiums:
-            to_cover = min(self.borrowed_active_pp - self.active_pure_premiums, pure_premium_won)
-            self.borrowed_active_pp -= to_cover
-            pure_premium_won -= to_cover
+        maxDeficit = -self.active_pure_premiums * self.ratio
+        if self.surplus < maxDeficit:
+            pure_premium_won -= -self.surplus + maxDeficit
+            self.surplus = maxDeficit
 
         if self.senior_etk:
             pure_premium_won = self._repay_loan(pure_premium_won, self.senior_etk)
@@ -738,15 +732,20 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
         # Unlock SCR and adjust eToken
         if policy.sr_scr:
             adjustment = policy.sr_coc - policy.sr_accrued_interest()
-            self.senior_etk.unlock_scr(policy.sr_scr, policy.sr_interest_rate, adjustment)
+            self.senior_etk.unlock_scr(
+                policy.sr_scr, policy.sr_interest_rate, adjustment
+            )
 
         if policy.jr_scr:
             adjustment = policy.jr_coc - policy.jr_accrued_interest()
-            self.junior_etk.unlock_scr(policy.jr_scr, policy.jr_interest_rate, adjustment)
+            self.junior_etk.unlock_scr(
+                policy.jr_scr, policy.jr_interest_rate, adjustment
+            )
 
     @contextmanager
     def thru_policy_pool(self):
         yield self
+
 
 class PolicyPool(AccessControlContract):
     access = ContractProxyField()

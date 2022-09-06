@@ -545,14 +545,24 @@ class PolicyPool(ETHWrapper):
 class PremiumsAccount(ETHWrapper):
     eth_contract = "PremiumsAccount"
 
-    constructor_args = (("pool", "address"), ("junior_etk", "address"), ("senior_etk", "address"))
-    initialize_args = ()
+    constructor_args = (
+        ("pool", "address"),
+        ("junior_etk", "address"),
+        ("senior_etk", "address"),
+    )
+    initialize_args = (("ratio", "wad"),)
     proxy_kind = "uups"
 
-    def __init__(self, pool, junior_etk=None, senior_etk=None, owner="owner"):
+    def __init__(
+        self, pool, junior_etk=None, senior_etk=None, ratio=_W(1), owner="owner"
+    ):
+        ratio = _W(ratio)
         super().__init__(
-            owner, pool, junior_etk and junior_etk.contract,
-            senior_etk and senior_etk.contract
+            owner,
+            pool,
+            junior_etk and junior_etk.contract,
+            senior_etk and senior_etk.contract,
+            ratio,
         )
         if isinstance(pool, ETHWrapper):
             self._policy_pool = pool.contract
@@ -564,6 +574,8 @@ class PremiumsAccount(ETHWrapper):
     pure_premiums = MethodAdapter((), "amount", is_property=True)
     won_pure_premiums = MethodAdapter((), "amount", is_property=True)
     active_pure_premiums = MethodAdapter((), "amount", is_property=True)
+    ratio = MethodAdapter((), "wad", is_property=True)
+
     borrowed_active_pp = MethodAdapter(
         (), "amount", is_property=True, eth_method="borrowedActivePP"
     )
@@ -573,6 +585,7 @@ class PremiumsAccount(ETHWrapper):
     )
     policy_created_ = MethodAdapter((("policy", "tuple"),))
     policy_expired_ = MethodAdapter((("policy", "tuple"),))
+    set_ratio = MethodAdapter((("new_ratio", "wad"), ("adjustment", "bool")))
     policy_resolved_with_payout_ = MethodAdapter(
         (("customer", "address"), ("policy", "tuple"), ("payout", "amount"))
     )

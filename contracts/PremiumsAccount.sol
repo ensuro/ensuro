@@ -11,6 +11,7 @@ import {Reserve} from "./Reserve.sol";
 import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
 import {Policy} from "./Policy.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
 /**
  * @title Ensuro Premiums Account
@@ -33,6 +34,12 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   uint256 internal _activePurePremiums; // sum of pure-premiums of active policies - In Wad
   int256 internal _surplus;
 
+  struct PackedParams {
+    uint16 ratio;
+  }
+
+  PackedParams internal _params;
+
   /*
    * Premiums can come in (for free, without liability) with receiveGrant.
    * And can come out (withdrawed to treasury) with withdrawWonPremiums
@@ -52,22 +59,24 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
 
   /**
    * @dev Public initialize Initializes the PremiumsAccount
+   * @param ratio_ The ratio of the premiums account (in Ray - default=1 Ray)
    */
-  function initialize() public initializer {
-    __PremiumsAccount_init();
+  function initialize(uint256 ratio_) public initializer {
+    __PremiumsAccount_init(ratio_);
   }
 
   /**
    * @dev Initializes the PremiumsAccount
+   * @param ratio_ The ratio of the premiums account (in Ray - default=1 Ray)
    */
   // solhint-disable-next-line func-name-mixedcase
-  function __PremiumsAccount_init() internal initializer {
+  function __PremiumsAccount_init(uint256 ratio_) internal initializer {
     __PolicyPoolComponent_init();
-    __PremiumsAccount_init_unchained();
+    __PremiumsAccount_init_unchained(ratio_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
-  function __PremiumsAccount_init_unchained() internal initializer {
+  function __PremiumsAccount_init_unchained(uint256 ratio_) internal initializer {
     /*
     _activePurePremiums = 0;
     */
@@ -75,11 +84,15 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
       currency().approve(address(_juniorEtk), type(uint256).max);
     if (address(_seniorEtk) != address(0))
       currency().approve(address(_seniorEtk), type(uint256).max);
+
+    _params = PackedParams({ratio: uint16(ratio_ / 1e14)});
     _validateParameters();
   }
 
   // solhint-disable-next-line no-empty-blocks
-  function _validateParameters() internal view override {}
+  function _validateParameters() internal view override {
+    require(_params.ratio <= 1e4 && _params.ratio > 0, "Validation: ratio must be <=1");
+  }
 
   function purePremiums() public view returns (uint256) {
     return uint256(int256(_activePurePremiums) + _surplus);
@@ -97,6 +110,10 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     return _surplus >= 0 ? 0 : uint256(-_surplus);
   }
 
+  function surplus() external view returns (int256) {
+    return _surplus;
+  }
+
   function seniorEtk() external view override returns (IEToken) {
     return _seniorEtk;
   }
@@ -105,9 +122,51 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     return _juniorEtk;
   }
 
+  function ratio() public view returns (uint256) {
+    return uint256(_params.ratio) * 1e14; // 4 -> 18 decimals
+  }
+
+  function setRatio(uint256 newRatio, bool adjustment)
+    external
+    onlyComponentRole(WITHDRAW_WON_PREMIUMS_ROLE)
+  {
+    require(_params.ratio <= 1e4 && _params.ratio > 0, "Validation: ratio must be <=1");
+    uint256 ratio = newRatio * 1e14;
+    int256 maxDeficit = (-int256(_activePurePremiums) * int256(ratio)) / 1e18;
+    if (_surplus >= maxDeficit) {
+      _params.ratio = uint16(newRatio / 1e14);
+      return;
+    }
+
+    if (!adjustment) {
+      require(_surplus >= maxDeficit, "Validation: surplus must be >= maxDeficit");
+      _params.ratio = uint16(newRatio / 1e14);
+    } else {
+      _surplus += maxDeficit;
+      _params.ratio = uint16(newRatio / 1e14);
+      _borrowFromEtk(uint256(-_surplus), address(this));
+    }
+  }
+
+  function _borrowFromEtk(uint256 borrow, address receiver) internal {
+    uint256 left;
+    if (address(_juniorEtk) != address(0)) {
+      // Consume Junior Pool until exhausted
+      left = _juniorEtk.internalLoan(borrow, receiver, false);
+    } else {
+      left = borrow;
+    }
+    if (left > NEGLIGIBLE_AMOUNT) {
+      // Consume Senior Pool only up to SCR
+      left = _seniorEtk.internalLoan(left, receiver, true);
+      require(left <= NEGLIGIBLE_AMOUNT, "Don't know where to take the rest of the money");
+    }
+  }
+
   function _payFromPremiums(uint256 toPay) internal returns (uint256) {
     int256 surplus = _surplus - int256(toPay);
-    int256 maxDeficit = -int256(_activePurePremiums);
+    int256 ratio = int256(ratio());
+    int256 maxDeficit = (-int256(_activePurePremiums) * ratio) / 1e18;
     if (surplus >= maxDeficit) {
       _surplus = surplus;
       return 0;
@@ -117,8 +176,6 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   }
 
   function _storePurePremiumWon(uint256 purePremiumWon) internal {
-    // TODO: merge _wonPurePremiums and _borrowedActivePP into single int256 variable
-    // and this will be just `_wonPurePremiums += purePremiumWon;`
     if (purePremiumWon == 0) return;
     _surplus += int256(purePremiumWon);
   }
@@ -191,18 +248,19 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
       uint256 borrowFromScr = _payFromPremiums(payout - policy.purePremium);
       _unlockScr(policy);
       if (borrowFromScr > 0) {
-        uint256 left;
-        if (policy.jrScr > 0) {
-          // Consume Junior Pool until exhausted
-          left = _juniorEtk.internalLoan(borrowFromScr, policyHolder, false);
-        } else {
-          left = borrowFromScr;
-        }
-        if (left > NEGLIGIBLE_AMOUNT) {
-          // Consume Senior Pool only up to SCR
-          left = _seniorEtk.internalLoan(left, policyHolder, true);
-          require(left <= NEGLIGIBLE_AMOUNT, "Don't know where to take the rest of the money");
-        }
+        _borrowFromEtk(borrowFromScr, policyHolder);
+        // uint256 left;
+        // if (policy.jrScr > 0) {
+        //   // Consume Junior Pool until exhausted
+        //   left = _juniorEtk.internalLoan(borrowFromScr, policyHolder, false);
+        // } else {
+        //   left = borrowFromScr;
+        // }
+        // if (left > NEGLIGIBLE_AMOUNT) {
+        //   // Consume Senior Pool only up to SCR
+        //   left = _seniorEtk.internalLoan(left, policyHolder, true);
+        //   require(left <= NEGLIGIBLE_AMOUNT, "Don't know where to take the rest of the money");
+        // }
       }
       _transferTo(policyHolder, payout - borrowFromScr);
     }
@@ -240,7 +298,8 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     _activePurePremiums -= purePremiumWon;
 
     // If negative _activePurePremiums, repay this first (shouldn't happen)
-    int256 maxDeficit = -int256(_activePurePremiums);
+    int256 ratio = int256(ratio());
+    int256 maxDeficit = (-int256(_activePurePremiums) * ratio) / 1e18;
     if (_surplus < maxDeficit) {
       // Covers the excess of deficit first
       purePremiumWon -= uint256(-_surplus + maxDeficit);
