@@ -550,7 +550,7 @@ class PremiumsAccount(ETHWrapper):
         ("junior_etk", "address"),
         ("senior_etk", "address"),
     )
-    initialize_args = (("ratio", "wad"),)
+    initialize_args = ()
     proxy_kind = "uups"
 
     def __init__(
@@ -562,7 +562,6 @@ class PremiumsAccount(ETHWrapper):
             pool,
             junior_etk and junior_etk.contract,
             senior_etk and senior_etk.contract,
-            ratio,
         )
         if isinstance(pool, ETHWrapper):
             self._policy_pool = pool.contract

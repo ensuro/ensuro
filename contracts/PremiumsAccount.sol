@@ -59,24 +59,22 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
 
   /**
    * @dev Public initialize Initializes the PremiumsAccount
-   * @param ratio_ The ratio of the premiums account (in Ray - default=1 Ray)
    */
-  function initialize(uint256 ratio_) public initializer {
-    __PremiumsAccount_init(ratio_);
+  function initialize() public initializer {
+    __PremiumsAccount_init();
   }
 
   /**
    * @dev Initializes the PremiumsAccount
-   * @param ratio_ The ratio of the premiums account (in Ray - default=1 Ray)
    */
   // solhint-disable-next-line func-name-mixedcase
-  function __PremiumsAccount_init(uint256 ratio_) internal initializer {
+  function __PremiumsAccount_init() internal initializer {
     __PolicyPoolComponent_init();
-    __PremiumsAccount_init_unchained(ratio_);
+    __PremiumsAccount_init_unchained();
   }
 
   // solhint-disable-next-line func-name-mixedcase
-  function __PremiumsAccount_init_unchained(uint256 ratio_) internal initializer {
+  function __PremiumsAccount_init_unchained() internal initializer {
     /*
     _activePurePremiums = 0;
     */
@@ -85,13 +83,13 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     if (address(_seniorEtk) != address(0))
       currency().approve(address(_seniorEtk), type(uint256).max);
 
-    _params = PackedParams({ratio: uint16(ratio_ / 1e14)});
+    _params = PackedParams({ratio: 1e4});
     _validateParameters();
   }
 
   // solhint-disable-next-line no-empty-blocks
   function _validateParameters() internal view override {
-    require(_params.ratio <= 1e4 && _params.ratio > 0, "Validation: ratio must be <=1");
+    require(_params.ratio <= 1e4 && _params.ratio > 0, "Validation: ratio must be <= 1");
   }
 
   function purePremiums() public view returns (uint256) {
@@ -126,11 +124,8 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     return uint256(_params.ratio) * 1e14; // 4 -> 18 decimals
   }
 
-  function setRatio(uint256 newRatio, bool adjustment)
-    external
-    onlyComponentRole(WITHDRAW_WON_PREMIUMS_ROLE)
-  {
-    require(_params.ratio <= 1e4 && _params.ratio > 0, "Validation: ratio must be <=1");
+  function setRatio(uint256 newRatio, bool adjustment) external onlyComponentRole(LEVEL2_ROLE) {
+    require(newRatio <= 1e18 && newRatio > 0, "Validation: ratio must be <= 1");
     uint256 ratio = newRatio * 1e14;
     int256 maxDeficit = (-int256(_activePurePremiums) * int256(ratio)) / 1e18;
     if (_surplus >= maxDeficit) {
@@ -253,18 +248,6 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
       _unlockScr(policy);
       if (borrowFromScr > 0) {
         _borrowFromEtk(borrowFromScr, policyHolder, policy.jrScr > 0);
-        // uint256 left;
-        // if (policy.jrScr > 0) {
-        //   // Consume Junior Pool until exhausted
-        //   left = _juniorEtk.internalLoan(borrowFromScr, policyHolder, false);
-        // } else {
-        //   left = borrowFromScr;
-        // }
-        // if (left > NEGLIGIBLE_AMOUNT) {
-        //   // Consume Senior Pool only up to SCR
-        //   left = _seniorEtk.internalLoan(left, policyHolder, true);
-        //   require(left <= NEGLIGIBLE_AMOUNT, "Don't know where to take the rest of the money");
-        // }
       }
       _transferTo(policyHolder, payout - borrowFromScr);
     }
