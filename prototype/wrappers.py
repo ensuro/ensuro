@@ -573,18 +573,14 @@ class PremiumsAccount(ETHWrapper):
     pure_premiums = MethodAdapter((), "amount", is_property=True)
     won_pure_premiums = MethodAdapter((), "amount", is_property=True)
     active_pure_premiums = MethodAdapter((), "amount", is_property=True)
-    ratio = MethodAdapter((), "wad", is_property=True)
+    deficit_ratio = MethodAdapter((), "wad", is_property=True)
 
-    borrowed_active_pp = MethodAdapter(
-        (), "amount", is_property=True, eth_method="borrowedActivePP"
-    )
+    borrowed_active_pp = MethodAdapter((), "amount", is_property=True, eth_method="borrowedActivePP")
 
-    withdraw_won_premiums_ = MethodAdapter(
-        (("amount", "amount"), ("destination", "address"))
-    )
+    withdraw_won_premiums_ = MethodAdapter((("amount", "amount"), ("destination", "address")))
     policy_created_ = MethodAdapter((("policy", "tuple"),))
     policy_expired_ = MethodAdapter((("policy", "tuple"),))
-    set_ratio = MethodAdapter((("new_ratio", "wad"), ("adjustment", "bool")))
+    set_deficit_ratio = MethodAdapter((("new_ratio", "wad"), ("adjustment", "bool")))
     policy_resolved_with_payout_ = MethodAdapter(
         (("customer", "address"), ("policy", "tuple"), ("payout", "amount"))
     )

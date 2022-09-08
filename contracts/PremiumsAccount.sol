@@ -11,7 +11,6 @@ import {Reserve} from "./Reserve.sol";
 import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
 import {Policy} from "./Policy.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
-import "@openzeppelin/contracts/utils/Strings.sol";
 
 /**
  * @title Ensuro Premiums Account
@@ -35,7 +34,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   int256 internal _surplus;
 
   struct PackedParams {
-    uint16 ratio;
+    uint16 deficitRatio;
   }
 
   PackedParams internal _params;
@@ -83,13 +82,16 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     if (address(_seniorEtk) != address(0))
       currency().approve(address(_seniorEtk), type(uint256).max);
 
-    _params = PackedParams({ratio: 1e4});
+    _params = PackedParams({deficitRatio: 1e4});
     _validateParameters();
   }
 
   // solhint-disable-next-line no-empty-blocks
   function _validateParameters() internal view override {
-    require(_params.ratio <= 1e4 && _params.ratio > 0, "Validation: ratio must be <= 1");
+    require(
+      _params.deficitRatio <= 1e4 && _params.deficitRatio >= 0,
+      "Validation: deficitRatio must be <= 1"
+    );
   }
 
   function purePremiums() public view returns (uint256) {
@@ -120,27 +122,28 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     return _juniorEtk;
   }
 
-  function ratio() public view returns (uint256) {
-    return uint256(_params.ratio) * 1e14; // 4 -> 18 decimals
+  function _maxDeficit(uint256 ratio) internal view returns (int256) {
+    return -int256(_activePurePremiums.wadMul(ratio));
   }
 
-  function setRatio(uint256 newRatio, bool adjustment) external onlyComponentRole(LEVEL2_ROLE) {
-    require(newRatio <= 1e18 && newRatio > 0, "Validation: ratio must be <= 1");
-    uint256 ratio = newRatio * 1e14;
-    int256 maxDeficit = (-int256(_activePurePremiums) * int256(ratio)) / 1e18;
-    if (!adjustment) {
-      require(_surplus >= maxDeficit, "Validation: surplus must be >= maxDeficit");
-      _params.ratio = uint16(newRatio / 1e14);
-      return;
-    }
+  function deficitRatio() public view returns (uint256) {
+    return uint256(_params.deficitRatio) * 1e14; // 4 -> 18 decimals
+  }
 
-    if (_surplus >= maxDeficit) {
-      _params.ratio = uint16(newRatio / 1e14);
-    } else {
-      _surplus += maxDeficit;
-      _params.ratio = uint16(newRatio / 1e14);
-      _borrowFromEtk(uint256(-_surplus), address(this), address(_juniorEtk) != address(0));
+  function setDeficitRatio(uint256 newRatio, bool adjustment)
+    external
+    onlyComponentRole(LEVEL2_ROLE)
+  {
+    require(newRatio <= 1e18 && newRatio >= 0, "Validation: deficitRatio must be <= 1");
+    int256 maxDeficit = _maxDeficit(newRatio);
+    require(adjustment || _surplus >= maxDeficit, "Validation: surplus must be >= maxDeficit");
+    if (_surplus < maxDeficit) {
+      // Do the adjustment
+      uint256 borrow = uint256(-_surplus + maxDeficit);
+      _surplus = maxDeficit;
+      _borrowFromEtk(borrow, address(this), address(_juniorEtk) != address(0));
     }
+    _params.deficitRatio = uint16(newRatio / 1e14);
   }
 
   function _borrowFromEtk(
@@ -164,8 +167,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
 
   function _payFromPremiums(uint256 toPay) internal returns (uint256) {
     int256 surplus = _surplus - int256(toPay);
-    int256 ratio = int256(ratio());
-    int256 maxDeficit = (-int256(_activePurePremiums) * ratio) / 1e18;
+    int256 maxDeficit = _maxDeficit(deficitRatio());
     if (surplus >= maxDeficit) {
       _surplus = surplus;
       return 0;
@@ -285,8 +287,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     _activePurePremiums -= purePremiumWon;
 
     // If negative _activePurePremiums, repay this first (shouldn't happen)
-    int256 ratio = int256(ratio());
-    int256 maxDeficit = (-int256(_activePurePremiums) * ratio) / 1e18;
+    int256 maxDeficit = _maxDeficit(deficitRatio());
     if (_surplus < maxDeficit) {
       // Covers the excess of deficit first
       purePremiumWon -= uint256(-_surplus + maxDeficit);
