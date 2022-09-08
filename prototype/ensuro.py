@@ -616,16 +616,16 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
     def set_ratio(self, new_ratio, adjustment):
         require(new_ratio <= _W(1) and new_ratio > 0,
                 "Validation: ratio must be <= 1")
-
         max_deficit = -self.active_pure_premiums * new_ratio
-        if self.surplus >= max_deficit:
-            self.ratio = new_ratio
-            return
-
         if not adjustment:
             require(self.surplus >= max_deficit,
                     "Validation: surplus must be >= maxDeficit")
             self.ratio = new_ratio
+            return
+
+        if self.surplus >= max_deficit:
+            self.ratio = new_ratio
+            return
         else:
             self.surplus += max_deficit
             self.ratio = new_ratio

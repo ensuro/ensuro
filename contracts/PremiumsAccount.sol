@@ -128,13 +128,13 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     require(newRatio <= 1e18 && newRatio > 0, "Validation: ratio must be <= 1");
     uint256 ratio = newRatio * 1e14;
     int256 maxDeficit = (-int256(_activePurePremiums) * int256(ratio)) / 1e18;
-    if (_surplus >= maxDeficit) {
+    if (!adjustment) {
+      require(_surplus >= maxDeficit, "Validation: surplus must be >= maxDeficit");
       _params.ratio = uint16(newRatio / 1e14);
       return;
     }
 
-    if (!adjustment) {
-      require(_surplus >= maxDeficit, "Validation: surplus must be >= maxDeficit");
+    if (_surplus >= maxDeficit) {
       _params.ratio = uint16(newRatio / 1e14);
     } else {
       _surplus += maxDeficit;

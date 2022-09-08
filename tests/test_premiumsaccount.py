@@ -674,6 +674,51 @@ def test_set_ratio(tenv):
     pa.ratio.assert_equal(_W("0.7"))
 
 
+def test_set_ratio_without_adjustment(tenv):
+    senior_etk = tenv.etk(name="eUSD1YEAR", symbol="ETK2")
+    pa = tenv.pa_class(
+        senior_etk=senior_etk,
+    )
+    start = tenv.time_control.now
+    expiration = tenv.time_control.now + WEEK
+
+    tenv.currency.transfer(tenv.currency.owner, senior_etk, _W(500))
+    with senior_etk.thru_policy_pool():
+        assert senior_etk.deposit("LP1", _W(500)) == _W(500)
+        senior_etk.add_borrower(pa)
+
+    rm = RiskModule(
+        premiums_account="dummy",
+        name="Roulette",
+        policy_pool="dummy",
+        coll_ratio=_W("0.95"),
+    )
+    rm.coll_ratio.assert_equal(_W("0.95"))
+
+    policy = ensuro.Policy(
+        id=1,
+        risk_module=rm,
+        payout=_W(20),
+        premium=_W(10),
+        loss_prob=_W(1 / 2),
+        start=start,
+        expiration=expiration,
+    )
+
+    with pa.thru_policy_pool():
+        pa.policy_created(policy)
+    pa.active_pure_premiums.assert_equal(_W(10))
+
+    with pytest.raises(RevertError, match="AccessControl"):
+        pa.set_ratio(_W("0.7"), False)
+
+    tenv.pool_access.grant_component_role(
+        pa, "LEVEL2_ROLE", tenv.currency.owner)
+
+    pa.set_ratio(_W("0.7"), False)
+    pa.ratio.assert_equal(_W("0.7"))
+
+
 def test_ratio_adjustment(tenv):
     junior_etk = tenv.etk(name="eUSD1MONTH", symbol="ETK1")
     senior_etk = tenv.etk(name="eUSD1YEAR", symbol="ETK2")
