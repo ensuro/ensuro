@@ -625,9 +625,10 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
             self.deficit_ratio = new_ratio
             return
         else:
+            borrow = max_deficit - self.surplus
             self.surplus = max_deficit
             self.deficit_ratio = new_ratio
-            self._borrow_from_etk(-self.surplus, self, self.junior_etk != None)
+            self._borrow_from_etk(borrow, self, self.junior_etk != None)
 
     def _store_pure_premium_won(self, pure_premium_won):
         if not pure_premium_won:

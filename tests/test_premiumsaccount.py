@@ -481,16 +481,16 @@ def test_policy_created_with_sr_etoken(tenv):
         premiums_account="dummy",
         name="Roulette",
         policy_pool="dummy",
-        coll_ratio=_W("0.95"),
+        coll_ratio=_W("0.2"),
     )
-    rm.coll_ratio.assert_equal(_W("0.95"))
+    rm.coll_ratio.assert_equal(_W("0.2"))
 
     policy = ensuro.Policy(
         id=1,
         risk_module=rm,
         payout=_W(600),
-        premium=_W(100),
-        loss_prob=_W(1 / 37),
+        premium=_W(400),
+        loss_prob=_W(1 / 2),
         start=start,
         expiration=expiration,
     )
@@ -500,7 +500,7 @@ def test_policy_created_with_sr_etoken(tenv):
     pa.active_pure_premiums.assert_equal(policy.payout * policy.loss_prob * rm.moc)
 
     policy.jr_scr.assert_equal(_W(0))
-    policy.sr_scr.assert_equal(policy.payout * rm.coll_ratio - policy.pure_premium)
+    policy.sr_scr.assert_equal(_W(0))
 
 
 def test_policy_created_with_jr_and_sr_etoken(tenv):
@@ -687,8 +687,18 @@ def test_set_deficit_ratio_without_adjustment(tenv):
 
     tenv.pool_access.grant_component_role(pa, "LEVEL2_ROLE", tenv.currency.owner)
 
+    senior_etk.balance_of("LP1").assert_equal(_W(500))
+    senior_etk.get_loan(pa).assert_equal(_W(0))
+
     pa.set_deficit_ratio(_W("0.7"), False)
     pa.deficit_ratio.assert_equal(_W("0.7"))
+
+    pa.active_pure_premiums.assert_equal(_W(10))
+    pa.borrowed_active_pp.assert_equal(_W(0))
+    pa.won_pure_premiums.assert_equal(_W(0))
+
+    senior_etk.balance_of("LP1").assert_equal(_W(500))
+    senior_etk.get_loan(pa).assert_equal(_W(0))
 
 
 def test_ratio_adjustment(tenv):
@@ -780,12 +790,22 @@ def test_ratio_adjustment(tenv):
     pa.borrowed_active_pp.assert_equal(_W(10))
     pa.won_pure_premiums.assert_equal(_W(0))
 
+    junior_etk.balance_of("LP1").assert_equal(_W(300))
+    senior_etk.balance_of("LP1").assert_equal(_W(500))
+    junior_etk.get_loan(pa).assert_equal(_W(0))
+    senior_etk.get_loan(pa).assert_equal(_W(0))
+
     pa.set_deficit_ratio(_W("0.3"), True)
     pa.deficit_ratio.assert_equal(_W("0.3"))
 
     pa.active_pure_premiums.assert_equal(_W(20))
     pa.borrowed_active_pp.assert_equal(_W(6))
     pa.won_pure_premiums.assert_equal(_W(0))
+
+    junior_etk.balance_of("LP1").assert_equal(_W(296))
+    senior_etk.balance_of("LP1").assert_equal(_W(500))
+    junior_etk.get_loan(pa).assert_equal(_W(4))
+    senior_etk.get_loan(pa).assert_equal(_W(0))
 
 
 def test_set_deficit_ratio_and_create_policy(tenv):
@@ -846,9 +866,15 @@ def test_set_deficit_ratio_and_create_policy(tenv):
     tenv.currency.approve(tenv.currency.owner, pa, _W(20))
     assert tenv.currency.allowance(tenv.currency.owner, pa) == _W(20)
 
+    senior_etk.balance_of("LP1").assert_equal(_W(500))
+    senior_etk.get_loan(pa).assert_equal(_W(0))
+
     with pa.thru_policy_pool():
         pa.policy_resolved_with_payout(tenv.currency.owner, policy, _W(20))
 
     pa.active_pure_premiums.assert_equal(_W(10))
     pa.borrowed_active_pp.assert_equal(_W(3))
     pa.won_pure_premiums.assert_equal(_W(0))
+
+    senior_etk.balance_of("LP1").assert_equal(_W(493))
+    senior_etk.get_loan(pa).assert_equal(_W(7))
