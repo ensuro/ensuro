@@ -80,6 +80,27 @@ class RiskModule(AccessControlContract):
         "exposure_limit": "LEVEL1_ROLE",
     }
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        require(self.coll_ratio <= _W(1) and self.coll_ratio > 0, "Validation: collRatio must be <=1")
+        require(self.jr_coll_ratio <= _W(1), "Validation: jrCollRatio must be <=1")
+        require(self.jr_coll_ratio <= self.coll_ratio, "Validation: collRatio >= jrCollRatio")
+        require(self.moc <= _W(4) and self.moc >= _W("0.5"), "Validation: moc must be [0.5, 4]")
+        require(self.ensuro_pp_fee <= _W(1), "Validation: ensuroPpFee must be <= 1")
+        require(self.ensuro_coc_fee <= _W(1), "Validation: ensuroCocFee must be <= 1")
+        require(self.sr_roc <= _W(1), "Validation: srRoc must be <= 1 (100%)")
+        require(self.jr_roc <= _W(1), "Validation: jrRoc must be <= 1 (100%)")
+        #  _maxPayoutPerPolicy no limits
+        require(
+            self.exposure_limit >= self.active_exposure,
+            "Validation: exposureLimit can't be less than actual activeExposure",
+        )
+        require(
+            self.exposure_limit >= 0 and self.max_payout_per_policy > 0, "Exposure and MaxPayout must be >0"
+        )
+        require(self.wallet != 0, "Validation: Wallet can't be zero address")
+
     def has_role(self, role, account):
         return self.policy_pool.access.has_role(role, account)
 

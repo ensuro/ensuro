@@ -398,18 +398,27 @@ def test_policy_created_with_jr_etoken(tenv):
         assert junior_etk.deposit("LP1", _W(900)) == _W(900)
         junior_etk.add_borrower(pa)
 
+    with pytest.raises(RevertError, match="Validation: collRatio >= jrCollRatio"):
+        rm = RiskModule(
+            premiums_account="dummy",
+            name="Roulette",
+            policy_pool="dummy",
+            coll_ratio=_W("0.5"),
+            jr_coll_ratio=_W("0.8"),
+        )
+
     rm = RiskModule(
         premiums_account="dummy",
         name="Roulette",
         policy_pool="dummy",
         coll_ratio=_W("0.5"),
-        jr_coll_ratio=_W("0.8"),
+        jr_coll_ratio=_W("0.4"),
     )
 
     rm.coll_ratio.assert_equal(_W("0.5"))
     tenv.pool_access.grant_role("LEVEL2_ROLE", tenv.currency.owner)
 
-    rm.jr_coll_ratio.assert_equal(_W("0.8"))
+    rm.jr_coll_ratio.assert_equal(_W("0.4"))
     policy = ensuro.Policy(
         id=1,
         risk_module=rm,
@@ -423,9 +432,9 @@ def test_policy_created_with_jr_etoken(tenv):
     policy_2 = ensuro.Policy(
         id=2,
         risk_module=rm,
-        payout=_W(300),
-        premium=_W(100),
-        loss_prob=_W(1 / 37),
+        payout=_W(600),
+        premium=_W(2500),
+        loss_prob=_W("0.6"),
         start=start,
         expiration=expiration,
     )
@@ -435,7 +444,7 @@ def test_policy_created_with_jr_etoken(tenv):
     pa.active_pure_premiums.assert_equal(policy.payout * policy.loss_prob * rm.moc)
 
     policy.sr_scr.assert_equal(_W(0))
-    policy.jr_scr.assert_equal(policy.payout * rm.jr_coll_ratio - policy.pure_premium)
+    policy.jr_scr.assert_equal(_W(0))
 
     with pa.thru_policy_pool():
         pa.policy_created(policy_2)
