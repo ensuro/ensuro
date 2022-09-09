@@ -18,9 +18,7 @@ TEnv = namedtuple("TEnv", "currency time_control pool_access kind pa_class etk")
 @pytest.fixture(params=TEST_VARIANTS)
 def tenv(request):
     if request.param == "prototype":
-        currency = ERC20Token(
-            owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000)
-        )
+        currency = ERC20Token(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
         pool_access = ensuro.AccessManager()
 
         class PolicyPoolMock(Contract):
@@ -44,12 +42,8 @@ def tenv(request):
             pa_class=partial(ensuro.PremiumsAccount, pool=pool),
         )
     elif request.param == "ethereum":
-        PolicyPoolMockForward = wrappers.get_provider().get_contract_factory(
-            "PolicyPoolMockForward"
-        )
-        currency = wrappers.TestCurrency(
-            owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000)
-        )
+        PolicyPoolMockForward = wrappers.get_provider().get_contract_factory("PolicyPoolMockForward")
+        currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
         pa_access = wrappers.AccessManager(owner="owner")
 
         def etoken_factory(**kwargs):
@@ -107,9 +101,7 @@ def test_receive_grant(tenv):
     pa = tenv.pa_class()
 
     assert tenv.currency.balance_of(tenv.currency.owner) == _W(1000)
-    with pytest.raises(
-        RevertError, match="transfer amount exceeds allowance|insufficient allowance"
-    ):
+    with pytest.raises(RevertError, match="transfer amount exceeds allowance|insufficient allowance"):
         pa.receive_grant(tenv.currency.owner, _W(1000))
 
     tenv.currency.approve(tenv.currency.owner, pa, _W(1000))
@@ -128,9 +120,7 @@ def test_receive_grant(tenv):
 def test_withdraw_won_premiums(tenv):
     pa = tenv.pa_class()
     treasury = "ENS"
-    tenv.pool_access.grant_component_role(
-        pa, "WITHDRAW_WON_PREMIUMS_ROLE", tenv.currency.owner
-    )
+    tenv.pool_access.grant_component_role(pa, "WITHDRAW_WON_PREMIUMS_ROLE", tenv.currency.owner)
 
     with pytest.raises(RevertError, match="No premiums to withdraw"):
         pa.withdraw_won_premiums(_W(100), treasury)
@@ -194,8 +184,7 @@ def test_withdraw_won_premiums_with_borrowed_active_pp(tenv):
     with pa.thru_policy_pool():
         pa.policy_created(policy_2)
     pa.active_pure_premiums.assert_equal(
-        policy_2.payout * policy_2.loss_prob * rm.moc
-        + policy.payout * policy.loss_prob * rm.moc
+        policy_2.payout * policy_2.loss_prob * rm.moc + policy.payout * policy.loss_prob * rm.moc
     )
 
     tenv.time_control.fast_forward(2 * DAY)
@@ -220,9 +209,7 @@ def test_withdraw_won_premiums_with_borrowed_active_pp(tenv):
         pa.policy_expired(policy)
     pa.active_pure_premiums.assert_equal(_W(0))
     pa.borrowed_active_pp.assert_equal(_W(0))
-    pa.won_pure_premiums.assert_equal(
-        _W(100) - policy.payout * policy.loss_prob * rm.moc
-    )
+    pa.won_pure_premiums.assert_equal(_W(100) - policy.payout * policy.loss_prob * rm.moc)
 
 
 def test_policy_created_without_etokens(tenv):
@@ -323,8 +310,7 @@ def test_create_and_expire_policy_with_sr_etk(tenv):
     with pa.thru_policy_pool():
         pa.policy_created(policy_2)
     pa.active_pure_premiums.assert_equal(
-        policy_2.payout * policy_2.loss_prob * rm.moc
-        + policy.payout * policy.loss_prob * rm.moc
+        policy_2.payout * policy_2.loss_prob * rm.moc + policy.payout * policy.loss_prob * rm.moc
     )
 
     tenv.time_control.fast_forward(5 * DAY)
@@ -350,8 +336,7 @@ def test_create_and_expire_policy_with_sr_etk(tenv):
     pa.active_pure_premiums.assert_equal(_W(0))
     pa.borrowed_active_pp.assert_equal(_W(0))
     pa.won_pure_premiums.assert_equal(
-        policy_2.payout * policy_2.loss_prob * rm.moc
-        + policy.payout * policy.loss_prob * rm.moc
+        policy_2.payout * policy_2.loss_prob * rm.moc + policy.payout * policy.loss_prob * rm.moc
     )
 
 
@@ -399,9 +384,7 @@ def test_policy_resolved_with_payout(tenv):
         pa.policy_resolved_with_payout(tenv.currency.owner, policy, _W(90))
     pa.active_pure_premiums.assert_equal(_W(0))
     pa.borrowed_active_pp.assert_equal(_W(0))
-    pa.won_pure_premiums.assert_equal(
-        policy.payout * policy.loss_prob * rm.moc + _W(10)
-    )
+    pa.won_pure_premiums.assert_equal(policy.payout * policy.loss_prob * rm.moc + _W(10))
 
 
 def test_policy_created_with_jr_etoken(tenv):
@@ -415,18 +398,27 @@ def test_policy_created_with_jr_etoken(tenv):
         assert junior_etk.deposit("LP1", _W(900)) == _W(900)
         junior_etk.add_borrower(pa)
 
+    with pytest.raises(RevertError, match="Validation: collRatio >= jrCollRatio"):
+        rm = RiskModule(
+            premiums_account="dummy",
+            name="Roulette",
+            policy_pool="dummy",
+            coll_ratio=_W("0.5"),
+            jr_coll_ratio=_W("0.8"),
+        )
+
     rm = RiskModule(
         premiums_account="dummy",
         name="Roulette",
         policy_pool="dummy",
         coll_ratio=_W("0.5"),
-        jr_coll_ratio=_W("0.8"),
+        jr_coll_ratio=_W("0.4"),
     )
 
     rm.coll_ratio.assert_equal(_W("0.5"))
     tenv.pool_access.grant_role("LEVEL2_ROLE", tenv.currency.owner)
 
-    rm.jr_coll_ratio.assert_equal(_W("0.8"))
+    rm.jr_coll_ratio.assert_equal(_W("0.4"))
     policy = ensuro.Policy(
         id=1,
         risk_module=rm,
@@ -440,9 +432,9 @@ def test_policy_created_with_jr_etoken(tenv):
     policy_2 = ensuro.Policy(
         id=2,
         risk_module=rm,
-        payout=_W(300),
-        premium=_W(100),
-        loss_prob=_W(1 / 37),
+        payout=_W(600),
+        premium=_W(2500),
+        loss_prob=_W("0.6"),
         start=start,
         expiration=expiration,
     )
@@ -452,13 +444,12 @@ def test_policy_created_with_jr_etoken(tenv):
     pa.active_pure_premiums.assert_equal(policy.payout * policy.loss_prob * rm.moc)
 
     policy.sr_scr.assert_equal(_W(0))
-    policy.jr_scr.assert_equal(policy.payout * rm.jr_coll_ratio - policy.pure_premium)
+    policy.jr_scr.assert_equal(_W(0))
 
     with pa.thru_policy_pool():
         pa.policy_created(policy_2)
     pa.active_pure_premiums.assert_equal(
-        policy_2.payout * policy_2.loss_prob * rm.moc
-        + policy.payout * policy.loss_prob * rm.moc
+        policy_2.payout * policy_2.loss_prob * rm.moc + policy.payout * policy.loss_prob * rm.moc
     )
 
     tenv.time_control.fast_forward(5 * DAY)
@@ -480,8 +471,7 @@ def test_policy_created_with_jr_etoken(tenv):
     pa.active_pure_premiums.assert_equal(_W(0))
     pa.borrowed_active_pp.assert_equal(_W(0))
     pa.won_pure_premiums.assert_equal(
-        policy_2.payout * policy_2.loss_prob * rm.moc
-        + policy.payout * policy.loss_prob * rm.moc
+        policy_2.payout * policy_2.loss_prob * rm.moc + policy.payout * policy.loss_prob * rm.moc
     )
 
 
@@ -500,16 +490,16 @@ def test_policy_created_with_sr_etoken(tenv):
         premiums_account="dummy",
         name="Roulette",
         policy_pool="dummy",
-        coll_ratio=_W("0.95"),
+        coll_ratio=_W("0.2"),
     )
-    rm.coll_ratio.assert_equal(_W("0.95"))
+    rm.coll_ratio.assert_equal(_W("0.2"))
 
     policy = ensuro.Policy(
         id=1,
         risk_module=rm,
         payout=_W(600),
-        premium=_W(100),
-        loss_prob=_W(1 / 37),
+        premium=_W(400),
+        loss_prob=_W(1 / 2),
         start=start,
         expiration=expiration,
     )
@@ -519,7 +509,7 @@ def test_policy_created_with_sr_etoken(tenv):
     pa.active_pure_premiums.assert_equal(policy.payout * policy.loss_prob * rm.moc)
 
     policy.jr_scr.assert_equal(_W(0))
-    policy.sr_scr.assert_equal(policy.payout * rm.coll_ratio - policy.pure_premium)
+    policy.sr_scr.assert_equal(_W(0))
 
 
 def test_policy_created_with_jr_and_sr_etoken(tenv):
@@ -566,9 +556,7 @@ def test_policy_created_with_jr_and_sr_etoken(tenv):
     pa.active_pure_premiums.assert_equal(policy.payout * policy.loss_prob * rm.moc)
 
     policy.jr_scr.assert_equal(policy.payout * rm.jr_coll_ratio - policy.pure_premium)
-    policy.sr_scr.assert_equal(
-        policy.payout * rm.coll_ratio - policy.pure_premium - policy.jr_scr
-    )
+    policy.sr_scr.assert_equal(policy.payout * rm.coll_ratio - policy.pure_premium - policy.jr_scr)
 
     tenv.currency.approve(tenv.currency.owner, pa, _W(1000))
     pa.receive_grant(tenv.currency.owner, _W(100))
@@ -578,14 +566,10 @@ def test_policy_created_with_jr_and_sr_etoken(tenv):
 
     pa.active_pure_premiums.assert_equal(_W(0))
     pa.borrowed_active_pp.assert_equal(_W(0))
-    pa.won_pure_premiums.assert_equal(
-        policy.payout * policy.loss_prob * rm.moc + _W(10)
-    )
+    pa.won_pure_premiums.assert_equal(policy.payout * policy.loss_prob * rm.moc + _W(10))
 
     policy.jr_scr.assert_equal(policy.payout * rm.jr_coll_ratio - policy.pure_premium)
-    policy.sr_scr.assert_equal(
-        policy.payout * rm.coll_ratio - policy.pure_premium - policy.jr_scr
-    )
+    policy.sr_scr.assert_equal(policy.payout * rm.coll_ratio - policy.pure_premium - policy.jr_scr)
 
 
 def test_pay_from_premium(tenv):
@@ -653,3 +637,253 @@ def test_pay_from_premium(tenv):
     # with pytest.raises(RevertError, match="ERC20: transfer amount exceeds balance"):
     with pa.thru_policy_pool():
         pa.policy_resolved_with_payout(tenv.currency.owner, policy, _W(20))
+
+
+def test_set_deficit_ratio(tenv):
+    pa = tenv.pa_class(
+        junior_etk=tenv.etk(name="eUSD1MONTH", symbol="ETK1"),
+        senior_etk=tenv.etk(name="eUSD1YEAR", symbol="ETK2"),
+    )
+
+    with pytest.raises(RevertError, match="AccessControl"):
+        pa.set_deficit_ratio(_W("0.7"), True)
+
+    tenv.pool_access.grant_component_role(pa, "LEVEL2_ROLE", tenv.currency.owner)
+
+    with pytest.raises(RevertError, match="Validation: deficitRatio must be <= 1"):
+        pa.set_deficit_ratio(_W("1.7"), True)
+
+    pa.set_deficit_ratio(_W("0.7"), True)
+    pa.deficit_ratio.assert_equal(_W("0.7"))
+
+
+def test_set_deficit_ratio_without_adjustment(tenv):
+    senior_etk = tenv.etk(name="eUSD1YEAR", symbol="ETK2")
+    pa = tenv.pa_class(
+        senior_etk=senior_etk,
+    )
+    start = tenv.time_control.now
+    expiration = tenv.time_control.now + WEEK
+
+    tenv.currency.transfer(tenv.currency.owner, senior_etk, _W(500))
+    with senior_etk.thru_policy_pool():
+        assert senior_etk.deposit("LP1", _W(500)) == _W(500)
+        senior_etk.add_borrower(pa)
+
+    rm = RiskModule(
+        premiums_account="dummy",
+        name="Roulette",
+        policy_pool="dummy",
+        coll_ratio=_W("0.95"),
+    )
+
+    policy = ensuro.Policy(
+        id=1,
+        risk_module=rm,
+        payout=_W(20),
+        premium=_W(10),
+        loss_prob=_W(1 / 2),
+        start=start,
+        expiration=expiration,
+    )
+
+    with pa.thru_policy_pool():
+        pa.policy_created(policy)
+    pa.active_pure_premiums.assert_equal(_W(10))
+
+    with pytest.raises(RevertError, match="AccessControl"):
+        pa.set_deficit_ratio(_W("0.7"), False)
+
+    tenv.pool_access.grant_component_role(pa, "LEVEL2_ROLE", tenv.currency.owner)
+
+    senior_etk.balance_of("LP1").assert_equal(_W(500))
+    senior_etk.get_loan(pa).assert_equal(_W(0))
+
+    pa.set_deficit_ratio(_W("0.7"), False)
+    pa.deficit_ratio.assert_equal(_W("0.7"))
+
+    pa.active_pure_premiums.assert_equal(_W(10))
+    pa.borrowed_active_pp.assert_equal(_W(0))
+    pa.won_pure_premiums.assert_equal(_W(0))
+
+    senior_etk.balance_of("LP1").assert_equal(_W(500))
+    senior_etk.get_loan(pa).assert_equal(_W(0))
+
+
+def test_ratio_adjustment(tenv):
+    junior_etk = tenv.etk(name="eUSD1MONTH", symbol="ETK1")
+    senior_etk = tenv.etk(name="eUSD1YEAR", symbol="ETK2")
+    pa = tenv.pa_class(
+        junior_etk=junior_etk,
+        senior_etk=senior_etk,
+    )
+    start = tenv.time_control.now
+    expiration = tenv.time_control.now + WEEK
+
+    tenv.currency.transfer(tenv.currency.owner, senior_etk, _W(500))
+    with senior_etk.thru_policy_pool():
+        assert senior_etk.deposit("LP1", _W(500)) == _W(500)
+        senior_etk.add_borrower(pa)
+
+    tenv.currency.transfer(tenv.currency.owner, junior_etk, _W(300))
+    with junior_etk.thru_policy_pool():
+        assert junior_etk.deposit("LP1", _W(300)) == _W(300)
+        junior_etk.add_borrower(pa)
+
+    rm = RiskModule(
+        premiums_account="dummy",
+        name="Roulette",
+        policy_pool="dummy",
+        coll_ratio=_W("0.95"),
+    )
+
+    policy = ensuro.Policy(
+        id=1,
+        risk_module=rm,
+        payout=_W(20),
+        premium=_W(10),
+        loss_prob=_W(1 / 2),
+        start=start,
+        expiration=expiration,
+    )
+
+    with pa.thru_policy_pool():
+        pa.policy_created(policy)
+    pa.active_pure_premiums.assert_equal(_W(10))
+
+    policy_2 = ensuro.Policy(
+        id=2,
+        risk_module=rm,
+        payout=_W(20),
+        premium=_W(10),
+        loss_prob=_W(1 / 2),
+        start=start,
+        expiration=expiration,
+    )
+
+    with pa.thru_policy_pool():
+        pa.policy_created(policy_2)
+
+    pa.active_pure_premiums.assert_equal(_W(20))
+    pa.borrowed_active_pp.assert_equal(_W(0))
+    pa.won_pure_premiums.assert_equal(_W(0))
+
+    # Resolve policy
+    tenv.currency.transfer(tenv.currency.owner, pa, _W(20))
+    tenv.currency.approve(tenv.currency.owner, pa, _W(20))
+    assert tenv.currency.allowance(tenv.currency.owner, pa) == _W(20)
+
+    with pa.thru_policy_pool():
+        pa.policy_resolved_with_payout(tenv.currency.owner, policy_2, _W(20))
+
+    tenv.pool_access.grant_component_role(pa, "LEVEL2_ROLE", tenv.currency.owner)
+
+    pa.active_pure_premiums.assert_equal(_W(10))
+    pa.borrowed_active_pp.assert_equal(_W(10))
+    pa.won_pure_premiums.assert_equal(_W(0))
+
+    policy_3 = ensuro.Policy(
+        id=3,
+        risk_module=rm,
+        payout=_W(20),
+        premium=_W(10),
+        loss_prob=_W(1 / 2),
+        start=start,
+        expiration=expiration,
+    )
+
+    with pa.thru_policy_pool():
+        pa.policy_created(policy_3)
+
+    pa.active_pure_premiums.assert_equal(_W(20))
+    pa.borrowed_active_pp.assert_equal(_W(10))
+    pa.won_pure_premiums.assert_equal(_W(0))
+
+    junior_etk.balance_of("LP1").assert_equal(_W(300))
+    senior_etk.balance_of("LP1").assert_equal(_W(500))
+    junior_etk.get_loan(pa).assert_equal(_W(0))
+    senior_etk.get_loan(pa).assert_equal(_W(0))
+
+    pa.set_deficit_ratio(_W("0.3"), True)
+    pa.deficit_ratio.assert_equal(_W("0.3"))
+
+    pa.active_pure_premiums.assert_equal(_W(20))
+    pa.borrowed_active_pp.assert_equal(_W(6))
+    pa.won_pure_premiums.assert_equal(_W(0))
+
+    junior_etk.balance_of("LP1").assert_equal(_W(296))
+    senior_etk.balance_of("LP1").assert_equal(_W(500))
+    junior_etk.get_loan(pa).assert_equal(_W(4))
+    senior_etk.get_loan(pa).assert_equal(_W(0))
+
+
+def test_set_deficit_ratio_and_create_policy(tenv):
+    senior_etk = tenv.etk(name="eUSD1YEAR", symbol="ETK2")
+    start = tenv.time_control.now
+    expiration = tenv.time_control.now + WEEK
+    pa = tenv.pa_class(
+        senior_etk=senior_etk,
+    )
+    tenv.pool_access.grant_component_role(pa, "LEVEL2_ROLE", tenv.currency.owner)
+    pa.set_deficit_ratio(_W("0.3"), True)
+    pa.deficit_ratio.assert_equal(_W("0.3"))
+
+    tenv.currency.transfer(tenv.currency.owner, senior_etk, _W(500))
+    with senior_etk.thru_policy_pool():
+        assert senior_etk.deposit("LP1", _W(500)) == _W(500)
+        senior_etk.add_borrower(pa)
+
+    rm = RiskModule(
+        premiums_account="dummy",
+        name="Roulette",
+        policy_pool="dummy",
+        coll_ratio=_W("0.95"),
+    )
+
+    policy = ensuro.Policy(
+        id=1,
+        risk_module=rm,
+        payout=_W(20),
+        premium=_W(10),
+        loss_prob=_W(1 / 2),
+        start=start,
+        expiration=expiration,
+    )
+
+    with pa.thru_policy_pool():
+        pa.policy_created(policy)
+
+    policy_2 = ensuro.Policy(
+        id=2,
+        risk_module=rm,
+        payout=_W(20),
+        premium=_W(10),
+        loss_prob=_W(1 / 2),
+        start=start,
+        expiration=expiration,
+    )
+
+    with pa.thru_policy_pool():
+        pa.policy_created(policy_2)
+
+    pa.active_pure_premiums.assert_equal(_W(20))
+    pa.borrowed_active_pp.assert_equal(_W(0))
+    pa.won_pure_premiums.assert_equal(_W(0))
+
+    # Resolve policy
+    tenv.currency.transfer(tenv.currency.owner, pa, _W(20))
+    tenv.currency.approve(tenv.currency.owner, pa, _W(20))
+    assert tenv.currency.allowance(tenv.currency.owner, pa) == _W(20)
+
+    senior_etk.balance_of("LP1").assert_equal(_W(500))
+    senior_etk.get_loan(pa).assert_equal(_W(0))
+
+    with pa.thru_policy_pool():
+        pa.policy_resolved_with_payout(tenv.currency.owner, policy, _W(20))
+
+    pa.active_pure_premiums.assert_equal(_W(10))
+    pa.borrowed_active_pp.assert_equal(_W(3))
+    pa.won_pure_premiums.assert_equal(_W(0))
+
+    senior_etk.balance_of("LP1").assert_equal(_W(493))
+    senior_etk.get_loan(pa).assert_equal(_W(7))
