@@ -9,7 +9,7 @@ import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProo
 /**
  * @title Hurricane Risk Module
  * @dev Risk Module for hurricane policies. _treeRoot is the root of a hash tree with all the combinations of zipCode
-*  and lossProb allowed.
+ *  and lossProb allowed.
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
