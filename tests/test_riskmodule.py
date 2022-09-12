@@ -22,7 +22,7 @@ def tenv(request):
             currency = ContractProxyField()
             access = pool_access
 
-            def new_policy(self, policy, customer, internal_id):
+            def new_policy(self, policy, customer, internal_id, caller):
                 return policy.risk_module.make_policy_id(internal_id)
 
             def resolve_policy(self, policy_id, customer_won):
@@ -275,9 +275,9 @@ def test_new_policy(tenv):
         wallet="CASINO"
     )
     assert rm.name == "Roulette"
-    tenv.currency.transfer(tenv.currency.owner, "CUST1", _W(1))
-    tenv.currency.approve("CUST1", rm.policy_pool, _W(1))
-    assert tenv.currency.allowance("CUST1", rm.policy_pool) == _W(1)
+    tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", _W(1))
+    tenv.currency.approve("JOHN_SELLER", rm.policy_pool, _W(1))
+    assert tenv.currency.allowance("JOHN_SELLER", rm.policy_pool) == _W(1)
     expiration = tenv.time_control.now + WEEK
 
     # Set ensuro_coc_fee
@@ -328,8 +328,8 @@ def test_moc(tenv):
         max_payout_per_policy=_W(1000), exposure_limit=_W(1000000),
         wallet="CASINO"
     )
-    tenv.currency.transfer(tenv.currency.owner, "CUST1", _W(1))
-    tenv.currency.approve("CUST1", rm.policy_pool, _W(1))
+    tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", _W(1))
+    tenv.currency.approve("JOHN_SELLER", rm.policy_pool, _W(1))
     expiration = tenv.time_control.now + WEEK
 
     tenv.pool_access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
@@ -380,8 +380,8 @@ def test_minimum_premium(tenv):
     )
     minimum_premium = rm.get_minimum_premium(_W(36), _W(1/37), expiration)
 
-    tenv.currency.transfer(tenv.currency.owner, "CUST1", _W(2))
-    tenv.currency.approve("CUST1", rm.policy_pool, _W(2))
+    tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", _W(2))
+    tenv.currency.approve("JOHN_SELLER", rm.policy_pool, _W(2))
 
     tenv.pool_access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
     with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="less than minimum"):

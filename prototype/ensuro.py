@@ -128,7 +128,7 @@ class RiskModule(AccessControlContract):
     def new_policy(self, caller, payout, premium, loss_prob, expiration, on_behalf_of, internal_id):
         assert type(loss_prob) == Wad, "Loss prob MUST be wad"
         start = time_control.now
-        require(self.policy_pool.currency.allowance(on_behalf_of, self.policy_pool.contract_id) >= premium,
+        require(self.policy_pool.currency.allowance(caller, self.policy_pool.contract_id) >= premium,
                 "You must allow ENSURO to transfer the premium")
         policy = Policy(id=-1, risk_module=self, payout=payout, premium=premium,
                         loss_prob=loss_prob, start=start, expiration=expiration)
@@ -139,7 +139,7 @@ class RiskModule(AccessControlContract):
         require(active_exposure <= self.exposure_limit, "RiskModule: Exposure limit exceeded")
         self.active_exposure = active_exposure
 
-        policy.id = self.policy_pool.new_policy(policy, on_behalf_of, internal_id)
+        policy.id = self.policy_pool.new_policy(policy, on_behalf_of, internal_id, caller)
         assert policy.id > 0
         return policy
 
@@ -828,7 +828,7 @@ class PolicyPool(AccessControlContract):
         return time_control.now
 
     @external
-    def new_policy(self, policy, policy_holder, internal_id):
+    def new_policy(self, policy, policy_holder, internal_id, caller):
         policy.id = policy.risk_module.make_policy_id(internal_id)
         self.policy_nft.safeMint(policy_holder, policy.id)
 
@@ -839,24 +839,24 @@ class PolicyPool(AccessControlContract):
 
         self.policies[policy.id] = policy
         self.currency.transfer_from(
-            self.contract_id, policy_holder,
+            self.contract_id, caller,
             pa, policy.pure_premium
         )
         policy.sr_coc and self.currency.transfer_from(
-            self.contract_id, policy_holder,
+            self.contract_id, caller,
             pa.senior_etk, policy.sr_coc
         )
         policy.jr_coc and self.currency.transfer_from(
-            self.contract_id, policy_holder,
+            self.contract_id, caller,
             pa.junior_etk, policy.jr_coc
         )
         self.currency.transfer_from(
-            self.contract_id, policy_holder,
+            self.contract_id, caller,
             self.treasury, policy.ensuro_commission
         )
         if policy.partner_commission and policy.risk_module.wallet != policy_holder:
             self.currency.transfer_from(
-                self.contract_id, policy_holder,
+                self.contract_id, caller,
                 policy.risk_module.wallet, policy.partner_commission
             )
         return policy.id
