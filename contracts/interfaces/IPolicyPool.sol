@@ -37,22 +37,24 @@ interface IPolicyPool {
    *
    * Requirements:
    * - `msg.sender` must be an active RiskModule
-   * - `customer` approved the spending of `currency()` for at least `policy.premium`
+   * - `caller` approved the spending of `currency()` for at least `policy.premium`
    * - `internalId` must be unique within `policy.riskModule` and not used before
    *
    * Events:
    * - {PolicyPool-NewPolicy}: with all the details about the policy
-   * - {ERC20-Transfer}: does several transfers from customer address to the different receivers of the premium
+   * - {ERC20-Transfer}: does several transfers from caller address to the different receivers of the premium
    * (see Premium Split in the docs)
    *
    * @param policy A policy created with {Policy-initialize}
-   * @param customer The address of the policy holder and the payer of the premiums
+   * @param policyHolder The address of the policy holder and the payer of the premiums
    * @param internalId A unique id within the RiskModule, that will be used to compute the policy id
+   * @param caller The pricer that's creating the policy and will pay for the premium
    * @return The policy id, identifying the NFT and the policy
    */
   function newPolicy(
     Policy.PolicyData memory policy,
-    address customer,
+    address caller,
+    address policyHolder,
     uint96 internalId
   ) external returns (uint256);
 

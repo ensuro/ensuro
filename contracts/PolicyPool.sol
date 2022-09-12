@@ -292,7 +292,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
 
   function newPolicy(
     Policy.PolicyData memory policy,
-    address customer,
+    address caller,
+    address policyHolder,
     uint96 internalId
   ) external override whenNotPaused returns (uint256) {
     IRiskModule rm = policy.riskModule;
@@ -302,17 +303,17 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     _policies[policy.id] = policy.hash();
     IPremiumsAccount pa = rm.premiumsAccount();
     pa.policyCreated(policy);
-    _policyNFT.safeMint(customer, policy.id);
+    _policyNFT.safeMint(policyHolder, policy.id);
 
     // Distribute the premium
-    _currency.safeTransferFrom(customer, address(pa), policy.purePremium);
+    _currency.safeTransferFrom(caller, address(pa), policy.purePremium);
     if (policy.srCoc > 0)
-      _currency.safeTransferFrom(customer, address(pa.seniorEtk()), policy.srCoc);
+      _currency.safeTransferFrom(caller, address(pa.seniorEtk()), policy.srCoc);
     if (policy.jrCoc > 0)
-      _currency.safeTransferFrom(customer, address(pa.juniorEtk()), policy.jrCoc);
-    _currency.safeTransferFrom(customer, _treasury, policy.ensuroCommission);
-    if (policy.partnerCommission > 0 && customer != rm.wallet())
-      _currency.safeTransferFrom(customer, rm.wallet(), policy.partnerCommission);
+      _currency.safeTransferFrom(caller, address(pa.juniorEtk()), policy.jrCoc);
+    _currency.safeTransferFrom(caller, _treasury, policy.ensuroCommission);
+    if (policy.partnerCommission > 0 && caller != rm.wallet())
+      _currency.safeTransferFrom(caller, rm.wallet(), policy.partnerCommission);
     // TODO: this code does up to 5 ERC20 transfers. How we can avoid this? Delayed transfers?
 
     emit NewPolicy(rm, policy);

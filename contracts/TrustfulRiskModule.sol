@@ -59,10 +59,10 @@ contract TrustfulRiskModule is RiskModule {
     uint256 premium,
     uint256 lossProb,
     uint40 expiration,
-    address customer,
+    address onBehalfOf,
     uint96 internalId
   ) external onlyComponentRole(PRICER_ROLE) returns (uint256) {
-    return _newPolicy(payout, premium, lossProb, expiration, customer, internalId).id;
+    return _newPolicy(payout, premium, lossProb, expiration, onBehalfOf, internalId).id;
   }
 
   function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout)

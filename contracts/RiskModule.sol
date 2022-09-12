@@ -301,7 +301,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
    * @param premium The premium that will be paid by the policyHolder
    * @param lossProb The probability of having to pay the maximum payout (wad)
    * @param expiration The expiration of the policy (timestamp)
-   * @param customer The policy holder
+   * @param onBehalfOf The policy holder
    * @param internalId An id that's unique within this module and it will be used to identify the policy
    */
   function _newPolicy(
@@ -309,16 +309,16 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     uint256 premium,
     uint256 lossProb,
     uint40 expiration,
-    address customer,
+    address onBehalfOf,
     uint96 internalId
   ) internal whenNotPaused returns (Policy.PolicyData memory) {
     require(premium < payout, "Premium must be less than payout");
     uint40 now_ = uint40(block.timestamp);
     require(expiration > now_, "Expiration must be in the future");
     require(((expiration - now_) / 3600) < _params.maxDuration, "Policy exceeds max duration");
-    require(customer != address(0), "Customer can't be zero address");
+    require(onBehalfOf != address(0), "Customer can't be zero address");
     require(
-      _policyPool.currency().allowance(customer, address(_policyPool)) >= premium,
+      _policyPool.currency().allowance(msg.sender, address(_policyPool)) >= premium,
       "You must allow ENSURO to transfer the premium"
     );
     require(payout <= maxPayoutPerPolicy(), "RiskModule: Payout is more than maximum per policy");
@@ -332,7 +332,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     );
     _activeExposure += policy.payout;
     require(_activeExposure <= exposureLimit(), "RiskModule: SCR limit exceeded");
-    uint256 policyId = _policyPool.newPolicy(policy, customer, internalId);
+    uint256 policyId = _policyPool.newPolicy(policy, msg.sender, onBehalfOf, internalId);
     policy.id = policyId;
     return policy;
   }

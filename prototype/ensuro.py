@@ -125,10 +125,10 @@ class RiskModule(AccessControlContract):
         return (int(prefix, 16) << 96) + internal_id
 
     @external
-    def new_policy(self, caller, payout, premium, loss_prob, expiration, on_behalf_of, internal_id):
+    def new_policy(self, sender, payout, premium, loss_prob, expiration, on_behalf_of, internal_id):
         assert type(loss_prob) == Wad, "Loss prob MUST be wad"
         start = time_control.now
-        require(self.policy_pool.currency.allowance(caller, self.policy_pool.contract_id) >= premium,
+        require(self.policy_pool.currency.allowance(sender, self.policy_pool.contract_id) >= premium,
                 "You must allow ENSURO to transfer the premium")
         policy = Policy(id=-1, risk_module=self, payout=payout, premium=premium,
                         loss_prob=loss_prob, start=start, expiration=expiration)
@@ -139,7 +139,7 @@ class RiskModule(AccessControlContract):
         require(active_exposure <= self.exposure_limit, "RiskModule: Exposure limit exceeded")
         self.active_exposure = active_exposure
 
-        policy.id = self.policy_pool.new_policy(policy, on_behalf_of, internal_id, caller)
+        policy.id = self.policy_pool.new_policy(policy, sender, on_behalf_of, internal_id)
         assert policy.id > 0
         return policy
 
@@ -828,7 +828,7 @@ class PolicyPool(AccessControlContract):
         return time_control.now
 
     @external
-    def new_policy(self, policy, policy_holder, internal_id, caller):
+    def new_policy(self, policy, caller, policy_holder, internal_id):
         policy.id = policy.risk_module.make_policy_id(internal_id)
         self.policy_nft.safeMint(policy_holder, policy.id)
 

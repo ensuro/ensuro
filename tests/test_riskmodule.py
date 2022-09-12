@@ -22,7 +22,7 @@ def tenv(request):
             currency = ContractProxyField()
             access = pool_access
 
-            def new_policy(self, policy, customer, internal_id, caller):
+            def new_policy(self, policy, caller, customer, internal_id):
                 return policy.risk_module.make_policy_id(internal_id)
 
             def resolve_policy(self, policy_id, customer_won):

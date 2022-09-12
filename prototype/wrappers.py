@@ -381,7 +381,7 @@ class TrustfulRiskModule(RiskModule):
 
     new_policy_ = MethodAdapter((
         ("sender", "msg.sender"), ("payout", "amount"), ("premium", "amount"),
-        ("loss_prob", "wad"), ("expiration", "int"), ("customer", "address"), 
+        ("loss_prob", "wad"), ("expiration", "int"), ("on_behalf_of", "address"), 
         ("internal_id", "int"),
     ), "receipt")
 
