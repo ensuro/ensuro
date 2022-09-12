@@ -1905,3 +1905,53 @@ def test_withdraw_won_premiums(tenv):
 
     USD.balance_of("ENS").assert_equal(treasury_balance + won_pure_premiums)
     premiums_account.won_pure_premiums.assert_equal(0)
+
+
+def test_risk_provider_cant_drain_liquidity_provider(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        coll_ratio: 1
+        sr_roc: "0.01"
+        ensuro_pp_fee: 0
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 6000
+        initial_balances:
+        - user: LP1
+          amount: 3000
+    etokens:
+      - name: eUSD1YEAR
+    """
+
+    # Given an lp LP1
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+
+    # LP1 approved the pool to access their funds
+    USD = pool.currency
+    USD.approve("LP1", pool.contract_id, _W(2000))
+
+    # LP1 provided funds
+    pool.deposit("eUSD1YEAR", "LP1", _W(1000))
+    assert USD.balance_of("LP1") ==  _W(2000)
+
+    # Risk Provider creates a policy for LP1
+    rm = pool.risk_modules["Roulette"]
+    pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
+
+    policy = rm.new_policy(
+        payout=_W(100), premium=_W(10), customer="LP1",
+        loss_prob=_W(1/101), expiration=tenv.time_control.now + WEEK,
+        internal_id=123
+    )
+
+    # The policy is held by LP1
+    assert pool.policy_nft.owner_of(policy.id) == "LP1"
+
+    # Premium was paid by caller
+    assert USD.balance_of("owner") == _W(2900)
+
+    # LP1's balance should not be affected
+    assert USD.balance_of("LP1") ==  _W(2000)
