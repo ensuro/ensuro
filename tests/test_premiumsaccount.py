@@ -8,17 +8,17 @@ from ethproto.wrappers import get_provider
 from ethproto.wadray import _W, Wad
 from collections import namedtuple
 from functools import partial
-from prototype.utils import WEEK, DAY
+from prototype.utils import WEEK, DAY, MONTH
 from . import TEST_VARIANTS
 
 MAX_UINT = Wad(2**256 - 1)
-TEnv = namedtuple("TEnv", "currency time_control pool_access kind pa_class etk")
+TEnv = namedtuple("TEnv", "currency time_control pool_access kind pa_class etk module")
 
 
 @pytest.fixture(params=TEST_VARIANTS)
 def tenv(request):
     if request.param == "prototype":
-        currency = ERC20Token(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
+        currency = ERC20Token(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(10000))
         pool_access = ensuro.AccessManager()
 
         class PolicyPoolMock(Contract):
@@ -40,10 +40,13 @@ def tenv(request):
             kind="prototype",
             etk=partial(ensuro.EToken, policy_pool=pool),
             pa_class=partial(ensuro.PremiumsAccount, pool=pool),
+            module=ensuro,
         )
     elif request.param == "ethereum":
         PolicyPoolMockForward = wrappers.get_provider().get_contract_factory("PolicyPoolMockForward")
-        currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
+        currency = wrappers.TestCurrency(
+            owner="owner", name="TEST", symbol="TEST", initial_supply=_W(10000)
+        )
         pa_access = wrappers.AccessManager(owner="owner")
 
         def etoken_factory(**kwargs):
@@ -77,6 +80,7 @@ def tenv(request):
             kind="ethereum",
             etk=etoken_factory,
             pa_class=pa_factory,
+            module=wrappers,
         )
 
 
@@ -492,7 +496,6 @@ def test_policy_created_with_sr_etoken(tenv):
         policy_pool="dummy",
         coll_ratio=_W("0.2"),
     )
-    rm.coll_ratio.assert_equal(_W("0.2"))
 
     policy = ensuro.Policy(
         id=1,
@@ -887,3 +890,79 @@ def test_set_deficit_ratio_and_create_policy(tenv):
 
     senior_etk.balance_of("LP1").assert_equal(_W(493))
     senior_etk.get_loan(pa).assert_equal(_W(7))
+
+
+def test_pa_asset_manager(tenv):
+    senior_etk = tenv.etk(name="eUSD1YEAR", symbol="ETK1")
+    pa = tenv.pa_class(senior_etk=senior_etk)
+    start = tenv.time_control.now
+    expiration = tenv.time_control.now + WEEK
+
+    tenv.currency.transfer(tenv.currency.owner, senior_etk, _W(1000))
+    with senior_etk.thru_policy_pool():
+        assert senior_etk.deposit("LP1", _W(1000)) == _W(1000)
+        senior_etk.add_borrower(pa)
+
+    rm = RiskModule(
+        premiums_account="dummy",
+        name="Roulette",
+        policy_pool="dummy",
+    )
+
+    policy = ensuro.Policy(
+        id=1,
+        risk_module=rm,
+        payout=_W(600),
+        premium=_W(400),
+        loss_prob=_W("0.5"),
+        start=start,
+        expiration=expiration,
+    )
+
+    tenv.currency.transfer(tenv.currency.owner, pa, _W(300))
+    with pa.thru_policy_pool():
+        pa.policy_created(policy)
+
+    pa.active_pure_premiums.assert_equal(_W(300))
+    tenv.currency.balance_of(pa).assert_equal(_W(300))
+
+    vault = tenv.module.FixedRateVault(asset=tenv.currency)
+    asset_manager = tenv.module.ERC4626AssetManager(
+        vault=vault, reserve=pa,
+        liquidity_min=_W(100), liquidity_middle=_W(160), liquidity_max=_W(200)
+    )
+
+    with pytest.raises(RevertError, match="AccessControl"):
+        pa.set_asset_manager(asset_manager)
+
+    tenv.pool_access.grant_role("LEVEL1_ROLE", tenv.currency.owner)
+
+    # Set asset manager
+    pa.set_asset_manager(asset_manager)
+
+    vault.total_assets().assert_equal(_W(0))
+
+    # After checkpoint the cash should be rebalanced
+    pa.checkpoint()
+    vault.total_assets().assert_equal(_W(140))
+    tenv.currency.balance_of(pa).assert_equal(_W(160))
+    pa.pure_premiums.assert_equal(_W(300))
+
+    vault.balance_of(pa).assert_equal(_W(140))
+
+    # After one month record the earnings
+    tenv.time_control.fast_forward(MONTH)
+    interest_earnings = _W(140 * 0.05 * 30/365)
+    vault.total_assets().assert_equal(_W(140) + interest_earnings)
+    pa.record_earnings()
+
+    pa.pure_premiums.assert_equal(_W(300) + interest_earnings)
+
+    # Resolve the policy with an amount that requires deinvestment
+    with pa.thru_policy_pool():
+        pa.policy_resolved_with_payout("USER", policy, _W(200))
+
+    tenv.currency.balance_of("USER").assert_equal(_W(200))
+    vault.total_assets().assert_equal(_W(0))  # All the assets deinvested
+    pa.pure_premiums.assert_equal(_W(100) + interest_earnings)
+    tenv.currency.balance_of(pa).assert_equal(_W(100) + interest_earnings)
