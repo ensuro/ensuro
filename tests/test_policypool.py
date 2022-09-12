@@ -1907,7 +1907,7 @@ def test_withdraw_won_premiums(tenv):
     premiums_account.won_pure_premiums.assert_equal(0)
 
 
-def xtest_risk_provider_cant_drain_liquidity_provider(tenv):
+def test_risk_provider_cant_drain_liquidity_provider(tenv):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
@@ -1921,6 +1921,8 @@ def xtest_risk_provider_cant_drain_liquidity_provider(tenv):
         initial_balances:
         - user: LP1
           amount: 3000
+        - user: JOHN_SELLER
+          amount: 10
     etokens:
       - name: eUSD1YEAR
     """
@@ -1938,20 +1940,21 @@ def xtest_risk_provider_cant_drain_liquidity_provider(tenv):
 
     # Risk Provider creates a policy on behalf of LP1
     rm = pool.risk_modules["Roulette"]
-    pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
-    pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
+    pool.access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
+    USD.approve("JOHN_SELLER", pool.contract_id, _W(10))
 
-    policy = rm.new_policy(
-        caller="CUST1", payout=_W(100), premium=_W(10), on_behalf_of="LP1",
-        loss_prob=_W(1/101), expiration=tenv.time_control.now + WEEK,
-        internal_id=123
-    )
+    with rm.as_("JOHN_SELLER"):
+        policy = rm.new_policy(
+            caller="JOHN_SELLER", payout=_W(100), premium=_W(10), on_behalf_of="LP1",
+            loss_prob=_W(1/101), expiration=tenv.time_control.now + WEEK,
+            internal_id=123
+        )
 
     # The policy is held by LP1
     assert pool.policy_nft.owner_of(policy.id) == "LP1"
 
     # Premium was paid by caller
-    assert USD.balance_of("owner") == _W(2900)
+    assert USD.balance_of(rm.owner) == _W(2990)
 
     # LP1's balance should not be affected
     assert USD.balance_of("LP1") ==  _W(2000)
