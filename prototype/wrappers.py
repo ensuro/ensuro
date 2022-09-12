@@ -380,8 +380,9 @@ class TrustfulRiskModule(RiskModule):
     proxy_kind = "uups"
 
     new_policy_ = MethodAdapter((
-        ("payout", "amount"), ("premium", "amount"), ("loss_prob", "wad"), ("expiration", "int"),
-        ("customer", "address"), ("internal_id", "int"),
+        ("sender", "msg.sender"), ("payout", "amount"), ("premium", "amount"),
+        ("loss_prob", "wad"), ("expiration", "int"), ("customer", "address"), 
+        ("internal_id", "int"),
     ), "receipt")
 
     resolve_policy_full_payout = MethodAdapter((("policy", Policy.FIELDS), ("customer_won", "bool")))
