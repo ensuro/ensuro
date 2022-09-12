@@ -166,14 +166,14 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   }
 
   function _payFromPremiums(uint256 toPay) internal returns (uint256) {
-    int256 surplus = _surplus - int256(toPay);
+    int256 newSurplus = _surplus - int256(toPay);
     int256 maxDeficit = _maxDeficit(deficitRatio());
-    if (surplus >= maxDeficit) {
-      _surplus = surplus;
+    if (newSurplus >= maxDeficit) {
+      _surplus = newSurplus;
       return 0;
     }
     _surplus = maxDeficit;
-    return uint256(-surplus + maxDeficit);
+    return uint256(-newSurplus + maxDeficit);
   }
 
   function _storePurePremiumWon(uint256 purePremiumWon) internal {
@@ -214,12 +214,14 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     onlyComponentRole(WITHDRAW_WON_PREMIUMS_ROLE)
     returns (uint256)
   {
-    uint256 surplus = _surplus >= 0 ? uint256(_surplus) : 0;
-    if (amount > surplus) amount = surplus;
+    if (_surplus <= 0) {
+      amount = 0;
+    } else {
+      amount = Math.min(amount, uint256(_surplus));
+    }
     require(amount > 0, "No premiums to withdraw");
     _surplus -= int256(amount);
-    _transferTo(destination, amount); // TODO: discuss if destination shoud be msg.sender
-    // TODO: see if this will be a component role
+    _transferTo(destination, amount);
     emit WonPremiumsInOut(false, amount);
     return amount;
   }

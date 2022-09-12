@@ -649,7 +649,7 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
             borrow = max_deficit - self.surplus
             self.surplus = max_deficit
             self.deficit_ratio = new_ratio
-            self._borrow_from_etk(borrow, self, self.junior_etk != None)
+            self._borrow_from_etk(borrow, self, self.junior_etk is not None)
 
     def _store_pure_premium_won(self, pure_premium_won):
         if not pure_premium_won:
@@ -905,3 +905,59 @@ class LPManualWhitelist(Contract):
 
     def accepts_transfer(self, etoken, from_, to_, amount):
         return self.whitelisted.get(to_, False)
+
+
+class FixedRateVault(ERC20Token):
+    """Vault following ERC4626 interface that generates returns at `interest_rate`"""
+
+    asset = ContractProxyField()
+    interest_rate = WadField(default=_W("0.05"))
+    total_assets_ = CompositeField(ScaledAmount)
+
+    def __init__(self, **kwargs):
+        if "name" not in kwargs:
+            kwargs["name"] = "Test Vault"
+        if "symbol" not in kwargs:
+            kwargs["symbol"] = "TVAULT"
+        kwargs["decimals"] = 18
+        kwargs["total_assets_"] = ScaledAmount()
+        super().__init__(**kwargs)
+
+    @view
+    def total_assets(self):
+        return self.total_assets_.get_scaled_amount(self.interest_rate)
+
+    @view
+    def convert_to_shares(self, assets):
+        supply = self.total_supply()
+        if supply == 0 or assets == 0:
+            return Wad(int(assets) * (10 ** self.decimals) // (10**self.asset.decimals))
+        else:
+            return Wad(int(assets) * int(supply) // int(self.total_assets()))
+
+    @view
+    def convert_to_assets(self, shares):
+        supply = self.total_supply()
+        if supply == 0:
+            return Wad(int(shares) * (10 ** self.assets.decimals) // (10**self.decimals))
+        else:
+            return Wad(int(shares) * self.total_assets() // int(supply))
+
+    @external
+    def deposit(self, caller, assets, receiver):
+        shares = self.convert_to_shares(assets)
+        self.total_assets_.add(assets, self.interest_rate)
+        self.asset.transfer_from(self, caller, self, assets)
+        self.mint(receiver, shares)
+        return shares
+
+    @external
+    def withdraw(self, caller, assets, receiver, owner):
+        shares = self.convert_to_shares(assets)
+        self.total_assets_.sub(assets, self.interest_rate)
+        balance = self.asset.balance_of(self)
+        if balance < assets:
+            self.asset.mint(self.contract_id, assets - balance)
+        require(caller == owner, "Only owner can withdraw for now")  # TODO: allowance
+        self.burn(owner, shares)
+        self.asset.transfer(self, receiver, assets)

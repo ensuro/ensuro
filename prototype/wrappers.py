@@ -669,3 +669,26 @@ class LPManualWhitelist(ETHWrapper):
 
 
 ERC20Token = TestCurrency
+
+
+class FixedRateVault(IERC20):
+    eth_contract = "FixedRateVault"
+
+    constructor_args = (
+        ("name", "string"),
+        ("symbol", "string"),
+        ("asset", "address"),
+        ("interest_rate", "wad"),
+    )
+
+    def __init__(self, asset, owner="owner", name="Test Vault", symbol="TVAULT", interest_rate=_W("0.05")):
+        interest_rate = _W(interest_rate)
+        super().__init__(owner, name, symbol, asset, interest_rate)
+
+    total_assets = MethodAdapter((), "amount")
+    convert_to_assets = MethodAdapter((("shares", "wad"), ), "amount")
+    convert_to_shares = MethodAdapter((("assets", "amount"), ), "wad")
+    deposit = MethodAdapter((("caller", "msg.sender"), ("assets", "amount"), ("receiver", "address"), ))
+    withdraw = MethodAdapter(
+        (("caller", "msg.sender"), ("assets", "amount"), ("receiver", "address"), ("owner", "address"), )
+    )
