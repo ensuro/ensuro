@@ -257,7 +257,7 @@ class ReserveMixin:
         return Wad(10 ** (self.currency.decimals // 2))
 
     @only_role("LEVEL1_ROLE", "GUARDIAN_ROLE")
-    def set_asset_manager(self, asset_manager):
+    def set_asset_manager(self, asset_manager, force):
         if self.asset_manager:
             self.asset_manager.deinvest_all()
         self.asset_manager = asset_manager
@@ -290,6 +290,10 @@ class ReserveMixin:
     @external
     def record_earnings(self):
         self.asset_manager.record_earnings()
+
+    @only_component_role("LEVEL2_ROLE")
+    def forward_to_asset_manager(self, method, *args, **kwargs):
+        return getattr(self.asset_manager, method)(*args, **kwargs)
 
 
 class ScaledAmount(Model):
@@ -1038,13 +1042,32 @@ class AssetManager(Contract):
 class LiquidityThresholdAssetManager(AssetManager):
     """Asset management strategy that manages cash liquidity with thresholds"""
 
-    liquidity_min = WadField()
-    liquidity_middle = WadField()
-    liquidity_max = WadField()
+    liquidity_min = WadField(default=Wad(0))
+    liquidity_middle = WadField(default=Wad(0))
+    liquidity_max = WadField(default=Wad(0))
 
     # Any time balance_of(PolicyPool) < liquidity_min we refill up to liquidity_middle
     # Any time balance_of(PolicyPool) > liquidity_max take liquidity up liquidity_middle
     last_investment_value = WadField(default=Wad(0))
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._validate_params()
+
+    def _validate_params(self):
+        require(
+            self.liquidity_min <= self.liquidity_middle and self.liquidity_middle <= self.liquidity_max,
+            "Validation: Liquidity limits are invalid"
+        )
+
+    def set_liquidity_thresholds(self, liquidity_min, liquidity_middle, liquidity_max):
+        if liquidity_min is not None:
+            self.liquidity_min = liquidity_min
+        if liquidity_middle is not None:
+            self.liquidity_middle = liquidity_middle
+        if liquidity_max is not None:
+            self.liquidity_max = liquidity_max
+        self._validate_params()
 
     def record_earnings(self):
         investment_value = self.get_investment_value()

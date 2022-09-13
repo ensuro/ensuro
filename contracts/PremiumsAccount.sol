@@ -11,6 +11,7 @@ import {Reserve} from "./Reserve.sol";
 import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
 import {Policy} from "./Policy.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
+import {IAssetManager} from "./interfaces/IAssetManager.sol";
 
 /**
  * @title Ensuro Premiums Account
@@ -35,6 +36,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
 
   struct PackedParams {
     uint16 deficitRatio;
+    IAssetManager assetManager;
   }
 
   PackedParams internal _params;
@@ -82,8 +84,27 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     if (address(_seniorEtk) != address(0))
       currency().approve(address(_seniorEtk), type(uint256).max);
 
-    _params = PackedParams({deficitRatio: 1e4});
+    _params = PackedParams({deficitRatio: 1e4, assetManager: IAssetManager(address(0))});
     _validateParameters();
+  }
+
+  function assetManager() public view override returns (IAssetManager) {
+    return _params.assetManager;
+  }
+
+  function _setAssetManager(IAssetManager newAM) internal override {
+    _params.assetManager = newAM;
+  }
+
+  function _assetEarnings(int256 earningsOrLosses) internal override {
+    if (earningsOrLosses > 0) {
+      uint256 earnings = uint256(earningsOrLosses);
+      if (address(_seniorEtk) != address(0)) earnings = _repayLoan(earnings, _seniorEtk);
+      if (address(_juniorEtk) != address(0)) earnings = _repayLoan(earnings, _juniorEtk);
+      _storePurePremiumWon(earnings);
+    } else {
+      _payFromPremiums(uint256(-earningsOrLosses));
+    }
   }
 
   // solhint-disable-next-line no-empty-blocks

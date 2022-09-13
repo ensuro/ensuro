@@ -9,6 +9,7 @@ import {IEToken} from "./interfaces/IEToken.sol";
 import {IAccessManager} from "./interfaces/IAccessManager.sol";
 import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
 import {ILPWhitelist} from "./interfaces/ILPWhitelist.sol";
+import {IAssetManager} from "./interfaces/IAssetManager.sol";
 import {WadRayMath} from "./WadRayMath.sol";
 import {TimeScaled} from "./TimeScaled.sol";
 
@@ -58,6 +59,8 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   }
 
   PackedParams internal _params;
+
+  IAssetManager internal _assetManager;
 
   event InternalLoan(address indexed borrower, uint256 value, uint256 amountAsked);
   event InternalLoanRepaid(address indexed borrower, uint256 value);
@@ -447,6 +450,14 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     else return 0;
   }
 
+  function assetManager() public view override returns (IAssetManager) {
+    return _assetManager;
+  }
+
+  function _setAssetManager(IAssetManager newAM) internal override {
+    _assetManager = newAM;
+  }
+
   function scr() public view virtual override returns (uint256) {
     return uint256(_scr.scr);
   }
@@ -521,6 +532,10 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     }
     emit SCRUnlocked(policyInterestRate, scrAmount);
     _discreteChange(adjustment);
+  }
+
+  function _assetEarnings(int256 earnings) internal override {
+    _discreteChange(earnings);
   }
 
   function _discreteChange(int256 amount) internal {

@@ -1,10 +1,12 @@
-from collections import namedtuple
 from contextlib import contextmanager
+from eth_utils import keccak
+from eth_abi import encode
 from ethproto.wadray import Wad, _W
 from ethproto.wrappers import AddressBook, IERC20, IERC721, ETHWrapper, MethodAdapter, get_provider
 
 
 SECONDS_IN_YEAR = 365 * 24 * 3600
+MAX_UINT = 2**256 - 1
 
 
 def eth_call(wrapper, fn_name, *args):
@@ -66,7 +68,26 @@ def _adapt_signed_amount(args, kwargs):
         return (-amount, False), {}
 
 
-class EToken(IERC20):
+class ReserveMixin:
+    currency = MethodAdapter((), "address", is_property=True)
+    forward_to_asset_manager_ = MethodAdapter((("functionCall", "bytes"), ))
+
+    set_asset_manager = MethodAdapter((("assetManager", "address"), ("force", "bool")))
+    checkpoint = MethodAdapter(())
+    record_earnings = MethodAdapter(())
+    rebalance = MethodAdapter(())
+
+    def forward_to_asset_manager(self, method, *args, **kwargs):
+        if method == "set_liquidity_thresholds":
+            min, middle, max = [MAX_UINT if arg is None else arg for arg in args]
+            selector = keccak(b"setLiquidityThresholds(uint256,uint256,uint256)")[:4]
+            data = encode(["uint256", "uint256",  "uint256"], [min, middle, max])
+            return self.forward_to_asset_manager_((selector + data))
+        else:
+            raise NotImplementedError()
+
+
+class EToken(ReserveMixin, IERC20):
     eth_contract = "EToken"
     proxy_kind = "uups"
     constructor_args = (("policy_pool", "address"), )
@@ -261,7 +282,6 @@ class Policy:
             fake_rm_address, policy.start, policy.expiration,
             address_book
         )
-
 
 
 class PolicyDB:
@@ -542,7 +562,7 @@ class PolicyPool(ETHWrapper):
         return self.expire_policy_(policy.as_tuple())
 
 
-class PremiumsAccount(ETHWrapper):
+class PremiumsAccount(ReserveMixin, ETHWrapper):
     eth_contract = "PremiumsAccount"
 
     constructor_args = (
@@ -692,3 +712,25 @@ class FixedRateVault(IERC20):
     withdraw = MethodAdapter(
         (("caller", "msg.sender"), ("assets", "amount"), ("receiver", "address"), ("owner", "address"), )
     )
+
+
+class LiquidityThresholdAssetManager(ETHWrapper):
+    def _set_liquidity(self, reserve, liquidity_min, liquidity_middle, liquidity_max):
+        liquidity_min = liquidity_min if liquidity_min is None else _W(liquidity_min)
+        liquidity_middle = liquidity_middle if liquidity_middle is None else _W(liquidity_middle)
+        liquidity_max = liquidity_max if liquidity_max is None else _W(liquidity_max)
+        reserve.forward_to_asset_manager(
+            "set_liquidity_thresholds", liquidity_min, liquidity_middle, liquidity_max
+        )
+
+
+class ERC4626AssetManager(LiquidityThresholdAssetManager):
+    eth_contract = "ERC4626AssetManager"
+
+    constructor_args = (
+        ("asset", "address"),
+        ("vault", "address"),
+    )
+
+    def __init__(self, reserve, vault):
+        super().__init__(reserve.owner, reserve.currency, vault)

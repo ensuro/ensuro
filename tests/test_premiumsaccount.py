@@ -104,7 +104,6 @@ def test_premiums_account_creation(tenv):
 def test_receive_grant(tenv):
     pa = tenv.pa_class()
 
-    assert tenv.currency.balance_of(tenv.currency.owner) == _W(1000)
     with pytest.raises(RevertError, match="transfer amount exceeds allowance|insufficient allowance"):
         pa.receive_grant(tenv.currency.owner, _W(1000))
 
@@ -929,16 +928,23 @@ def test_pa_asset_manager(tenv):
     vault = tenv.module.FixedRateVault(asset=tenv.currency)
     asset_manager = tenv.module.ERC4626AssetManager(
         vault=vault, reserve=pa,
-        liquidity_min=_W(100), liquidity_middle=_W(160), liquidity_max=_W(200)
     )
 
     with pytest.raises(RevertError, match="AccessControl"):
-        pa.set_asset_manager(asset_manager)
+        pa.set_asset_manager(asset_manager, False)
 
-    tenv.pool_access.grant_role("LEVEL1_ROLE", tenv.currency.owner)
+    tenv.pool_access.grant_role("LEVEL1_ROLE", "ADMIN")
 
     # Set asset manager
-    pa.set_asset_manager(asset_manager)
+    with pa.as_("ADMIN"):
+        pa.set_asset_manager(asset_manager, False)
+
+    with pytest.raises(RevertError, match="AccessControl"):
+        pa.forward_to_asset_manager("set_liquidity_thresholds", _W(100), _W(160), _W(200))
+
+    tenv.pool_access.grant_component_role(pa, "LEVEL2_ROLE", "ADMIN")
+    with pa.as_("ADMIN"):
+        pa.forward_to_asset_manager("set_liquidity_thresholds", _W(100), _W(160), _W(200))
 
     vault.total_assets().assert_equal(_W(0))
 

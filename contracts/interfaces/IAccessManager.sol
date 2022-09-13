@@ -12,12 +12,12 @@ interface IAccessManager is IAccessControlUpgradeable {
   enum GovernanceActions {
     none,
     setTreasury, // Changes PolicyPool treasury address
-    setAssetManager, // Changes PolicyPool AssetManager
+    setAssetManager, // Change in the asset manager strategy of a reserve
     setInsolvencyHook, // Changes PolicyPool InsolvencyHook
     setLPWhitelist, // Changes PolicyPool Liquidity Providers Whitelist
     addRiskModule,
     removeRiskModule,
-    cfgFiller1, // Reserve space for future PolicyPoolConfig actions
+    setAssetManagerForced, // Change in the asset manager strategy of a reserve, forced (deinvest failed)
     cfgFiller2, // Reserve space for future PolicyPoolConfig actions
     cfgFiller3, // Reserve space for future PolicyPoolConfig actions
     cfgFiller4, // Reserve space for future PolicyPoolConfig actions
