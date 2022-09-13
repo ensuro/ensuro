@@ -1955,7 +1955,7 @@ def test_risk_provider_cant_drain_liquidity_provider(tenv):
     assert pool.policy_nft.owner_of(policy.id) == "LP1"
 
     # Premium was paid by caller
-    assert USD.balance_of(rm.owner) == _W(2990)
+    assert USD.balance_of("JOHN_SELLER") == _W(0)
 
     # LP1's balance should not be affected
     assert USD.balance_of("LP1") ==  _W(2000)

@@ -46,9 +46,9 @@ interface IPolicyPool {
    * (see Premium Split in the docs)
    *
    * @param policy A policy created with {Policy-initialize}
+   * @param caller The pricer that's creating the policy and will pay for the premium
    * @param policyHolder The address of the policy holder and the payer of the premiums
    * @param internalId A unique id within the RiskModule, that will be used to compute the policy id
-   * @param caller The pricer that's creating the policy and will pay for the premium
    * @return The policy id, identifying the NFT and the policy
    */
   function newPolicy(

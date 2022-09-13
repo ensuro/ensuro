@@ -307,10 +307,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
 
     // Distribute the premium
     _currency.safeTransferFrom(caller, address(pa), policy.purePremium);
-    if (policy.srCoc > 0)
-      _currency.safeTransferFrom(caller, address(pa.seniorEtk()), policy.srCoc);
-    if (policy.jrCoc > 0)
-      _currency.safeTransferFrom(caller, address(pa.juniorEtk()), policy.jrCoc);
+    if (policy.srCoc > 0) _currency.safeTransferFrom(caller, address(pa.seniorEtk()), policy.srCoc);
+    if (policy.jrCoc > 0) _currency.safeTransferFrom(caller, address(pa.juniorEtk()), policy.jrCoc);
     _currency.safeTransferFrom(caller, _treasury, policy.ensuroCommission);
     if (policy.partnerCommission > 0 && caller != rm.wallet())
       _currency.safeTransferFrom(caller, rm.wallet(), policy.partnerCommission);
