@@ -54,7 +54,10 @@ abstract contract Reserve is PolicyPoolComponent {
     external
     onlyPoolRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
   {
-    require(address(newAM).isContract(), "The assetManager is not a contract!");
+    require(
+      address(newAM) == address(0) || address(newAM).isContract(),
+      "The assetManager is not a contract!"
+    );
     address am = address(assetManager());
     IAccessManager.GovernanceActions action = IAccessManager.GovernanceActions.setAssetManager;
     if (am != address(0)) {

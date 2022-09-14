@@ -592,6 +592,7 @@ class PremiumsAccount(ReserveMixin, ETHWrapper):
     junior_etk = MethodAdapter((), "address", is_property=True)
     senior_etk = MethodAdapter((), "address", is_property=True)
     pure_premiums = MethodAdapter((), "amount", is_property=True)
+    surplus = MethodAdapter((), "amount", is_property=True)
     won_pure_premiums = MethodAdapter((), "amount", is_property=True)
     active_pure_premiums = MethodAdapter((), "amount", is_property=True)
     deficit_ratio = MethodAdapter((), "wad", is_property=True)

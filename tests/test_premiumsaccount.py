@@ -963,6 +963,7 @@ def test_pa_asset_manager(tenv):
     pa.record_earnings()
 
     pa.pure_premiums.assert_equal(_W(300) + interest_earnings)
+    pa.surplus.assert_equal(interest_earnings)
 
     # Resolve the policy with an amount that requires deinvestment
     with pa.thru_policy_pool():
@@ -972,3 +973,16 @@ def test_pa_asset_manager(tenv):
     vault.total_assets().assert_equal(_W(0))  # All the assets deinvested
     pa.pure_premiums.assert_equal(_W(100) + interest_earnings)
     tenv.currency.balance_of(pa).assert_equal(_W(100) + interest_earnings)
+
+    with pa.as_("ADMIN"):
+        pa.forward_to_asset_manager("set_liquidity_thresholds", _W(10), _W(20), _W(50))
+
+    pa.checkpoint()
+    tenv.currency.balance_of(pa).assert_equal(_W(20))
+    vault.total_assets().assert_equal(_W(80) + interest_earnings)
+    vault.discrete_earning(-_W(50))
+    pa.checkpoint()
+    pa.pure_premiums.assert_equal(_W(50) + interest_earnings)
+
+    with pa.as_("ADMIN"):
+        pa.set_asset_manager(None, True)

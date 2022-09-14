@@ -12,7 +12,7 @@ contract FixedRateVault is ERC4626 {
 
   uint256 internal _interestRate;
   TimeScaled.ScaledAmount internal _totalAssets;
-  bool _broken;
+  bool internal _broken;
 
   constructor(
     string memory name_,
