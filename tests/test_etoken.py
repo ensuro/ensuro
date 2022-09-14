@@ -3,14 +3,17 @@ import sys
 from functools import partial, wraps
 from collections import namedtuple
 import pytest
-from ethproto.contracts import RevertError
+from ethproto.contracts import RevertError, Contract
 from prototype import ensuro
 from ethproto.wadray import _W, _R, Wad
 from prototype.utils import WEEK, DAY, MONTH
 from prototype import wrappers
 from . import TEST_VARIANTS
 
-TEnv = namedtuple("TEnv", "time_control etoken_class policy_factory kind currency fw_proxy_factory")
+TEnv = namedtuple(
+    "TEnv",
+    "time_control etoken_class policy_factory kind currency fw_proxy_factory module pool_access"
+)
 SECONDS_IN_YEAR = 365 * 3600 * 24
 
 
@@ -45,19 +48,21 @@ def tenv(request):
 
         return TEnv(
             time_control=ensuro.time_control,
+            pool_access=pp_access,
             policy_factory=FakePolicy,
             etoken_class=partial(ensuro.EToken, policy_pool=policy_pool),
             currency=currency,
             kind="prototype",
-            fw_proxy_factory=fw_proxy_factory
+            fw_proxy_factory=fw_proxy_factory,
+            module=ensuro,
         )
     elif request.param == "ethereum":
         PolicyPoolMockForward = wrappers.get_provider().get_contract_factory("PolicyPoolMockForward")
 
         currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(10000))
+        access = wrappers.AccessManager(owner="owner")
 
         def etoken_factory(**kwargs):
-            access = wrappers.AccessManager(owner="owner")
             pool = PolicyPoolMockForward.deploy(
                 wrappers.AddressBook.ZERO, currency.contract, access.contract, {"from": currency.owner}
             )
@@ -77,11 +82,13 @@ def tenv(request):
 
         return TEnv(
             time_control=FakePolicy.time_control,
+            pool_access=access,
             policy_factory=FakePolicy,
             etoken_class=etoken_factory,
             currency=currency,
             kind="ethereum",
-            fw_proxy_factory=fw_proxy_factory
+            fw_proxy_factory=fw_proxy_factory,
+            module=wrappers,
         )
 
 
@@ -444,7 +451,7 @@ def test_internal_loan(tenv):
 
 
 @skip_if_coverage_activated
-def xtest_asset_and_discrete_earnings(tenv):
+def test_etk_asset_manager(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK")
 
     # Initial setup
@@ -454,41 +461,114 @@ def xtest_asset_and_discrete_earnings(tenv):
         etk.deposit("LP2", _W(2000))
     assert etk.total_supply() == _W(3000)
     assert etk.get_current_scale(True) == _R(1)
+    tenv.currency.balance_of(etk).assert_equal(_W(3000))
 
-    # Possitive asset earning
-    with etk.thru_policy_pool():
-        etk.discrete_earning(_W(500))   # TODO: etk.asset_earnings(_W(500)) called from assetManager
-    etk.total_supply().assert_equal(_W(3500))
-    etk.get_current_scale(False).assert_equal(_R(1) * _R(3500/3000))
-    etk.get_current_scale(True).assert_equal(_R(1) * _R(3500/3000))
+    # Create vault
+    vault = tenv.module.FixedRateVault(asset=tenv.currency)
+    asset_manager = tenv.module.ERC4626AssetManager(
+        vault=vault, reserve=etk,
+    )
 
-    # Negative asset earning
-    with etk.thru_policy_pool():
-        etk.discrete_earning(-_W(300))    # TODO: etk.asset_earnings(-_W(300)) called from assetManager
-    etk.total_supply().assert_equal(_W(3200))
-    etk.get_current_scale(False).assert_equal(_R(1) * _R(3200/3000))
-    tenv.time_control.fast_forward(1 * DAY)
-    etk.balance_of("LP1").assert_equal(_W(1000) * _W(3200/3000))
-    etk.balance_of("LP2").assert_equal(_W(2000) * _W(3200/3000))
+    with pytest.raises(RevertError, match="AccessControl"):
+        etk.set_asset_manager(asset_manager, False)
 
-    # Possitive discrete_earning
-    with etk.thru_policy_pool():
-        etk.discrete_earning(_W(400))
-    etk.balance_of("LP1").assert_equal(_W(1000) * _W(3600/3000))
-    etk.balance_of("LP2").assert_equal(_W(2000) * _W(3600/3000))
-    etk.total_supply().assert_equal(_W(3600))
+    tenv.pool_access.grant_role("LEVEL1_ROLE", "ADMIN")
 
-    # Negative discrete_earning
-    with etk.thru_policy_pool():
-        etk.discrete_earning(-_W(700))
-    etk.balance_of("LP1").assert_equal(_W(1000) * _W(2900/3000))
-    etk.balance_of("LP2").assert_equal(_W(2000) * _W(2900/3000))
-    etk.total_supply().assert_equal(_W(2900))
+    # Set asset manager
+    with etk.as_("ADMIN"):
+        etk.set_asset_manager(asset_manager, False)
 
-    # Finally, down to zero adjustment (almost zero, zero not allowed)
+    with pytest.raises(RevertError, match="AccessControl"):
+        etk.forward_to_asset_manager("set_liquidity_thresholds", _W(100), _W(160), _W(200))
+
+    tenv.pool_access.grant_component_role(etk, "LEVEL2_ROLE", "ADMIN")
+
+    with etk.as_("ADMIN"):
+        etk.forward_to_asset_manager("set_liquidity_thresholds", _W(100), _W(160), _W(200))
+
+    # Test invalid change only middle and max
+    with etk.as_("ADMIN"), pytest.raises(RevertError, match="Validation"):
+        etk.forward_to_asset_manager("set_liquidity_thresholds", _W(300), None, None)
+
+    # Test change only middle and max
+    with etk.as_("ADMIN"):
+        etk.forward_to_asset_manager("set_liquidity_thresholds", None, _W(1000), _W(2000))
+
+    # Rebalance
+    vault.total_assets().assert_equal(_W(0))
+    # After checkpoint the cash should be rebalanced
+    etk.rebalance()
+    vault.total_assets().assert_equal(_W(2000))
+    tenv.currency.balance_of(etk).assert_equal(_W(1000))
+
+    etk.record_earnings()
+    etk.total_supply().assert_equal(_W(3000))  # Nothing earned yet
+
+    # After one month record the earnings
+    tenv.time_control.fast_forward(2 * MONTH)
+    interest_earnings = _W(2000 * 0.05 * 60/365)  # ~ 17
+    vault.total_assets().assert_equal(_W(2000) + interest_earnings)
+
+    etk.checkpoint()
+    etk.total_supply().assert_equal(_W(3000) + interest_earnings)
+    etk.balance_of("LP1").assert_equal(_W(1000) + interest_earnings * _W(1/3))
+    tenv.currency.balance_of(etk).assert_equal(_W(1000))  # USDC balance unchanged
+
+    vault.discrete_earning(-_W(600))
+
+    etk.checkpoint()
+    tenv.currency.balance_of(etk).assert_equal(_W(1000))  # No rebalance
+    vault.total_assets().assert_equal(_W(1400) + interest_earnings)
+    etk.total_supply().assert_equal(_W(3000) + interest_earnings - _W(600))
+
+    # One of the LP withdraws and etk cash is not enough - Triggers deinvestment
+    lp2_balance = _W(2000) + interest_earnings * _W(2/3) - _W(600) * _W(2/3)
     with etk.thru_policy_pool():
-        etk.discrete_earning(-etk.total_supply() * _W("0.99999"))
-    etk.total_supply().assert_equal(_W(0), decimals=1)
+        etk.withdraw("LP2", None).assert_equal(lp2_balance)
+
+    lp1_balance = _W(1000) + interest_earnings * _W(1/3) - _W(600) * _W(1/3)
+    etk.balance_of("LP1").assert_equal(lp1_balance)
+
+    vault.total_assets().assert_equal(_W(0))
+
+    # Change liquidity thresholds to rebalance
+    with etk.as_("ADMIN"):
+        etk.forward_to_asset_manager("set_liquidity_thresholds", _W(200), _W(400), _W(600))
+
+    etk.checkpoint()
+
+    tenv.currency.balance_of(etk).assert_equal(_W(400))
+    vault.total_assets().assert_equal(lp1_balance - _W(400))
+
+    vault.discrete_earning(_W(200))
+    etk.record_earnings()
+
+    lp1_balance += _W(200)
+    etk.balance_of("LP1").assert_equal(lp1_balance)
+
+    vault_2 = tenv.module.FixedRateVault(asset=tenv.currency)
+    asset_manager_2 = tenv.module.ERC4626AssetManager(
+        vault=vault_2, reserve=etk,
+    )
+
+    with etk.as_("ADMIN"):
+        etk.set_asset_manager(asset_manager_2, False)
+
+    if tenv.kind == "prototype":
+        assert etk.asset_manager == asset_manager_2.contract_id
+    else:
+        assert etk.asset_manager == asset_manager_2.contract.address
+
+    vault.total_assets().assert_equal(_W(0))  # All deinvested
+    tenv.currency.balance_of(etk).assert_equal(lp1_balance)
+
+    vault_2.broken = True
+
+    with etk.as_("ADMIN"), pytest.raises(RevertError):
+        etk.set_asset_manager(asset_manager, False)
+
+    with etk.as_("ADMIN"):
+        etk.set_asset_manager(asset_manager_2, True)
 
 
 def test_name_and_others(tenv):

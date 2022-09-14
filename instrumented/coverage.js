@@ -16,7 +16,7 @@ const config = {
     // TODO: probably should get this from brownie-config
     copyDependencies: ["@openzeppelin", "@uniswap"],
   },
-  skipFiles: ["dependencies/", "mocks/"],
+  skipFiles: ["dependencies/", "mocks/", "WadRayMath.sol"],
   logger: console,
 };
 
