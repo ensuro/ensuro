@@ -142,7 +142,7 @@ exports.impersonate = async function (address, setBalanceTo) {
  * @param {String} eventName The name of the event we are interested in
  * @returns {LogDescription}
  */
-exports.getTransactionEvent = function (interface, receipt, eventName) {
+const getTransactionEvent = function (interface, receipt, eventName) {
   // for each log in the transaction receipt
   for (const log of receipt.events) {
     let parsedLog;
@@ -157,6 +157,8 @@ exports.getTransactionEvent = function (interface, receipt, eventName) {
   }
   return null; // not found
 };
+
+exports.getTransactionEvent = getTransactionEvent;
 
 exports.deployPool = async function (hre, options) {
   const PolicyPool = await ethers.getContractFactory("PolicyPool");
@@ -301,7 +303,7 @@ Mimics the behaviour of the PolicyPoolConfig.getComponentRole method
 Component roles are roles created doing XOR between the component
 address and the original role.
 
-Example: 
+Example:
     getComponentRole("0xc6e7DF5E7b4f2A278906862b61205850344D4e7d", "ORACLE_ADMIN_ROLE")
     // "0x05e01b185238b49f750d03d945e38a7f6c3be8b54de0ee42d481eb7814f0d3a8"
 */
@@ -332,3 +334,19 @@ function makePolicyId(rm, internalId) {
 }
 
 exports.makePolicyId = makePolicyId;
+
+async function makePolicy(pool, rm, cust, payout, premium, lossProb, expiration, internalId) {
+  let tx = await rm.connect(cust).newPolicy(payout, premium, lossProb, expiration, cust.address, internalId);
+  let receipt = await tx.wait();
+  const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
+
+  return newPolicyEvt;
+}
+
+exports.makePolicy = makePolicy;
+
+async function blockchainNow(owner) {
+  return (await owner.provider.getBlock("latest")).timestamp;
+}
+
+exports.blockchainNow = blockchainNow;
