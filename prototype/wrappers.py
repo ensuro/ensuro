@@ -73,6 +73,7 @@ class ReserveMixin:
     forward_to_asset_manager_ = MethodAdapter((("functionCall", "bytes"), ))
 
     set_asset_manager = MethodAdapter((("assetManager", "address"), ("force", "bool")))
+    asset_manager = MethodAdapter((), is_property=True)
     checkpoint = MethodAdapter(())
     record_earnings = MethodAdapter(())
     rebalance = MethodAdapter(())
@@ -712,6 +713,8 @@ class FixedRateVault(IERC20):
     withdraw = MethodAdapter(
         (("caller", "msg.sender"), ("assets", "amount"), ("receiver", "address"), ("owner", "address"), )
     )
+    discrete_earning = MethodAdapter((("assets", "amount"), ))
+    broken = MethodAdapter((), "bool", is_property=True)
 
 
 class LiquidityThresholdAssetManager(ETHWrapper):

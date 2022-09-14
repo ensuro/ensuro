@@ -259,7 +259,13 @@ class ReserveMixin:
     @only_role("LEVEL1_ROLE", "GUARDIAN_ROLE")
     def set_asset_manager(self, asset_manager, force):
         if self.asset_manager:
-            self.asset_manager.deinvest_all()
+            if force:
+                try:
+                    self.asset_manager.deinvest_all()
+                except Exception:
+                    pass
+            else:
+                self.asset_manager.deinvest_all()
         self.asset_manager = asset_manager
 
     def _transfer_to(self, target, amount):
@@ -958,6 +964,7 @@ class FixedRateVault(ERC20Token):
     asset = ContractProxyField()
     interest_rate = WadField(default=_W("0.05"))
     total_assets_ = CompositeField(ScaledAmount)
+    broken = IntField(default=0)
 
     def __init__(self, **kwargs):
         if "name" not in kwargs:
@@ -970,6 +977,7 @@ class FixedRateVault(ERC20Token):
 
     @view
     def total_assets(self):
+        require(not self.broken, "Vault it's broken")
         return self.total_assets_.get_scaled_amount(self.interest_rate)
 
     @view
@@ -998,6 +1006,7 @@ class FixedRateVault(ERC20Token):
 
     @external
     def withdraw(self, caller, assets, receiver, owner):
+        require(not self.broken, "Vault it's broken")
         shares = self.convert_to_shares(assets)
         self.total_assets_.sub(assets, self.interest_rate)
         balance = self.asset.balance_of(self)
@@ -1006,6 +1015,13 @@ class FixedRateVault(ERC20Token):
         require(caller == owner, "Only owner can withdraw for now")  # TODO: allowance
         self.burn(owner, shares)
         self.asset.transfer(self, receiver, assets)
+
+    @external
+    def discrete_earning(self, assets):
+        if assets > 0:
+            self.total_assets_.add(assets, self.interest_rate)
+        else:
+            self.total_assets_.sub(-assets, self.interest_rate)
 
 
 class AssetManager(Contract):

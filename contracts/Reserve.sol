@@ -78,7 +78,9 @@ abstract contract Reserve is PolicyPoolComponent {
     }
     _setAssetManager(newAM);
     am = address(assetManager());
-    am.functionDelegateCall(abi.encodeWithSelector(IAssetManager.connect.selector));
+    if (am != address(0)) {
+      am.functionDelegateCall(abi.encodeWithSelector(IAssetManager.connect.selector));
+    }
     emit ComponentChanged(action, address(newAM));
   }
 
