@@ -486,7 +486,12 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     return uint256(_scr.scr).wadDiv(this.totalSupply());
   }
 
-  function lockScr(uint256 scrAmount, uint256 policyInterestRate) external override onlyBorrower {
+  function lockScr(uint256 scrAmount, uint256 policyInterestRate)
+    external
+    override
+    onlyBorrower
+    whenNotPaused
+  {
     require(
       scrAmount <= this.fundsAvailableToLock(),
       "Not enought funds available to cover the SCR"
@@ -547,7 +552,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     external
     override
     onlyPolicyPool
-    whenNotPaused
     returns (uint256)
   {
     require(
@@ -572,7 +576,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     external
     override
     onlyPolicyPool
-    whenNotPaused
     returns (uint256)
   {
     uint256 balance = balanceOf(provider);
@@ -635,60 +638,49 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     return uint256(_params.internalLoanInterestRate) * 1e14; // to wad 4 -> 18 digits
   }
 
-  function setInternalLoanInterestRate(uint256 newRate)
+  function setParam(Parameter param, uint256 newValue)
     external
     onlyGlobalOrComponentRole2(LEVEL2_ROLE, LEVEL3_ROLE)
   {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
-    require(
-      !tweak || _isTweakWad(internalLoanInterestRate(), newRate, 3e17),
-      "Tweak exceeded: internalLoanInterestRate tweaks only up to 30%"
+    if (param == Parameter.liquidityRequirement) {
+      require(
+        !tweak || _isTweakWad(liquidityRequirement(), newValue, 1e17),
+        "Tweak exceeded: liquidityRequirement tweaks only up to 10%"
+      );
+      _params.liquidityRequirement = uint16(newValue / 1e14);
+    } else if (param == Parameter.minUtilizationRate) {
+      require(
+        !tweak || _isTweakWad(minUtilizationRate(), newValue, 3e17),
+        "Tweak exceeded: minUtilizationRate tweaks only up to 30%"
+      );
+      _params.minUtilizationRate = uint16(newValue / 1e14);
+    } else if (param == Parameter.maxUtilizationRate) {
+      require(
+        !tweak || _isTweakWad(maxUtilizationRate(), newValue, 3e17),
+        "Tweak exceeded: maxUtilizationRate tweaks only up to 30%"
+      );
+      _params.maxUtilizationRate = uint16(newValue / 1e14);
+    } else if (param == Parameter.internalLoanInterestRate) {
+      require(
+        !tweak || _isTweakWad(internalLoanInterestRate(), newValue, 3e17),
+        "Tweak exceeded: internalLoanInterestRate tweaks only up to 30%"
+      );
+      // This call changes the interest rate without updating the current loans up to this point
+      // So, if interest rate goes from 5% to 6%, this change will be retroactive to the lastUpdate of each
+      // loan. Since it's a permissioned call, I'm ok with this. If a caller wants to reduce the impact, it can
+      // issue 1 wei repayLoan to each active loan, forcing the update of the scales
+      _params.internalLoanInterestRate = uint16(newValue / 1e14);
+    } else {
+      revert("Invalid param!");
+    }
+    _parameterChanged(
+      IAccessManager.GovernanceActions(
+        uint256(IAccessManager.GovernanceActions.setLiquidityRequirement) + uint256(param)
+      ),
+      newValue,
+      tweak
     );
-    // This call changes the interest rate without updating the current loans up to this point
-    // So, if interest rate goes from 5% to 6%, this change will be retroactive to the lastUpdate of each
-    // loan. Since it's a permissioned call, I'm ok with this. If a caller wants to reduce the impact, it can
-    // issue 1 wei repayLoan to each active loan, forcing the update of the scales
-    _params.internalLoanInterestRate = uint16(newRate / 1e14);
-    _parameterChanged(IAccessManager.GovernanceActions.setInternalLoanInterestRate, newRate, tweak);
-  }
-
-  function setLiquidityRequirement(uint256 newRate)
-    external
-    onlyGlobalOrComponentRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-  {
-    bool tweak = !hasPoolRole(LEVEL2_ROLE);
-    require(
-      !tweak || _isTweakWad(liquidityRequirement(), newRate, 1e17),
-      "Tweak exceeded: liquidityRequirement tweaks only up to 10%"
-    );
-    _params.liquidityRequirement = uint16(newRate / 1e14);
-    _parameterChanged(IAccessManager.GovernanceActions.setLiquidityRequirement, newRate, tweak);
-  }
-
-  function setMaxUtilizationRate(uint256 newRate)
-    external
-    onlyGlobalOrComponentRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-  {
-    bool tweak = !hasPoolRole(LEVEL2_ROLE);
-    require(
-      !tweak || _isTweakWad(maxUtilizationRate(), newRate, 3e17),
-      "Tweak exceeded: maxUtilizationRate tweaks only up to 30%"
-    );
-    _params.maxUtilizationRate = uint16(newRate / 1e14);
-    _parameterChanged(IAccessManager.GovernanceActions.setMaxUtilizationRate, newRate, tweak);
-  }
-
-  function setMinUtilizationRate(uint256 newRate)
-    external
-    onlyGlobalOrComponentRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-  {
-    bool tweak = !hasPoolRole(LEVEL2_ROLE);
-    require(
-      !tweak || _isTweakWad(minUtilizationRate(), newRate, 3e17),
-      "Tweak exceeded: minUtilizationRate tweaks only up to 30%"
-    );
-    _params.minUtilizationRate = uint16(newRate / 1e14);
-    _parameterChanged(IAccessManager.GovernanceActions.setMinUtilizationRate, newRate, tweak);
   }
 
   function setWhitelist(ILPWhitelist lpWhitelist_)

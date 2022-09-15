@@ -88,13 +88,14 @@ abstract contract PolicyPoolComponent is
     __Pausable_init();
   }
 
-  function _authorizeUpgrade(address)
+  function _authorizeUpgrade(address newImpl)
     internal
+    view
     override
     onlyGlobalOrComponentRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
   {
     require(
-      IPolicyPoolComponent(address).policyPool() == _policyPool,
+      IPolicyPoolComponent(newImpl).policyPool() == _policyPool,
       "Can't upgrade changing the PolicyPool!"
     );
   }

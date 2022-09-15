@@ -9,6 +9,13 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  * @author Ensuro
  */
 interface IEToken is IERC20 {
+  enum Parameter {
+    liquidityRequirement,
+    minUtilizationRate,
+    maxUtilizationRate,
+    internalLoanInterestRate
+  }
+
   /**
    * @dev Event emitted when part of the funds of the eToken are locked as solvency capital.
    * @param interestRate The annualized interestRate paid for the capital (wad)
