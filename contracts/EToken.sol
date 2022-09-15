@@ -410,7 +410,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     address from,
     address to,
     uint256 amount
-  ) internal virtual {
+  ) internal virtual whenNotPaused {
     require(
       from == address(0) ||
         to == address(0) ||

@@ -175,7 +175,8 @@ describe("Test pause, unpause and upgrade contracts", function () {
     // Try to pause EToken  without permissions
     await expect(etk.pause()).to.be.revertedWith("AccessControl:");
     expect(await etk.paused()).to.be.equal(false);
-
+    expect(await etk.balanceOf(lp.address)).to.be.equal(_A(3000));
+    expect(await etk.balanceOf(cust.address)).to.be.equal(_A(0));
     // Pause EToken
     await etk.connect(guardian).pause();
     expect(await etk.paused()).to.be.equal(true);
@@ -183,6 +184,7 @@ describe("Test pause, unpause and upgrade contracts", function () {
     await currency.connect(lp).approve(pool.address, _A(500));
     await expect(pool.connect(lp).deposit(etk.address, _A(500))).to.be.revertedWith("Pausable: paused");
     await expect(pool.connect(lp).withdraw(etk.address, _A(500))).to.be.revertedWith("Pausable: paused");
+    await expect(etk.connect(lp).transfer(cust.address, _A(500))).to.be.revertedWith("Pausable: paused");
 
     // UnPause EToken
     await etk.unpause();
@@ -190,6 +192,10 @@ describe("Test pause, unpause and upgrade contracts", function () {
 
     await expect(pool.connect(lp).deposit(etk.address, _A(500))).not.to.be.reverted;
     await expect(pool.connect(lp).withdraw(etk.address, _A(500))).not.to.be.reverted;
+
+    await etk.connect(lp).transfer(cust.address, _A(500));
+    expect(await etk.balanceOf(lp.address)).to.be.equal(_A(2500));
+    expect(await etk.balanceOf(cust.address)).to.be.equal(_A(500));
   });
 
   it("Pause and Unpause PolicyNFT", async function () {
