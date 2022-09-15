@@ -247,7 +247,12 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     return amount;
   }
 
-  function policyCreated(Policy.PolicyData memory policy) external override onlyPolicyPool {
+  function policyCreated(Policy.PolicyData memory policy)
+    external
+    override
+    onlyPolicyPool
+    whenNotPaused
+  {
     _activePurePremiums += policy.purePremium;
     if (policy.jrScr > 0) _juniorEtk.lockScr(policy.jrScr, policy.jrInterestRate());
     if (policy.srScr > 0) _seniorEtk.lockScr(policy.srScr, policy.srInterestRate());
@@ -257,7 +262,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     address policyHolder,
     Policy.PolicyData memory policy,
     uint256 payout
-  ) external override onlyPolicyPool {
+  ) external override onlyPolicyPool whenNotPaused {
     _activePurePremiums -= policy.purePremium;
     if (policy.purePremium >= payout) {
       uint256 purePremiumWon = policy.purePremium - payout;
@@ -305,7 +310,12 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     return purePremiumWon - repayAmount;
   }
 
-  function policyExpired(Policy.PolicyData memory policy) external override onlyPolicyPool {
+  function policyExpired(Policy.PolicyData memory policy)
+    external
+    override
+    onlyPolicyPool
+    whenNotPaused
+  {
     uint256 purePremiumWon = policy.purePremium;
     _activePurePremiums -= purePremiumWon;
 
