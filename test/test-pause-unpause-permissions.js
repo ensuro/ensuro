@@ -19,7 +19,7 @@ describe("Test pause, unpause and upgrade contracts", function () {
   let pool;
   let premiumsAccount;
   let TrustfulRiskModule;
-  let owner, lp, cust, guardian;
+  let owner, lp, cust, guardian, level1;
   let _A;
   let etk;
   let accessManager;
@@ -27,7 +27,7 @@ describe("Test pause, unpause and upgrade contracts", function () {
   let rm;
 
   beforeEach(async () => {
-    [owner, lp, cust, guardian] = await ethers.getSigners();
+    [owner, lp, cust, guardian, level1] = await ethers.getSigners();
 
     _A = amountFunction(6);
 
@@ -39,7 +39,7 @@ describe("Test pause, unpause and upgrade contracts", function () {
 
     pool = await deployPool(hre, {
       currency: currency.address,
-      grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
+      grantRoles: [],
       treasuryAddress: "0x87c47c9a5a2aa74ae714857d64911d9a091c25b1", // Random address
     });
     pool._A = _A;
@@ -53,6 +53,7 @@ describe("Test pause, unpause and upgrade contracts", function () {
     rm = await addRiskModule(pool, premiumsAccount, TrustfulRiskModule, {});
 
     await grantRole(hre, accessManager, "GUARDIAN_ROLE", guardian.address);
+    await grantRole(hre, accessManager, "LEVEL1_ROLE", level1.address);
 
     // Roles to create and resolve policies
     await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", cust.address);
@@ -83,7 +84,8 @@ describe("Test pause, unpause and upgrade contracts", function () {
     ).to.be.revertedWith("Pausable: paused");
 
     // UnPause PolicyPool
-    await pool.unpause();
+    await expect(pool.connect(cust).unpause()).to.be.revertedWith("AccessControl:");
+    await pool.connect(level1).unpause();
     expect(await pool.paused()).to.be.equal(false);
 
     await currency.connect(lp).approve(pool.address, _A(500));
@@ -101,7 +103,7 @@ describe("Test pause, unpause and upgrade contracts", function () {
     // Can't resolve Policy
     await expect(rm.connect(cust).resolvePolicy(policy, _A(10))).to.be.revertedWith("Pausable: paused");
     // UnPause PolicyPool
-    await pool.unpause();
+    await pool.connect(guardian).unpause();
     // Can resolve Policy
     await expect(rm.connect(cust).resolvePolicy(policy, _A(10))).not.to.be.reverted;
   });
@@ -121,7 +123,7 @@ describe("Test pause, unpause and upgrade contracts", function () {
     ).to.be.revertedWith("Pausable: paused");
 
     // UnPause PolicyPool
-    await pool.unpause();
+    await pool.connect(level1).unpause();
     expect(await pool.paused()).to.be.equal(false);
 
     // Can create policy
@@ -133,7 +135,7 @@ describe("Test pause, unpause and upgrade contracts", function () {
     // Can't resolve Policy
     await expect(rm.connect(cust).resolvePolicyFullPayout(policy, true)).to.be.revertedWith("Pausable: paused");
     // UnPause PolicyPool
-    await pool.unpause();
+    await pool.connect(guardian).unpause();
     // Can resolve Policy
     await expect(rm.connect(cust).resolvePolicyFullPayout(policy, true)).not.to.be.reverted;
   });
@@ -153,7 +155,7 @@ describe("Test pause, unpause and upgrade contracts", function () {
     ).to.be.revertedWith("Pausable: paused");
 
     // UnPause PolicyPool
-    await pool.unpause();
+    await pool.connect(guardian).unpause();
     expect(await pool.paused()).to.be.equal(false);
 
     // Can create policy
@@ -165,7 +167,7 @@ describe("Test pause, unpause and upgrade contracts", function () {
     // Can't expire Policy
     await expect(pool.expirePolicy(policy)).to.be.revertedWith("Pausable: paused");
     // UnPause PolicyPool
-    await pool.unpause();
+    await pool.connect(level1).unpause();
     // Can expire Policy
     await helpers.time.increaseTo(policy.expiration + 500);
     await pool.expirePolicy(policy);
@@ -196,6 +198,12 @@ describe("Test pause, unpause and upgrade contracts", function () {
     await etk.connect(lp).transfer(cust.address, _A(500));
     expect(await etk.balanceOf(lp.address)).to.be.equal(_A(2500));
     expect(await etk.balanceOf(cust.address)).to.be.equal(_A(500));
+
+    await expect(etk.connect(cust).pause()).to.be.revertedWith("AccessControl:");
+    await grantComponentRole(hre, accessManager, etk, "GUARDIAN_ROLE", cust);
+    await expect(etk.connect(cust).pause()).not.to.be.reverted;
+    // The permission is not global, it's only for this component
+    await expect(pool.connect(cust).pause()).to.be.revertedWith("AccessControl:");
   });
 
   it("Pause and Unpause PolicyNFT", async function () {
@@ -226,10 +234,12 @@ describe("Test pause, unpause and upgrade contracts", function () {
     const newPolicyEvt = await makePolicy(pool, rm, cust, _A(36), _A(1), _W(1 / 37), start + 3600, 1);
     const policy = newPolicyEvt.args.policy;
 
-    await policyNFT.connect(guardian).pause();
-    await expect(policyNFT.connect(cust).transferFrom(cust.address, owner.address, policy.id)).to.be.revertedWith(
-      "Pausable: paused"
-    );
+    await expect(policyNFT.connect(cust).pause()).to.be.revertedWith("AccessControl:");
+    await grantComponentRole(hre, accessManager, policyNFT, "GUARDIAN_ROLE", cust);
+    await policyNFT.connect(cust).pause();
+    await expect(
+      policyNFT.connect(cust).transferFrom(cust.address, owner.address, policy.id)
+    ).to.be.revertedWith("Pausable: paused");
 
     await policyNFT.unpause();
     expect(await policyNFT.ownerOf(policy.id)).to.be.equal(cust.address);
@@ -254,7 +264,9 @@ describe("Test pause, unpause and upgrade contracts", function () {
     expect(await rm.paused()).to.be.equal(true);
     await expect(rm.connect(cust).resolvePolicy(policy, _A(10))).to.be.revertedWith("Pausable: paused");
     // UnPause RiskModule
-    await rm.unpause();
+    await expect(rm.connect(lp).unpause()).to.be.revertedWith("AccessControl:");
+    await grantComponentRole(hre, accessManager, rm, "LEVEL1_ROLE", lp);
+    await rm.connect(lp).unpause();
     expect(await rm.paused()).to.be.equal(false);
 
     // Can resolve Policy

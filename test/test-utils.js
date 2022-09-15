@@ -242,18 +242,20 @@ async function grantRole(hre, contract, role, user) {
 
 exports.grantRole = grantRole;
 
-async function grantComponentRole(hre, contract, component, role, user) {
+async function grantComponentRole(hre, accessManager, component, role, user) {
   let userAddress;
   if (user === undefined) {
     user = await _getDefaultSigner(hre);
     userAddress = user.address;
   } else {
-    userAddress = user;
+    userAddress = user.address === undefined ? user : user.address;
   }
   const roleHex = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(role));
-  const componentRole = await contract.getComponentRole(component.address, roleHex);
-  if (!(await contract.hasRole(componentRole, userAddress))) {
-    await contract.grantComponentRole(component.address, roleHex, userAddress);
+  const componentRole = await accessManager.getComponentRole(component.address, roleHex);
+  console.log("componentRole", componentRole);
+  if (!(await accessManager.hasRole(componentRole, userAddress))) {
+    console.log("componentRole - sd", componentRole);
+    await accessManager.grantComponentRole(component.address, roleHex, userAddress);
   }
 }
 
