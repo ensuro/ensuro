@@ -50,29 +50,30 @@ abstract contract PolicyPoolComponent is
     _;
   }
 
-  modifier onlyPoolRole3(
+  modifier onlyComponentRole(bytes32 role) {
+    _policyPool.access().checkComponentRole(address(this), role, msg.sender, false);
+    _;
+  }
+
+  modifier onlyGlobalOrComponentRole(bytes32 role) {
+    _policyPool.access().checkComponentRole(address(this), role, msg.sender, true);
+    _;
+  }
+
+  modifier onlyGlobalOrComponentRole2(bytes32 role1, bytes32 role2) {
+    _policyPool.access().checkComponentRole2(address(this), role1, role2, msg.sender, true);
+    _;
+  }
+
+  modifier onlyGlobalOrComponentRole3(
     bytes32 role1,
     bytes32 role2,
     bytes32 role3
   ) {
-    if (!hasPoolRole(role1)) {
-      _policyPool.access().checkRole2(role2, role3, msg.sender);
+    IAccessManager access = _policyPool.access();
+    if (!access.hasComponentRole(address(this), role1, msg.sender, true)) {
+      _policyPool.access().checkComponentRole2(address(this), role2, role3, msg.sender, true);
     }
-    _;
-  }
-
-  modifier onlyPoolRole2(bytes32 role1, bytes32 role2) {
-    _policyPool.access().checkRole2(role1, role2, msg.sender);
-    _;
-  }
-
-  modifier onlyPoolRole(bytes32 role) {
-    _policyPool.access().checkRole(role, msg.sender);
-    _;
-  }
-
-  modifier onlyComponentRole(bytes32 role) {
-    _policyPool.access().checkComponentRole(address(this), role, msg.sender);
     _;
   }
 
@@ -87,14 +88,22 @@ abstract contract PolicyPoolComponent is
     __Pausable_init();
   }
 
-  // solhint-disable-next-line no-empty-blocks
-  function _authorizeUpgrade(address) internal override onlyPoolRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {}
+  function _authorizeUpgrade(address)
+    internal
+    override
+    onlyGlobalOrComponentRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
+  {
+    require(
+      IPolicyPoolComponent(address).policyPool() == _policyPool,
+      "Can't upgrade changing the PolicyPool!"
+    );
+  }
 
-  function pause() public onlyPoolRole(GUARDIAN_ROLE) {
+  function pause() public onlyGlobalOrComponentRole(GUARDIAN_ROLE) {
     _pause();
   }
 
-  function unpause() public onlyPoolRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {
+  function unpause() public onlyGlobalOrComponentRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {
     _unpause();
   }
 
@@ -107,7 +116,7 @@ abstract contract PolicyPoolComponent is
   }
 
   function hasPoolRole(bytes32 role) internal view returns (bool) {
-    return _policyPool.access().hasRole(role, msg.sender);
+    return _policyPool.access().hasComponentRole(address(this), role, msg.sender, true);
   }
 
   function _isTweakRay(

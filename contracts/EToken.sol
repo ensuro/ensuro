@@ -637,7 +637,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
 
   function setInternalLoanInterestRate(uint256 newRate)
     external
-    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
+    onlyGlobalOrComponentRole2(LEVEL2_ROLE, LEVEL3_ROLE)
   {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
@@ -654,7 +654,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
 
   function setLiquidityRequirement(uint256 newRate)
     external
-    onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE)
+    onlyGlobalOrComponentRole2(LEVEL2_ROLE, LEVEL3_ROLE)
   {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
@@ -665,7 +665,10 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     _parameterChanged(IAccessManager.GovernanceActions.setLiquidityRequirement, newRate, tweak);
   }
 
-  function setMaxUtilizationRate(uint256 newRate) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
+  function setMaxUtilizationRate(uint256 newRate)
+    external
+    onlyGlobalOrComponentRole2(LEVEL2_ROLE, LEVEL3_ROLE)
+  {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
       !tweak || _isTweakWad(maxUtilizationRate(), newRate, 3e17),
@@ -675,7 +678,10 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     _parameterChanged(IAccessManager.GovernanceActions.setMaxUtilizationRate, newRate, tweak);
   }
 
-  function setMinUtilizationRate(uint256 newRate) external onlyPoolRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
+  function setMinUtilizationRate(uint256 newRate)
+    external
+    onlyGlobalOrComponentRole2(LEVEL2_ROLE, LEVEL3_ROLE)
+  {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     require(
       !tweak || _isTweakWad(minUtilizationRate(), newRate, 3e17),
@@ -687,7 +693,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
 
   function setWhitelist(ILPWhitelist lpWhitelist_)
     external
-    onlyPoolRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
+    onlyGlobalOrComponentRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
   {
     require(
       address(lpWhitelist_) == address(0) ||

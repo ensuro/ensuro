@@ -227,12 +227,12 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    *
    * Requirements:
    *
-   * - onlyPoolRole(WITHDRAW_WON_PREMIUMS_ROLE)
+   * - onlyGlobalOrComponentRole(WITHDRAW_WON_PREMIUMS_ROLE)
    * - _wonPurePremiums > 0
    */
   function withdrawWonPremiums(uint256 amount, address destination)
     external
-    onlyComponentRole(WITHDRAW_WON_PREMIUMS_ROLE)
+    onlyGlobalOrComponentRole(WITHDRAW_WON_PREMIUMS_ROLE)
     returns (uint256)
   {
     if (_surplus <= 0) {
