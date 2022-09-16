@@ -13,6 +13,31 @@ def eth_call(wrapper, fn_name, *args):
     return wrapper.provider.eth_call.get_eth_function(wrapper, fn_name)(*args)
 
 
+# Utility classes to adapt
+class GetParam:
+    def __init__(self, paramIndex):
+        self.paramIndex = paramIndex
+
+    def __call__(self, wrapper):
+        return Wad(wrapper.params()[self.paramIndex])
+
+
+class SetParam:
+    def __init__(self, paramIndex):
+        self.paramIndex = paramIndex
+
+    def __call__(self, wrapper, value):
+        return wrapper.set_param(self.paramIndex, value)
+
+
+class GetProperty:
+    def __init__(self, methodName):
+        self.methodName = methodName
+
+    def __call__(self, wrapper):
+        return getattr(wrapper, self.methodName)
+
+
 class TestCurrency(IERC20):
     eth_contract = "TestCurrency"
     __test__ = False
@@ -141,15 +166,29 @@ class EToken(ReserveMixin, IERC20):
     scr = MethodAdapter((), "amount", is_property=True)
     scr_interest_rate = MethodAdapter((), "wad", is_property=True)
     token_interest_rate = MethodAdapter((), "wad", is_property=True)
-    internal_loan_interest_rate = MethodAdapter((), "wad", is_property=True)
-    liquidity_requirement = MethodAdapter((), "wad", is_property=True)
-    min_utilization_rate = MethodAdapter((), "wad", is_property=True)
-    max_utilization_rate = MethodAdapter((), "wad", is_property=True)
     utilization_rate = MethodAdapter((), "wad", is_property=True)
-    set_internal_loan_interest_rate = MethodAdapter((("new_rate", "wad"), ))
-    set_max_utilization_rate = MethodAdapter((("new_rate", "wad"), ))
-    set_min_utilization_rate = MethodAdapter((("new_rate", "wad"), ))
     set_whitelist = MethodAdapter((("whitelist", "contract"), ))
+
+    set_param = MethodAdapter((("param", "int"), ("value", "wad")))
+
+    liquidity_requirement_ = MethodAdapter((), "wad", is_property=True)
+    min_utilization_rate_ = MethodAdapter((), "wad", is_property=True)
+    max_utilization_rate_ = MethodAdapter((), "wad", is_property=True)
+    internal_loan_interest_rate_ = MethodAdapter((), "wad", is_property=True)
+
+    liquidity_requirement = property(GetProperty("liquidity_requirement_"), SetParam(0))
+    min_utilization_rate = property(GetProperty("min_utilization_rate_"), SetParam(1))
+    max_utilization_rate = property(GetProperty("max_utilization_rate_"), SetParam(2))
+    internal_loan_interest_rate = property(GetProperty("internal_loan_interest_rate_"), SetParam(3))
+
+    def set_min_utilization_rate(self, value):
+        return self.set_param(1, value)
+
+    def set_max_utilization_rate(self, value):
+        return self.set_param(2, value)
+
+    def set_internal_loan_interest_rate(self, value):
+        return self.set_param(3, value)
 
     add_borrower = MethodAdapter((("borrower", "address"), ))
 
@@ -329,20 +368,6 @@ class RiskModule(ETHWrapper):
     params = MethodAdapter((), "tuple")
     set_param = MethodAdapter((("param", "int"), ("value", "wad")))
 
-    class GetParam:
-        def __init__(self, paramIndex):
-            self.paramIndex = paramIndex
-
-        def __call__(self, wrapper):
-            return Wad(wrapper.params()[self.paramIndex])
-
-    class SetParam:
-        def __init__(self, paramIndex):
-            self.paramIndex = paramIndex
-
-        def __call__(self, wrapper, value):
-            return wrapper.set_param(self.paramIndex, value)
-
     moc = property(GetParam(0), SetParam(0))
     jr_coll_ratio = property(GetParam(1), SetParam(1))
     coll_ratio = property(GetParam(2), SetParam(2))
@@ -350,13 +375,6 @@ class RiskModule(ETHWrapper):
     ensuro_coc_fee = property(GetParam(4), SetParam(4))
     jr_roc = property(GetParam(5), SetParam(5))
     sr_roc = property(GetParam(6), SetParam(6))
-
-    class GetProperty:
-        def __init__(self, methodName):
-            self.methodName = methodName
-
-        def __call__(self, wrapper):
-            return getattr(wrapper, self.methodName)
 
     max_payout_per_policy_ = MethodAdapter((), "amount", is_property=True)
     exposure_limit_ = MethodAdapter((), "amount", is_property=True)

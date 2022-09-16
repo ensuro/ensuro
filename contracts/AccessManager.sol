@@ -38,24 +38,47 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
   // solhint-disable-next-line no-empty-blocks
   function _authorizeUpgrade(address) internal override onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {}
 
-  function getComponentRole(address component, bytes32 role) public pure returns (bytes32) {
+  function getComponentRole(address component, bytes32 role)
+    public
+    pure
+    override
+    returns (bytes32)
+  {
     return bytes32(bytes20(component)) ^ role;
+  }
+
+  function hasComponentRole(
+    address component,
+    bytes32 role,
+    address account,
+    bool alsoGlobal
+  ) public view override returns (bool) {
+    return
+      (alsoGlobal && hasRole(role, account)) || hasRole(getComponentRole(component, role), account);
   }
 
   function checkComponentRole(
     address component,
     bytes32 role,
-    address account
+    address account,
+    bool alsoGlobal
   ) external view override {
-    _checkRole(getComponentRole(component, role), account);
+    if (!alsoGlobal || !hasRole(role, account)) {
+      _checkRole(getComponentRole(component, role), account);
+    }
   }
 
-  function grantComponentRole(
+  function checkComponentRole2(
     address component,
-    bytes32 role,
-    address account
-  ) external onlyRole(getRoleAdmin(getComponentRole(component, role))) {
-    _grantRole(getComponentRole(component, role), account);
+    bytes32 role1,
+    bytes32 role2,
+    address account,
+    bool alsoGlobal
+  ) external view override {
+    if (alsoGlobal && hasRole(role1, account)) return;
+    if (hasRole(getComponentRole(component, role1), account)) return;
+    if (alsoGlobal && hasRole(role2, account)) return;
+    _checkRole(getComponentRole(component, role2), account);
   }
 
   function checkRole(bytes32 role, address account) external view override {
@@ -68,5 +91,13 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
     address account
   ) external view override {
     if (!hasRole(role1, account)) _checkRole(role2, account);
+  }
+
+  function grantComponentRole(
+    address component,
+    bytes32 role,
+    address account
+  ) external onlyRole(getRoleAdmin(getComponentRole(component, role))) {
+    _grantRole(getComponentRole(component, role), account);
   }
 }

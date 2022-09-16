@@ -52,7 +52,7 @@ abstract contract Reserve is PolicyPoolComponent {
 
   function setAssetManager(IAssetManager newAM, bool force)
     external
-    onlyPoolRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
+    onlyGlobalOrComponentRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
   {
     require(
       address(newAM) == address(0) || address(newAM).isContract(),

@@ -27,13 +27,13 @@ contract PolicyNFT is UUPSUpgradeable, ERC721Upgradeable, PausableUpgradeable, I
     _;
   }
 
-  modifier onlyPoolRole2(bytes32 role1, bytes32 role2) {
-    _policyPool.access().checkRole2(role1, role2, msg.sender);
+  modifier onlyGlobalOrComponentRole(bytes32 role) {
+    _policyPool.access().checkComponentRole(address(this), role, msg.sender, true);
     _;
   }
 
-  modifier onlyPoolRole(bytes32 role) {
-    _policyPool.access().checkRole(role, msg.sender);
+  modifier onlyGlobalOrComponentRole2(bytes32 role1, bytes32 role2) {
+    _policyPool.access().checkComponentRole2(address(this), role1, role2, msg.sender, true);
     _;
   }
 
@@ -53,14 +53,17 @@ contract PolicyNFT is UUPSUpgradeable, ERC721Upgradeable, PausableUpgradeable, I
     _policyPool = policyPool_;
   }
 
-  // solhint-disable-next-line no-empty-blocks
-  function _authorizeUpgrade(address) internal override onlyPoolRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {}
+  function _authorizeUpgrade(address)
+    internal
+    override
+    onlyGlobalOrComponentRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
+  {} // solhint-disable-line no-empty-blocks
 
-  function pause() public onlyPoolRole(GUARDIAN_ROLE) {
+  function pause() public onlyGlobalOrComponentRole(GUARDIAN_ROLE) {
     _pause();
   }
 
-  function unpause() public onlyPoolRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {
+  function unpause() public onlyGlobalOrComponentRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {
     _unpause();
   }
 
