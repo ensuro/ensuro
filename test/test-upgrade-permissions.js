@@ -75,6 +75,25 @@ describe("Test Upgrade contracts", function () {
     await etk.connect(cust).upgradeTo(newEToken.address);
   });
 
+  it("Should not be able to upgrade EToken with different pool", async () => {
+    const newPool = await deployPool(hre, {
+      currency: currency.address,
+      grantRoles: [],
+      treasuryAddress: "0x7291Ba1DC551b666c49Da22dE76eC7ceEB51AeDC", // Random address
+    });
+    newPool._A = _A;
+
+    const EToken = await ethers.getContractFactory("EToken");
+    const newImpl = await EToken.deploy(newPool.address);
+
+    // Cust cant upgrade
+    await expect(etk.connect(cust).upgradeTo(newImpl.address)).to.be.revertedWith("AccessControl:");
+
+    await expect(etk.connect(guardian).upgradeTo(newImpl.address)).to.be.revertedWith(
+      "Can't upgrade changing the PolicyPool!"
+    );
+  });
+
   it("Should be able to upgrade PremiumsAccount contract", async () => {
     const PremiumsAccount = await ethers.getContractFactory("PremiumsAccount");
     const newImpl = await PremiumsAccount.deploy(pool.address, ethers.constants.AddressZero, etk.address);
