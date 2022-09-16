@@ -400,6 +400,8 @@ class RiskModule(ETHWrapper):
         return self._premiums_account
 
     def new_policy(self, *args, **kwargs):
+        if "premium" not in kwargs:
+            kwargs["premium"] = MAX_UINT
         receipt = self.new_policy_(*args, **kwargs)
         if "NewPolicy" in receipt.events:
             policy_data = receipt.events["NewPolicy"]["policy"]

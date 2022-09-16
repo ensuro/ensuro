@@ -128,13 +128,26 @@ class RiskModule(AccessControlContract):
     def new_policy(self, payout, premium, loss_prob, expiration, customer, internal_id):
         assert type(loss_prob) == Wad, "Loss prob MUST be wad"
         start = time_control.now
-        require(self.policy_pool.currency.allowance(customer, self.policy_pool.contract_id) >= premium,
-                "You must allow ENSURO to transfer the premium")
-        policy = Policy(id=-1, risk_module=self, payout=payout, premium=premium,
-                        loss_prob=loss_prob, start=start, expiration=expiration)
+        require(
+            self.policy_pool.currency.allowance(customer, self.policy_pool.contract_id) >= premium,
+            "You must allow ENSURO to transfer the premium",
+        )
+        if premium is None:
+            premium = self.get_minimum_premium(payout, loss_prob, expiration)
+        policy = Policy(
+            id=-1,
+            risk_module=self,
+            payout=payout,
+            premium=premium,
+            loss_prob=loss_prob,
+            start=start,
+            expiration=expiration,
+        )
 
-        require(policy.payout <= self.max_payout_per_policy,
-                f"Policy Payout: {policy.payout} > maximum per policy {self.max_payout_per_policy}")
+        require(
+            policy.payout <= self.max_payout_per_policy,
+            f"Policy Payout: {policy.payout} > maximum per policy {self.max_payout_per_policy}",
+        )
         active_exposure = self.active_exposure + policy.payout
         require(active_exposure <= self.exposure_limit, "RiskModule: Exposure limit exceeded")
         self.active_exposure = active_exposure
