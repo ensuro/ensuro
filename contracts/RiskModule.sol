@@ -314,6 +314,9 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     address customer,
     uint96 internalId
   ) internal whenNotPaused returns (Policy.PolicyData memory) {
+    if (premium == type(uint256).max) {
+      premium = getMinimumPremium(payout, lossProb, expiration);
+    }
     require(premium < payout, "Premium must be less than payout");
     uint40 now_ = uint40(block.timestamp);
     require(expiration > now_, "Expiration must be in the future");
