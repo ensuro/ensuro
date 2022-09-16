@@ -59,10 +59,13 @@ contract TrustfulRiskModule is RiskModule {
     uint256 premium,
     uint256 lossProb,
     uint40 expiration,
-    address payer,
     address onBehalfOf,
     uint96 internalId
   ) external onlyComponentRole(PRICER_ROLE) returns (uint256) {
+    address payer = onBehalfOf;
+    if (payer != msg.sender && _policyPool.currency().allowance(payer, msg.sender) < premium)
+      payer = msg.sender;
+
     return _newPolicy(payout, premium, lossProb, expiration, payer, onBehalfOf, internalId).id;
   }
 

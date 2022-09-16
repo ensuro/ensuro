@@ -1962,17 +1962,9 @@ def test_risk_provider_cant_drain_liquidity_provider(tenv):
     pool.access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
     USD.approve("JOHN_SELLER", pool.contract_id, _W(10))
 
-    with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="Payer must allow PRICER to transfer the premium"):
-        rm.new_policy(
-            payout=_W(100), premium=_W(10), on_behalf_of="LP1",
-            loss_prob=_W(1/101), expiration=tenv.time_control.now + WEEK,
-            internal_id=123
-        )
-
-
     with rm.as_("JOHN_SELLER"):
         policy = rm.new_policy(
-            payout=_W(100), premium=_W(10), payer="JOHN_SELLER", on_behalf_of="LP1",
+            payout=_W(100), premium=_W(10), on_behalf_of="LP1",
             loss_prob=_W(1/101), expiration=tenv.time_control.now + WEEK,
             internal_id=123
         )

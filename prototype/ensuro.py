@@ -163,8 +163,11 @@ class RiskModule(AccessControlContract):
 class TrustfulRiskModule(RiskModule):
     @only_component_role("PRICER_ROLE")
     def new_policy(self, *args, **kwargs):
-        if 'payer' not in kwargs:
-            kwargs['payer'] = kwargs.get('on_behalf_of')
+        payer = kwargs.get('on_behalf_of')
+        if self._running_as != payer and self.policy_pool.currency.allowance(payer, self._running_as) < kwargs.get('premium'):
+            payer = self._running_as
+        kwargs['payer'] = payer
+
         return super().new_policy(*args, **kwargs)
 
     @external

@@ -383,7 +383,7 @@ class TrustfulRiskModule(RiskModule):
 
     new_policy_ = MethodAdapter((
         ("payout", "amount"), ("premium", "amount"), ("loss_prob", "wad"), ("expiration", "int"),
-        ("payer", "address"), ("on_behalf_of", "address"), ("internal_id", "int"),
+        ("on_behalf_of", "address"), ("internal_id", "int"),
     ), "receipt")
 
     resolve_policy_full_payout = MethodAdapter((("policy", Policy.FIELDS), ("customer_won", "bool")))
