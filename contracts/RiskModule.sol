@@ -325,7 +325,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     );
     require(
       payer == msg.sender || _policyPool.currency().allowance(payer, msg.sender) >= premium,
-      "Payer must allow PRICER to transfer the premium"
+      "Payer must allow caller to transfer the premium"
     );
     require(payout <= maxPayoutPerPolicy(), "RiskModule: Payout is more than maximum per policy");
     Policy.PolicyData memory policy = Policy.initialize(
