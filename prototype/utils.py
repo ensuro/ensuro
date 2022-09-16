@@ -123,10 +123,17 @@ def load_config(yaml_config=None, module=None):
         pool.add_premiums_account(default_premiums_account)
 
     for risk_module_dict in config.get("risk_modules", []):
+        role_assignments = risk_module_dict.pop("roles", [])
+            
         risk_module_dict["policy_pool"] = pool
         if "premiums_account" not in risk_module_dict:
             risk_module_dict["premiums_account"] = default_premiums_account
         rm = module.TrustfulRiskModule(**risk_module_dict)
+
+        for role_assignment in role_assignments:
+            pool.access.grant_component_role(rm, role_assignment["role"], role_assignment["user"])
+
         pool.add_risk_module(rm)
+    
 
     return pool

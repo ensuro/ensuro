@@ -300,6 +300,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
    * @param payout The exposure (maximum payout) of the policy
    * @param premium The premium that will be paid by the policyHolder
    * @param lossProb The probability of having to pay the maximum payout (wad)
+   * @param payer The account that pays for the premium
    * @param expiration The expiration of the policy (timestamp)
    * @param onBehalfOf The policy holder
    * @param internalId An id that's unique within this module and it will be used to identify the policy
@@ -309,6 +310,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     uint256 premium,
     uint256 lossProb,
     uint40 expiration,
+    address payer,
     address onBehalfOf,
     uint96 internalId
   ) internal whenNotPaused returns (Policy.PolicyData memory) {
@@ -318,8 +320,12 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     require(((expiration - now_) / 3600) < _params.maxDuration, "Policy exceeds max duration");
     require(onBehalfOf != address(0), "Customer can't be zero address");
     require(
-      _policyPool.currency().allowance(msg.sender, address(_policyPool)) >= premium,
+      _policyPool.currency().allowance(payer, address(_policyPool)) >= premium,
       "You must allow ENSURO to transfer the premium"
+    );
+    require(
+      payer == msg.sender || _policyPool.currency().allowance(payer, msg.sender) >= premium,
+      "Payer must allow PRICER to transfer the premium"
     );
     require(payout <= maxPayoutPerPolicy(), "RiskModule: Payout is more than maximum per policy");
     Policy.PolicyData memory policy = Policy.initialize(
@@ -332,7 +338,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     );
     _activeExposure += policy.payout;
     require(_activeExposure <= exposureLimit(), "RiskModule: SCR limit exceeded");
-    uint256 policyId = _policyPool.newPolicy(policy, msg.sender, onBehalfOf, internalId);
+    uint256 policyId = _policyPool.newPolicy(policy, payer, onBehalfOf, internalId);
     policy.id = policyId;
     return policy;
   }

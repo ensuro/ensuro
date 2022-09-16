@@ -288,11 +288,20 @@ def test_new_policy(tenv):
     assert rm.ensuro_coc_fee == _W("0.03")
 
     with rm.as_("JOHN_DOE"), pytest.raises(RevertError, match="is missing role"):
-        policy = rm.new_policy("JOHN_DOE", _W(36), _W(1), _W(1/37), expiration, "CUST1", 123)
+        policy = rm.new_policy(_W(36), _W(1), _W(1/37), expiration, "JOHN_DOE", "CUST1", 123)
 
     tenv.pool_access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
     with rm.as_("JOHN_SELLER"):
-        policy = rm.new_policy("JOHN_SELLER", _W(36), _W(1), _W(1/37), expiration, "CUST1", 123)
+        policy = rm.new_policy(
+            payout=_W(36), 
+            premium=_W(1), 
+            loss_prob=_W(1/37), 
+            expiration=expiration, 
+            payer="JOHN_SELLER", 
+            on_behalf_of="CUST1", 
+            internal_id=123
+        )
+
 
     policy.premium.assert_equal(_W(1))
     policy.payout.assert_equal(_W(36))
@@ -334,8 +343,16 @@ def test_moc(tenv):
 
     tenv.pool_access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
     with rm.as_("JOHN_SELLER"):
-        policy = rm.new_policy("JOHN_SELLER", _W(36), _W(1), _W(1/37), expiration, "CUST1", 111)
-
+        policy = rm.new_policy(
+            payout=_W(36), 
+            premium=_W(1), 
+            loss_prob=_W(1/37), 
+            expiration=expiration, 
+            payer="JOHN_SELLER", 
+            on_behalf_of="CUST1", 
+            internal_id=111
+        )
+        
     policy.premium.assert_equal(_W(1))
     policy.loss_prob.assert_equal(_W(1/37))
     policy.pure_premium.assert_equal(_W(36 * 1/37))
@@ -352,7 +369,15 @@ def test_moc(tenv):
     assert rm.moc == _W("1.01")
 
     with rm.as_("JOHN_SELLER"):
-        policy2 = rm.new_policy("JOHN_SELLER", _W(36), _W(1), _W(1/37), expiration, "CUST1", 112)
+        policy2 = rm.new_policy(
+            payout=_W(36), 
+            premium=_W(1), 
+            loss_prob=_W(1/37), 
+            expiration=expiration, 
+            payer="JOHN_SELLER", 
+            on_behalf_of="CUST1", 
+            internal_id=112
+        )
 
     policy2.premium.assert_equal(_W(1))
     assert policy2.id == rm.make_policy_id(112)
@@ -385,13 +410,25 @@ def test_minimum_premium(tenv):
 
     tenv.pool_access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
     with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="less than minimum"):
-        policy = rm.new_policy("JOHN_SELLER", _W(36), _W("1.28"), _W(1/37), expiration, "CUST1", 222)
+        policy = rm.new_policy(
+            payout=_W(36), 
+            premium=_W("1.28"), 
+            loss_prob=_W(1/37), 
+            expiration=expiration, 
+            payer="JOHN_SELLER", 
+            on_behalf_of="CUST1", 
+            internal_id=222
+        )
 
     with rm.as_("JOHN_SELLER"):
         policy = rm.new_policy(
-            "JOHN_SELLER", _W(36),
-            rm.get_minimum_premium(_W(36), _W(1/37), expiration),
-            _W(1/37), expiration, "CUST1", 222
+            payout=_W(36),
+            premium=rm.get_minimum_premium(_W(36), _W(1/37), expiration),
+            loss_prob=_W(1/37), 
+            expiration=expiration, 
+            payer="JOHN_SELLER", 
+            on_behalf_of="CUST1", 
+            internal_id=222
         )
 
     policy.premium.assert_equal(minimum_premium, decimals=3)

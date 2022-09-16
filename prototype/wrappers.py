@@ -361,6 +361,8 @@ class RiskModule(ETHWrapper):
         return self._premiums_account
 
     def new_policy(self, *args, **kwargs):
+        if 'payer' not in kwargs:
+            kwargs['payer'] = kwargs.get('on_behalf_of')
         receipt = self.new_policy_(*args, **kwargs)
         if "NewPolicy" in receipt.events:
             policy_data = receipt.events["NewPolicy"]["policy"]
@@ -380,9 +382,8 @@ class TrustfulRiskModule(RiskModule):
     proxy_kind = "uups"
 
     new_policy_ = MethodAdapter((
-        ("sender", "msg.sender"), ("payout", "amount"), ("premium", "amount"),
-        ("loss_prob", "wad"), ("expiration", "int"), ("on_behalf_of", "address"), 
-        ("internal_id", "int"),
+        ("payout", "amount"), ("premium", "amount"), ("loss_prob", "wad"), ("expiration", "int"),
+        ("payer", "address"), ("on_behalf_of", "address"), ("internal_id", "int"),
     ), "receipt")
 
     resolve_policy_full_payout = MethodAdapter((("policy", Policy.FIELDS), ("customer_won", "bool")))

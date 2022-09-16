@@ -60,6 +60,11 @@ def test_transfers(tenv):
         coll_ratio: 1
         sr_roc: "0.01"
         ensuro_pp_fee: 0
+        roles:
+          - user: owner
+            role: PRICER_ROLE
+          - user: owner
+            role: RESOLVER_ROLE
     currency:
         name: USD
         symbol: $
@@ -77,17 +82,16 @@ def test_transfers(tenv):
     timecontrol = tenv.time_control
     rm = pool.risk_modules["Roulette"]
 
-    pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
-    pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
-
     scr = _W(3500 + (100/37)) + _W("0.0001")  # Rounding error
 
     _deposit(pool, "eUSD1YEAR", "LP1", scr)
     etoken = pool.etokens["eUSD1YEAR"]
 
-    pool.currency.approve(rm.owner, pool.contract_id, _W(100))
+    pool.currency.approve("CUST1", pool.contract_id, _W(100))
+    pool.currency.approve("CUST1", rm.owner, _W(100))
+
     policy = rm.new_policy(
-        sender=rm.owner, payout=_W(3600), premium=_W(100), on_behalf_of="CUST1",
+        payout=_W(3600), premium=_W(100), on_behalf_of="CUST1",
         loss_prob=_W(1/37), expiration=timecontrol.now + WEEK,
         internal_id=123
     )
@@ -134,6 +138,11 @@ def test_transfers_usdc(tenv):
         coll_ratio: 1
         sr_roc: "0.01"
         ensuro_pp_fee: 0
+        roles:
+          - user: owner
+            role: PRICER_ROLE
+          - user: owner
+            role: RESOLVER_ROLE
     currency:
         name: USD
         decimals: 6
@@ -154,17 +163,16 @@ def test_transfers_usdc(tenv):
     timecontrol = tenv.time_control
     rm = pool.risk_modules["Roulette"]
 
-    pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
-    pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
-
     scr = Wad(_D(3500 + (100/37)) + _D("0.0001"))  # Rounding error
 
     etoken = pool.etokens["eUSD1YEAR"]
     _deposit(pool, "eUSD1YEAR", "LP1", scr)
 
-    pool.currency.approve(rm.owner, pool.contract_id, Wad(_D(100)))
+    pool.currency.approve("CUST1", pool.contract_id, Wad(_D(100)))
+    pool.currency.approve("CUST1", rm.owner, Wad(_D(100)))
+
     policy = rm.new_policy(
-        sender=rm.owner, payout=Wad(_D(3600)), premium=Wad(_D(100)), on_behalf_of="CUST1",
+        payout=Wad(_D(3600)), premium=Wad(_D(100)), on_behalf_of="CUST1",
         loss_prob=_W(1/37), expiration=timecontrol.now + WEEK,
         internal_id=123
     )
@@ -252,7 +260,7 @@ def xtest_not_accept_rm(tenv):
 
     pool.currency.approve("CUST1", pool.contract_id, _W(100))
     policy = rm.new_policy(
-        sender="CUST1", payout=_W(2100), premium=_W(100), on_behalf_of="CUST1",
+        payout=_W(2100), premium=_W(100), on_behalf_of="CUST1",
         loss_prob=_W("0.03"), expiration=timecontrol.now + 10 * DAY,
         internal_id=123
     )
@@ -341,11 +349,11 @@ def test_walkthrough(tenv):
         - user: LP3
           amount: 2000
         - user: CUST1
-          amount: 0
+          amount: 1
         - user: CUST2
           amount: 2
         - user: CUST3
-          amount: 0
+          amount: 130
     etokens:
       - name: eUSD1YEAR
     """
@@ -378,14 +386,15 @@ def test_walkthrough(tenv):
 
     with pytest.raises(RevertError, match="You must allow ENSURO"):
         policy = policy_1 = policy = rm.new_policy(
-            sender=rm.owner, payout=_W(36), premium=_W(1), on_behalf_of="CUST1",
+            payout=_W(36), premium=_W(1), on_behalf_of="CUST1",
             loss_prob=_W(1/37), expiration=timecontrol.now + WEEK,
             internal_id=111
         )
 
-    pool.currency.approve(rm.owner, pool.contract_id, _W(1))
+    pool.currency.approve("CUST1", pool.contract_id, _W(1))
+    pool.currency.approve("CUST1", rm.owner, _W(1))
     policy_1 = policy = rm.new_policy(
-        sender=rm.owner, payout=_W(36), premium=_W(1), on_behalf_of="CUST1",
+        payout=_W(36), premium=_W(1), on_behalf_of="CUST1",
         loss_prob=_W(1/37), expiration=timecontrol.now + WEEK,
         internal_id=111
     )
@@ -418,13 +427,14 @@ def test_walkthrough(tenv):
     balances_1y = dict((lp, eUSD1YEAR.balance_of(lp)) for lp in ("LP1", "LP2", "LP3"))
     shares_1y = _calculate_shares(balances_1y, eUSD1YEAR.total_supply())
 
-    pool.currency.approve(rm.owner, pool.contract_id, _W(2))
+    pool.currency.approve("CUST2", pool.contract_id, _W(2))
+    pool.currency.approve("CUST2", rm.owner, _W(2))
 
     # With 10 days, the same interest rate is not possible, need to reduce the interest to keep
     # the same premium proportion
     with pytest.raises(RevertError, match="Premium less than minimum"):
         policy_2 = policy = rm.new_policy(
-            sender=rm.owner, payout=_W(72), premium=_W(2), on_behalf_of="CUST2",
+            payout=_W(72), premium=_W(2), on_behalf_of="CUST2",
             loss_prob=_W(1/37), expiration=timecontrol.now + 10 * DAY,
             internal_id=222
         )
@@ -435,7 +445,7 @@ def test_walkthrough(tenv):
     ).round(6)  # too much precision
 
     policy_2 = policy = rm.new_policy(
-        sender=rm.owner, payout=_W(72), premium=_W(2), on_behalf_of="CUST2",
+        payout=_W(72), premium=_W(2), on_behalf_of="CUST2",
         loss_prob=_W(1/37), expiration=timecontrol.now + 10 * DAY,
         internal_id=333
     )
@@ -496,7 +506,7 @@ def test_walkthrough(tenv):
     adjustment = p2_for_lps - p2_accrued_interest
     rm.resolve_policy(policy_2.id, False)
 
-    assert USD.balance_of("CUST2") == _W(2) # No payout to policy holder
+    assert USD.balance_of("CUST2") == _W(0)
     USD.balance_of(pool.contract_id).assert_equal(_W(0))  # Balance no longer in the pool
     USD.balance_of(eUSD1YEAR).assert_equal(
         _W(1000 + 2000 + 2000 + 2 - 35)
@@ -520,7 +530,8 @@ def test_walkthrough(tenv):
 
     policies = []
 
-    pool.currency.approve(rm.owner, pool.contract_id, _W(130))
+    pool.currency.approve("CUST3", pool.contract_id, _W(130))
+    pool.currency.approve("CUST3", rm.owner, _W(130))
 
     if is_brownie_coverage_enabled(tenv):
         return  # This test never ends if coverage is activated
@@ -535,7 +546,7 @@ def test_walkthrough(tenv):
     for day in range(65):
         pool_loan = eUSD1YEAR.get_loan(premiums_account)
         new_p = rm.new_policy(
-            sender=rm.owner, payout=_W(72), premium=_W(2),
+            payout=_W(72), premium=_W(2),
             loss_prob=_W(1/37), expiration=timecontrol.now + 6 * DAY,
             on_behalf_of="CUST3",
             internal_id=1000 + day
@@ -651,9 +662,10 @@ def test_nfts(tenv):
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(3503))
 
-    usd.approve(rm.owner, pool.contract_id, _W(100))
+    usd.approve("CUST1", pool.contract_id, _W(100))
+    usd.approve("CUST1", rm.owner, _W(100))
     policy = rm.new_policy(
-        sender=rm.owner, payout=_W(3600), premium=_W(100), on_behalf_of="CUST1",
+        payout=_W(3600), premium=_W(100), on_behalf_of="CUST1",
         loss_prob=_W(1/37), expiration=timecontrol.now + WEEK,
         internal_id=2**96 - 1
     )
@@ -667,14 +679,14 @@ def test_nfts(tenv):
 
     timecontrol.fast_forward(WEEK - DAY)
     rm.resolve_policy(policy.id, True)
-    assert usd.balance_of("CUST1") == _W(200)
+    assert usd.balance_of("CUST1") == _W(100)
     assert usd.balance_of("CUST2") == _W(3600)
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(3503), assert_deposit=False)
-    usd.approve(rm.owner, pool.contract_id, _W(100))
+    usd.approve("CUST1", pool.contract_id, _W(100))
     with pytest.raises(RevertError, match="Already exists|token already minted"):
         policy = rm.new_policy(
-            sender=rm.owner, payout=_W(1800), premium=_W(50), on_behalf_of="CUST1",
+            payout=_W(1800), premium=_W(50), on_behalf_of="CUST1",
             loss_prob=_W(1/37), expiration=timecontrol.now + WEEK,
             internal_id=2**96 - 1
         )
@@ -700,7 +712,7 @@ def test_policy_holder_contract(tenv):
         - user: LP1
           amount: 7006
         - user: CUST1
-          amount: 0
+          amount: 200
     etokens:
       - name: eUSD1YEAR
     """
@@ -721,9 +733,10 @@ def test_policy_holder_contract(tenv):
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(3503))
 
-    usd.approve(rm.owner, pool.contract_id, _W(100))
+    usd.approve("CUST1", pool.contract_id, _W(100))
+    usd.approve("CUST1", rm.owner, _W(100))
     policy = rm.new_policy(
-        sender=rm.owner, payout=_W(3600), premium=_W(100), on_behalf_of="CUST1",
+        payout=_W(3600), premium=_W(100), on_behalf_of="CUST1",
         loss_prob=_W(1/37), expiration=timecontrol.now + WEEK,
         internal_id=2**96 - 1
     )
@@ -748,15 +761,15 @@ def test_policy_holder_contract(tenv):
     assert ph_mock.policyId() == policy.id
     assert ph_mock.payout() == _W(3600)
 
-    assert usd.balance_of("CUST1") == _W(0)
+    assert usd.balance_of("CUST1") == _W(100)
     assert usd.balance_of(ph_mock) == _W(3600)
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(3503), assert_deposit=False)
-    usd.approve(rm.owner, pool.contract_id, _W(100))
+    usd.approve("CUST1", pool.contract_id, _W(100))
 
     # Create a 2nd policy
     policy = rm.new_policy(
-        sender=rm.owner, payout=_W(1800), premium=_W(50), on_behalf_of="CUST1",
+        payout=_W(1800), premium=_W(50), on_behalf_of="CUST1",
         loss_prob=_W(1/37), expiration=timecontrol.now + WEEK,
         internal_id=2**96 - 3
     )
@@ -769,7 +782,7 @@ def test_policy_holder_contract(tenv):
 
     # Create a 3rd policy - just to verify failing holder doesn't reverts
     policy = rm.new_policy(
-        sender=rm.owner, payout=_W(1800), premium=_W(50), on_behalf_of="CUST1",
+        payout=_W(1800), premium=_W(50), on_behalf_of="CUST1",
         loss_prob=_W(1/37), expiration=timecontrol.now + WEEK,
         internal_id=2**96 - 4
     )
@@ -795,7 +808,7 @@ def test_partial_payout(tenv):
         - user: LP1
           amount: 3500
         - user: CUST1
-          amount: 0
+          amount: 100
     etokens:
       - name: eUSD1YEAR
     """
@@ -811,9 +824,10 @@ def test_partial_payout(tenv):
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(3500))
 
-    usd.approve(rm.owner, pool.contract_id, _W(100))
+    usd.approve("CUST1", pool.contract_id, _W(100))
+    usd.approve("CUST1", rm.owner, _W(100))
     policy = rm.new_policy(
-        sender=rm.owner, payout=_W(3600), premium=_W(100), on_behalf_of="CUST1",
+        payout=_W(3600), premium=_W(100), on_behalf_of="CUST1",
         loss_prob=_W(1/37), expiration=timecontrol.now + WEEK,
         internal_id=111
     )
@@ -848,7 +862,7 @@ def test_internal_loan_partial_payout(tenv):
         - user: LP1
           amount: 3500
         - user: CUST1
-          amount: 0
+          amount: 2000
     etokens:
       - name: eUSD1YEAR
     """
@@ -862,10 +876,11 @@ def test_internal_loan_partial_payout(tenv):
     usd = pool.currency
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(3500))
-    usd.approve(rm.owner, pool.contract_id, _W(2000))
+    usd.approve("CUST1", pool.contract_id, _W(2000))
+    usd.approve("CUST1", rm.owner, _W(2000))
 
     policy = rm.new_policy(
-        sender=rm.owner, payout=_W(3600), premium=_W(2000), on_behalf_of="CUST1",
+        payout=_W(3600), premium=_W(2000), on_behalf_of="CUST1",
         loss_prob=_W(1/37), expiration=timecontrol.now + 2 * WEEK,
         internal_id=123
     )
@@ -902,7 +917,7 @@ def test_increase_won_pure_premiums(tenv):
         - user: LP1
           amount: 3500
         - user: CUST1
-          amount: 0
+          amount: 2000
     etokens:
       - name: eUSD1YEAR
     """
@@ -916,10 +931,11 @@ def test_increase_won_pure_premiums(tenv):
     usd = pool.currency
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(3500))
-    usd.approve(rm.owner, pool.contract_id, _W(2000))
+    usd.approve("CUST1", pool.contract_id, _W(2000))
+    usd.approve("CUST1", rm.owner, _W(2000))
 
     policy = rm.new_policy(
-        sender=rm.owner, payout=_W(3600), premium=_W(2000), on_behalf_of="CUST1",
+        payout=_W(3600), premium=_W(2000), on_behalf_of="CUST1",
         loss_prob=_W(1/37), expiration=timecontrol.now + WEEK,
         internal_id=222
     )
@@ -955,7 +971,7 @@ def test_payout_bigger_than_pure_premium(tenv):
         - user: LP1
           amount: 3500
         - user: CUST1
-          amount: 0
+          amount: 2000
     etokens:
       - name: eUSD1YEAR
     """
@@ -969,10 +985,11 @@ def test_payout_bigger_than_pure_premium(tenv):
     usd = pool.currency
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(3500))
-    usd.approve(rm.owner, pool.contract_id, _W(2000))
+    usd.approve("CUST1", pool.contract_id, _W(2000))
+    usd.approve("CUST1", rm.owner, _W(2000))
 
     policy = rm.new_policy(
-        sender=rm.owner, payout=_W(3600), premium=_W(2000), on_behalf_of="CUST1",
+        payout=_W(3600), premium=_W(2000), on_behalf_of="CUST1",
         loss_prob=_W(1/37), expiration=timecontrol.now + WEEK,
         internal_id=333
     )
@@ -1045,7 +1062,7 @@ def xtest_asset_manager(tenv):
 
     USD.approve("CUST1", pool.contract_id, _W(200))
     policy = rm.new_policy(
-        sender="CUST1", payout=_W(9200), premium=_W(200), on_behalf_of="CUST1",
+        payout=_W(9200), premium=_W(200), on_behalf_of="CUST1",
         loss_prob=_W("0.01"), expiration=timecontrol.now + 365 * DAY // 2,
         internal_id=22
     )
@@ -1142,7 +1159,7 @@ def xtest_assets_under_liquidity_middle(tenv):
 
     USD.approve("CUST1", pool.contract_id, _W(100))
     policy = rm.new_policy(
-        sender="CUST1", payout=_W(10), premium=_W("1.5"), on_behalf_of="CUST1",
+        payout=_W(10), premium=_W("1.5"), on_behalf_of="CUST1",
         loss_prob=_W("0.103"), expiration=timecontrol.now + 45 * DAY,
         internal_id=11
     )
@@ -1159,7 +1176,7 @@ def xtest_assets_under_liquidity_middle(tenv):
     rm.resolve_policy(policy.id, False)
 
     policy_2 = rm.new_policy(
-        sender="CUST1", payout=_W(5), premium=_W("0.705"), on_behalf_of="CUST1",
+        payout=_W(5), premium=_W("0.705"), on_behalf_of="CUST1",
         loss_prob=_W("0.103"), expiration=timecontrol.now + 45 * DAY,
         internal_id=22
     )
@@ -1277,7 +1294,7 @@ def xtest_distribute_negative_earnings_full_capital_from_etokens(tenv):
 
     USD.approve("CUST1", pool.contract_id, _W(100))
     policy = rm.new_policy(
-        sender="CUST1", payout=_W(10), premium=_W(1.5), on_behalf_of="CUST1",
+        payout=_W(10), premium=_W(1.5), on_behalf_of="CUST1",
         loss_prob=_W("0.105"), expiration=timecontrol.now + 45 * DAY,
         internal_id=123
     )
@@ -1308,7 +1325,7 @@ def xtest_distribute_negative_earnings_full_capital_from_etokens(tenv):
     lp1_balance = etk.balance_of("LP1")
 
     policy_2 = rm.new_policy(
-        sender="CUST1", payout=_W(5), premium=_W("0.75"), on_behalf_of="CUST1",
+        payout=_W(5), premium=_W("0.75"), on_behalf_of="CUST1",
         loss_prob=_W("0.105"), expiration=timecontrol.now + 45 * DAY,
         internal_id=232
     )
@@ -1381,7 +1398,7 @@ def xtest_distribute_negative_earnings_from_pool_and_etokens(tenv):
 
     USD.approve("CUST1", pool.contract_id, _W(200))
     policy = rm.new_policy(
-        sender="CUST1", payout=_W(9200), premium=_W(200), on_behalf_of="CUST1",
+        payout=_W(9200), premium=_W(200), on_behalf_of="CUST1",
         loss_prob=_W("0.01"), expiration=timecontrol.now + 365 * DAY // 2,
         internal_id=111
     )
@@ -1459,7 +1476,7 @@ def xtest_insolvency_without_hook(tenv):
 
     USD.approve("CUST1", pool.contract_id, _W(200))
     policy = rm.new_policy(
-        sender="CUST1", payout=_W(9200), premium=_W(200), on_behalf_of="CUST1",
+        payout=_W(9200), premium=_W(200), on_behalf_of="CUST1",
         loss_prob=_W("0.01"), expiration=timecontrol.now + 365 * DAY // 2,
         internal_id=122
     )
@@ -1526,7 +1543,7 @@ def xtest_lp_insolvency_hook_negative_ocean(tenv):
 
     USD.approve("CUST2", pool.contract_id, _W(200))
     policy_2 = rm.new_policy(
-        sender="CUST1", payout=_W(9200), premium=_W(200), on_behalf_of="CUST2",
+        payout=_W(9200), premium=_W(200), on_behalf_of="CUST2",
         loss_prob=_W("0.01"), expiration=timecontrol.now + 365 * DAY // 2,
         internal_id=333
     )
@@ -1578,7 +1595,7 @@ def xtest_lp_insolvency_hook_cover_etoken(tenv):
 
     USD.approve("CUST2", pool.contract_id, _W(200))
     policy_2 = rm.new_policy(
-        sender="CUST1", payout=_W(9200), premium=_W(200), on_behalf_of="CUST2",
+        payout=_W(9200), premium=_W(200), on_behalf_of="CUST2",
         loss_prob=_W("0.01"), expiration=timecontrol.now + 365 * DAY // 2,
         internal_id=12
     )
@@ -1760,7 +1777,7 @@ def test_expire_policy(tenv):
         - user: LP3
           amount: 1000
         - user: CUST1
-          amount: 0
+          amount: 100
     etokens:
       - name: eUSD1YEAR
     """
@@ -1781,9 +1798,10 @@ def test_expire_policy(tenv):
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(1000))
 
-    pool.currency.approve(rm.owner, pool.contract_id, _W(100))
+    pool.currency.approve("CUST1", pool.contract_id, _W(100))
+    pool.currency.approve("CUST1", rm.owner, _W(100))
     policy = rm.new_policy(
-        sender=rm.owner, payout=_W(2100), premium=_W(100), on_behalf_of="CUST1",
+        payout=_W(2100), premium=_W(100), on_behalf_of="CUST1",
         loss_prob=_W("0.03"), expiration=timecontrol.now + 10 * DAY,
         internal_id=122
     )
@@ -1845,7 +1863,7 @@ def test_expire_policy_payout(tenv):
         - user: LP3
           amount: 1000
         - user: CUST1
-          amount: 0
+          amount: 100
     etokens:
       - name: eUSD1YEAR
     """
@@ -1864,9 +1882,10 @@ def test_expire_policy_payout(tenv):
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(1000))
 
-    pool.currency.approve(rm.owner, pool.contract_id, _W(100))
+    pool.currency.approve("CUST1", pool.contract_id, _W(100))
+    pool.currency.approve("CUST1", rm.owner, _W(100))
     policy = rm.new_policy(
-        sender=rm.owner, payout=_W(2100), premium=_W(100), on_behalf_of="CUST1",
+        payout=_W(2100), premium=_W(100), on_behalf_of="CUST1",
         loss_prob=_W("0.03"), expiration=timecontrol.now + 10 * DAY,
         internal_id=123
     )
@@ -1876,7 +1895,6 @@ def test_expire_policy_payout(tenv):
         rm.resolve_policy(policy.id, True)
 
     rm.resolve_policy(policy.id, False)
-    USD.balance_of("CUST1").assert_equal(_W(0))
 
 
 def test_withdraw_won_premiums(tenv):
@@ -1944,9 +1962,17 @@ def test_risk_provider_cant_drain_liquidity_provider(tenv):
     pool.access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
     USD.approve("JOHN_SELLER", pool.contract_id, _W(10))
 
+    with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="Payer must allow PRICER to transfer the premium"):
+        rm.new_policy(
+            payout=_W(100), premium=_W(10), on_behalf_of="LP1",
+            loss_prob=_W(1/101), expiration=tenv.time_control.now + WEEK,
+            internal_id=123
+        )
+
+
     with rm.as_("JOHN_SELLER"):
         policy = rm.new_policy(
-            sender="JOHN_SELLER", payout=_W(100), premium=_W(10), on_behalf_of="LP1",
+            payout=_W(100), premium=_W(10), payer="JOHN_SELLER", on_behalf_of="LP1",
             loss_prob=_W(1/101), expiration=tenv.time_control.now + WEEK,
             internal_id=123
         )

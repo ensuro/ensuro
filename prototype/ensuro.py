@@ -125,11 +125,14 @@ class RiskModule(AccessControlContract):
         return (int(prefix, 16) << 96) + internal_id
 
     @external
-    def new_policy(self, sender, payout, premium, loss_prob, expiration, on_behalf_of, internal_id):
+    def new_policy(self, payout, premium, loss_prob, expiration, payer, on_behalf_of, internal_id):
         assert type(loss_prob) == Wad, "Loss prob MUST be wad"
         start = time_control.now
-        require(self.policy_pool.currency.allowance(sender, self.policy_pool.contract_id) >= premium,
+        require(self.policy_pool.currency.allowance(payer, self.policy_pool.contract_id) >= premium,
                 "You must allow ENSURO to transfer the premium")
+        require(self._running_as == payer or self.policy_pool.currency.allowance(payer, self._running_as) >= premium,
+                "Payer must allow PRICER to transfer the premium")
+        
         policy = Policy(id=-1, risk_module=self, payout=payout, premium=premium,
                         loss_prob=loss_prob, start=start, expiration=expiration)
 
@@ -139,7 +142,7 @@ class RiskModule(AccessControlContract):
         require(active_exposure <= self.exposure_limit, "RiskModule: Exposure limit exceeded")
         self.active_exposure = active_exposure
 
-        policy.id = self.policy_pool.new_policy(policy, sender, on_behalf_of, internal_id)
+        policy.id = self.policy_pool.new_policy(policy, payer, on_behalf_of, internal_id)
         assert policy.id > 0
         return policy
 
@@ -160,6 +163,8 @@ class RiskModule(AccessControlContract):
 class TrustfulRiskModule(RiskModule):
     @only_component_role("PRICER_ROLE")
     def new_policy(self, *args, **kwargs):
+        if 'payer' not in kwargs:
+            kwargs['payer'] = kwargs.get('on_behalf_of')
         return super().new_policy(*args, **kwargs)
 
     @external
