@@ -288,7 +288,7 @@ def test_new_policy(tenv):
     assert rm.ensuro_coc_fee == _W("0.03")
 
     with rm.as_("JOHN_DOE"), pytest.raises(RevertError, match="is missing role"):
-        policy = rm.new_policy(_W(36), _W(1), _W(1/37), expiration, "JOHN_DOE", "CUST1", 123)
+        policy = rm.new_policy(_W(36), _W(1), _W(1/37), expiration, "CUST1", 123)
 
     tenv.pool_access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
     with rm.as_("JOHN_SELLER"):
@@ -297,7 +297,6 @@ def test_new_policy(tenv):
             premium=_W(1), 
             loss_prob=_W(1/37), 
             expiration=expiration, 
-            payer="JOHN_SELLER", 
             on_behalf_of="CUST1", 
             internal_id=123
         )
@@ -348,7 +347,6 @@ def test_moc(tenv):
             premium=_W(1), 
             loss_prob=_W(1/37), 
             expiration=expiration, 
-            payer="JOHN_SELLER", 
             on_behalf_of="CUST1", 
             internal_id=111
         )
@@ -374,7 +372,6 @@ def test_moc(tenv):
             premium=_W(1), 
             loss_prob=_W(1/37), 
             expiration=expiration, 
-            payer="JOHN_SELLER", 
             on_behalf_of="CUST1", 
             internal_id=112
         )
@@ -415,7 +412,6 @@ def test_minimum_premium(tenv):
             premium=_W("1.28"), 
             loss_prob=_W(1/37), 
             expiration=expiration, 
-            payer="JOHN_SELLER", 
             on_behalf_of="CUST1", 
             internal_id=222
         )
@@ -426,7 +422,6 @@ def test_minimum_premium(tenv):
             premium=rm.get_minimum_premium(_W(36), _W(1/37), expiration),
             loss_prob=_W(1/37), 
             expiration=expiration, 
-            payer="JOHN_SELLER", 
             on_behalf_of="CUST1", 
             internal_id=222
         )
