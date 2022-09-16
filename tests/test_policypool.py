@@ -624,7 +624,7 @@ def test_nfts(tenv):
       - name: Roulette
         coll_ratio: 1
         ensuro_pp_fee: 0
-    nft:
+    policy_pool:
         name: Ensuro Policy NFT
         symbol: EPOL
     currency:
@@ -641,7 +641,6 @@ def test_nfts(tenv):
     """
 
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
-    nft = pool.policy_nft
     timecontrol = tenv.time_control
     rm = pool.risk_modules["Roulette"]
     pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
@@ -658,12 +657,12 @@ def test_nfts(tenv):
         internal_id=2**96 - 1
     )
 
-    assert nft.balance_of("CUST1") == 1
-    assert nft.owner_of(policy.id) == "CUST1"
+    assert pool.balance_of("CUST1") == 1
+    assert pool.owner_of(policy.id) == "CUST1"
     assert policy.id % (2**96) == (2**96 - 1)
     assert policy.id == rm.make_policy_id(2**96 - 1)
 
-    nft.transfer_from("CUST1", "CUST1", "CUST2", policy.id)
+    pool.transfer_from("CUST1", "CUST1", "CUST2", policy.id)
 
     timecontrol.fast_forward(WEEK - DAY)
     rm.resolve_policy(policy.id, True)
@@ -689,7 +688,7 @@ def test_policy_holder_contract(tenv):
       - name: Roulette
         coll_ratio: 1
         ensuro_pp_fee: 0
-    nft:
+    policy_pool:
         name: Ensuro Policy NFT
         symbol: EPOL
     currency:
@@ -706,7 +705,6 @@ def test_policy_holder_contract(tenv):
     """
 
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
-    nft = pool.policy_nft
     timecontrol = tenv.time_control
     rm = pool.risk_modules["Roulette"]
     pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
@@ -728,12 +726,12 @@ def test_policy_holder_contract(tenv):
         internal_id=2**96 - 1
     )
 
-    assert nft.balance_of("CUST1") == 1
-    assert nft.owner_of(policy.id) == "CUST1"
+    assert pool.balance_of("CUST1") == 1
+    assert pool.owner_of(policy.id) == "CUST1"
     assert policy.id % (2**96) == (2**96 - 1)
     assert policy.id == rm.make_policy_id(2**96 - 1)
 
-    nft.safe_transfer_from("CUST1", "CUST1", ph_mock, policy.id)
+    pool.safe_transfer_from("CUST1", "CUST1", ph_mock, policy.id)
     assert ph_mock.policyId() == policy.id
 
     timecontrol.fast_forward(WEEK - DAY)
@@ -761,7 +759,7 @@ def test_policy_holder_contract(tenv):
         internal_id=2**96 - 3
     )
 
-    nft.transfer_from("CUST1", "CUST1", ph_mock, policy.id)
+    pool.transfer_from("CUST1", "CUST1", ph_mock, policy.id)
     rm.resolve_policy(policy.id, False)
 
     assert ph_mock.policyId() == policy.id
@@ -774,7 +772,7 @@ def test_policy_holder_contract(tenv):
         internal_id=2**96 - 4
     )
 
-    nft.transfer_from("CUST1", "CUST1", ph_mock, policy.id)
+    pool.transfer_from("CUST1", "CUST1", ph_mock, policy.id)
     ph_mock.setFail(True)
     rm.resolve_policy(policy.id, False)
 

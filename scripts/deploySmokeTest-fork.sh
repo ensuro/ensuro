@@ -37,10 +37,9 @@ SRETK=`readAddress SRETK`
 
 npx hardhat --network $NETWORK deploy:premiumsAccount $VERIFY \
     --junior-etk $JRETK --senior-etk $SRETK \
-    --pool-address $POOL
+    --pool-address $POOL || die "Error deploying PremiumsAccount"
 
 PREMIUMS_ACCOUNT=`readAddress PA`
-dieOnError "Error deploying Premiums Account"
 
 echo "PremiumsAccount = $PREMIUMS_ACCOUNT"
 

@@ -20,13 +20,6 @@ interface IPolicyPool {
   function access() external view returns (IAccessManager);
 
   /**
-   * @dev Reference to the {PolicyNFT} contract. This contract it's an ERC721 Token that handles the ownership of the
-   *      policies.
-   * @return The address of the PolicyNFT contract
-   */
-  function policyNFT() external view returns (address);
-
-  /**
    * @dev Address of the treasury, that receives protocol fees.
    * @return The address of the treasury
    */

@@ -77,22 +77,17 @@ def load_config(yaml_config=None, module=None):
     for balance in initial_balances:
         currency.transfer(currency.owner, balance["user"], to_wad(balance["amount"]))
 
-    nft_params = config.get("nft", {})
-    nft_params.setdefault("owner", "owner")
-    nft_params.setdefault("name", "Ensuro Policy")
-    nft_params.setdefault("symbol", "EPOLI")
-    nft = module.PolicyNFT(**nft_params)
-
-    pool_config_params = config.get("access_manager", {})
-    pool_config_params.setdefault("owner", "owner")
-    pool_config = module.AccessManager(**pool_config_params)
+    access_mgr_params = config.get("access_manager", {})
+    access_mgr_params.setdefault("owner", "owner")
+    access_mgr = module.AccessManager(**access_mgr_params)
 
     pool_params = config.get("policy_pool", {})
-    pool_params["policy_nft"] = nft
+    pool_params.setdefault("name", "Ensuro Policy")
+    pool_params.setdefault("symbol", "EPOLI")
     pool_params["currency"] = currency
-    pool_params["access"] = pool_config
+    pool_params["access"] = access_mgr
     pool = module.PolicyPool(**pool_params)
-    pool.access.grant_role("LEVEL1_ROLE", pool_config.owner)
+    pool.access.grant_role("LEVEL1_ROLE", access_mgr.owner)
 
     default_etk = None
 
@@ -100,7 +95,7 @@ def load_config(yaml_config=None, module=None):
         if "symbol" not in etoken_dict:
             etoken_dict["symbol"] = etoken_dict["name"]
         etoken_dict["policy_pool"] = pool
-        etoken_dict["owner"] = pool_config.owner
+        etoken_dict["owner"] = access_mgr.owner
         etk = module.EToken(**etoken_dict)
         pool.add_etoken(etk)
         if default_etk is None:

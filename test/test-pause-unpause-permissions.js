@@ -23,7 +23,6 @@ describe("Test pause, unpause and upgrade contracts", function () {
   let _A;
   let etk;
   let accessManager;
-  let policyNFT;
   let rm;
 
   beforeEach(async () => {
@@ -48,7 +47,6 @@ describe("Test pause, unpause and upgrade contracts", function () {
 
     premiumsAccount = await deployPremiumsAccount(hre, pool, { srEtkAddr: etk.address });
     accessManager = await ethers.getContractAt("AccessManager", await pool.access());
-    policyNFT = await ethers.getContractAt("PolicyNFT", await pool.policyNFT());
     TrustfulRiskModule = await ethers.getContractFactory("TrustfulRiskModule");
     rm = await addRiskModule(pool, premiumsAccount, TrustfulRiskModule, {});
 
@@ -204,47 +202,6 @@ describe("Test pause, unpause and upgrade contracts", function () {
     await expect(etk.connect(cust).pause()).not.to.be.reverted;
     // The permission is not global, it's only for this component
     await expect(pool.connect(cust).pause()).to.be.revertedWith("AccessControl:");
-  });
-
-  it("Pause and Unpause PolicyNFT", async function () {
-    const start = await blockchainNow(owner);
-
-    // Try to pause PolicyNFT without permissions
-    await expect(policyNFT.pause()).to.be.revertedWith("AccessControl:");
-    expect(await policyNFT.paused()).to.be.equal(false);
-
-    await currency.connect(cust).approve(pool.address, _A(1));
-    await currency.connect(lp).approve(pool.address, _A(500));
-    await pool.connect(lp).deposit(etk.address, _A(500));
-
-    // Pause PolicyNFT
-    await policyNFT.connect(guardian).pause();
-    expect(await policyNFT.paused()).to.be.equal(true);
-
-    // Can't create policy
-    await expect(
-      rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust.address, 1)
-    ).to.be.revertedWith("Pausable: paused");
-
-    // UnPause PolicyNFT
-    await policyNFT.unpause();
-    expect(await policyNFT.paused()).to.be.equal(false);
-
-    // Can create policy
-    const newPolicyEvt = await makePolicy(pool, rm, cust, _A(36), _A(1), _W(1 / 37), start + 3600, 1);
-    const policy = newPolicyEvt.args.policy;
-
-    await expect(policyNFT.connect(cust).pause()).to.be.revertedWith("AccessControl:");
-    await grantComponentRole(hre, accessManager, policyNFT, "GUARDIAN_ROLE", cust);
-    await policyNFT.connect(cust).pause();
-    await expect(
-      policyNFT.connect(cust).transferFrom(cust.address, owner.address, policy.id)
-    ).to.be.revertedWith("Pausable: paused");
-
-    await policyNFT.unpause();
-    expect(await policyNFT.ownerOf(policy.id)).to.be.equal(cust.address);
-    await policyNFT.connect(cust).transferFrom(cust.address, owner.address, policy.id);
-    expect(await policyNFT.ownerOf(policy.id)).to.be.equal(owner.address);
   });
 
   it("Pause and Unpause RiskModule resolve policy", async function () {

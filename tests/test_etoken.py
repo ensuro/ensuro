@@ -3,7 +3,7 @@ import sys
 from functools import partial, wraps
 from collections import namedtuple
 import pytest
-from ethproto.contracts import RevertError, Contract
+from ethproto.contracts import RevertError
 from prototype import ensuro
 from ethproto.wadray import _W, _R, Wad
 from prototype.utils import WEEK, DAY, MONTH
@@ -38,7 +38,6 @@ def tenv(request):
         policy_pool = ensuro.PolicyPool(
             access=pp_access,
             currency=currency,
-            policy_nft="required-not-used"
         )
         FakePolicy.time_control = ensuro.time_control
 

@@ -637,12 +637,6 @@ class EToken(ReserveMixin, ERC20Token):
         self.whitelist = ContractProxy(whitelist.contract_id) if whitelist else None
 
 
-class PolicyNFT(ERC721Token):
-    def safeMint(self, customer, policy_id):
-        self.mint(customer, policy_id)
-        return policy_id
-
-
 class AccessManager(AccessControlContract):
     def grant_component_role(self, component, role, user):
         composed_role = f"{role}-{component.contract_id}"
@@ -841,10 +835,9 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
         yield self
 
 
-class PolicyPool(AccessControlContract):
+class PolicyPool(ERC721Token):
     access = ContractProxyField()
     treasury = AddressField(default="ENS")
-    policy_nft = ContractProxyField()
     currency = ContractProxyField()
     etokens = DictField(StringField(), ContractProxyField(), default={})
     premiums_accounts = ListField(ContractProxyField(), default=[])
@@ -852,6 +845,10 @@ class PolicyPool(AccessControlContract):
     risk_modules = DictField(StringField(), ContractProxyField(), default={})
 
     def __init__(self, *args, **kwargs):
+        if "name" not in kwargs:
+            kwargs["name"] = "Ensuro Policy"
+        if "symbol" not in kwargs:
+            kwargs["symbol"] = "EPOL"
         super().__init__(*args, **kwargs)
         self.NEGLIGIBLE_AMOUNT = Wad(10**(self.currency.decimals // 2))
 
@@ -894,7 +891,7 @@ class PolicyPool(AccessControlContract):
     @external
     def new_policy(self, policy, customer, internal_id):
         policy.id = policy.risk_module.make_policy_id(internal_id)
-        self.policy_nft.safeMint(customer, policy.id)
+        self.mint(customer, policy.id)
 
         assert policy.sr_interest_rate >= 0
 
@@ -942,7 +939,7 @@ class PolicyPool(AccessControlContract):
         require(payout == 0 or policy.expiration > time_control.now, "Can't pay expired policy")
 
         if customer_won:
-            policy_owner = self.policy_nft.owner_of(policy.id)
+            policy_owner = self.owner_of(policy.id)
             policy.risk_module.premiums_account.policy_resolved_with_payout(
                 policy_owner, policy, payout
             )

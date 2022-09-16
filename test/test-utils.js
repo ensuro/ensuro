@@ -86,7 +86,7 @@ exports.addRiskModule = async function (
     moc = _W(moc);
     await rm.setParam(0, moc);
   }
-  await pool.addRiskModule(rm.address);
+  await pool.addComponent(rm.address, 2);
   return rm;
 };
 
@@ -114,7 +114,7 @@ exports.addEToken = async function (
   );
 
   await etk.deployed();
-  await pool.addEToken(etk.address);
+  await pool.addComponent(etk.address, 1);
   return etk;
 };
 
@@ -163,19 +163,6 @@ exports.getTransactionEvent = getTransactionEvent;
 exports.deployPool = async function (hre, options) {
   const PolicyPool = await ethers.getContractFactory("PolicyPool");
   const AccessManager = await ethers.getContractFactory("AccessManager");
-  const PolicyNFT = await ethers.getContractFactory("PolicyNFT");
-
-  // Deploy PolicyNFT
-  const policyNFT = await hre.upgrades.deployProxy(
-    PolicyNFT,
-    [
-      options.nftName || "Policy NFT",
-      options.nftSymbol || "EPOL",
-      options.policyPoolDetAddress || ethers.constants.AddressZero,
-    ],
-    { kind: "uups" }
-  );
-  await policyNFT.deployed();
 
   // Deploy AccessManager
   const accessManager = await hre.upgrades.deployProxy(AccessManager, [], { kind: "uups" });
@@ -184,9 +171,13 @@ exports.deployPool = async function (hre, options) {
 
   const policyPool = await hre.upgrades.deployProxy(
     PolicyPool,
-    [options.treasuryAddress || ethers.constants.AddressZero],
+    [
+      options.nftName || "Policy NFT",
+      options.nftSymbol || "EPOL",
+      options.treasuryAddress || ethers.constants.AddressZero,
+    ],
     {
-      constructorArgs: [accessManager.address, policyNFT.address, options.currency],
+      constructorArgs: [accessManager.address, options.currency],
       kind: "uups",
       unsafeAllow: ["delegatecall"],
     }
@@ -217,7 +208,7 @@ exports.deployPremiumsAccount = async function (hre, pool, options) {
   });
 
   await premiumsAccount.deployed();
-  await pool.addPremiumsAccount(premiumsAccount.address);
+  await pool.addComponent(premiumsAccount.address, 3);
   return premiumsAccount;
 };
 
@@ -252,9 +243,7 @@ async function grantComponentRole(hre, accessManager, component, role, user) {
   }
   const roleHex = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(role));
   const componentRole = await accessManager.getComponentRole(component.address, roleHex);
-  console.log("componentRole", componentRole);
   if (!(await accessManager.hasRole(componentRole, userAddress))) {
-    console.log("componentRole - sd", componentRole);
     await accessManager.grantComponentRole(component.address, roleHex, userAddress);
   }
 }
