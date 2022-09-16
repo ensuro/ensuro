@@ -135,5 +135,7 @@ def load_config(yaml_config=None, module=None):
 
         pool.add_risk_module(rm)
     
-
+    for role_assignment in config.get("roles", []):
+        pool.access.grant_role(role_assignment["role"], role_assignment["user"])
+    
     return pool
