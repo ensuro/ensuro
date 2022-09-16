@@ -27,10 +27,9 @@ JRETK=`readAddress JRETK`
 SRETK=`readAddress SRETK`
 
 npx hardhat --network $NETWORK deploy:premiumsAccount $VERIFY --pool-address $POOL \
-    --junior-etk $JRETK --senior-etk $SRETK
+    --junior-etk $JRETK --senior-etk $SRETK || die "Error deploying Premiums Account"
 
 PREMIUMS_ACCOUNT=`readAddress PA`
-dieOnError "Error deploying Premiums Account"
 
 echo "PremiumsAccount = $PREMIUMS_ACCOUNT"
 
@@ -40,7 +39,6 @@ npx hardhat --network $NETWORK deploy:riskModule $VERIFY --pool-address $POOL \
 
 # Whitelist
 npx hardhat --network $NETWORK deploy:whitelist $VERIFY \
-    --pool-address $POOL --e-token $SRETK
-dieOnError "Error deploying Whitelist"
+    --pool-address $POOL --e-token $SRETK || die "Error deploying Whitelist"
 
 killPID $HHNODE_PID

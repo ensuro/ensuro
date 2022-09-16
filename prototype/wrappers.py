@@ -502,23 +502,28 @@ class PolicyPool(ETHWrapper):
         obj._auto_from = obj.owner
         return obj
 
+    add_component = MethodAdapter((("component", "contract"), ("kind", "int"), ))
+
     @classmethod
     def fetch_etokens(cls, wrapper):
-        etk_count = eth_call(wrapper, "getETokenCount")
+        events = wrapper.provider.get_events(wrapper, "ComponentStatusChanged")
         etokens = {}
-        for i in range(etk_count):
-            etk_address = eth_call(wrapper, "getETokenAt", i)
+        for evt in events:
+            if evt["args"]["kind"] != 1:
+                continue
+            etk_address = evt["args"]["component"]
             etk = EToken.connect(etk_address)
-            etokens[etk.name] = etk
+            etk_status = evt["args"]["newStatus"]
+            if etk_status == 1:  # active
+                etokens[etk.name] = etk
+            elif etk.name in etokens:
+                etokens.pop(etk.name)
         return etokens
-
-    add_component = MethodAdapter((("component", "contract"), ("kind", "int"), ))
 
     def add_etoken(self, etoken):
         self.add_component(etoken, 1)
         self.etokens[etoken.name] = etoken
 
-    add_premiums_account = MethodAdapter((("pa", "contract"), ))
     def add_premiums_account(self, pa):
         self.add_component(pa, 3)
 
@@ -530,10 +535,12 @@ class PolicyPool(ETHWrapper):
 
     @classmethod
     def fetch_riskmodules(cls, wrapper):
-        events = wrapper.provider.get_events(wrapper, "RiskModuleStatusChanged")
+        events = wrapper.provider.get_events(wrapper, "ComponentStatusChanged")
         risk_modules = {}
         for evt in events:
-            rm_address = evt["args"]["riskModule"]
+            if evt["args"]["kind"] != 2:
+                continue
+            rm_address = evt["args"]["component"]
             rm_status = evt["args"]["newStatus"]
             if rm_status == 1:  # active
                 risk_modules[rm_address] = RiskModule.connect(rm_address)

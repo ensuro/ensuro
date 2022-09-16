@@ -86,7 +86,7 @@ exports.addRiskModule = async function (
     moc = _W(moc);
     await rm.setParam(0, moc);
   }
-  await pool.addRiskModule(rm.address);
+  await pool.addComponent(rm.address, 2);
   return rm;
 };
 
@@ -114,7 +114,7 @@ exports.addEToken = async function (
   );
 
   await etk.deployed();
-  await pool.addEToken(etk.address);
+  await pool.addComponent(etk.address, 1);
   return etk;
 };
 
@@ -217,7 +217,7 @@ exports.deployPremiumsAccount = async function (hre, pool, options) {
   });
 
   await premiumsAccount.deployed();
-  await pool.addPremiumsAccount(premiumsAccount.address);
+  await pool.addComponent(premiumsAccount.address, 3);
   return premiumsAccount;
 };
 
@@ -252,9 +252,7 @@ async function grantComponentRole(hre, accessManager, component, role, user) {
   }
   const roleHex = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(role));
   const componentRole = await accessManager.getComponentRole(component.address, roleHex);
-  console.log("componentRole", componentRole);
   if (!(await accessManager.hasRole(componentRole, userAddress))) {
-    console.log("componentRole - sd", componentRole);
     await accessManager.grantComponentRole(component.address, roleHex, userAddress);
   }
 }

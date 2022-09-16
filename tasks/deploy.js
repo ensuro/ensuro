@@ -216,7 +216,7 @@ async function deployEToken(
   saveAddress(saveAddr, etoken.address);
   if (verify) await verifyContract(hre, etoken, true, [poolAddress]);
   const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
-  await policyPool.addEToken(etoken.address);
+  await policyPool.addComponent(etoken.address, 1);
   return etoken.address;
 }
 
@@ -232,6 +232,8 @@ async function deployPremiumsAccount({ saveAddr, verify, poolAddress, juniorEtk,
   await logContractCreated(hre, `PremiumsAccount`, pa.address);
   saveAddress(saveAddr, pa.address);
   if (verify) await verifyContract(hre, pa, true, [poolAddress]);
+  const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
+  await policyPool.addComponent(pa.address, 3);
   return pa.address;
 }
 
@@ -283,7 +285,7 @@ async function deployRiskModule(
     await rm.setParam(4, ensuroCocFee);
   }
   const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
-  await policyPool.addRiskModule(rm.address);
+  await policyPool.addComponent(rm.address, 2);
   return rm.address;
 }
 
