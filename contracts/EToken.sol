@@ -64,7 +64,8 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
 
   event InternalLoan(address indexed borrower, uint256 value, uint256 amountAsked);
   event InternalLoanRepaid(address indexed borrower, uint256 value);
-  event PoolBorrowerAdded(address borrower);
+  event InternalBorrowerAdded(address indexed borrower);
+  event InternalBorrowerRemoved(address indexed borrower, uint256 defaultedDebt);
 
   modifier onlyBorrower() {
     require(_loans[_msgSender()].scale != 0, "The caller must be a borrower");
@@ -594,8 +595,14 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     TimeScaled.ScaledAmount storage loan = _loans[borrower];
     if (loan.scale == 0) {
       loan.init();
-      emit PoolBorrowerAdded(borrower);
+      emit InternalBorrowerAdded(borrower);
     }
+  }
+
+  function removeBorrower(address borrower) external override onlyPolicyPool {
+    uint256 defaultedDebt = getLoan(borrower);
+    delete _loans[borrower];
+    emit InternalBorrowerRemoved(borrower, defaultedDebt);
   }
 
   function internalLoan(

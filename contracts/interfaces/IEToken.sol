@@ -117,11 +117,24 @@ interface IEToken is IERC20 {
    * - Must be called by `policyPool()`
    *
    * Events:
-   * - Emits {PoolBorrowerAdded}
+   * - Emits {InternalBorrowerAdded}
    *
    * @param borrower The address of the _borrower_, a PremiumsAccount that has this eToken as senior or junior eToken.
    */
   function addBorrower(address borrower) external;
+
+  /**
+   * @dev Removes an authorized _borrower_ to the eToken. The _borrower_ can't no longer lock funds or take loans.
+   *
+   * Requirements:
+   * - Must be called by `policyPool()`
+   *
+   * Events:
+   * - Emits {InternalBorrowerRemoved} with the defaulted debt
+   *
+   * @param borrower The address of the _borrower_, a PremiumsAccount that has this eToken as senior or junior eToken.
+   */
+  function removeBorrower(address borrower) external;
 
   /**
    * @dev Lends `amount` to the borrower (msg.sender), transferring the money to `receiver`. This reduces the

@@ -218,7 +218,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     emit ComponentStatusChanged(component, kind, ComponentStatus.active);
   }
 
-  function removeComponent(IPolicyPoolComponent component) external onlyRole(LEVEL3_ROLE) {
+  function removeComponent(IPolicyPoolComponent component) external onlyRole(LEVEL1_ROLE) {
     Component storage comp = _components[component];
     require(comp.status == ComponentStatus.deprecated, "Component not deprecated");
     if (comp.kind == ComponentKind.eToken) {
@@ -232,11 +232,16 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
         "Can't remove a module with active policies"
       );
     } else if (comp.kind == ComponentKind.premiumsAccount) {
-      require(
-        IPremiumsAccount(address(component)).purePremiums() == 0,
-        "Can't remove a PremiumsAccount with premiums"
-      );
-      // TODO: removeBorrower
+      IPremiumsAccount pa = IPremiumsAccount(address(component));
+      require(pa.purePremiums() == 0, "Can't remove a PremiumsAccount with premiums");
+      IEToken etk = pa.juniorEtk();
+      if (address(etk) != address(0)) {
+        etk.removeBorrower(address(pa));
+      }
+      etk = pa.seniorEtk();
+      if (address(etk) != address(0)) {
+        etk.removeBorrower(address(pa));
+      }
     }
     emit ComponentStatusChanged(component, comp.kind, ComponentStatus.inactive);
     delete _components[component];
@@ -278,6 +283,12 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     return comp.status;
   }
 
+  function _paStatus(IPremiumsAccount premiumsAccount) internal view returns (ComponentStatus) {
+    Component storage comp = _components[IPolicyPoolComponent(address(premiumsAccount))];
+    require(comp.kind == ComponentKind.premiumsAccount, "Component is not a PremiumsAccount");
+    return comp.status;
+  }
+
   function deposit(IEToken eToken, uint256 amount) external override whenNotPaused {
     require(_etkStatus(eToken) == ComponentStatus.active, "eToken is not active");
     _currency.safeTransferFrom(msg.sender, address(eToken), amount);
@@ -310,6 +321,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     policy.id = (uint256(uint160(address(rm))) << 96) + internalId;
     _policies[policy.id] = policy.hash();
     IPremiumsAccount pa = rm.premiumsAccount();
+    require(_paStatus(pa) == ComponentStatus.active, "PremiumsAccount not found or not active");
     pa.policyCreated(policy);
     _policyNFT.safeMint(customer, policy.id);
 
@@ -374,20 +386,26 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     IRiskModule rm = policy.riskModule;
     require(expired || address(rm) == msg.sender, "Only the RM can resolve policies");
     require(payout == 0 || policy.expiration > block.timestamp, "Can't pay expired policy");
-    ComponentStatus rmStatus = _rmStatus(rm);
+    ComponentStatus compStatus = _rmStatus(rm);
     require(
-      rmStatus == ComponentStatus.active || rmStatus == ComponentStatus.deprecated,
+      compStatus == ComponentStatus.active || compStatus == ComponentStatus.deprecated,
       "Module must be active or deprecated to process resolutions"
     );
     require(payout <= policy.payout, "payout > policy.payout");
 
     bool customerWon = payout > 0;
 
+    IPremiumsAccount pa = rm.premiumsAccount();
+    compStatus = _paStatus(pa);
+    require(
+      compStatus == ComponentStatus.active || compStatus == ComponentStatus.deprecated,
+      "PremiumsAccount must be active or deprecated to process resolutions"
+    );
     if (customerWon) {
       address policyOwner = _policyNFT.ownerOf(policy.id);
-      rm.premiumsAccount().policyResolvedWithPayout(policyOwner, policy, payout);
+      pa.policyResolvedWithPayout(policyOwner, policy, payout);
     } else {
-      rm.premiumsAccount().policyExpired(policy);
+      pa.policyExpired(policy);
     }
 
     rm.releaseExposure(policy.payout);
