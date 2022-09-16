@@ -19,7 +19,6 @@ describe("Test Upgrade contracts", function () {
   let _A;
   let etk;
   let accessManager;
-  let policyNFT;
   let rm;
 
   beforeEach(async () => {
@@ -44,7 +43,6 @@ describe("Test Upgrade contracts", function () {
 
     premiumsAccount = await deployPremiumsAccount(hre, pool, { srEtkAddr: etk.address });
     accessManager = await ethers.getContractAt("AccessManager", await pool.access());
-    policyNFT = await ethers.getContractAt("PolicyNFT", await pool.policyNFT());
     TrustfulRiskModule = await ethers.getContractFactory("TrustfulRiskModule");
     rm = await addRiskModule(pool, premiumsAccount, TrustfulRiskModule, {});
 
@@ -115,26 +113,6 @@ describe("Test Upgrade contracts", function () {
 
     await grantComponentRole(hre, accessManager, premiumsAccount, "LEVEL1_ROLE", cust);
     await premiumsAccount.connect(cust).upgradeTo(newPremiumsAccount.address);
-  });
-
-  it("Should be able to upgrade PolicyNFT contract", async () => {
-    const PolicyNFT = await ethers.getContractFactory("PolicyNFT");
-    const newPolicyNFT = await PolicyNFT.deploy();
-
-    // Cust cant upgrade
-    await expect(policyNFT.connect(cust).upgradeTo(newPolicyNFT.address)).to.be.revertedWith("AccessControl:");
-    await policyNFT.connect(guardian).upgradeTo(newPolicyNFT.address);
-  });
-
-  it("Can upgrade PolicyNFT with componentRole", async () => {
-    const PolicyNFT = await ethers.getContractFactory("PolicyNFT");
-    const newPolicyNFT = await PolicyNFT.deploy();
-
-    // Cust cant upgrade
-    await expect(policyNFT.connect(cust).upgradeTo(newPolicyNFT.address)).to.be.revertedWith("AccessControl:");
-
-    await grantComponentRole(hre, accessManager, policyNFT, "LEVEL1_ROLE", cust);
-    await policyNFT.connect(cust).upgradeTo(newPolicyNFT.address);
   });
 
   it("Should be able to upgrade RiskModule contract", async () => {

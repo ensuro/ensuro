@@ -142,20 +142,6 @@ async function deployTestCurrency({ saveAddr, verify, currName, currSymbol, init
   return currency.address;
 }
 
-async function deployPolicyNFT({ saveAddr, verify, nftName, nftSymbol, policyPoolDetAddress }, hre) {
-  const PolicyNFT = await hre.ethers.getContractFactory("PolicyNFT");
-  const policyNFT = await hre.upgrades.deployProxy(
-    PolicyNFT,
-    [nftName, nftSymbol, policyPoolDetAddress || ethers.constants.AddressZero],
-    { kind: "uups" }
-  );
-  await policyNFT.deployed();
-  await logContractCreated(hre, "PolicyNFT", policyNFT.address);
-  saveAddress(saveAddr, policyNFT.address);
-  if (verify) await verifyContract(hre, policyNFT, true);
-  return policyNFT.address;
-}
-
 async function deployAccessManager({ saveAddr, verify }, hre) {
   const AccessManager = await hre.ethers.getContractFactory("AccessManager");
   const policyPoolConfig = await hre.upgrades.deployProxy(AccessManager, [], { kind: "uups" });
@@ -173,15 +159,20 @@ async function _getDefaultSigner(hre) {
 }
 
 async function deployPolicyPool(
-  { saveAddr, verify, accessAddress, nftAddress, currencyAddress, treasuryAddress },
+  { saveAddr, verify, accessAddress, nftAddress, currencyAddress,
+    nftName, nftSymbol, treasuryAddress },
   hre
 ) {
   const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
-  const policyPool = await hre.upgrades.deployProxy(PolicyPool, [treasuryAddress], {
-    constructorArgs: [accessAddress, nftAddress, currencyAddress],
-    kind: "uups",
-    unsafeAllow: ["delegatecall"],
-  });
+  const policyPool = await hre.upgrades.deployProxy(
+    PolicyPool,
+    [nftName, nftSymbol, treasuryAddress],
+    {
+      constructorArgs: [accessAddress, currencyAddress],
+      kind: "uups",
+      unsafeAllow: ["delegatecall"],
+    }
+  );
 
   await policyPool.deployed();
   await logContractCreated(hre, "PolicyPool", policyPool.address);
@@ -492,7 +483,6 @@ function add_task() {
     .addOptionalParam("initialSupply", "Initial supply in the test currency", 2000, types.int)
     .addOptionalParam("nftName", "Name of Policies NFT Token", "Ensuro Policies NFT", types.str)
     .addOptionalParam("nftSymbol", "Symbol of Policies NFT Token", "EPOL", types.str)
-    .addOptionalParam("nftAddress", "NFT Address", undefined, types.address)
     .addOptionalParam("currencyAddress", "Currency Address", undefined, types.address)
     .addOptionalParam("accessAddress", "AccessManager Address", undefined, types.address)
     .addOptionalParam("treasuryAddress", "Treasury Address", ethers.constants.AddressZero, types.address)
@@ -500,10 +490,6 @@ function add_task() {
       if (taskArgs.currencyAddress === undefined) {
         taskArgs.saveAddr = "CURRENCY";
         taskArgs.currencyAddress = await deployTestCurrency(taskArgs, hre);
-      }
-      if (taskArgs.nftAddress === undefined) {
-        taskArgs.saveAddr = "POLICYNFT";
-        taskArgs.nftAddress = await deployPolicyNFT(taskArgs, hre);
       }
       if (taskArgs.accessAddress === undefined) {
         taskArgs.saveAddr = "ACCESSMANAGER";
@@ -521,13 +507,6 @@ function add_task() {
     .addOptionalParam("initialSupply", "Initial supply in the test currency", 2000, types.int)
     .setAction(deployTestCurrency);
 
-  task("deploy:policyNFT", "Deploys the Policies NFT")
-    .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
-    .addOptionalParam("saveAddr", "Save created contract address", "POLICYNFT", types.str)
-    .addOptionalParam("nftName", "Name of Policies NFT Token", "Ensuro Policies NFT", types.str)
-    .addOptionalParam("nftSymbol", "Symbol of Policies NFT Token", "EPOL", types.str)
-    .setAction(deployPolicyNFT);
-
   task("deploy:accessManager", "Deploys the AccessManager")
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addOptionalParam("saveAddr", "Save created contract address", "ACCESSMANAGER", types.str)
@@ -536,6 +515,8 @@ function add_task() {
   task("deploy:pool", "Deploys the PolicyPool")
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addOptionalParam("saveAddr", "Save created contract address", "POOL", types.str)
+    .addOptionalParam("nftName", "Name of Policies NFT Token", "Ensuro Policies NFT", types.str)
+    .addOptionalParam("nftSymbol", "Symbol of Policies NFT Token", "EPOL", types.str)
     .addOptionalParam("treasuryAddress", "Treasury Address", ethers.constants.AddressZero, types.address)
     .addParam("nftAddress", "NFT Address", types.address)
     .addParam("currencyAddress", "Currency Address", types.address)

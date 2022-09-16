@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {AddressUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {ERC721Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IAccessManager} from "./interfaces/IAccessManager.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
@@ -13,7 +14,6 @@ import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {IRiskModule} from "./interfaces/IRiskModule.sol";
 import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
-import {IPolicyNFT} from "./interfaces/IPolicyNFT.sol";
 import {IPolicyHolder} from "./interfaces/IPolicyHolder.sol";
 import {Policy} from "./Policy.sol";
 import {WadRayMath} from "./WadRayMath.sol";
@@ -29,7 +29,7 @@ import {WadRayMath} from "./WadRayMath.sol";
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
-contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
+contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721Upgradeable {
   using EnumerableSet for EnumerableSet.AddressSet;
   using WadRayMath for uint256;
   using Policy for Policy.PolicyData;
@@ -44,8 +44,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   IAccessManager internal immutable _access;
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IERC20Metadata internal immutable _currency;
-  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
-  IPolicyNFT internal immutable _policyNFT;
 
   address internal _treasury; // address of Ensuro treasury
 
@@ -140,25 +138,24 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
   }
 
   /// @custom:oz-upgrades-unsafe-allow constructor
-  constructor(
-    IAccessManager access_,
-    IPolicyNFT policyNFT_,
-    IERC20Metadata currency_
-  ) {
+  constructor(IAccessManager access_, IERC20Metadata currency_) {
     _access = access_;
-    _policyNFT = policyNFT_;
     _currency = currency_;
   }
 
-  function initialize(address treasury_) public initializer {
+  function initialize(
+    string memory name_,
+    string memory symbol_,
+    address treasury_
+  ) public initializer {
     __UUPSUpgradeable_init();
+    __ERC721_init(name_, symbol_);
     __Pausable_init();
     __PolicyPool_init_unchained(treasury_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
   function __PolicyPool_init_unchained(address treasury_) internal initializer {
-    _policyNFT.connect();
     _treasury = treasury_;
   }
 
@@ -179,10 +176,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
 
   function currency() external view virtual override returns (IERC20Metadata) {
     return _currency;
-  }
-
-  function policyNFT() external view virtual override returns (address) {
-    return address(_policyNFT);
   }
 
   function setTreasury(address treasury_) external onlyRole(LEVEL1_ROLE) {
@@ -323,7 +316,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
     IPremiumsAccount pa = rm.premiumsAccount();
     require(_paStatus(pa) == ComponentStatus.active, "PremiumsAccount not found or not active");
     pa.policyCreated(policy);
-    _policyNFT.safeMint(customer, policy.id);
+    _safeMint(customer, policy.id, "");
 
     // Distribute the premium
     _currency.safeTransferFrom(customer, address(pa), policy.purePremium);
@@ -402,7 +395,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
       "PremiumsAccount must be active or deprecated to process resolutions"
     );
     if (customerWon) {
-      address policyOwner = _policyNFT.ownerOf(policy.id);
+      address policyOwner = ownerOf(policy.id);
       pa.policyResolvedWithPayout(policyOwner, policy, payout);
     } else {
       pa.policyExpired(policy);
@@ -424,7 +417,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
    * contract explicitly reverts. Doesn't reverts is the callback is not implemented.
    */
   function _notifyPayout(uint256 policyId, uint256 payout) internal {
-    address customer = _policyNFT.ownerOf(policyId);
+    address customer = ownerOf(policyId);
     if (!AddressUpgradeable.isContract(customer)) return;
     try
       IPolicyHolder(customer).onPayoutReceived(_msgSender(), address(this), policyId, payout)
@@ -449,7 +442,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable {
    * @dev Notifies the expiration with a callback if the policyholder is a contract. Never reverts.
    */
   function _notifyExpiration(uint256 policyId) internal {
-    address customer = _policyNFT.ownerOf(policyId);
+    address customer = ownerOf(policyId);
     if (!AddressUpgradeable.isContract(customer)) return;
     try IPolicyHolder(customer).onPolicyExpired(_msgSender(), address(this), policyId) returns (
       bytes4

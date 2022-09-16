@@ -163,19 +163,6 @@ exports.getTransactionEvent = getTransactionEvent;
 exports.deployPool = async function (hre, options) {
   const PolicyPool = await ethers.getContractFactory("PolicyPool");
   const AccessManager = await ethers.getContractFactory("AccessManager");
-  const PolicyNFT = await ethers.getContractFactory("PolicyNFT");
-
-  // Deploy PolicyNFT
-  const policyNFT = await hre.upgrades.deployProxy(
-    PolicyNFT,
-    [
-      options.nftName || "Policy NFT",
-      options.nftSymbol || "EPOL",
-      options.policyPoolDetAddress || ethers.constants.AddressZero,
-    ],
-    { kind: "uups" }
-  );
-  await policyNFT.deployed();
 
   // Deploy AccessManager
   const accessManager = await hre.upgrades.deployProxy(AccessManager, [], { kind: "uups" });
@@ -184,9 +171,13 @@ exports.deployPool = async function (hre, options) {
 
   const policyPool = await hre.upgrades.deployProxy(
     PolicyPool,
-    [options.treasuryAddress || ethers.constants.AddressZero],
+    [
+      options.nftName || "Policy NFT",
+      options.nftSymbol || "EPOL",
+      options.treasuryAddress || ethers.constants.AddressZero
+    ],
     {
-      constructorArgs: [accessManager.address, policyNFT.address, options.currency],
+      constructorArgs: [accessManager.address, options.currency],
       kind: "uups",
       unsafeAllow: ["delegatecall"],
     }
