@@ -174,7 +174,7 @@ exports.deployPool = async function (hre, options) {
     [
       options.nftName || "Policy NFT",
       options.nftSymbol || "EPOL",
-      options.treasuryAddress || ethers.constants.AddressZero
+      options.treasuryAddress || ethers.constants.AddressZero,
     ],
     {
       constructorArgs: [accessManager.address, options.currency],

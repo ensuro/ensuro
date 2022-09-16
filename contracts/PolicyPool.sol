@@ -54,14 +54,14 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     inactive,
     /**
      * @dev active means the component is fully functional, all the component operations are allowed.
-     *      deposit / withdraw / lockScr / unlockScr for eTokens
+     *      deposit / withdraw for eTokens
      *      newPolicy / resolvePolicy for riskModules
      *      policyCreated / policyExpired / policyResolvedWithPayout for premiumsAccount
      */
     active,
     /**
      * @dev deprecated means the component is in process of being deactivated. Only some operations are allowed:
-     *      withdraw / unlockScr for eTokens
+     *      withdraw for eTokens
      *      resolvePolicy / expirePolicy for riskModules
      *      policyExpired / policyResolvedWithPayout for premiumsAccount
      */
