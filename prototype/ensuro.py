@@ -836,7 +836,7 @@ class PolicyPool(AccessControlContract):
         return time_control.now
 
     @external
-    def new_policy(self, policy, caller, policy_holder, internal_id):
+    def new_policy(self, policy, payer, policy_holder, internal_id):
         policy.id = policy.risk_module.make_policy_id(internal_id)
         self.policy_nft.safeMint(policy_holder, policy.id)
 
@@ -847,24 +847,24 @@ class PolicyPool(AccessControlContract):
 
         self.policies[policy.id] = policy
         self.currency.transfer_from(
-            self.contract_id, caller,
+            self.contract_id, payer,
             pa, policy.pure_premium
         )
         policy.sr_coc and self.currency.transfer_from(
-            self.contract_id, caller,
+            self.contract_id, payer,
             pa.senior_etk, policy.sr_coc
         )
         policy.jr_coc and self.currency.transfer_from(
-            self.contract_id, caller,
+            self.contract_id, payer,
             pa.junior_etk, policy.jr_coc
         )
         self.currency.transfer_from(
-            self.contract_id, caller,
+            self.contract_id, payer,
             self.treasury, policy.ensuro_commission
         )
         if policy.partner_commission and policy.risk_module.wallet != policy_holder:
             self.currency.transfer_from(
-                self.contract_id, caller,
+                self.contract_id, payer,
                 policy.risk_module.wallet, policy.partner_commission
             )
         return policy.id
