@@ -115,7 +115,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     );
   }
 
-  function purePremiums() public view returns (uint256) {
+  function purePremiums() external view override returns (uint256) {
     return uint256(int256(_activePurePremiums) + _surplus);
   }
 

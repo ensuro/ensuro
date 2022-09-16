@@ -512,13 +512,15 @@ class PolicyPool(ETHWrapper):
             etokens[etk.name] = etk
         return etokens
 
-    add_etoken_ = MethodAdapter((("etoken", "contract"), ), eth_method="addEToken")
+    add_component = MethodAdapter((("component", "contract"), ("kind", "int"), ))
 
     def add_etoken(self, etoken):
-        self.add_etoken_(etoken)
+        self.add_component(etoken, 1)
         self.etokens[etoken.name] = etoken
 
     add_premiums_account = MethodAdapter((("pa", "contract"), ))
+    def add_premiums_account(self, pa):
+        self.add_component(pa, 3)
 
     @property
     def risk_modules(self):
@@ -539,10 +541,8 @@ class PolicyPool(ETHWrapper):
                 risk_modules.pop(rm_address)
         return risk_modules
 
-    add_risk_module_ = MethodAdapter((("risk_module", "contract"), ))
-
     def add_risk_module(self, risk_module):
-        self.add_risk_module_(risk_module)
+        self.add_component(risk_module, 2)
         self._risk_modules[risk_module.name] = risk_module
 
     deposit_ = MethodAdapter((("etoken", "contract"), ("provider", "msg.sender"), ("amount", "amount")))

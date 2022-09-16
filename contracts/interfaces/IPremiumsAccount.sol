@@ -68,4 +68,9 @@ interface IPremiumsAccount {
    * @dev The junior eToken, the primary source of solvency, used if the premiums account is exhausted.
    */
   function juniorEtk() external view returns (IEToken);
+
+  /**
+   * @dev The total amount of premiums hold by this PremiumsAccount
+   */
+  function purePremiums() external view returns (uint256);
 }
