@@ -128,12 +128,12 @@ class RiskModule(AccessControlContract):
     def new_policy(self, payout, premium, loss_prob, expiration, customer, internal_id):
         assert type(loss_prob) == Wad, "Loss prob MUST be wad"
         start = time_control.now
+        if premium is None:
+            premium = self.get_minimum_premium(payout, loss_prob, expiration)
         require(
             self.policy_pool.currency.allowance(customer, self.policy_pool.contract_id) >= premium,
             "You must allow ENSURO to transfer the premium",
         )
-        if premium is None:
-            premium = self.get_minimum_premium(payout, loss_prob, expiration)
         policy = Policy(
             id=-1,
             risk_module=self,
