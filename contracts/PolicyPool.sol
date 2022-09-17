@@ -317,7 +317,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     IPremiumsAccount pa = rm.premiumsAccount();
     require(_paStatus(pa) == ComponentStatus.active, "PremiumsAccount not found or not active");
     pa.policyCreated(policy);
-    _safeMint(customer, policy.id, "");
+    _safeMint(policyHolder, policy.id, "");
 
     // Distribute the premium
     _currency.safeTransferFrom(payer, address(pa), policy.purePremium);

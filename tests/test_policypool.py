@@ -2011,7 +2011,7 @@ def test_risk_provider_cant_drain_liquidity_provider(tenv):
         )
 
     # The policy is held by LP1
-    assert pool.policy_nft.owner_of(policy.id) == "LP1"
+    assert pool.owner_of(policy.id) == "LP1"
 
     # Premium was paid by caller
     assert USD.balance_of("JOHN_SELLER") == _W(0)
