@@ -11,6 +11,7 @@ import {Reserve} from "./Reserve.sol";
 import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
 import {Policy} from "./Policy.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
+import {IAssetManager} from "./interfaces/IAssetManager.sol";
 
 /**
  * @title Ensuro Premiums Account
@@ -35,6 +36,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
 
   struct PackedParams {
     uint16 deficitRatio;
+    IAssetManager assetManager;
   }
 
   PackedParams internal _params;
@@ -82,8 +84,27 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     if (address(_seniorEtk) != address(0))
       currency().approve(address(_seniorEtk), type(uint256).max);
 
-    _params = PackedParams({deficitRatio: 1e4});
+    _params = PackedParams({deficitRatio: 1e4, assetManager: IAssetManager(address(0))});
     _validateParameters();
+  }
+
+  function assetManager() public view override returns (IAssetManager) {
+    return _params.assetManager;
+  }
+
+  function _setAssetManager(IAssetManager newAM) internal override {
+    _params.assetManager = newAM;
+  }
+
+  function _assetEarnings(int256 earningsOrLosses) internal override {
+    if (earningsOrLosses > 0) {
+      uint256 earnings = uint256(earningsOrLosses);
+      if (address(_seniorEtk) != address(0)) earnings = _repayLoan(earnings, _seniorEtk);
+      if (address(_juniorEtk) != address(0)) earnings = _repayLoan(earnings, _juniorEtk);
+      _storePurePremiumWon(earnings);
+    } else {
+      _payFromPremiums(uint256(-earningsOrLosses));
+    }
   }
 
   // solhint-disable-next-line no-empty-blocks
@@ -94,7 +115,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     );
   }
 
-  function purePremiums() public view returns (uint256) {
+  function purePremiums() external view override returns (uint256) {
     return uint256(int256(_activePurePremiums) + _surplus);
   }
 
@@ -166,14 +187,14 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   }
 
   function _payFromPremiums(uint256 toPay) internal returns (uint256) {
-    int256 surplus = _surplus - int256(toPay);
+    int256 newSurplus = _surplus - int256(toPay);
     int256 maxDeficit = _maxDeficit(deficitRatio());
-    if (surplus >= maxDeficit) {
-      _surplus = surplus;
+    if (newSurplus >= maxDeficit) {
+      _surplus = newSurplus;
       return 0;
     }
     _surplus = maxDeficit;
-    return uint256(-surplus + maxDeficit);
+    return uint256(-newSurplus + maxDeficit);
   }
 
   function _storePurePremiumWon(uint256 purePremiumWon) internal {
@@ -206,25 +227,32 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    *
    * Requirements:
    *
-   * - onlyPoolRole(WITHDRAW_WON_PREMIUMS_ROLE)
+   * - onlyGlobalOrComponentRole(WITHDRAW_WON_PREMIUMS_ROLE)
    * - _wonPurePremiums > 0
    */
   function withdrawWonPremiums(uint256 amount, address destination)
     external
-    onlyComponentRole(WITHDRAW_WON_PREMIUMS_ROLE)
+    onlyGlobalOrComponentRole(WITHDRAW_WON_PREMIUMS_ROLE)
     returns (uint256)
   {
-    uint256 surplus = _surplus >= 0 ? uint256(_surplus) : 0;
-    if (amount > surplus) amount = surplus;
+    if (_surplus <= 0) {
+      amount = 0;
+    } else {
+      amount = Math.min(amount, uint256(_surplus));
+    }
     require(amount > 0, "No premiums to withdraw");
     _surplus -= int256(amount);
-    _transferTo(destination, amount); // TODO: discuss if destination shoud be msg.sender
-    // TODO: see if this will be a component role
+    _transferTo(destination, amount);
     emit WonPremiumsInOut(false, amount);
     return amount;
   }
 
-  function policyCreated(Policy.PolicyData memory policy) external override onlyPolicyPool {
+  function policyCreated(Policy.PolicyData memory policy)
+    external
+    override
+    onlyPolicyPool
+    whenNotPaused
+  {
     _activePurePremiums += policy.purePremium;
     if (policy.jrScr > 0) _juniorEtk.lockScr(policy.jrScr, policy.jrInterestRate());
     if (policy.srScr > 0) _seniorEtk.lockScr(policy.srScr, policy.srInterestRate());
@@ -234,7 +262,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     address policyHolder,
     Policy.PolicyData memory policy,
     uint256 payout
-  ) external override onlyPolicyPool {
+  ) external override onlyPolicyPool whenNotPaused {
     _activePurePremiums -= policy.purePremium;
     if (policy.purePremium >= payout) {
       uint256 purePremiumWon = policy.purePremium - payout;
@@ -282,7 +310,12 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     return purePremiumWon - repayAmount;
   }
 
-  function policyExpired(Policy.PolicyData memory policy) external override onlyPolicyPool {
+  function policyExpired(Policy.PolicyData memory policy)
+    external
+    override
+    onlyPolicyPool
+    whenNotPaused
+  {
     uint256 purePremiumWon = policy.purePremium;
     _activePurePremiums -= purePremiumWon;
 

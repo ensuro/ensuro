@@ -38,10 +38,6 @@ contract PolicyPoolMock is IPolicyPool {
     return _access;
   }
 
-  function policyNFT() external pure override returns (address) {
-    return address(0);
-  }
-
   function treasury() external pure override returns (address) {
     return address(0);
   }

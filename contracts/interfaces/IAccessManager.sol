@@ -12,12 +12,12 @@ interface IAccessManager is IAccessControlUpgradeable {
   enum GovernanceActions {
     none,
     setTreasury, // Changes PolicyPool treasury address
-    setAssetManager, // Changes PolicyPool AssetManager
+    setAssetManager, // Change in the asset manager strategy of a reserve
     setInsolvencyHook, // Changes PolicyPool InsolvencyHook
     setLPWhitelist, // Changes PolicyPool Liquidity Providers Whitelist
     addRiskModule,
     removeRiskModule,
-    cfgFiller1, // Reserve space for future PolicyPoolConfig actions
+    setAssetManagerForced, // Change in the asset manager strategy of a reserve, forced (deinvest failed)
     cfgFiller2, // Reserve space for future PolicyPoolConfig actions
     cfgFiller3, // Reserve space for future PolicyPoolConfig actions
     cfgFiller4, // Reserve space for future PolicyPoolConfig actions
@@ -59,17 +59,35 @@ interface IAccessManager is IAccessControlUpgradeable {
     last
   }
 
-  function checkRole(bytes32 role, address account) external view;
+  function getComponentRole(address component, bytes32 role) external view returns (bytes32);
 
-  function checkComponentRole(
+  function hasComponentRole(
     address component,
     bytes32 role,
-    address account
-  ) external view;
+    address account,
+    bool alsoGlobal
+  ) external view returns (bool);
+
+  function checkRole(bytes32 role, address account) external view;
 
   function checkRole2(
     bytes32 role1,
     bytes32 role2,
     address account
+  ) external view;
+
+  function checkComponentRole(
+    address component,
+    bytes32 role,
+    address account,
+    bool alsoGlobal
+  ) external view;
+
+  function checkComponentRole2(
+    address component,
+    bytes32 role1,
+    bytes32 role2,
+    address account,
+    bool alsoGlobal
   ) external view;
 }

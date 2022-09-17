@@ -189,7 +189,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
 
   function setParam(Parameter param, uint256 newValue)
     external
-    onlyPoolRole3(LEVEL1_ROLE, LEVEL2_ROLE, LEVEL3_ROLE)
+    onlyGlobalOrComponentRole3(LEVEL1_ROLE, LEVEL2_ROLE, LEVEL3_ROLE)
   {
     bool tweak = !hasPoolRole(LEVEL2_ROLE) && !hasPoolRole(LEVEL1_ROLE);
     if (param == Parameter.moc) {
@@ -236,6 +236,8 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     } else if (param == Parameter.maxDuration) {
       require(!tweak, "Tweak exceeded");
       _params.maxDuration = uint16(newValue);
+    } else {
+      revert("Invalid param!");
     }
     _parameterChanged(
       IAccessManager.GovernanceActions(
@@ -314,6 +316,9 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     address onBehalfOf,
     uint96 internalId
   ) internal whenNotPaused returns (Policy.PolicyData memory) {
+    if (premium == type(uint256).max) {
+      premium = getMinimumPremium(payout, lossProb, expiration);
+    }
     require(premium < payout, "Premium must be less than payout");
     uint40 now_ = uint40(block.timestamp);
     require(expiration > now_, "Expiration must be in the future");
