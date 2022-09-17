@@ -1,3 +1,4 @@
+const path = require("path");
 const { subtask } = require("hardhat/config");
 
 const {
@@ -33,7 +34,6 @@ TODO: propose a change in solidity-coverage so their subtasks can be reused dire
 subtask(TASK_COMPILE_SOLIDITY_GET_COMPILER_INPUT).setAction(async (_, { config }, runSuper) => {
   const solcInput = await runSuper();
   if (measureCoverage) {
-    console.log("MANGLING COMPILER INPUT");
     // The source name here is actually the global name in the solc input,
     // but hardhat uses the fully qualified contract names.
     for (const [sourceName, source] of Object.entries(solcInput.sources)) {
