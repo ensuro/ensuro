@@ -70,7 +70,7 @@ exports.addRiskModule = async function (
       _W(scrInterestRate) || _W(0.1),
       _A(maxScrPerPolicy) || _A(1000),
       _A(scrLimit) || _A(1000000),
-      wallet || "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC", // Random address
+      wallet || "0xdD2FD4581271e230360230F9337D5c0430Bf44C0", // Random address
       ...extraArgs,
     ],
     {
