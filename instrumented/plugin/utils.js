@@ -18,8 +18,8 @@ exports.setupDirectories = function setupDirectories(config) {
   shell.rm("-rf", path.join(config.instrumentedDir, "build"));
 
   shell.mkdir(path.join(config.instrumentedDir, "node_modules"));
-  if (config.hacks?.copyDependencies) {
-    config.hacks.copyDependencies.map((dependency) => {
+  if (config.copyDependencies) {
+    config.copyDependencies.map((dependency) => {
       shell.cp(
         "-R",
         path.join(config.workingDir, "node_modules", dependency),

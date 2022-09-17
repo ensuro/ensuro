@@ -8,6 +8,8 @@ require("solidity-docgen");
 
 require("./instrumented/plugin/hardhat.plugin");
 
+const path = require("path");
+
 const deploy = require("./tasks/deploy");
 
 // const { mnemonic } = require('./secrets.json');
@@ -120,5 +122,9 @@ module.exports = {
       hostname: "127.0.0.1",
       port: 8545,
     },
+    // TODO: probably should get this from brownie-config
+    copyDependencies: ["@openzeppelin", "@uniswap"],
+    instrumentedDir: path.join(process.cwd(), "instrumented"),
+    workingDir: process.cwd(),
   },
 };
