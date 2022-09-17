@@ -1001,7 +1001,7 @@ class PolicyPool(ERC721Token):
     @external
     def new_policy(self, policy, payer, policy_holder, internal_id):
         policy.id = policy.risk_module.make_policy_id(internal_id)
-        self.mint(customer, policy.id)
+        self.mint(policy_holder, policy.id)
 
         assert policy.sr_interest_rate >= 0
 
