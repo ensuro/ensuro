@@ -5,7 +5,7 @@ require("hardhat-contract-sizer");
 require('@openzeppelin/hardhat-upgrades');
 require("@nomiclabs/hardhat-etherscan");
 require('solidity-docgen');
-
+require("hardhat-tracer");
 
 const deploy = require("./tasks/deploy");
 
