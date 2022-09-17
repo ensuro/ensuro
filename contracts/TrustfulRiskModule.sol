@@ -68,13 +68,10 @@ contract TrustfulRiskModule is RiskModule {
        * The standard is the payer should be the msg.sender but usually, in this type of module,
        * the sender is an operative account managed by software, where the onBehalfOf is a more
        * secure account (hardware wallet) that does the cash movements.
-       * 
        * This non standard behaviour allows for a more secure setup, where the sender never manages
-       * cash. 
-       * 
+       * cash.
        * We leverage the currency's allowance mechanism to allow the sender access to the payer's
        * funds.
-       * 
        * Note that this allowance won't be spent, so it can be set as the maximum amount of a single
        * premium even for multiple policies.
        */
