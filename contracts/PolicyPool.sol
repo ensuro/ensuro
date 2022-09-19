@@ -305,7 +305,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
 
   function newPolicy(
     Policy.PolicyData memory policy,
-    address customer,
+    address payer,
+    address policyHolder,
     uint96 internalId
   ) external override whenNotPaused returns (uint256) {
     IRiskModule rm = policy.riskModule;
@@ -316,17 +317,15 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     IPremiumsAccount pa = rm.premiumsAccount();
     require(_paStatus(pa) == ComponentStatus.active, "PremiumsAccount not found or not active");
     pa.policyCreated(policy);
-    _safeMint(customer, policy.id, "");
+    _safeMint(policyHolder, policy.id, "");
 
     // Distribute the premium
-    _currency.safeTransferFrom(customer, address(pa), policy.purePremium);
-    if (policy.srCoc > 0)
-      _currency.safeTransferFrom(customer, address(pa.seniorEtk()), policy.srCoc);
-    if (policy.jrCoc > 0)
-      _currency.safeTransferFrom(customer, address(pa.juniorEtk()), policy.jrCoc);
-    _currency.safeTransferFrom(customer, _treasury, policy.ensuroCommission);
-    if (policy.partnerCommission > 0 && customer != rm.wallet())
-      _currency.safeTransferFrom(customer, rm.wallet(), policy.partnerCommission);
+    _currency.safeTransferFrom(payer, address(pa), policy.purePremium);
+    if (policy.srCoc > 0) _currency.safeTransferFrom(payer, address(pa.seniorEtk()), policy.srCoc);
+    if (policy.jrCoc > 0) _currency.safeTransferFrom(payer, address(pa.juniorEtk()), policy.jrCoc);
+    _currency.safeTransferFrom(payer, _treasury, policy.ensuroCommission);
+    if (policy.partnerCommission > 0 && payer != rm.wallet())
+      _currency.safeTransferFrom(payer, rm.wallet(), policy.partnerCommission);
     // TODO: this code does up to 5 ERC20 transfers. How we can avoid this? Delayed transfers?
 
     emit NewPolicy(rm, policy);
