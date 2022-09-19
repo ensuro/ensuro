@@ -6,11 +6,13 @@ from ethproto.wadray import _W, make_integer_float, Wad
 
 env = Env()
 
+DAYS_IN_YEAR = 365
+
 HOUR = 3600
 DAY = 24 * HOUR
 WEEK = 7 * DAY
 MONTH = 30 * DAY
-YEAR = 365 * DAY
+YEAR = DAYS_IN_YEAR * DAY
 
 
 def parse_period(period):

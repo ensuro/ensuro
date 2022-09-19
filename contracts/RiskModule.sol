@@ -344,7 +344,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
       expiration
     );
     _activeExposure += policy.payout;
-    require(_activeExposure <= exposureLimit(), "RiskModule: SCR limit exceeded");
+    require(_activeExposure <= exposureLimit(), "RiskModule: Exposure limit exceeded");
     uint256 policyId = _policyPool.newPolicy(policy, payer, onBehalfOf, internalId);
     policy.id = policyId;
     return policy;

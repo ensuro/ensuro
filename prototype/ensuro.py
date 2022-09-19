@@ -22,7 +22,9 @@ from ethproto.contracts import ERC721Token
 from ethproto.wadray import RAY, Ray, Wad, _W, _R
 import time
 
-SECONDS_IN_YEAR = 365 * 24 * 3600
+SECONDS_IN_HOUR = 3600
+SECONDS_IN_YEAR = 365 * 24 * SECONDS_IN_HOUR
+MAX_UINT = 2**256 - 1
 
 
 class TimeControl:
@@ -78,6 +80,7 @@ class RiskModule(AccessControlContract):
     max_payout_per_policy = WadField(default=_W(1000000))
     exposure_limit = WadField(default=_W(10000000))
     active_exposure = WadField(default=_W(0))
+    max_duration = IntField(default=365)
 
     wallet = AddressField(default="RM")
 
@@ -94,6 +97,7 @@ class RiskModule(AccessControlContract):
         "sr_roc": "LEVEL2_ROLE",
         "max_payout_per_policy": "LEVEL2_ROLE",
         "exposure_limit": "LEVEL1_ROLE",
+        "max_duration": "LEVEL2_ROLE",
     }
 
     def __init__(self, **kwargs):
@@ -163,6 +167,13 @@ class RiskModule(AccessControlContract):
         if premium is None:
             premium = self.get_minimum_premium(payout, loss_prob, expiration)
 
+        require(premium < payout, "Premium must be less than payout")
+        require(expiration > start, "Expiration must be in the future")
+        require(
+            ((expiration - start) / SECONDS_IN_HOUR) < self.max_duration,
+            "Policy exceeds max duration"
+        )
+        require(on_behalf_of is not None, "Customer can't be zero address")
         require(
             self.policy_pool.currency.allowance(payer, self.policy_pool.contract_id)
             >= premium,
@@ -186,7 +197,7 @@ class RiskModule(AccessControlContract):
 
         require(
             policy.payout <= self.max_payout_per_policy,
-            f"Policy Payout: {policy.payout} > maximum per policy {self.max_payout_per_policy}",
+            f"Policy Payout is more than maximum: {policy.payout} > maximum {self.max_payout_per_policy}",
         )
         active_exposure = self.active_exposure + policy.payout
         require(
@@ -233,7 +244,7 @@ class TrustfulRiskModule(RiskModule):
         payer = kwargs.get("on_behalf_of")
         if self._running_as != payer and self.policy_pool.currency.allowance(
             payer, self._running_as
-        ) < kwargs.get("premium"):
+        ) < (kwargs.get("premium") or MAX_UINT):
             payer = self._running_as
         kwargs["payer"] = payer
 

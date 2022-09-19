@@ -107,6 +107,24 @@ describe("RiskModule contract", function () {
     expect(await currency.balanceOf(backend.address)).to.equal(_A(1000));
   });
 
+  it("Does not allow an exposure limit of zero", async () => {
+    await expect(
+      addRiskModule(pool, premiumsAccount, RiskModule, {
+        scrLimit: 0,
+        extraArgs: [],
+      })
+    ).to.be.revertedWith("Exposure and MaxPayout must be >0");
+  });
+
+  it("Does not allow a maxpayout of zero", async () => {
+    await expect(
+      addRiskModule(pool, premiumsAccount, RiskModule, {
+        maxScrPerPolicy: 0,
+        extraArgs: [],
+      })
+    ).to.be.revertedWith("Exposure and MaxPayout must be >0");
+  });
+
   async function makePolicy({ payout, premium, lossProbability, expiration, payer, onBehalfOf, internalId }) {
     const now = await helpers.time.latest();
     const policy = {
