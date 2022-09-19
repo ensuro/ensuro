@@ -44,7 +44,8 @@ contract PolicyPoolMock is IPolicyPool {
 
   function newPolicy(
     Policy.PolicyData memory policy,
-    address, /* customer */
+    address, /* caller */
+    address, /* policyHolder */
     uint96 internalId
   ) external override returns (uint256) {
     policy.id = (uint256(uint160(address(policy.riskModule))) << 96) + internalId;

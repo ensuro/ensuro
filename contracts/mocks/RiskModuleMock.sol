@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
-import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
-import {RiskModule} from "./RiskModule.sol";
-import {Policy} from "./Policy.sol";
+import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
+import {IPremiumsAccount} from "../interfaces/IPremiumsAccount.sol";
+import {RiskModule} from "../RiskModule.sol";
+import {Policy} from "../Policy.sol";
 
 /**
  * @title Trustful Risk Module
@@ -14,7 +15,7 @@ import {Policy} from "./Policy.sol";
  * @author Ensuro
  */
 
-contract TrustfulRiskModule is RiskModule {
+contract RiskModuleMock is RiskModule {
   bytes32 public constant PRICER_ROLE = keccak256("PRICER_ROLE");
   bytes32 public constant RESOLVER_ROLE = keccak256("RESOLVER_ROLE");
 
@@ -59,40 +60,10 @@ contract TrustfulRiskModule is RiskModule {
     uint256 premium,
     uint256 lossProb,
     uint40 expiration,
+    address payer,
     address onBehalfOf,
     uint96 internalId
   ) external onlyComponentRole(PRICER_ROLE) returns (uint256) {
-    address payer = onBehalfOf;
-    if (payer != msg.sender && _policyPool.currency().allowance(payer, msg.sender) < premium)
-      /**
-       * The standard is the payer should be the msg.sender but usually, in this type of module,
-       * the sender is an operative account managed by software, where the onBehalfOf is a more
-       * secure account (hardware wallet) that does the cash movements.
-       * This non standard behaviour allows for a more secure setup, where the sender never manages
-       * cash.
-       * We leverage the currency's allowance mechanism to allow the sender access to the payer's
-       * funds.
-       * Note that this allowance won't be spent, so it can be set as the maximum amount of a single
-       * premium even for multiple policies.
-       */
-      payer = msg.sender;
-
     return _newPolicy(payout, premium, lossProb, expiration, payer, onBehalfOf, internalId).id;
-  }
-
-  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout)
-    external
-    onlyComponentRole(RESOLVER_ROLE)
-    whenNotPaused
-  {
-    _policyPool.resolvePolicy(policy, payout);
-  }
-
-  function resolvePolicyFullPayout(Policy.PolicyData calldata policy, bool customerWon)
-    external
-    onlyComponentRole(RESOLVER_ROLE)
-    whenNotPaused
-  {
-    _policyPool.resolvePolicyFullPayout(policy, customerWon);
   }
 }
