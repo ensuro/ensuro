@@ -2,10 +2,14 @@ require("@nomiclabs/hardhat-waffle");
 require("hardhat-gas-reporter");
 require("solidity-coverage");
 require("hardhat-contract-sizer");
-require('@openzeppelin/hardhat-upgrades');
+require("@openzeppelin/hardhat-upgrades");
 require("@nomiclabs/hardhat-etherscan");
-require('solidity-docgen');
 require("hardhat-tracer");
+require("solidity-docgen");
+
+require("./instrumented/plugin/hardhat.plugin");
+
+const path = require("path");
 
 const deploy = require("./tasks/deploy");
 
@@ -20,7 +24,6 @@ task("accounts", "Prints the list of accounts", async () => {
     console.log(account.address);
   }
 });
-
 
 deploy.add_task();
 
@@ -47,9 +50,9 @@ module.exports = {
     settings: {
       optimizer: {
         enabled: true,
-        runs: 200
-      }
-    }
+        runs: 200,
+      },
+    },
   },
   contractSizer: {
     alphaSort: true,
@@ -59,10 +62,10 @@ module.exports = {
   defaultNetwork: "hardhat",
   networks: {
     localhost: {
-      url: "http://127.0.0.1:8545"
+      url: "http://127.0.0.1:8545",
     },
     ganache: {
-      url: "http://ganache-cli:8545"
+      url: "http://ganache-cli:8545",
     },
     hardhat: {
       hardfork: "london",
@@ -70,7 +73,7 @@ module.exports = {
       initialBaseFeePerGas: 0,
       // brownie expects calls and transactions to throw on revert
       throwOnTransactionFailures: true,
-      throwOnCallFailures: true
+      throwOnCallFailures: true,
     },
     bsctestnet: {
       url: "https://data-seed-prebsc-1-s3.binance.org:8545/",
@@ -86,34 +89,43 @@ module.exports = {
       chainId: 137,
       accounts: readEnvAccounts("polygon"),
       gasPrice: "auto",
-      gasMultiplier: 1.3
+      gasMultiplier: 1.3,
     },
     polytest: {
       url: "https://polygon-mumbai.infura.io/v3/" + process.env.WEB3_INFURA_PROJECT_ID,
       chainId: 80001,
       accounts: readEnvAccounts("polytest"),
-      gasPrice: "auto"
+      gasPrice: "auto",
     },
     mainnet: {
       url: "https://mainnet.infura.io/v3/" + process.env.WEB3_INFURA_PROJECT_ID,
       accounts: readEnvAccounts("mainnet"),
-    }
+    },
   },
   etherscan: {
     apiKey: process.env.ETHERSCAN_TOKEN,
   },
   gasReporter: {
-    currency: 'USD',
+    currency: "USD",
     coinmarketcap: "1b0c87b0-c123-48d1-86f9-1544ef487220",
-    enabled: (process.env.REPORT_GAS) ? true : false
+    enabled: process.env.REPORT_GAS ? true : false,
   },
   mocha: {
-    timeout: 120000
+    timeout: 120000,
   },
   docgen: {
     pages: "files",
     outputDir: "docs",
     exclude: ["mocks", "dependencies", "upgraded"],
-  }
+  },
+  brownieCoverage: {
+    nodeConfig: {
+      hostname: "127.0.0.1",
+      port: 8545,
+    },
+    // TODO: probably should get this from brownie-config
+    copyDependencies: ["@openzeppelin"],
+    instrumentedDir: path.join(process.cwd(), "instrumented"),
+    workingDir: process.cwd(),
+  },
 };
-

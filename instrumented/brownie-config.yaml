@@ -5,4 +5,3 @@ compiler:
       enabled: false
     remappings:
       - "@openzeppelin=node_modules/@openzeppelin"
-      - "@aave=node_modules/@aave"

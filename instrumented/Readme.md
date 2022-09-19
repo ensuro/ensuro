@@ -2,14 +2,20 @@
 
 This directory is a dummy brownie project to compile and test contracts instrumented by solidity-coverage.
 
-The whole flow is handled by the coverage.js script.
+The whole flow is handled by a hardhat plugin.
 
 ## Usage
 
-From the repository root run:
+Add the plugin to your `hardhat.config.js`:
 
 ```
-node instrumented/coverage.js
+require("./instrumented/plugin/hardhat.plugin");
+```
+
+Then from the repository root run:
+
+```
+npx hardhat brownie-coverage
 ```
 
 It will output test run details and the coverage report on the console.
@@ -39,17 +45,3 @@ This is not strictly required right now, since all tests complete successfully u
 Nevertheless, it might be useful for some cases.
 
 An ideal solution would require no changes in brownie or the tests, or at most a new fixture / decorator.
-
-## Convert to a hardhat plugin
-
-Instead of having a script we could convert this into a proper hardhat plugin that other projects can use.
-
-## Use hardhat node instead of ganache
-
-We're currently using ganache for the eth client that the contracts are deployed to. solcover supports using hardhats own node.
-
-This probably requires running as a hardhat plugin (see above).
-
-## Run hardhat tests as well
-
-This would also require running as a hardhat plugin.
