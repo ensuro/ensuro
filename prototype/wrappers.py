@@ -429,6 +429,8 @@ class RiskModule(ETHWrapper):
 
     name = MethodAdapter((), "string", is_property=True)
 
+    last_tweak = MethodAdapter((), "tuple")
+
     params = MethodAdapter((), "tuple")
     set_param = MethodAdapter((("param", "int"), ("value", "wad")))
 

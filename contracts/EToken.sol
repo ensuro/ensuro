@@ -700,7 +700,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
       "Component not linked to this PolicyPool"
     );
     _params.whitelist = lpWhitelist_;
-    emit ComponentChanged(IAccessManager.GovernanceActions.setLPWhitelist, address(lpWhitelist_));
+    _componentChanged(IAccessManager.GovernanceActions.setLPWhitelist, address(lpWhitelist_));
   }
 
   function whitelist() external view returns (ILPWhitelist) {

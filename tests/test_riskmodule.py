@@ -237,7 +237,7 @@ def test_getset_rm_parameters_tweaks(tenv):
 
 def test_avoid_repeated_tweaks(tenv):
     if tenv.kind != "ethereum":
-        return
+        pytest.skip("Tweaks not fully implemented in Python")
     rm = tenv.rm_class(
         name="Roulette", coll_ratio=_W(1), ensuro_pp_fee=_W("0.03"),
         sr_roc=_W("0.02"),
@@ -251,6 +251,11 @@ def test_avoid_repeated_tweaks(tenv):
         assert rm.coll_ratio == _W("0.95")
         rm.sr_roc = _W("0.021")
         assert rm.sr_roc == _W("0.021")
+
+    timestamp, fields = rm.last_tweak()
+    assert tenv.time_control.now == timestamp
+    # 2 ** (GovernanceActions.setCollRatio - 1) + 2 ** (GovernanceActions.setSrRoc - 1)
+    assert fields == (2**12 + 2 ** 16)
 
     with rm.as_("L3_USER"), pytest.raises(RevertError, match="You already tweaked this parameter recently"):
         rm.coll_ratio = _W("0.93")
@@ -293,14 +298,13 @@ def test_new_policy(tenv):
     tenv.pool_access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
     with rm.as_("JOHN_SELLER"):
         policy = rm.new_policy(
-            payout=_W(36), 
-            premium=_W(1), 
-            loss_prob=_W(1/37), 
-            expiration=expiration, 
-            on_behalf_of="CUST1", 
+            payout=_W(36),
+            premium=_W(1),
+            loss_prob=_W(1/37),
+            expiration=expiration,
+            on_behalf_of="CUST1",
             internal_id=123
         )
-
 
     policy.premium.assert_equal(_W(1))
     policy.payout.assert_equal(_W(36))
@@ -343,14 +347,14 @@ def test_moc(tenv):
     tenv.pool_access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
     with rm.as_("JOHN_SELLER"):
         policy = rm.new_policy(
-            payout=_W(36), 
-            premium=_W(1), 
-            loss_prob=_W(1/37), 
-            expiration=expiration, 
-            on_behalf_of="CUST1", 
+            payout=_W(36),
+            premium=_W(1),
+            loss_prob=_W(1/37),
+            expiration=expiration,
+            on_behalf_of="CUST1",
             internal_id=111
         )
-        
+
     policy.premium.assert_equal(_W(1))
     policy.loss_prob.assert_equal(_W(1/37))
     policy.pure_premium.assert_equal(_W(36 * 1/37))
@@ -368,11 +372,11 @@ def test_moc(tenv):
 
     with rm.as_("JOHN_SELLER"):
         policy2 = rm.new_policy(
-            payout=_W(36), 
-            premium=_W(1), 
-            loss_prob=_W(1/37), 
-            expiration=expiration, 
-            on_behalf_of="CUST1", 
+            payout=_W(36),
+            premium=_W(1),
+            loss_prob=_W(1/37),
+            expiration=expiration,
+            on_behalf_of="CUST1",
             internal_id=112
         )
 
@@ -408,11 +412,11 @@ def test_minimum_premium(tenv):
     tenv.pool_access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
     with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="less than minimum"):
         policy = rm.new_policy(
-            payout=_W(36), 
-            premium=_W("1.28"), 
-            loss_prob=_W(1/37), 
-            expiration=expiration, 
-            on_behalf_of="CUST1", 
+            payout=_W(36),
+            premium=_W("1.28"),
+            loss_prob=_W(1/37),
+            expiration=expiration,
+            on_behalf_of="CUST1",
             internal_id=222
         )
 
@@ -420,9 +424,9 @@ def test_minimum_premium(tenv):
         policy = rm.new_policy(
             payout=_W(36),
             premium=rm.get_minimum_premium(_W(36), _W(1/37), expiration),
-            loss_prob=_W(1/37), 
-            expiration=expiration, 
-            on_behalf_of="CUST1", 
+            loss_prob=_W(1/37),
+            expiration=expiration,
+            on_behalf_of="CUST1",
             internal_id=222
         )
 
