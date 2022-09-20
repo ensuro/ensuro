@@ -570,6 +570,60 @@ def test_etk_asset_manager(tenv):
         etk.set_asset_manager(asset_manager_2, True)
 
 
+@skip_if_coverage_activated
+def test_etk_asset_manager_liquidity_under_minimum(tenv):
+    etk = tenv.etoken_class(name="eUSD1WEEK")
+
+    # Initial setup
+    tenv.currency.transfer(tenv.currency.owner, etk, _W(300))
+    with etk.thru_policy_pool():
+        etk.deposit("LP1", _W(100))
+        etk.deposit("LP2", _W(200))
+    assert etk.total_supply() == _W(300)
+    assert etk.get_current_scale(True) == _R(1)
+    tenv.currency.balance_of(etk).assert_equal(_W(300))
+
+    # Create vault
+    vault = tenv.module.FixedRateVault(asset=tenv.currency)
+    asset_manager = tenv.module.ERC4626AssetManager(
+        vault=vault,
+        reserve=etk,
+    )
+
+    with pytest.raises(RevertError, match="AccessControl"):
+        etk.set_asset_manager(asset_manager, False)
+
+    tenv.pool_access.grant_role("LEVEL1_ROLE", "ADMIN")
+
+    # Set asset manager
+    with etk.as_("ADMIN"):
+        etk.set_asset_manager(asset_manager, False)
+
+    with pytest.raises(RevertError, match="AccessControl"):
+        etk.forward_to_asset_manager("set_liquidity_thresholds", _W(500), _W(600), _W(20000))
+
+    tenv.pool_access.grant_component_role(etk, "LEVEL2_ROLE", "ADMIN")
+
+    with etk.as_("ADMIN"):
+        etk.forward_to_asset_manager("set_liquidity_thresholds", _W(500), _W(600), _W(20000))
+
+    # Rebalance
+    vault.total_assets().assert_equal(_W(0))
+    # After checkpoint the cash should be rebalanced
+    etk.rebalance()
+    vault.total_assets().assert_equal(_W(0))
+    tenv.currency.balance_of(etk).assert_equal(_W(300))
+
+    etk.record_earnings()
+    etk.total_supply().assert_equal(_W(300))
+
+    # After two month record the earnings
+    tenv.time_control.fast_forward(2 * MONTH)
+
+    etk.checkpoint()
+    tenv.currency.balance_of(etk).assert_equal(_W(300))  # USDC balance unchanged
+
+
 def test_name_and_others(tenv):
     etk = tenv.etoken_class(name="eUSD One Week", symbol="eUSD1W")
     assert etk.name == "eUSD One Week"
