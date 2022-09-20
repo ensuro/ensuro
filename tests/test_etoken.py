@@ -600,28 +600,43 @@ def test_etk_asset_manager_liquidity_under_minimum(tenv):
         etk.set_asset_manager(asset_manager, False)
 
     with pytest.raises(RevertError, match="AccessControl"):
-        etk.forward_to_asset_manager("set_liquidity_thresholds", _W(500), _W(600), _W(20000))
+        etk.forward_to_asset_manager("set_liquidity_thresholds", _W(100), _W(200), _W(250))
 
     tenv.pool_access.grant_component_role(etk, "LEVEL2_ROLE", "ADMIN")
 
     with etk.as_("ADMIN"):
-        etk.forward_to_asset_manager("set_liquidity_thresholds", _W(500), _W(600), _W(20000))
+        etk.forward_to_asset_manager("set_liquidity_thresholds", _W(100), _W(200), _W(250))
 
     # Rebalance
     vault.total_assets().assert_equal(_W(0))
     # After checkpoint the cash should be rebalanced
     etk.rebalance()
-    vault.total_assets().assert_equal(_W(0))
-    tenv.currency.balance_of(etk).assert_equal(_W(300))
+    vault.total_assets().assert_equal(_W(100))
+    tenv.currency.balance_of(etk).assert_equal(_W(200))
 
     etk.record_earnings()
-    etk.total_supply().assert_equal(_W(300))
+    etk.total_supply().assert_equal(_W(300))  # Nothing earned yet
 
     # After two month record the earnings
     tenv.time_control.fast_forward(2 * MONTH)
+    interest_earnings = _W(100 * 0.05 * 60 / 365)
+    vault.total_assets().assert_equal(_W(100) + interest_earnings)
 
     etk.checkpoint()
-    tenv.currency.balance_of(etk).assert_equal(_W(300))  # USDC balance unchanged
+    etk.total_supply().assert_equal(_W(300) + interest_earnings)
+    etk.balance_of("LP1").assert_equal(_W(100) + interest_earnings * _W(1 / 3))
+    tenv.currency.balance_of(etk).assert_equal(_W(200))  # USDC balance unchanged
+
+    with etk.as_("ADMIN"):
+        etk.forward_to_asset_manager("set_liquidity_thresholds", _W(500), _W(700), _W(1200))
+
+    # After checkpoint the cash should be rebalanced
+    etk.rebalance()
+    vault.total_assets().assert_equal(0)
+    tenv.currency.balance_of(etk).assert_equal(_W(300) + interest_earnings)
+
+    etk.record_earnings()
+    etk.total_supply().assert_equal(_W(300) + interest_earnings)  # Nothing earned yet
 
 
 def test_name_and_others(tenv):
