@@ -71,6 +71,7 @@ abstract contract LiquidityThresholdAssetManager is IAssetManager {
     DiamondStorage storage ds = diamondStorage();
     int256 earnings = int256(investmentValue) - int256(uint256(ds.lastInvestmentValue));
     ds.lastInvestmentValue = uint128(investmentValue);
+    emit EarningsRecorded(earnings);
     return earnings;
   }
 

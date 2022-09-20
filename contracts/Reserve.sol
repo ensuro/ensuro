@@ -109,7 +109,7 @@ abstract contract Reserve is PolicyPoolComponent {
 
   function forwardToAssetManager(bytes memory functionCall)
     external
-    onlyComponentRole(LEVEL2_ROLE)
+    onlyGlobalOrComponentRole(LEVEL2_ROLE)
     returns (bytes memory)
   {
     address am = address(assetManager());

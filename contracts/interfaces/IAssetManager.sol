@@ -8,7 +8,7 @@ pragma solidity ^0.8.0;
 interface IAssetManager {
   event MoneyInvested(uint256 amount);
   event MoneyDeinvested(uint256 amount);
-  event EarningsRecorded(bool positive, uint256 amount);
+  event EarningsRecorded(int256 earnings);
 
   function connect() external;
 

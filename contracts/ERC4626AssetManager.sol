@@ -4,9 +4,6 @@ pragma solidity ^0.8.0;
 import {LiquidityThresholdAssetManager} from "./LiquidityThresholdAssetManager.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
-import {IAssetManager} from "./interfaces/IAssetManager.sol";
-import {IAccessManager} from "./interfaces/IAccessManager.sol";
-import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 /**
  * @title Asset Manager that deploys the funds into an ERC4626 vault
@@ -41,6 +38,8 @@ contract ERC4626AssetManager is LiquidityThresholdAssetManager {
     uint256 assets = _vault.redeem(_vault.balanceOf(address(this)), address(this), address(this));
     earnings = int256(assets) - int256(uint256(ds.lastInvestmentValue));
     ds.lastInvestmentValue = uint128(assets);
+    emit MoneyDeinvested(assets);
+    emit EarningsRecorded(earnings);
     return earnings;
   }
 
