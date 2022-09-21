@@ -1252,24 +1252,43 @@ def test_distribute_negative_earnings(tenv):
     pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
     pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
 
-    asset_manager = pool.access.asset_manager
+    USD = pool.currency
+    etk = pool.etokens["eUSD1YEAR"]
+
+    # Create vault and asset manager
+    vault = tenv.module.FixedRateVault(asset=USD)
+    asset_manager = tenv.module.ERC4626AssetManager(
+        vault=vault,
+        reserve=etk,
+    )
+
+    pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
+
+    # Set asset manager
+    with etk.as_("ADMIN"):
+        etk.set_asset_manager(asset_manager, False)
+
+    pool.access.grant_component_role(etk, "LEVEL2_ROLE", "ADMIN")
+
+    with etk.as_("ADMIN"):
+        etk.forward_to_asset_manager("set_liquidity_thresholds", _W(1000), _W(1500), _W(2000))
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(5000))
 
-    asset_manager.rebalance()
-    asset_manager.get_investment_value().assert_equal(_W(3500))
-    timecontrol.fast_forward(365 * DAY)
-    asset_manager.get_investment_value().assert_equal(_W(3500) * _W("1.05"))
+    etk.rebalance()
+    vault.total_assets().assert_equal(_W(3500))
 
-    asset_manager.distribute_earnings()
     timecontrol.fast_forward(365 * DAY)
-    asset_manager.get_investment_value().assert_equal(_W(3500) * _W("1.1"), decimals=0)
+    vault.total_assets().assert_equal(_W(3500) * _W("1.05"))
+
+    etk.record_earnings()
+    timecontrol.fast_forward(365 * DAY)
+    vault.total_assets().assert_equal(_W(3500) * _W("1.1"))
 
     # Now change the asset manager to negative interest rate
-    asset_manager.positive = False
     timecontrol.fast_forward(365 * DAY)
-    asset_manager.distribute_earnings()
-    asset_manager.get_investment_value().assert_equal(_W(3500) * _W("1.1") * _W("0.95"))
+    vault.discrete_earning(-_W("367.5"))
+    vault.total_assets().assert_equal(_W(3500) * _W("1.1") * _W("0.95"))
 
 
 @pytest.mark.skip("FIXME")
