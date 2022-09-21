@@ -599,10 +599,11 @@ class EToken(ReserveMixin, ERC20Token):
         self._update_token_interest_rate()
 
     def _check_balance(self):
+        if self.asset_manager:
+            return
         balance = self.currency.balance_of(self)
         require(
-            balance >= self.total_supply()
-            or (self.total_supply() - balance) < self.NEGLIGIBLE_AMOUNT,
+            balance >= self.total_supply() or (self.total_supply() - balance) < self.NEGLIGIBLE_AMOUNT,
             "Cash balance under total_supply",
         )
 
