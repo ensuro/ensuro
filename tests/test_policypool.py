@@ -1792,4 +1792,97 @@ def test_risk_provider_cant_drain_liquidity_provider(tenv):
     assert USD.balance_of("JOHN_SELLER") == _W(0)
 
     # LP1's balance should not be affected
-    assert USD.balance_of("LP1") ==  _W(2000)
+    assert USD.balance_of("LP1") == _W(2000)
+
+
+def test_same_asset_manager_for_etk_and_pa(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        coll_ratio: "0.2448"
+        sr_roc: "0.0729"
+        ensuro_pp_fee: "0.0321"
+        max_payout_per_policy: 500
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 20000
+        initial_balances:
+        - user: LP1
+          amount: 10000
+        - user: LP2
+          amount: 1000
+        - user: CUST1
+          amount: 200
+    etokens:
+      - name: eUSD1YEAR
+    """
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    rm = pool.risk_modules["Roulette"]
+    pa = rm.premiums_account
+    pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
+
+    USD = pool.currency
+    etk = pool.etokens["eUSD1YEAR"]
+
+    # Create vault and asset manager
+    vault = tenv.module.FixedRateVault(asset=USD)
+    asset_manager = tenv.module.ERC4626AssetManager(
+        vault=vault,
+        reserve=etk,
+    )
+
+    pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
+
+    # Set asset manager for etk
+    with etk.as_("ADMIN"):
+        etk.set_asset_manager(asset_manager, False)
+
+    pool.access.grant_component_role(etk, "LEVEL2_ROLE", "ADMIN")
+
+    with etk.as_("ADMIN"):
+        etk.forward_to_asset_manager("set_liquidity_thresholds", _W(1000), _W(1500), _W(2000))
+
+    etk.balance_of("LP1").assert_equal(_W(0))
+    _deposit(pool, "eUSD1YEAR", "LP1", _W(5000))
+    etk.balance_of("LP1").assert_equal(_W(5000))
+
+    vault.total_assets().assert_equal(_W(0))
+    etk.checkpoint()  # Rebalance cash
+
+    assert USD.balance_of(etk) == _W(1500)
+    vault.total_assets().assert_equal(_W(3500))
+    etk.balance_of("LP1").assert_equal(_W(5000))
+
+    # Set asset manager for pa
+    with pa.as_("ADMIN"):
+        pa.set_asset_manager(asset_manager, False)
+
+    pool.access.grant_component_role(pa, "LEVEL2_ROLE", "ADMIN")
+
+    with pa.as_("ADMIN"):
+        pa.forward_to_asset_manager("set_liquidity_thresholds", _W(100), _W(160), _W(200))
+
+    USD.transfer("LP1", pa, _W(1000))
+    assert USD.balance_of(pa) == _W(1000)
+
+    # After checkpoint the cash should be rebalanced
+    pa.checkpoint()
+
+    assert USD.balance_of(pa) == _W(160)
+    vault.total_assets().assert_equal(_W(3500) + _W(840))
+    total_assets = vault.total_assets()
+
+    timecontrol.fast_forward(365 * DAY)
+    vault.total_assets().assert_equal(total_assets * _W("1.05"))
+
+    etk.record_earnings()
+    timecontrol.fast_forward(365 * DAY)
+    vault.total_assets().assert_equal(total_assets * _W("1.1"))
+
+    # Now change the asset manager to negative interest rate
+    timecontrol.fast_forward(365 * DAY)
+    vault.discrete_earning(-_W("455.7"))
+    vault.total_assets().assert_equal(total_assets * _W("1.1") * _W("0.95"))
