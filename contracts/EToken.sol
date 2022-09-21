@@ -3,6 +3,8 @@ pragma solidity ^0.8.0;
 
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {Reserve} from "./Reserve.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
@@ -27,8 +29,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   using WadRayMath for uint256;
   using TimeScaled for TimeScaled.ScaledAmount;
   using SafeERC20 for IERC20Metadata;
-
-  uint256 internal constant SECONDS_PER_YEAR = 365 days;
+  using SafeCast for uint256;
 
   // Attributes taken from ERC20
   mapping(address => uint256) private _balances;
@@ -109,10 +110,10 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
       tokenInterestRate: 0
     }); */
     _params = PackedParams({
-      maxUtilizationRate: uint16(maxUtilizationRate_ / 1e14),
+      maxUtilizationRate: _wadTo4(maxUtilizationRate_),
       liquidityRequirement: 1e4,
       minUtilizationRate: 0,
-      internalLoanInterestRate: uint16(internalLoanInterestRate_ / 1e14),
+      internalLoanInterestRate: _wadTo4(internalLoanInterestRate_),
       whitelist: ILPWhitelist(address(0))
     });
 
@@ -427,9 +428,10 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     uint256 totalSupply_ = this.totalSupply();
     if (totalSupply_ == 0) _scr.tokenInterestRate = 0;
     else {
-      _scr.tokenInterestRate = uint64(
-        uint256(_scr.interestRate).wadMul(uint256(_scr.scr)).wadDiv(totalSupply_)
-      );
+      _scr.tokenInterestRate = uint256(_scr.interestRate)
+        .wadMul(uint256(_scr.scr))
+        .wadDiv(totalSupply_)
+        .toUint64();
     }
   }
 
@@ -459,6 +461,17 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     _assetManager = newAM;
   }
 
+  // solhint-disable-next-line func-name-mixedcase
+  function _4toWad(uint16 value) internal pure returns (uint256) {
+    // 4 decimals to Wad (18 decimals)
+    return uint256(value) * 1e14;
+  }
+
+  function _wadTo4(uint256 value) internal pure returns (uint16) {
+    // Wad to 4 decimals
+    return (value / 1e14).toUint16();
+  }
+
   function scr() public view virtual override returns (uint256) {
     return uint256(_scr.scr);
   }
@@ -472,15 +485,15 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   }
 
   function liquidityRequirement() public view returns (uint256) {
-    return uint256(_params.liquidityRequirement) * 1e14; // 4 -> 18 decimals
+    return _4toWad(_params.liquidityRequirement);
   }
 
   function maxUtilizationRate() public view returns (uint256) {
-    return uint256(_params.maxUtilizationRate) * 1e14; // 4 -> 18 decimals
+    return _4toWad(_params.maxUtilizationRate);
   }
 
   function minUtilizationRate() public view returns (uint256) {
-    return uint256(_params.minUtilizationRate) * 1e14; // 4 -> 18 decimals
+    return _4toWad(_params.minUtilizationRate);
   }
 
   function utilizationRate() public view returns (uint256) {
@@ -499,17 +512,14 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     );
     _tsScaled.updateScale(tokenInterestRate());
     if (_scr.scr == 0) {
-      _scr.scr = uint128(scrAmount);
-      _scr.interestRate = uint64(policyInterestRate);
+      _scr.scr = scrAmount.toUint128();
+      _scr.interestRate = policyInterestRate.toUint64();
     } else {
       uint256 origScr = uint256(_scr.scr);
       uint256 newScr = origScr + scrAmount;
-      _scr.interestRate = uint64(
-        (uint256(_scr.interestRate).wadMul(origScr) + policyInterestRate.wadMul(scrAmount)).wadDiv(
-          newScr
-        )
-      );
-      _scr.scr = uint128(newScr);
+      _scr.interestRate = (uint256(_scr.interestRate).wadMul(origScr) +
+        policyInterestRate.wadMul(scrAmount)).wadDiv(newScr).toUint64();
+      _scr.scr = newScr.toUint128();
     }
     emit SCRLocked(policyInterestRate, scrAmount);
     _updateTokenInterestRate();
@@ -529,12 +539,9 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     } else {
       uint256 origScr = uint256(_scr.scr);
       uint256 newScr = origScr - scrAmount;
-      _scr.interestRate = uint64(
-        (uint256(_scr.interestRate).wadMul(origScr) - policyInterestRate.wadMul(scrAmount)).wadDiv(
-          newScr
-        )
-      );
-      _scr.scr = uint128(newScr);
+      _scr.interestRate = (uint256(_scr.interestRate).wadMul(origScr) -
+        policyInterestRate.wadMul(scrAmount)).wadDiv(newScr).toUint64();
+      _scr.scr = newScr.toUint128();
     }
     emit SCRUnlocked(policyInterestRate, scrAmount);
     _discreteChange(adjustment);
@@ -579,11 +586,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     onlyPolicyPool
     returns (uint256)
   {
-    uint256 balance = balanceOf(provider);
-    if (balance == 0) return 0;
-    if (amount > balance) amount = balance;
-    uint256 withdrawable = totalWithdrawable();
-    if (amount > withdrawable) amount = withdrawable;
+    amount = Math.min(amount, Math.min(balanceOf(provider), totalWithdrawable()));
     if (amount == 0) return 0;
     _burn(provider, amount);
     _updateTokenInterestRate();
@@ -611,12 +614,11 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     bool fromAvailable
   ) external override onlyBorrower whenNotPaused returns (uint256) {
     uint256 amountAsked = amount;
-    if (fromAvailable && amount > fundsAvailable()) amount = fundsAvailable();
-    if (!fromAvailable && amount > totalSupply()) amount = totalSupply();
-    if (amount > _tsScaled.maxNegativeAdjustment(tokenInterestRate())) {
-      amount = _tsScaled.maxNegativeAdjustment(tokenInterestRate());
-      if (amount == 0) return amountAsked;
-    }
+    amount = Math.min(
+      Math.min(amount, fromAvailable ? fundsAvailable() : totalSupply()),
+      _tsScaled.maxNegativeAdjustment(tokenInterestRate())
+    );
+    if (amount == 0) return amountAsked;
     TimeScaled.ScaledAmount storage loan = _loans[_msgSender()];
     loan.add(amount, internalLoanInterestRate());
     _discreteChange(-int256(amount));
@@ -637,12 +639,11 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
 
   function getLoan(address borrower) public view virtual override returns (uint256) {
     TimeScaled.ScaledAmount storage loan = _loans[borrower];
-    if (loan.scale == 0) return 0;
     return loan.getScaledAmount(internalLoanInterestRate());
   }
 
   function internalLoanInterestRate() public view returns (uint256) {
-    return uint256(_params.internalLoanInterestRate) * 1e14; // to wad 4 -> 18 digits
+    return _4toWad(_params.internalLoanInterestRate);
   }
 
   function setParam(Parameter param, uint256 newValue)
@@ -655,19 +656,19 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
         !tweak || _isTweakWad(liquidityRequirement(), newValue, 1e17),
         "Tweak exceeded: liquidityRequirement tweaks only up to 10%"
       );
-      _params.liquidityRequirement = uint16(newValue / 1e14);
+      _params.liquidityRequirement = _wadTo4(newValue);
     } else if (param == Parameter.minUtilizationRate) {
       require(
         !tweak || _isTweakWad(minUtilizationRate(), newValue, 3e17),
         "Tweak exceeded: minUtilizationRate tweaks only up to 30%"
       );
-      _params.minUtilizationRate = uint16(newValue / 1e14);
+      _params.minUtilizationRate = _wadTo4(newValue);
     } else if (param == Parameter.maxUtilizationRate) {
       require(
         !tweak || _isTweakWad(maxUtilizationRate(), newValue, 3e17),
         "Tweak exceeded: maxUtilizationRate tweaks only up to 30%"
       );
-      _params.maxUtilizationRate = uint16(newValue / 1e14);
+      _params.maxUtilizationRate = _wadTo4(newValue);
     } else if (param == Parameter.internalLoanInterestRate) {
       require(
         !tweak || _isTweakWad(internalLoanInterestRate(), newValue, 3e17),
@@ -677,7 +678,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
       // So, if interest rate goes from 5% to 6%, this change will be retroactive to the lastUpdate of each
       // loan. Since it's a permissioned call, I'm ok with this. If a caller wants to reduce the impact, it can
       // issue 1 wei repayLoan to each active loan, forcing the update of the scales
-      _params.internalLoanInterestRate = uint16(newValue / 1e14);
+      _params.internalLoanInterestRate = _wadTo4(newValue);
     } else {
       revert("Invalid param!");
     }

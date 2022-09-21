@@ -8,7 +8,6 @@ import {ERC721Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC72
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IAccessManager} from "./interfaces/IAccessManager.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
-import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {IRiskModule} from "./interfaces/IRiskModule.sol";
@@ -30,7 +29,6 @@ import {WadRayMath} from "./WadRayMath.sol";
  * @author Ensuro
  */
 contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721Upgradeable {
-  using EnumerableSet for EnumerableSet.AddressSet;
   using WadRayMath for uint256;
   using Policy for Policy.PolicyData;
   using SafeERC20 for IERC20Metadata;

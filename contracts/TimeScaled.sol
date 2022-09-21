@@ -3,6 +3,7 @@
 pragma solidity ^0.8.0;
 
 import {WadRayMath} from "./WadRayMath.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 /**
  * @title TimeScaled
@@ -12,13 +13,15 @@ import {WadRayMath} from "./WadRayMath.sol";
  */
 library TimeScaled {
   using WadRayMath for uint256;
+  using SafeCast for uint256;
 
-  uint256 internal constant SECONDS_PER_YEAR = 365 days;
-  uint128 public constant MIN_SCALE = 1e17; // 0.0000000001 == 1e-10 in ray
+  uint256 private constant SECONDS_PER_YEAR = 365 days;
+  uint112 private constant MIN_SCALE = 1e17; // 0.0000000001 == 1e-10 in ray
+  uint112 private constant RAY112 = 1e27;
 
   struct ScaledAmount {
-    uint128 scale;
-    uint96 amount;
+    uint112 scale;
+    uint112 amount;
     uint32 lastUpdate;
   }
 
@@ -27,7 +30,7 @@ library TimeScaled {
     if (scaledAmount.amount == 0) {
       scaledAmount.lastUpdate = uint32(block.timestamp);
     } else {
-      scaledAmount.scale = uint128(getScale(scaledAmount, interestRate));
+      scaledAmount.scale = getScale(scaledAmount, interestRate).toUint112();
       scaledAmount.lastUpdate = uint32(block.timestamp);
     }
   }
@@ -61,7 +64,7 @@ library TimeScaled {
   }
 
   function init(ScaledAmount storage scaledAmount) internal {
-    scaledAmount.scale = uint128(WadRayMath.ray());
+    scaledAmount.scale = RAY112;
     scaledAmount.amount = 0;
     scaledAmount.lastUpdate = uint32(block.timestamp);
   }
@@ -89,7 +92,7 @@ library TimeScaled {
   ) internal returns (uint256) {
     updateScale(scaledAmount, interestRate);
     uint256 scaledAdd = scaleAmount(scaledAmount, amount);
-    scaledAmount.amount += uint96(scaledAdd);
+    scaledAmount.amount += scaledAdd.toUint96();
     return scaledAdd;
   }
 
@@ -100,10 +103,10 @@ library TimeScaled {
   ) internal returns (uint256) {
     updateScale(scaledAmount, interestRate);
     uint256 scaledSub = scaleAmount(scaledAmount, amount);
-    scaledAmount.amount -= uint96(scaledSub);
+    scaledAmount.amount -= scaledSub.toUint96();
     if (scaledAmount.amount == 0) {
       // Reset scale if amount == 0
-      scaledAmount.scale = uint128(WadRayMath.ray());
+      scaledAmount.scale = RAY112;
     }
     return scaledSub;
   }
@@ -115,9 +118,10 @@ library TimeScaled {
   ) internal {
     updateScale(scaledAmount, interestRate);
     uint256 newScaledAmount = uint256(int256(getScaledAmount(scaledAmount, interestRate)) + amount);
-    scaledAmount.scale = uint128(
-      newScaledAmount.wadToRay().rayDiv(uint256(scaledAmount.amount).wadToRay())
-    );
+    scaledAmount.scale = newScaledAmount
+      .wadToRay()
+      .rayDiv(uint256(scaledAmount.amount).wadToRay())
+      .toUint112();
     require(scaledAmount.scale >= MIN_SCALE, "Scale too small, can lead to rounding errors");
   }
 
@@ -127,7 +131,7 @@ library TimeScaled {
     returns (uint256)
   {
     uint256 ts = getScaledAmount(scaledAmount, interestRate);
-    uint256 minTs = uint256(scaledAmount.amount).wadToRay().rayMul(MIN_SCALE * 10).rayToWad();
+    uint256 minTs = uint256(scaledAmount.amount).wadToRay().rayMul(MIN_SCALE).rayToWad();
     if (ts > minTs) return ts - minTs;
     else return 0;
   }

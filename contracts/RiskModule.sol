@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {WadRayMath} from "./WadRayMath.sol";
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
@@ -18,6 +19,7 @@ import {Policy} from "./Policy.sol";
 abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   using Policy for Policy.PolicyData;
   using WadRayMath for uint256;
+  using SafeCast for uint256;
 
   uint256 internal constant SECONDS_IN_YEAR_WAD = 31536000e18; /* 365 * 24 * 3600 * 10e18 */
 
@@ -153,7 +155,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
 
   function _wadTo4(uint256 value) internal pure returns (uint16) {
     // Wad to 4 decimals
-    return uint16(value / 1e14);
+    return (value / 1e14).toUint16();
   }
 
   // solhint-disable-next-line func-name-mixedcase
@@ -164,7 +166,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
 
   function _amountToX(uint8 decimals, uint256 value) internal view returns (uint32) {
     // Wad to X decimals
-    return uint32(value / 10**(currency().decimals() - decimals));
+    return (value / 10**(currency().decimals() - decimals)).toUint32();
   }
 
   function maxPayoutPerPolicy() public view override returns (uint256) {
@@ -235,7 +237,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
       _params.exposureLimit = _amountToX(0, newValue);
     } else if (param == Parameter.maxDuration) {
       require(!tweak, "Tweak exceeded");
-      _params.maxDuration = uint16(newValue);
+      _params.maxDuration = newValue.toUint16();
     } else {
       revert("Invalid param!");
     }

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import {LiquidityThresholdAssetManager} from "./LiquidityThresholdAssetManager.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import {LiquidityThresholdAssetManager} from "./LiquidityThresholdAssetManager.sol";
 
 /**
  * @title Asset Manager that deploys the funds into an ERC4626 vault
@@ -12,6 +13,8 @@ import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
  * @author Ensuro
  */
 contract ERC4626AssetManager is LiquidityThresholdAssetManager {
+  using SafeCast for uint256;
+
   IERC4626 internal immutable _vault;
 
   constructor(IERC20Metadata asset_, IERC4626 vault_) LiquidityThresholdAssetManager(asset_) {
@@ -37,7 +40,7 @@ contract ERC4626AssetManager is LiquidityThresholdAssetManager {
     DiamondStorage storage ds = diamondStorage();
     uint256 assets = _vault.redeem(_vault.balanceOf(address(this)), address(this), address(this));
     earnings = int256(assets) - int256(uint256(ds.lastInvestmentValue));
-    ds.lastInvestmentValue = uint128(assets);
+    ds.lastInvestmentValue = assets.toUint128();
     emit MoneyDeinvested(assets);
     emit EarningsRecorded(earnings);
     return earnings;
