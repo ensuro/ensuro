@@ -12,7 +12,7 @@ import {IAccessManager} from "./interfaces/IAccessManager.sol";
 import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
 import {ILPWhitelist} from "./interfaces/ILPWhitelist.sol";
 import {IAssetManager} from "./interfaces/IAssetManager.sol";
-import {WadRayMath} from "./WadRayMath.sol";
+import {WadRayMath} from "./dependencies/WadRayMath.sol";
 import {TimeScaled} from "./TimeScaled.sol";
 
 /**

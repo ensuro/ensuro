@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
-import {WadRayMath} from "./WadRayMath.sol";
+import {WadRayMath} from "./dependencies/WadRayMath.sol";
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
 import {IRiskModule} from "./interfaces/IRiskModule.sol";

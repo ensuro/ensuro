@@ -15,7 +15,7 @@ import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
 import {IPolicyHolder} from "./interfaces/IPolicyHolder.sol";
 import {Policy} from "./Policy.sol";
-import {WadRayMath} from "./WadRayMath.sol";
+import {WadRayMath} from "./dependencies/WadRayMath.sol";
 
 /**
  * @title Ensuro PolicyPool contract

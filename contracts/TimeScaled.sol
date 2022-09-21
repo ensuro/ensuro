@@ -2,7 +2,7 @@
 
 pragma solidity ^0.8.0;
 
-import {WadRayMath} from "./WadRayMath.sol";
+import {WadRayMath} from "./dependencies/WadRayMath.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 /**
@@ -47,7 +47,7 @@ library TimeScaled {
     uint256 timeDifference = uint256(now_ - scaledAmount.lastUpdate);
     return
       uint256(scaledAmount.scale).rayMul(
-        ((interestRate.wadToRay() * timeDifference) / SECONDS_PER_YEAR) + WadRayMath.ray()
+        ((interestRate.wadToRay() * timeDifference) / SECONDS_PER_YEAR) + WadRayMath.RAY
       );
   }
 
