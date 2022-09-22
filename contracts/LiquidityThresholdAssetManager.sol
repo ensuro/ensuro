@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import {WadRayMath} from "./WadRayMath.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
 import {IAssetManager} from "./interfaces/IAssetManager.sol";
@@ -19,7 +19,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
  * @author Ensuro
  */
 abstract contract LiquidityThresholdAssetManager is IAssetManager {
-  using WadRayMath for uint256;
+  using SafeCast for uint256;
 
   IERC20Metadata internal immutable _asset;
   event GovernanceAction(IAccessManager.GovernanceActions indexed action, uint256 value);
@@ -70,7 +70,7 @@ abstract contract LiquidityThresholdAssetManager is IAssetManager {
     uint256 investmentValue = getInvestmentValue();
     DiamondStorage storage ds = diamondStorage();
     int256 earnings = int256(investmentValue) - int256(uint256(ds.lastInvestmentValue));
-    ds.lastInvestmentValue = uint128(investmentValue);
+    ds.lastInvestmentValue = investmentValue.toUint128();
     emit EarningsRecorded(earnings);
     return earnings;
   }
@@ -113,14 +113,14 @@ abstract contract LiquidityThresholdAssetManager is IAssetManager {
 
   function _invest(uint256 amount) internal virtual {
     DiamondStorage storage ds = diamondStorage();
-    ds.lastInvestmentValue += uint128(amount);
+    ds.lastInvestmentValue += amount.toUint128();
     emit MoneyInvested(amount);
     // must be reimplemented do the actual cash movement
   }
 
   function _deinvest(uint256 amount) internal virtual {
     DiamondStorage storage ds = diamondStorage();
-    ds.lastInvestmentValue -= uint128(Math.min(uint256(ds.lastInvestmentValue), amount));
+    ds.lastInvestmentValue -= Math.min(uint256(ds.lastInvestmentValue), amount).toUint128();
     emit MoneyDeinvested(amount);
     // must be reimplemented do the actual cash movement
   }
@@ -144,15 +144,15 @@ abstract contract LiquidityThresholdAssetManager is IAssetManager {
   ) external validateParamsAfterChange {
     DiamondStorage storage ds = diamondStorage();
     if (min != type(uint256).max) {
-      ds.liquidityMin = uint32(min / 10**_asset.decimals());
+      ds.liquidityMin = (min / 10**_asset.decimals()).toUint32();
       emit GovernanceAction(IAccessManager.GovernanceActions.setLiquidityMin, min);
     }
     if (middle != type(uint256).max) {
-      ds.liquidityMiddle = uint32(middle / 10**_asset.decimals());
+      ds.liquidityMiddle = (middle / 10**_asset.decimals()).toUint32();
       emit GovernanceAction(IAccessManager.GovernanceActions.setLiquidityMiddle, middle);
     }
     if (max != type(uint256).max) {
-      ds.liquidityMax = uint32(max / 10**_asset.decimals());
+      ds.liquidityMax = (max / 10**_asset.decimals()).toUint32();
       emit GovernanceAction(IAccessManager.GovernanceActions.setLiquidityMax, max);
     }
   }

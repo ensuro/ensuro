@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
-import {WadRayMath} from "./WadRayMath.sol";
+import {WadRayMath} from "./dependencies/WadRayMath.sol";
 import {IRiskModule} from "./interfaces/IRiskModule.sol";
 
 /**

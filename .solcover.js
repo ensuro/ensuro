@@ -4,6 +4,6 @@ module.exports = {
   //   instrumentedDir: path.join(process.cwd(), "instrumented"),
   //   client: client,
   port: 8545,
-  skipFiles: ["dependencies/", "mocks/", "WadRayMath.sol"],
+  skipFiles: ["dependencies/", "mocks/"],
   //   logger: console,
 };

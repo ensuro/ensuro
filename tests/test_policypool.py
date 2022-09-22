@@ -138,6 +138,8 @@ def test_transfers_usdc(tenv):
         coll_ratio: 1
         sr_roc: "0.01"
         ensuro_pp_fee: 0
+        exposure_limit: "0.00001"  # To avoid overflow, it's on wad, with 6 decimals is a lot of money
+        max_payout_per_policy: "0.0000001"
         roles:
           - user: owner
             role: PRICER_ROLE
@@ -1940,7 +1942,7 @@ def test_expire_policy_payout(tenv):
 def test_withdraw_won_premiums(tenv):
     if is_brownie_coverage_enabled(tenv):
         pytest.skip("This test never ends if coverage is activated")
-        
+
     vars = test_expire_policy(tenv)
     pool, premiums_account, USD = extract_vars(vars, "pool,premiums_account,USD")
     treasury_balance = USD.balance_of("ENS")

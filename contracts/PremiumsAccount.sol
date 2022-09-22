@@ -4,7 +4,8 @@ pragma solidity ^0.8.0;
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {WadRayMath} from "./WadRayMath.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import {WadRayMath} from "./dependencies/WadRayMath.sol";
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
 import {Reserve} from "./Reserve.sol";
@@ -23,6 +24,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   using Policy for Policy.PolicyData;
   using WadRayMath for uint256;
   using SafeERC20 for IERC20Metadata;
+  using SafeCast for uint256;
 
   bytes32 public constant WITHDRAW_WON_PREMIUMS_ROLE = keccak256("WITHDRAW_WON_PREMIUMS_ROLE");
 
@@ -164,7 +166,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
       _surplus = maxDeficit;
       _borrowFromEtk(borrow, address(this), address(_juniorEtk) != address(0));
     }
-    _params.deficitRatio = uint16(newRatio / 1e14);
+    _params.deficitRatio = (newRatio / 1e14).toUint16();
   }
 
   function _borrowFromEtk(
@@ -201,8 +203,6 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     if (purePremiumWon == 0) return;
     _surplus += int256(purePremiumWon);
   }
-
-  // TODO: restore repayETokenLoan?
 
   /**
    *

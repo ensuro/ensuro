@@ -26,6 +26,4 @@ nav:
   - Libraries:
     - Policy: Policy.md
     - TimeScaled: TimeScaled.md
-    - WadRayMath: WadRayMath.md
-    - DataTypes: DataTypes.md
 theme: readthedocs

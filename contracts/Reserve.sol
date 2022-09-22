@@ -21,7 +21,7 @@ abstract contract Reserve is PolicyPoolComponent {
 
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   // solhint-disable-next-line var-name-mixedcase
-  uint256 public immutable NEGLIGIBLE_AMOUNT; // init as 10**(decimals/2) == 0.001 USD
+  uint256 internal immutable NEGLIGIBLE_AMOUNT; // init as 10**(decimals/2) == 0.001 USD
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(IPolicyPool policyPool_) PolicyPoolComponent(policyPool_) {
@@ -88,15 +88,13 @@ abstract contract Reserve is PolicyPoolComponent {
   }
 
   function rebalance() public whenNotPaused {
-    address am = address(assetManager());
-    require(am != address(0), "No asset manager");
-    am.functionDelegateCall(abi.encodeWithSelector(IAssetManager.rebalance.selector));
+    address(assetManager()).functionDelegateCall(
+      abi.encodeWithSelector(IAssetManager.rebalance.selector)
+    );
   }
 
   function recordEarnings() public whenNotPaused {
-    address am = address(assetManager());
-    require(am != address(0), "No asset manager");
-    bytes memory result = am.functionDelegateCall(
+    bytes memory result = address(assetManager()).functionDelegateCall(
       abi.encodeWithSelector(IAssetManager.recordEarnings.selector)
     );
     _assetEarnings(abi.decode(result, (int256)));
@@ -112,7 +110,6 @@ abstract contract Reserve is PolicyPoolComponent {
     onlyGlobalOrComponentRole(LEVEL2_ROLE)
     returns (bytes memory)
   {
-    address am = address(assetManager());
-    return am.functionDelegateCall(functionCall);
+    return address(assetManager()).functionDelegateCall(functionCall);
   }
 }

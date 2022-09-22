@@ -206,6 +206,7 @@ def test_getset_rm_parameters_tweaks(tenv):
         ("ensuro_pp_fee", _W("0.01")),
         ("exposure_limit", _W("700000")),
         ("max_payout_per_policy", _W(500)),
+        ("max_duration", 10000),
     ]
 
     for attr_name, attr_value in test_ok_l2_changes:
@@ -270,6 +271,41 @@ def test_avoid_repeated_tweaks(tenv):
         assert rm.coll_ratio == _W("0.96")
         rm.sr_roc = _W("0.022")
         assert rm.sr_roc == _W("0.022")
+
+
+def test_set_rm_parameter_overflow(tenv):
+    if tenv.kind != "ethereum":
+        pytest.skip("Python doesn't have int limits 😎")
+    rm = tenv.rm_class(
+        name="Roulette", coll_ratio=_W(1), ensuro_pp_fee=_W("0.03"),
+        sr_roc=_W("0.02"),
+        max_payout_per_policy=_W(1000), exposure_limit=_W(1000000),
+        wallet="CASINO"
+    )
+    tenv.pool_access.grant_role("LEVEL2_ROLE", "ADMIN")
+    tenv.pool_access.grant_role("LEVEL1_ROLE", "ADMIN")
+
+    with rm.as_("ADMIN"), pytest.raises(RevertError, match="SafeCast: "):
+        rm.exposure_limit = _W(2**40 + 1)
+
+    # Verifies OK tweaks
+    test_overflows = [
+        ("moc", _W("10")),
+        ("coll_ratio", _W("10")),
+        ("jr_coll_ratio", _W("10")),
+        ("ensuro_pp_fee", _W("10")),
+        ("ensuro_coc_fee", _W("10")),
+        ("sr_roc", _W("10")),
+        ("jr_roc", _W("10")),
+        ("max_payout_per_policy", _W(50000000)),
+        ("exposure_limit", _W(2**32 + 1)),
+        ("max_duration", 65536),
+    ]
+
+    for attr_name, attr_value in test_overflows:
+        print(attr_name, attr_value)
+        with rm.as_("ADMIN"), pytest.raises(RevertError, match="SafeCast: "):
+            setattr(rm, attr_name, attr_value)
 
 
 def test_new_policy(tenv):
