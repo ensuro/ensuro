@@ -3,7 +3,7 @@ from eth_utils import keccak
 from eth_abi import encode
 from ethproto.wadray import Wad, _W
 from ethproto.wrappers import (
-    AddressBook,
+    AddressBook,  # noqa: F401
     IERC20,
     IERC721,
     ETHWrapper,
