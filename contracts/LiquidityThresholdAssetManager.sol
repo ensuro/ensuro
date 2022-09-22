@@ -101,14 +101,15 @@ abstract contract LiquidityThresholdAssetManager is IAssetManager {
    *      do the payment
    * @param paymentAmount The amount of the payment
    */
-  function refillWallet(uint256 paymentAmount) external override {
+  function refillWallet(uint256 paymentAmount) external override returns (uint256 deinvest) {
     uint256 cash = _asset.balanceOf(address(this));
     require(cash < paymentAmount, "No need to refill the wallet for this payment");
     uint256 investmentValue = getInvestmentValue();
     // try to leave the pool balance at liquidity_middle after the payment
-    uint256 deinvest = paymentAmount + liquidityMiddle() - cash;
+    deinvest = paymentAmount + liquidityMiddle() - cash;
     if (deinvest > investmentValue) deinvest = investmentValue;
     _deinvest(deinvest);
+    return deinvest;
   }
 
   function _invest(uint256 amount) internal virtual {

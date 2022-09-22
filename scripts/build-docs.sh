@@ -3,7 +3,7 @@
 source `dirname $0`/utils.sh
 
 if [ "xx$1" == "xxclean" ]; then
-    rm -fR docs
+    rm -fR docs/*.md docs/interfaces/ docs/audits docs/*.png
     shift
 fi
 

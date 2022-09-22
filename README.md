@@ -27,13 +27,8 @@ Each policy sold and active it's a _risk_ or potential loss, a random variable t
 </dl>
 
 <dl>
-<dt>PolicyNFT</dt>
-<dd>This contract follows ERC721 standard to control the ownership of the policies (each policy is an NFT). Policies are minted by PolicyPool.</dd>
-</dl>
-
-<dl>
-<dt>PolicyPoolConfig</dt>
-<dd>This contract holds some configurable components of the protocol such as treasury address and the installed risk modules. Also this module holds the access control permissions for the governance actions.</dd>
+<dt>AccessManager</dt>
+<dd>This contract the access control permissions for the governance actions.</dd>
 </dl>
 
 <dl>

@@ -34,12 +34,17 @@ abstract contract Reserve is PolicyPoolComponent {
     if (balance < amount) {
       address am = address(assetManager());
       if (am != address(0)) {
-        am.functionDelegateCall(
+        bytes memory result = am.functionDelegateCall(
           abi.encodeWithSelector(IAssetManager.refillWallet.selector, amount),
           "Error refilling wallet"
         );
+        balance += abi.decode(result, (uint256));
       }
-      if ((amount - balance) < NEGLIGIBLE_AMOUNT) amount = balance;
+      if (amount > balance) {
+        if ((amount - balance) < NEGLIGIBLE_AMOUNT) {
+          amount = balance;
+        } // else - No need to do anything since safeTransfer will fail anyway
+      }
     }
     currency().safeTransfer(destination, amount);
   }

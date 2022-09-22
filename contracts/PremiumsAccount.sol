@@ -9,6 +9,7 @@ import {WadRayMath} from "./dependencies/WadRayMath.sol";
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
 import {Reserve} from "./Reserve.sol";
+import {IAccessManager} from "./interfaces/IAccessManager.sol";
 import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
 import {Policy} from "./Policy.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
@@ -109,7 +110,6 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     }
   }
 
-  // solhint-disable-next-line no-empty-blocks
   function _validateParameters() internal view override {
     require(
       _params.deficitRatio <= 1e4 && _params.deficitRatio >= 0,
@@ -160,13 +160,16 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     require(newRatio <= 1e18 && newRatio >= 0, "Validation: deficitRatio must be <= 1");
     int256 maxDeficit = _maxDeficit(newRatio);
     require(adjustment || _surplus >= maxDeficit, "Validation: surplus must be >= maxDeficit");
+    IAccessManager.GovernanceActions action = IAccessManager.GovernanceActions.setDeficitRatio;
     if (_surplus < maxDeficit) {
       // Do the adjustment
       uint256 borrow = uint256(-_surplus + maxDeficit);
       _surplus = maxDeficit;
       _borrowFromEtk(borrow, address(this), address(_juniorEtk) != address(0));
+      action = IAccessManager.GovernanceActions.setDeficitRatioWithAdjustment;
     }
     _params.deficitRatio = (newRatio / 1e14).toUint16();
+    _parameterChanged(action, newRatio, false);
   }
 
   function _borrowFromEtk(

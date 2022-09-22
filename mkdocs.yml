@@ -9,20 +9,22 @@ nav:
     - IPolicyHolder: interfaces/IPolicyHolder.md
     - ILPWhitelist: interfaces/ILPWhitelist.md
     - IPolicyPoolComponent: interfaces/IPolicyPoolComponent.md
-    - IPolicyPoolConfig: interfaces/IPolicyPoolConfig.md
-    - IPolicyNFT: interfaces/IPolicyNFT.md
-  - Contracts:
+    - IAccessManager: interfaces/IAccessManager.md
+    - IAssetManager: interfaces/IAssetManager.md
+  - Core contracts:
     - PolicyPool: PolicyPool.md
     - EToken: EToken.md
-    - RiskModule: RiskModule.md
-    - TrustfulRiskModule: TrustfulRiskModule.md
     - PremiumsAccount: PremiumsAccount.md
-    - PolicyNFT: PolicyNFT.md
-    - LPManualWhitelist: LPManualWhitelist.md
-    - PolicyPoolConfig: PolicyPoolConfig.md
+    - RiskModule: RiskModule.md
+    - AccessManager: AccessManager.md
   - Base contracts:
     - PolicyPoolComponent: PolicyPoolComponent.md
     - Reserve: Reserve.md
+  - Extensions:
+    - TrustfulRiskModule: TrustfulRiskModule.md
+    - LPManualWhitelist: LPManualWhitelist.md
+    - LiquidityThresholdAssetManager: LiquidityThresholdAssetManager.md
+    - ERC4626AssetManager: ERC4626AssetManager.md
   - Libraries:
     - Policy: Policy.md
     - TimeScaled: TimeScaled.md

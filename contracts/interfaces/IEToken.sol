@@ -9,6 +9,9 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  * @author Ensuro
  */
 interface IEToken is IERC20 {
+  /**
+   * @dev Enum of the different parameters that are configurable in an EToken.
+   */
   enum Parameter {
     liquidityRequirement,
     minUtilizationRate,

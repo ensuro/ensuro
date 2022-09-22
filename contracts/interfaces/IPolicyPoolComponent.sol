@@ -9,5 +9,8 @@ import {IPolicyPool} from "./IPolicyPool.sol";
  * @author Ensuro
  */
 interface IPolicyPoolComponent {
+  /**
+   * @dev Returns the address of the PolicyPool (see {PolicyPool}) where this component belongs.
+   */
   function policyPool() external view returns (IPolicyPool);
 }
