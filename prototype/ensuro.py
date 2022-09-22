@@ -22,6 +22,8 @@ from ethproto.contracts import ERC721Token
 from ethproto.wadray import RAY, Ray, Wad, _W, _R
 import time
 
+DAYS_PER_YEAR = 3600
+HOURS_PER_DAY = 24
 SECONDS_IN_HOUR = 3600
 SECONDS_IN_YEAR = 365 * 24 * SECONDS_IN_HOUR
 MAX_UINT = 2**256 - 1
@@ -80,7 +82,7 @@ class RiskModule(AccessControlContract):
     max_payout_per_policy = WadField(default=_W(1000000))
     exposure_limit = WadField(default=_W(10000000))
     active_exposure = WadField(default=_W(0))
-    max_duration = IntField(default=365)
+    max_duration = IntField(default=DAYS_PER_YEAR * HOURS_PER_DAY)
 
     wallet = AddressField(default="RM")
 
@@ -599,10 +601,11 @@ class EToken(ReserveMixin, ERC20Token):
         self._update_token_interest_rate()
 
     def _check_balance(self):
+        if self.asset_manager:
+            return
         balance = self.currency.balance_of(self)
         require(
-            balance >= self.total_supply()
-            or (self.total_supply() - balance) < self.NEGLIGIBLE_AMOUNT,
+            balance >= self.total_supply() or (self.total_supply() - balance) < self.NEGLIGIBLE_AMOUNT,
             "Cash balance under total_supply",
         )
 
