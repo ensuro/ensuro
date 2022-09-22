@@ -1991,27 +1991,151 @@ def test_same_asset_manager_for_etk_and_pa_with_policy(tenv):
     assert USD.balance_of(pa) == _W(160)
     vault.balance_of(pa).assert_equal(_W(840) + policy.pure_premium)
     vault.total_assets().assert_equal(_W(3500) + _W(840) + policy.pure_premium)
-    total_assets = vault.total_assets()
     pa.pure_premiums.assert_equal(_W(4))
 
     USD.balance_of(etk).assert_equal(_W(1500) + policy.sr_coc)
     etk.balance_of("LP1").assert_equal(_W(5000))
 
+    timecontrol.fast_forward(45 * DAY)
+    investment_earning = initial_investment_value * _W("0.05") * _W(45 / 365)
+    vault.total_assets().assert_equal(initial_investment_value + investment_earning, decimals=0)
+    pre_investment_value = vault.total_assets()
+
+    interest_earnings = _W(844 * 0.05 * 45 / 365)
+    pa.record_earnings()
+
+    USD.balance_of(etk).assert_equal(_W(1500) + policy.sr_coc)
+    vault.balance_of(pa).assert_equal(_W(840) + policy.pure_premium)
+    pa.pure_premiums.assert_equal(_W(4) + interest_earnings)
+    pa.surplus.assert_equal(interest_earnings)
+
+    timecontrol.fast_forward(45 * DAY)
+    etk.record_earnings()
+    USD.balance_of(etk).assert_equal(_W(1500) + policy.sr_coc)
+    vault.balance_of(pa).assert_equal(_W(840) + policy.pure_premium)
+    post_investment_value = vault.total_assets()
+    earnings = post_investment_value - pre_investment_value
+    earnings.assert_equal(pre_investment_value * _W("0.05") * _W(45 / 365), decimals=0)
+    investment_earning = initial_investment_value * _W("0.05") * _W(90 / 365)
+    vault.total_assets().assert_equal(initial_investment_value + investment_earning, decimals=0)
+
+
+def test_same_asset_manager_for_etk_and_pa_resolve_policy(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        coll_ratio: "0.2448"
+        sr_roc: "0.0729"
+        ensuro_pp_fee: "0.0321"
+        max_payout_per_policy: 500
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 20000
+        initial_balances:
+        - user: LP1
+          amount: 10000
+        - user: LP2
+          amount: 1000
+        - user: CUST1
+          amount: 200
+    etokens:
+      - name: eUSD1YEAR
+    """
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    rm = pool.risk_modules["Roulette"]
+    pa = rm.premiums_account
+    pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
+
+    USD = pool.currency
+    etk = pool.etokens["eUSD1YEAR"]
+
+    # Create vault and asset manager
+    vault = tenv.module.FixedRateVault(asset=USD)
+    asset_manager_etk = tenv.module.ERC4626AssetManager(
+        vault=vault,
+        reserve=etk,
+    )
+
+    asset_manager_pa = tenv.module.ERC4626AssetManager(
+        vault=vault,
+        reserve=pa,
+    )
+
+    pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
+
+    # Set asset manager for etk
+    with etk.as_("ADMIN"):
+        etk.set_asset_manager(asset_manager_etk, False)
+
+    pool.access.grant_component_role(etk, "LEVEL2_ROLE", "ADMIN")
+
+    with etk.as_("ADMIN"):
+        etk.forward_to_asset_manager("set_liquidity_thresholds", _W(1000), _W(1500), _W(2000))
+
+    etk.balance_of("LP1").assert_equal(_W(0))
+    _deposit(pool, "eUSD1YEAR", "LP1", _W(5000))
+    etk.balance_of("LP1").assert_equal(_W(5000))
+
+    vault.total_assets().assert_equal(_W(0))
+    etk.checkpoint()  # Rebalance cash
+
+    assert USD.balance_of(etk) == _W(1500)
+    vault.total_assets().assert_equal(_W(3500))
+    etk.balance_of("LP1").assert_equal(_W(5000))
+
+    # Set asset manager for pa
+    with pa.as_("ADMIN"):
+        pa.set_asset_manager(asset_manager_pa, False)
+
+    pool.access.grant_component_role(pa, "LEVEL2_ROLE", "ADMIN")
+
+    with pa.as_("ADMIN"):
+        pa.forward_to_asset_manager("set_liquidity_thresholds", _W(100), _W(160), _W(200))
+
+    USD.transfer("LP1", pa, _W(1000))
+    assert USD.balance_of(pa) == _W(1000)
+
+    USD.approve("CUST1", pool.contract_id, _W(200))
+    USD.approve("CUST1", rm.owner, _W(200))
+    policy = rm.new_policy(
+        payout=_W(400),
+        premium=_W(200),
+        on_behalf_of="CUST1",
+        loss_prob=_W("0.01"),
+        expiration=timecontrol.now + 365 * DAY // 2,
+        internal_id=22,
+    )
+
+    vault.balance_of(pa).assert_equal(_W(0))
+
+    # After checkpoint the cash should be rebalanced
+    pa.checkpoint()
+    initial_investment_value = _W(3500) + _W(840) + policy.sr_coc
+
+    assert USD.balance_of(pa) == _W(160)
+    vault.balance_of(pa).assert_equal(_W(840) + policy.pure_premium)
+    vault.total_assets().assert_equal(_W(3500) + _W(840) + policy.pure_premium)
+    pa.pure_premiums.assert_equal(_W(4))
+
+    USD.balance_of(etk).assert_equal(_W(1500) + policy.sr_coc)
+    etk.balance_of("LP1").assert_equal(_W(5000))
+
+    timecontrol.fast_forward(45 * DAY)
     # Resolve the policy
-    timecontrol.fast_forward(45 * DAY - HOUR)
     rm.resolve_policy(policy.id, True)
     etk.get_loan(pa).assert_equal(_W(400) - policy.pure_premium)
     investment_earning = initial_investment_value * _W("0.05") * _W(45 / 365)
     vault.total_assets().assert_equal(initial_investment_value + investment_earning, decimals=0)
 
-    # timecontrol.fast_forward(365 * DAY)
-    # vault.total_assets().assert_equal(total_assets * _W("1.05"))
+    USD.balance_of(etk).assert_equal(_W(1100) + policy.pure_premium + policy.sr_coc)
+    vault.balance_of(pa).assert_equal(_W(840) + policy.pure_premium)
 
-    # etk.record_earnings()
-    # timecontrol.fast_forward(365 * DAY)
-    # vault.total_assets().assert_equal(total_assets * _W("1.1"))
+    etk.rebalance()
 
-    # # Now change the asset manager to negative interest rate
-    # timecontrol.fast_forward(365 * DAY)
-    # vault.discrete_earning(-_W("455.7"))
-    # vault.total_assets().assert_equal(total_assets * _W("1.1") * _W("0.95"), decimals=0)
+    etk.get_loan(pa).assert_equal(_W(400) - policy.pure_premium)
+    USD.balance_of(etk).assert_equal(_W(1100) + policy.pure_premium + policy.sr_coc)
+    vault.balance_of(pa).assert_equal(_W(840) + policy.pure_premium)
+    vault.total_assets().assert_equal(initial_investment_value + investment_earning, decimals=0)
