@@ -266,7 +266,7 @@ def test_avoid_repeated_tweaks(tenv):
     timestamp, fields = rm.last_tweak()
     assert tenv.time_control.now == timestamp
     # 2 ** (GovernanceActions.setCollRatio - 1) + 2 ** (GovernanceActions.setSrRoc - 1)
-    assert fields == (2**12 + 2**16)
+    assert fields == (2**9 + 2**13)
 
     with rm.as_("L3_USER"), pytest.raises(RevertError, match="You already tweaked this parameter recently"):
         rm.coll_ratio = _W("0.93")
