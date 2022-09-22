@@ -195,7 +195,7 @@ exports.deployPool = async function (hre, options) {
   return policyPool;
 };
 
-exports.deployPremiumsAccount = async function (hre, pool, options) {
+exports.deployPremiumsAccount = async function (hre, pool, options, addToPool = true) {
   const PremiumsAccount = await ethers.getContractFactory("PremiumsAccount");
   const premiumsAccount = await hre.upgrades.deployProxy(PremiumsAccount, [], {
     constructorArgs: [
@@ -208,7 +208,9 @@ exports.deployPremiumsAccount = async function (hre, pool, options) {
   });
 
   await premiumsAccount.deployed();
-  await pool.addComponent(premiumsAccount.address, 3);
+
+  if (addToPool) await pool.addComponent(premiumsAccount.address, 3);
+
   return premiumsAccount;
 };
 
@@ -315,7 +317,10 @@ exports.getComponentRole = getComponentRole;
 Builds AccessControl error message for comparison in tests
 */
 function accessControlMessage(address, component, role) {
-  return `AccessControl: account ${address.toLowerCase()} is missing role ${getComponentRole(component, role)}`;
+  const roleHash =
+    component !== null ? getComponentRole(component, role) : ethers.utils.keccak256(ethers.utils.toUtf8Bytes(role));
+
+  return `AccessControl: account ${address.toLowerCase()} is missing role ${roleHash}`;
 }
 
 exports.accessControlMessage = accessControlMessage;

@@ -330,10 +330,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     return policy.id;
   }
 
-  function _balance() internal view returns (uint256) {
-    return _currency.balanceOf(address(this));
-  }
-
   function _validatePolicy(Policy.PolicyData memory policy) internal view {
     require(policy.id != 0 && policy.hash() == _policies[policy.id], "Policy not found");
   }

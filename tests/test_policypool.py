@@ -2,7 +2,7 @@ from collections import namedtuple
 from io import StringIO
 import pytest
 from ethproto.contracts import RevertError
-from ethproto.wadray import _W, _R, set_precision, Wad, make_integer_float
+from ethproto.wadray import _W, set_precision, Wad, make_integer_float
 from ethproto.wrappers import get_provider
 from prototype.utils import load_config, WEEK, DAY, HOUR
 from . import extract_vars, is_brownie_coverage_enabled, TEST_VARIANTS
@@ -212,6 +212,7 @@ def test_transfers_usdc(tenv):
     etoken.balance_of("LP1").assert_equal(interest // _W(3))
     etoken.balance_of("LP2").assert_equal(interest // _W(2))
     etoken.balance_of("LP3").assert_equal(interest // _W(6))
+
 
 @pytest.mark.skip("TODO: rewrite this test without using rebalance_policy")
 def test_not_accept_rm(tenv):
@@ -1436,6 +1437,7 @@ def test_distribute_negative_earnings_from_pool_and_etokens(tenv):
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
     rm = pool.risk_modules["Roulette"]
+    premiums_account = rm.premiums_account
     pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
     pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
 
@@ -1773,7 +1775,7 @@ def test_risk_provider_cant_drain_liquidity_provider(tenv):
 
     # LP1 provided funds
     pool.deposit("eUSD1YEAR", "LP1", _W(1000))
-    assert USD.balance_of("LP1") ==  _W(2000)
+    assert USD.balance_of("LP1") == _W(2000)
 
     # Risk Provider creates a policy on behalf of LP1
     rm = pool.risk_modules["Roulette"]
