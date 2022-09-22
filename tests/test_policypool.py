@@ -1030,7 +1030,6 @@ def test_payout_bigger_than_pure_premium(tenv):
 # TODO: define later if partial payouts pay to ensuro_commission and partner_commission if possible
 
 
-@pytest.mark.skip("FIXME")
 @set_precision(Wad, 3)
 def test_asset_manager(tenv):
     YAML_SETUP = """
@@ -1049,12 +1048,6 @@ def test_asset_manager(tenv):
           amount: 200
     etokens:
       - name: eUSD1YEAR
-    asset_manager:
-        class: FixedRateAssetManager
-        liquidity_min: 1000
-        liquidity_middle: 1500
-        liquidity_max: 2000
-        interest_rate: "0.05"
     """
 
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
@@ -1066,69 +1059,85 @@ def test_asset_manager(tenv):
 
     USD = pool.currency
     etk = pool.etokens["eUSD1YEAR"]
-    asset_manager = pool.access.asset_manager
+
+    # Create vault
+    vault = tenv.module.FixedRateVault(asset=USD)
+    asset_manager = tenv.module.ERC4626AssetManager(
+        vault=vault,
+        reserve=etk,
+    )
+
+    pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
+
+    # Set asset manager
+    with etk.as_("ADMIN"):
+        etk.set_asset_manager(asset_manager, False)
+
+    pool.access.grant_component_role(etk, "LEVEL2_ROLE", "ADMIN")
+
+    with etk.as_("ADMIN"):
+        etk.forward_to_asset_manager("set_liquidity_thresholds", _W(1000), _W(1500), _W(2000))
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(10000))
 
-    asset_manager.checkpoint()  # Rebalance cash
+    vault.total_assets().assert_equal(_W(0))
+    etk.checkpoint()  # Rebalance cash
 
-    assert USD.balance_of(pool.contract_id) == _W(1500)
-    assert USD.balance_of(asset_manager.contract_id) == _W(8500)
+    assert USD.balance_of(etk) == _W(1500)
+    vault.total_assets().assert_equal(_W(8500))
 
     timecontrol.fast_forward(365 * DAY)
     assert etk.balance_of("LP1") == _W(10000)
-    asset_manager.checkpoint()
-    assert USD.balance_of(pool.contract_id) == _W(1500)  # unchanged
+    etk.checkpoint()
+    assert USD.balance_of(etk) == _W(1500)  # unchanged
     etk.balance_of("LP1").assert_equal(_W(10000) + _W(8500) * _W("0.05"))  # All earnings for the LP
     lp1_balance = etk.balance_of("LP1")
 
     USD.approve("CUST1", pool.contract_id, _W(200))
+    USD.approve("CUST1", rm.owner, _W(200))
     policy = rm.new_policy(
-        payout=_W(9200), premium=_W(200), on_behalf_of="CUST1",
-        loss_prob=_W("0.01"), expiration=timecontrol.now + 365 * DAY // 2,
-        internal_id=22
+        payout=_W(9200),
+        premium=_W(200),
+        on_behalf_of="CUST1",
+        loss_prob=_W("0.01"),
+        expiration=timecontrol.now + 365 * DAY // 2,
+        internal_id=22,
     )
     for_lps = policy.sr_coc
 
-    asset_manager.checkpoint()
-    USD.balance_of(pool.contract_id).assert_equal(
-        _W(1500) + policy.pure_premium + policy.coc
-    )
+    etk.checkpoint()
+    USD.balance_of(etk).assert_equal(_W(1500) + policy.sr_coc)
     etk.balance_of("LP1").assert_equal(lp1_balance)
-    pool.get_investable().assert_equal(policy.pure_premium)
-    etk.get_investable().assert_equal(lp1_balance)
-    # policy.coc is not accounted neither as investable from the pool nor the ETK.
-    # That's fine because it's money moving second by second from one to the other
-    # It only affects the share of the earnings
-    # TODO: think a better approach for get_investable
+    # pool.get_investable().assert_equal(policy.pure_premium)
+    # etk.get_investable().assert_equal(lp1_balance)
 
     timecontrol.fast_forward(365 * DAY // 2 - 60)
-    pool.get_investable().assert_equal(policy.pure_premium)
-    etk.get_investable().assert_equal(lp1_balance + for_lps, decimals=2)
+    # pool.get_investable().assert_equal(policy.pure_premium)
+    # etk.get_investable().assert_equal(lp1_balance + for_lps, decimals=2)
 
-    pool_share = _W(policy.pure_premium) // asset_manager.total_investable()
-    etk_share = etk.get_investable() // asset_manager.total_investable()
-    asset_manager.checkpoint()
+    # pool_share = _W(policy.pure_premium) // asset_manager.total_investable()
+    # etk_share = etk.get_investable() // asset_manager.total_investable()
+    etk.checkpoint()
 
-    premiums_account.won_pure_premiums.assert_equal(_W(8500) * _W("0.025") * pool_share)
-    etk.balance_of("LP1").assert_equal(
-        lp1_balance + for_lps + _W(8500) * _W("0.025") * etk_share, decimals=2
-    )
+    # premiums_account.won_pure_premiums.assert_equal(_W(8500) * _W("0.025") * pool_share)
+    # etk.balance_of("LP1").assert_equal(lp1_balance + for_lps + _W(8500) * _W("0.025") * etk_share, decimals=2)
     rm.resolve_policy(policy.id, True)
-    assert USD.balance_of(pool.contract_id) == _W(1500)  # balance back to middle
-    USD.balance_of(asset_manager.contract_id).assert_equal(
-        _W(10000) +                # initial LP investment
-        _W(8500) * _W("0.075") +   # earned interest
-        policy.pure_premium + policy.coc -  # part of the premium retained in the pool
-        _W(9200) -  # payout
-        _W(1500)    # 1500 (liquidity_middle)
+    assert USD.balance_of(etk) == _W(1500)  # balance back to middle
+    vault.total_assets().assert_equal(
+        _W(10000)
+        + _W(8500) * _W("0.075")  # initial LP investment
+        + policy.pure_premium  # earned interest
+        + policy.sr_coc
+        - _W(9200)  # part of the premium retained in the pool
+        - _W(1500)  # payout  # 1500 (liquidity_middle)
     )
 
-    assert pool.get_investable() == _W(0)
-    assert etk.get_investable() == (
-        etk.funds_available + etk.get_loan(premiums_account)
-        # not really the money available but used for etk_share
-    )
+    # assert pool.get_investable() == _W(0)
+    # assert etk.get_investable() == (
+    #     etk.funds_available
+    #     + etk.get_loan(premiums_account)
+    #     # not really the money available but used for etk_share
+    # )
 
 
 @pytest.mark.skip("FIXME")
@@ -1219,14 +1228,12 @@ def test_assets_under_liquidity_middle(tenv):
     etk.get_loan(premiums_account).assert_equal(_W(3) - policy.pure_premium - policy_2.pure_premium)
 
 
-@pytest.mark.skip("FIXME")
 def test_distribute_negative_earnings(tenv):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
         coll_ratio: "0.2448"
         sr_roc: "0.0729"
-        scr_limit: 250000
         ensuro_pp_fee: "0.0321"
         max_payout_per_policy: 500
     currency:
@@ -1242,66 +1249,6 @@ def test_distribute_negative_earnings(tenv):
           amount: 200
     etokens:
       - name: eUSD1YEAR
-    asset_manager:
-        class: FixedRateAssetManager
-        liquidity_min: 1000
-        liquidity_middle: 1500
-        liquidity_max: 2000
-    """
-    pool = load_config(StringIO(YAML_SETUP), tenv.module)
-    timecontrol = tenv.time_control
-    rm = pool.risk_modules["Roulette"]
-    pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
-    pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
-
-    asset_manager = pool.access.asset_manager
-
-    _deposit(pool, "eUSD1YEAR", "LP1", _W(5000))
-
-    asset_manager.rebalance()
-    asset_manager.get_investment_value().assert_equal(_W(3500))
-    timecontrol.fast_forward(365 * DAY)
-    asset_manager.get_investment_value().assert_equal(_W(3500) * _W("1.05"))
-
-    asset_manager.distribute_earnings()
-    timecontrol.fast_forward(365 * DAY)
-    asset_manager.get_investment_value().assert_equal(_W(3500) * _W("1.1"), decimals=0)
-
-    # Now change the asset manager to negative interest rate
-    asset_manager.positive = False
-    timecontrol.fast_forward(365 * DAY)
-    asset_manager.distribute_earnings()
-    asset_manager.get_investment_value().assert_equal(_W(3500) * _W("1.1") * _W("0.95"))
-
-
-@pytest.mark.skip("FIXME")
-def test_distribute_negative_earnings_full_capital_from_etokens(tenv):
-    YAML_SETUP = """
-    risk_modules:
-      - name: Roulette
-        coll_ratio: "0.2448"
-        sr_roc: "0.0729"
-        scr_limit: 250000
-        ensuro_pp_fee: "0.0321"
-        max_payout_per_policy: 500
-    currency:
-        name: USD
-        symbol: $
-        initial_supply: 20000
-        initial_balances:
-        - user: LP1
-          amount: 10000
-        - user: LP2
-          amount: 1000
-        - user: CUST1
-          amount: 200
-    etokens:
-      - name: eUSD1YEAR
-    asset_manager:
-        class: FixedRateAssetManager
-        liquidity_min: 1000
-        liquidity_middle: 1500
-        liquidity_max: 2000
     """
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
@@ -1311,76 +1258,155 @@ def test_distribute_negative_earnings_full_capital_from_etokens(tenv):
 
     USD = pool.currency
     etk = pool.etokens["eUSD1YEAR"]
-    asset_manager = pool.access.asset_manager
+
+    # Create vault and asset manager
+    vault = tenv.module.FixedRateVault(asset=USD)
+    asset_manager = tenv.module.ERC4626AssetManager(
+        vault=vault,
+        reserve=etk,
+    )
+
+    pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
+
+    # Set asset manager
+    with etk.as_("ADMIN"):
+        etk.set_asset_manager(asset_manager, False)
+
+    pool.access.grant_component_role(etk, "LEVEL2_ROLE", "ADMIN")
+
+    with etk.as_("ADMIN"):
+        etk.forward_to_asset_manager("set_liquidity_thresholds", _W(1000), _W(1500), _W(2000))
+
+    _deposit(pool, "eUSD1YEAR", "LP1", _W(5000))
+
+    etk.rebalance()
+    vault.total_assets().assert_equal(_W(3500))
+
+    timecontrol.fast_forward(365 * DAY)
+    vault.total_assets().assert_equal(_W(3500) * _W("1.05"))
+
+    etk.record_earnings()
+    timecontrol.fast_forward(365 * DAY)
+    vault.total_assets().assert_equal(_W(3500) * _W("1.1"))
+
+    # Now change the asset manager to negative interest rate
+    timecontrol.fast_forward(365 * DAY)
+    vault.discrete_earning(-_W("367.5"))
+    vault.total_assets().assert_equal(_W(3500) * _W("1.1") * _W("0.95"))
+
+
+def test_distribute_negative_earnings_full_capital_from_etokens(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        coll_ratio: "0.2448"
+        sr_roc: "0.0729"
+        ensuro_pp_fee: "0.0321"
+        max_payout_per_policy: 500
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 20000
+        initial_balances:
+        - user: LP1
+          amount: 10000
+        - user: LP2
+          amount: 1000
+        - user: CUST1
+          amount: 200
+    etokens:
+      - name: eUSD1YEAR
+    """
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    rm = pool.risk_modules["Roulette"]
+    premiums_account = rm.premiums_account
+    pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
+
+    USD = pool.currency
+    etk = pool.etokens["eUSD1YEAR"]
+    # Create vault and asset manager
+    vault = tenv.module.FixedRateVault(asset=USD)
+    asset_manager = tenv.module.ERC4626AssetManager(
+        vault=vault,
+        reserve=etk,
+    )
+
+    pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
+
+    # Set asset manager
+    with etk.as_("ADMIN"):
+        etk.set_asset_manager(asset_manager, False)
+
+    pool.access.grant_component_role(etk, "LEVEL2_ROLE", "ADMIN")
+
+    with etk.as_("ADMIN"):
+        etk.forward_to_asset_manager("set_liquidity_thresholds", _W(1000), _W(1500), _W(2000))
+
     etk.balance_of("LP1").assert_equal(_W(0))
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(5000))
     etk.balance_of("LP1").assert_equal(_W(5000))
 
     USD.approve("CUST1", pool.contract_id, _W(100))
+    USD.approve("CUST1", rm.owner, _W(100))
     policy = rm.new_policy(
-        payout=_W(10), premium=_W(1.5), on_behalf_of="CUST1",
-        loss_prob=_W("0.105"), expiration=timecontrol.now + 45 * DAY,
-        internal_id=123
+        payout=_W(10),
+        premium=_W(1.5),
+        on_behalf_of="CUST1",
+        loss_prob=_W("0.105"),
+        expiration=timecontrol.now + 45 * DAY,
+        internal_id=123,
     )
 
     etk.get_loan(premiums_account).assert_equal(_W(0))
 
-    asset_manager.rebalance()
-    initial_investment_value = (
-        _W(5000) - asset_manager.liquidity_middle + policy.pure_premium + policy.coc
-    )
-    asset_manager.get_investment_value().assert_equal(initial_investment_value)
+    etk.rebalance()
+    initial_investment_value = _W(5000) - _W(1500) + policy.sr_coc
+    vault.total_assets().assert_equal(initial_investment_value)
+
     timecontrol.fast_forward(45 * DAY - HOUR)
     rm.resolve_policy(policy.id, True)
     etk.get_loan(premiums_account).assert_equal(_W(10) - policy.pure_premium)
-    investment_earning = initial_investment_value * _W("0.05") * _W(45/365)
-    asset_manager.get_investment_value().assert_equal(
-        initial_investment_value + investment_earning,
-        decimals=1
-    )
-    pre_investment_value = asset_manager.get_investment_value()
+    investment_earning = initial_investment_value * _W("0.05") * _W(45 / 365)
+    vault.total_assets().assert_equal(initial_investment_value + investment_earning, decimals=1)
 
-    USD.balance_of(pool.contract_id).assert_equal(_W(1490))
-    asset_manager.distribute_earnings()
+    pre_investment_value = vault.total_assets()
+
+    USD.balance_of(etk).assert_equal(_W(1490) + policy.pure_premium)
+    etk.record_earnings()
     etk.balance_of("LP1").assert_equal(
-        _W(5000) - (_W(10) - policy.pure_premium) + investment_earning,
-        decimals=2
+        _W(5000) - (_W(10) - policy.pure_premium) + investment_earning, decimals=2
     )
     lp1_balance = etk.balance_of("LP1")
 
     policy_2 = rm.new_policy(
-        payout=_W(5), premium=_W("0.75"), on_behalf_of="CUST1",
-        loss_prob=_W("0.105"), expiration=timecontrol.now + 45 * DAY,
-        internal_id=232
+        payout=_W(5),
+        premium=_W("0.75"),
+        on_behalf_of="CUST1",
+        loss_prob=_W("0.105"),
+        expiration=timecontrol.now + 45 * DAY,
+        internal_id=232,
     )
 
     timecontrol.fast_forward(45 * DAY - HOUR)
-    asset_manager.distribute_earnings()
-    post_investment_value = asset_manager.get_investment_value()
+    etk.record_earnings()
+    post_investment_value = vault.total_assets()
     earnings = post_investment_value - pre_investment_value
-    earnings.assert_equal(
-        pre_investment_value * _W("0.05") * _W(45/365), decimals=0
-    )
+    earnings.assert_equal(pre_investment_value * _W("0.05") * _W(45 / 365), decimals=0)
 
-    USD.balance_of(pool.contract_id).assert_equal(_W(1490) + policy_2.pure_premium, decimals=2)
     etk.balance_of("LP1").assert_equal(lp1_balance + earnings, decimals=2)
     lp1_balance = etk.balance_of("LP1")
 
     # Now change the asset manager to negative interest rate
-    asset_manager.distribute_earnings()
-    pre_investment_value = asset_manager.get_investment_value()
-    asset_manager.positive = False
+    etk.record_earnings()
+    pre_investment_value = vault.total_assets()
+    vault.discrete_earning(-_W("43.4"))
     timecontrol.fast_forward(45 * DAY)
-    asset_manager.distribute_earnings()
-    post_investment_value = asset_manager.get_investment_value()
+    post_investment_value = vault.total_assets()
     losses = pre_investment_value - post_investment_value
-    losses.assert_equal(
-        pre_investment_value * _W("0.05") * _W(45/365), decimals=0
-    )
-
-    USD.balance_of(pool.contract_id).assert_equal(_W(1490) + policy_2.pure_premium, decimals=2)  # same
-    etk.balance_of("LP1").assert_equal(lp1_balance - losses, decimals=2)
+    losses.assert_equal(pre_investment_value * _W("0.05") * _W(45 / 365), decimals=1)
 
 
 @pytest.mark.skip("FIXME")
@@ -1453,261 +1479,10 @@ def test_distribute_negative_earnings_from_pool_and_etokens(tenv):
     timecontrol.fast_forward(365 * DAY)
     asset_manager.distribute_earnings()
     post_investment_value = asset_manager.get_investment_value()
-    (pre_investment_value - post_investment_value).assert_equal(
-        pre_investment_value * _W("0.05"), decimals=2
-    )
+    (pre_investment_value - post_investment_value).assert_equal(pre_investment_value * _W("0.05"), decimals=2)
     pool.get_investable().assert_equal(premiums_account.pure_premiums)
     assert premiums_account.pure_premiums < prev_pp  # Reduced negative earnings
     etk.get_investable().assert_equal(etk.funds_available + etk.scr + etk.get_loan(premiums_account))
-
-
-@pytest.mark.skip("TODO: remove, insolvency will not be coming back")
-def test_insolvency_without_hook(tenv):
-    YAML_SETUP = """
-    risk_modules:
-      - name: Roulette
-        coll_ratio: "0.1"
-        sr_roc: "0.02"
-    currency:
-        name: USD
-        symbol: $
-        initial_supply: 20000
-        initial_balances:
-        - user: LP1
-          amount: 5000
-        - user: LP2
-          amount: 3000
-        - user: LP3
-          amount: 8000
-        - user: CUST1
-          amount: 200
-        - user: CUST2
-          amount: 200
-    etokens:
-      - name: eUSD1YEAR
-        internal_loan_interest_rate: "0.06"
-      - name: eUSD1MONTH
-        internal_loan_interest_rate: "0.04"
-    """
-
-    pool = load_config(StringIO(YAML_SETUP), tenv.module)
-    timecontrol = tenv.time_control
-    rm = pool.risk_modules["Roulette"]
-    pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
-    pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
-
-    USD = pool.currency
-    etk = pool.etokens["eUSD1YEAR"]
-
-    _deposit(pool, "eUSD1YEAR", "LP1", _W(1000))
-
-    USD.approve("CUST1", pool.contract_id, _W(200))
-    policy = rm.new_policy(
-        payout=_W(9200), premium=_W(200), on_behalf_of="CUST1",
-        loss_prob=_W("0.01"), expiration=timecontrol.now + 365 * DAY // 2,
-        internal_id=122
-    )
-    etk.scr.assert_equal(_W(9200) * _W("0.1") - policy.pure_premium)
-
-    assert USD.balance_of(pool.contract_id) == (_W(1000) + policy.pure_premium + policy.coc)
-
-    timecontrol.fast_forward(365 * DAY // 2 - 60)
-
-    with pytest.raises(RevertError, match="ERC20: transfer amount exceeds balance"):
-        rm.resolve_policy(policy.id, True)
-
-    return locals()
-
-
-@pytest.mark.skip("TODO: remove, insolvency will not be coming back")
-def test_grant_insolvency_hook(tenv):
-    vars = test_insolvency_without_hook(tenv)
-    pool, rm, policy = extract_vars(vars, "pool,rm,policy")
-    ins_hook = tenv.module.FreeGrantInsolvencyHook(pool=pool)
-    pool.access.set_insolvency_hook(ins_hook)
-
-    rm.resolve_policy(policy.id, True)
-
-    ins_hook.cash_granted.assert_equal(_W(8000) + policy.ensuro_commission + policy.partner_commission)
-
-
-@pytest.mark.skip("TODO: remove, insolvency will not be coming back")
-def test_lp_insolvency_hook(tenv):
-    vars = test_insolvency_without_hook(tenv)
-    pool, rm, etk, policy = extract_vars(vars, "pool,rm,etk,for_lps,policy,USD")
-    ins_hook = tenv.module.LPInsolvencyHook(pool=pool, etoken="eUSD1YEAR")
-    pool.access.set_insolvency_hook(ins_hook)
-
-    rm.resolve_policy(policy.id, True)
-
-    ins_hook.cash_deposited.assert_equal(_W(8000) + policy.ensuro_commission + policy.partner_commission)
-    etk.funds_available.assert_equal(_W(0))
-    etk.scr.assert_equal(_W(0))
-    etk.get_loan(premiums_account).assert_equal(_W(9200) - policy.pure_premium, decimals=2)
-
-    etk.balance_of("LP1").assert_equal(_W(0))
-    etk.balance_of(ins_hook).assert_equal(_W(0))
-
-    _deposit(pool, "eUSD1YEAR", "LP2", _W(3000))
-    etk.balance_of("LP1").assert_equal(_W(0))
-    etk.balance_of(ins_hook).assert_equal(_W(0))
-
-
-@pytest.mark.skip("TODO: remove, insolvency will not be coming back")
-def test_lp_insolvency_hook_negative_ocean(tenv):
-    """
-    Two policies, pool balance is enought for covering the payout, but leaves the EToken
-    with less supply than SCR (negative funds_available).
-    """
-    vars = test_insolvency_without_hook(tenv)
-    pool, rm, etk, for_lps, policy, USD, timecontrol = extract_vars(
-        vars, "pool,rm,etk,for_lps,policy,USD,timecontrol"
-    )
-    ins_hook = tenv.module.LPInsolvencyHook(pool=pool, etoken="eUSD1YEAR")
-    pool.access.set_insolvency_hook(ins_hook)
-
-    etk.total_supply().assert_equal(_W(1000) + for_lps, decimals=2)
-
-    _deposit(pool, "eUSD1YEAR", "LP3", _W(8000))
-    lp3_share = _W(8000) // (_W(9000) + for_lps)
-
-    USD.approve("CUST2", pool.contract_id, _W(200))
-    policy_2 = rm.new_policy(
-        payout=_W(9200), premium=_W(200), on_behalf_of="CUST2",
-        loss_prob=_W("0.01"), expiration=timecontrol.now + 365 * DAY // 2,
-        internal_id=333
-    )
-    etk.scr.assert_equal(policy_2.scr + policy.sr_scr)
-
-    USD.balance_of(pool.contract_id).assert_equal(
-        _W(9000) +
-        policy.pure_premium + policy.coc +
-        policy_2.pure_premium + policy_2.coc
-    )
-
-    rm.resolve_policy(policy.id, _W(9190))
-
-    ins_hook.cash_deposited.assert_equal(_W(0))  # Not needed
-    etk.funds_available.assert_equal(_W(0))
-    etk.scr.assert_equal(policy_2.scr)
-    etk.get_loan(premiums_account).assert_equal(
-        _W(9190) - policy.pure_premium - policy_2.pure_premium
-    )
-
-    etk.total_supply().assert_equal(
-        _W(9000) -  # Money deposited
-        _W(9190) +   # Payout
-        policy.pure_premium + policy_2.pure_premium +
-        policy.coc  # Other for_lps not yet accrued
-    )
-    pool.borrowed_active_pp.assert_equal(policy_2.pure_premium)
-
-    etk.balance_of("LP3").assert_equal(etk.total_supply() * lp3_share)
-    etk.balance_of("LP1").assert_equal(etk.total_supply() * (_W(1) - lp3_share))
-    etk.balance_of(ins_hook).assert_equal(_W(0))
-
-
-@pytest.mark.skip("TODO: remove, insolvency will not be coming back")
-def test_lp_insolvency_hook_cover_etoken(tenv):
-    """
-    Two policies, pool balance is enought for covering the payout. On insolvent etoken (SCR>total_supply)
-    calls the insolvency_hook that deposits some extra cash.
-    """
-    vars = test_insolvency_without_hook(tenv)
-    pool, rm, etk, for_lps, policy, USD, timecontrol = extract_vars(
-        vars, "pool,rm,etk,for_lps,policy,USD,timecontrol"
-    )
-    ins_hook = tenv.module.LPInsolvencyHook(pool=pool, etoken="eUSD1YEAR", cover_etoken=1)
-    pool.access.set_insolvency_hook(ins_hook)
-
-    etk.total_supply().assert_equal(_W(1000) + for_lps, decimals=2)
-
-    _deposit(pool, "eUSD1YEAR", "LP3", _W(8000))
-
-    USD.approve("CUST2", pool.contract_id, _W(200))
-    policy_2 = rm.new_policy(
-        payout=_W(9200), premium=_W(200), on_behalf_of="CUST2",
-        loss_prob=_W("0.01"), expiration=timecontrol.now + 365 * DAY // 2,
-        internal_id=12
-    )
-    etk.scr.assert_equal(policy_2.scr + policy.sr_scr)
-    etk.funds_available.assert_equal(_W(9000) - etk.scr + for_lps)
-
-    USD.balance_of(pool.contract_id).assert_equal(
-        _W(9000) +
-        policy.pure_premium + policy.coc +
-        policy_2.pure_premium + policy_2.coc
-    )
-
-    rm.resolve_policy(policy.id, _W("9192.2"))
-
-    pool_loan = _W("9192.2") - policy.pure_premium - policy_2.pure_premium
-    etk.get_loan(premiums_account).assert_equal(
-        pool_loan
-    )
-
-    ins_hook.cash_deposited.assert_equal(policy_2.scr * _W("1.1"), decimals=1)
-    etk.funds_available.assert_equal(policy_2.scr * _W("0.1"))  # The insolvency_hook leaves 10% of extra funds_available
-    etk.scr.assert_equal(policy_2.scr)
-    etk.total_supply().assert_equal(policy_2.scr * _W("1.1"))
-    pool.borrowed_active_pp.assert_equal(policy_2.pure_premium)
-
-    etk.balance_of("LP3").assert_equal(_W(0), decimals=0)
-    etk.balance_of("LP1").assert_equal(_W(0), decimals=0)
-    etk.balance_of(ins_hook).assert_equal(policy_2.scr * _W("1.1"), decimals=1)
-
-
-@pytest.mark.skip("TODO: remove, insolvency will not be coming back")
-@set_precision(Wad, 3)
-def test_lp_insolvency_hook_other_etk(tenv):
-    vars = test_insolvency_without_hook(tenv)
-    pool, premiums_account, rm, etk, for_lps, policy, USD, timecontrol = extract_vars(
-        vars, "pool,premiums_account,rm,etk,for_lps,policy,USD,timecontrol"
-    )
-    etk1m = pool.etokens["eUSD1MONTH"]
-    ins_hook = tenv.module.LPInsolvencyHook(pool=pool, etoken="eUSD1MONTH")
-    pool.access.set_insolvency_hook(ins_hook)
-
-    rm.resolve_policy(policy.id, True)
-    USD.balance_of("CUST1").assert_equal(_W(9200))
-
-    ins_hook.cash_deposited.assert_equal(_W(8000) + policy.ensuro_commission + policy.partner_commission)
-    etk.funds_available.assert_equal(_W(0))
-    etk.scr.assert_equal(_W(0))
-    etk.get_loan(premiums_account).assert_equal(_W(1000) + for_lps)
-    etk1m.get_loan(premiums_account).assert_equal(_W(8000) + policy.ensuro_commission + policy.partner_commission)
-
-    etk.balance_of("LP1").assert_equal(_W(0))
-    etk.balance_of(ins_hook).assert_equal(_W(0))
-    etk1m.balance_of(ins_hook).assert_equal(_W(0))
-
-    _deposit(pool, "eUSD1YEAR", "LP2", _W(3000))
-
-    # Now our charitative customers gives some of the money back as grant
-    USD.approve("CUST1", pool.contract_id, _W(9200))
-    pool.receive_grant("CUST1", _W(4000))
-    premiums_account.won_pure_premiums.assert_equal(_W(4000))  # The grant is on premium pool
-
-    pool.repay_etoken_loan("eUSD1MONTH").assert_equal(_W(4000))
-    etk1m.get_loan(premiums_account).assert_equal(_W(4000) + policy.ensuro_commission + policy.partner_commission,
-                                       decimals=2)
-    etk1m_pool_loan = etk1m.get_loan(premiums_account)
-
-    etk1m.balance_of(ins_hook).assert_equal(_W(4000), decimals=2)
-    premiums_account.won_pure_premiums.assert_equal(_W(0))  # The grant is no longer in premium pool
-
-    # After some time and send another grant
-    timecontrol.fast_forward(30 * DAY)
-    pool.receive_grant("CUST1", _W(5000))
-    pool_loan_1y = etk.get_loan(premiums_account)
-    pool_loan_1y.assert_equal((_W(1000) + for_lps) * _W(1.0 + 0.06 * 30 / 365))
-    # Only is repaid up to pool loan
-    pool.repay_etoken_loan("eUSD1YEAR").assert_equal(pool_loan_1y)
-
-    pool.repay_etoken_loan("eUSD1MONTH").assert_equal(_W(5000) - pool_loan_1y)
-    etk1m.get_loan(premiums_account).assert_equal(
-        etk1m_pool_loan - (_W(5000) - pool_loan_1y) + etk1m_pool_loan * _W(0.04 * 30/365)
-    )
 
 
 def test_lp_whitelist(tenv):
@@ -2019,4 +1794,350 @@ def test_risk_provider_cant_drain_liquidity_provider(tenv):
     assert USD.balance_of("JOHN_SELLER") == _W(0)
 
     # LP1's balance should not be affected
-    assert USD.balance_of("LP1") ==  _W(2000)
+    assert USD.balance_of("LP1") == _W(2000)
+
+
+def test_same_asset_manager_for_etk_and_pa(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        coll_ratio: "0.2448"
+        sr_roc: "0.0729"
+        ensuro_pp_fee: "0.0321"
+        max_payout_per_policy: 500
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 20000
+        initial_balances:
+        - user: LP1
+          amount: 10000
+        - user: LP2
+          amount: 1000
+        - user: CUST1
+          amount: 200
+    etokens:
+      - name: eUSD1YEAR
+    """
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    rm = pool.risk_modules["Roulette"]
+    pa = rm.premiums_account
+    pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
+
+    USD = pool.currency
+    etk = pool.etokens["eUSD1YEAR"]
+
+    # Create vault and asset manager
+    vault = tenv.module.FixedRateVault(asset=USD)
+    asset_manager_etk = tenv.module.ERC4626AssetManager(
+        vault=vault,
+        reserve=etk,
+    )
+
+    asset_manager_pa = tenv.module.ERC4626AssetManager(
+        vault=vault,
+        reserve=pa,
+    )
+
+    pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
+
+    # Set asset manager for etk
+    with etk.as_("ADMIN"):
+        etk.set_asset_manager(asset_manager_etk, False)
+
+    pool.access.grant_component_role(etk, "LEVEL2_ROLE", "ADMIN")
+
+    with etk.as_("ADMIN"):
+        etk.forward_to_asset_manager("set_liquidity_thresholds", _W(1000), _W(1500), _W(2000))
+
+    etk.balance_of("LP1").assert_equal(_W(0))
+    _deposit(pool, "eUSD1YEAR", "LP1", _W(5000))
+    etk.balance_of("LP1").assert_equal(_W(5000))
+
+    vault.total_assets().assert_equal(_W(0))
+    etk.checkpoint()  # Rebalance cash
+
+    assert USD.balance_of(etk) == _W(1500)
+    vault.total_assets().assert_equal(_W(3500))
+    etk.balance_of("LP1").assert_equal(_W(5000))
+
+    # Set asset manager for pa
+    with pa.as_("ADMIN"):
+        pa.set_asset_manager(asset_manager_pa, False)
+
+    pool.access.grant_component_role(pa, "LEVEL2_ROLE", "ADMIN")
+
+    with pa.as_("ADMIN"):
+        pa.forward_to_asset_manager("set_liquidity_thresholds", _W(100), _W(160), _W(200))
+
+    USD.transfer("LP1", pa, _W(1000))
+    assert USD.balance_of(pa) == _W(1000)
+
+    # After checkpoint the cash should be rebalanced
+    pa.checkpoint()
+
+    assert USD.balance_of(pa) == _W(160)
+    vault.total_assets().assert_equal(_W(3500) + _W(840))
+    total_assets = vault.total_assets()
+
+    timecontrol.fast_forward(365 * DAY)
+    vault.total_assets().assert_equal(total_assets * _W("1.05"))
+
+    etk.record_earnings()
+    timecontrol.fast_forward(365 * DAY)
+    vault.total_assets().assert_equal(total_assets * _W("1.1"))
+
+    # Now change the asset manager to negative interest rate
+    timecontrol.fast_forward(365 * DAY)
+    vault.discrete_earning(-_W("455.7"))
+    vault.total_assets().assert_equal(total_assets * _W("1.1") * _W("0.95"))
+
+
+def test_same_asset_manager_for_etk_and_pa_with_policy(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        coll_ratio: "0.2448"
+        sr_roc: "0.0729"
+        ensuro_pp_fee: "0.0321"
+        max_payout_per_policy: 500
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 20000
+        initial_balances:
+        - user: LP1
+          amount: 10000
+        - user: LP2
+          amount: 1000
+        - user: CUST1
+          amount: 200
+    etokens:
+      - name: eUSD1YEAR
+    """
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    rm = pool.risk_modules["Roulette"]
+    pa = rm.premiums_account
+    pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
+
+    USD = pool.currency
+    etk = pool.etokens["eUSD1YEAR"]
+
+    # Create vault and asset manager
+    vault = tenv.module.FixedRateVault(asset=USD)
+    asset_manager_etk = tenv.module.ERC4626AssetManager(
+        vault=vault,
+        reserve=etk,
+    )
+
+    asset_manager_pa = tenv.module.ERC4626AssetManager(
+        vault=vault,
+        reserve=pa,
+    )
+
+    pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
+
+    # Set asset manager for etk
+    with etk.as_("ADMIN"):
+        etk.set_asset_manager(asset_manager_etk, False)
+
+    pool.access.grant_component_role(etk, "LEVEL2_ROLE", "ADMIN")
+
+    with etk.as_("ADMIN"):
+        etk.forward_to_asset_manager("set_liquidity_thresholds", _W(1000), _W(1500), _W(2000))
+
+    etk.balance_of("LP1").assert_equal(_W(0))
+    _deposit(pool, "eUSD1YEAR", "LP1", _W(5000))
+    etk.balance_of("LP1").assert_equal(_W(5000))
+
+    vault.total_assets().assert_equal(_W(0))
+    etk.checkpoint()  # Rebalance cash
+
+    assert USD.balance_of(etk) == _W(1500)
+    vault.total_assets().assert_equal(_W(3500))
+    etk.balance_of("LP1").assert_equal(_W(5000))
+
+    # Set asset manager for pa
+    with pa.as_("ADMIN"):
+        pa.set_asset_manager(asset_manager_pa, False)
+
+    pool.access.grant_component_role(pa, "LEVEL2_ROLE", "ADMIN")
+
+    with pa.as_("ADMIN"):
+        pa.forward_to_asset_manager("set_liquidity_thresholds", _W(100), _W(160), _W(200))
+
+    USD.transfer("LP1", pa, _W(1000))
+    assert USD.balance_of(pa) == _W(1000)
+
+    USD.approve("CUST1", pool.contract_id, _W(200))
+    USD.approve("CUST1", rm.owner, _W(200))
+    policy = rm.new_policy(
+        payout=_W(400),
+        premium=_W(200),
+        on_behalf_of="CUST1",
+        loss_prob=_W("0.01"),
+        expiration=timecontrol.now + 365 * DAY // 2,
+        internal_id=22,
+    )
+
+    vault.balance_of(pa).assert_equal(_W(0))
+
+    # After checkpoint the cash should be rebalanced
+    pa.checkpoint()
+    initial_investment_value = _W(3500) + _W(840) + policy.sr_coc
+
+    assert USD.balance_of(pa) == _W(160)
+    vault.balance_of(pa).assert_equal(_W(840) + policy.pure_premium)
+    vault.total_assets().assert_equal(_W(3500) + _W(840) + policy.pure_premium)
+    pa.pure_premiums.assert_equal(_W(4))
+
+    USD.balance_of(etk).assert_equal(_W(1500) + policy.sr_coc)
+    etk.balance_of("LP1").assert_equal(_W(5000))
+
+    timecontrol.fast_forward(45 * DAY)
+    investment_earning = initial_investment_value * _W("0.05") * _W(45 / 365)
+    vault.total_assets().assert_equal(initial_investment_value + investment_earning, decimals=0)
+    pre_investment_value = vault.total_assets()
+
+    interest_earnings = _W(844 * 0.05 * 45 / 365)
+    pa.record_earnings()
+
+    USD.balance_of(etk).assert_equal(_W(1500) + policy.sr_coc)
+    vault.balance_of(pa).assert_equal(_W(840) + policy.pure_premium)
+    pa.pure_premiums.assert_equal(_W(4) + interest_earnings)
+    pa.surplus.assert_equal(interest_earnings)
+
+    timecontrol.fast_forward(45 * DAY)
+    etk.record_earnings()
+    USD.balance_of(etk).assert_equal(_W(1500) + policy.sr_coc)
+    vault.balance_of(pa).assert_equal(_W(840) + policy.pure_premium)
+    post_investment_value = vault.total_assets()
+    earnings = post_investment_value - pre_investment_value
+    earnings.assert_equal(pre_investment_value * _W("0.05") * _W(45 / 365), decimals=0)
+    investment_earning = initial_investment_value * _W("0.05") * _W(90 / 365)
+    vault.total_assets().assert_equal(initial_investment_value + investment_earning, decimals=0)
+
+
+def test_same_asset_manager_for_etk_and_pa_resolve_policy(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        coll_ratio: "0.2448"
+        sr_roc: "0.0729"
+        ensuro_pp_fee: "0.0321"
+        max_payout_per_policy: 500
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 20000
+        initial_balances:
+        - user: LP1
+          amount: 10000
+        - user: LP2
+          amount: 1000
+        - user: CUST1
+          amount: 200
+    etokens:
+      - name: eUSD1YEAR
+    """
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    rm = pool.risk_modules["Roulette"]
+    pa = rm.premiums_account
+    pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
+
+    USD = pool.currency
+    etk = pool.etokens["eUSD1YEAR"]
+
+    # Create vault and asset manager
+    vault = tenv.module.FixedRateVault(asset=USD)
+    asset_manager_etk = tenv.module.ERC4626AssetManager(
+        vault=vault,
+        reserve=etk,
+    )
+
+    asset_manager_pa = tenv.module.ERC4626AssetManager(
+        vault=vault,
+        reserve=pa,
+    )
+
+    pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
+
+    # Set asset manager for etk
+    with etk.as_("ADMIN"):
+        etk.set_asset_manager(asset_manager_etk, False)
+
+    pool.access.grant_component_role(etk, "LEVEL2_ROLE", "ADMIN")
+
+    with etk.as_("ADMIN"):
+        etk.forward_to_asset_manager("set_liquidity_thresholds", _W(1000), _W(1500), _W(2000))
+
+    etk.balance_of("LP1").assert_equal(_W(0))
+    _deposit(pool, "eUSD1YEAR", "LP1", _W(5000))
+    etk.balance_of("LP1").assert_equal(_W(5000))
+
+    vault.total_assets().assert_equal(_W(0))
+    etk.checkpoint()  # Rebalance cash
+
+    assert USD.balance_of(etk) == _W(1500)
+    vault.total_assets().assert_equal(_W(3500))
+    etk.balance_of("LP1").assert_equal(_W(5000))
+
+    # Set asset manager for pa
+    with pa.as_("ADMIN"):
+        pa.set_asset_manager(asset_manager_pa, False)
+
+    pool.access.grant_component_role(pa, "LEVEL2_ROLE", "ADMIN")
+
+    with pa.as_("ADMIN"):
+        pa.forward_to_asset_manager("set_liquidity_thresholds", _W(100), _W(160), _W(200))
+
+    USD.transfer("LP1", pa, _W(1000))
+    assert USD.balance_of(pa) == _W(1000)
+
+    USD.approve("CUST1", pool.contract_id, _W(200))
+    USD.approve("CUST1", rm.owner, _W(200))
+    policy = rm.new_policy(
+        payout=_W(400),
+        premium=_W(200),
+        on_behalf_of="CUST1",
+        loss_prob=_W("0.01"),
+        expiration=timecontrol.now + 365 * DAY // 2,
+        internal_id=22,
+    )
+
+    vault.balance_of(pa).assert_equal(_W(0))
+
+    # After checkpoint the cash should be rebalanced
+    pa.checkpoint()
+    initial_investment_value = _W(3500) + _W(840) + policy.sr_coc
+
+    assert USD.balance_of(pa) == _W(160)
+    vault.balance_of(pa).assert_equal(_W(840) + policy.pure_premium)
+    vault.total_assets().assert_equal(_W(3500) + _W(840) + policy.pure_premium)
+    pa.pure_premiums.assert_equal(_W(4))
+
+    USD.balance_of(etk).assert_equal(_W(1500) + policy.sr_coc)
+    etk.balance_of("LP1").assert_equal(_W(5000))
+
+    timecontrol.fast_forward(45 * DAY)
+    # Resolve the policy
+    rm.resolve_policy(policy.id, True)
+    etk.get_loan(pa).assert_equal(_W(400) - policy.pure_premium)
+    investment_earning = initial_investment_value * _W("0.05") * _W(45 / 365)
+    vault.total_assets().assert_equal(initial_investment_value + investment_earning, decimals=0)
+
+    USD.balance_of(etk).assert_equal(_W(1100) + policy.pure_premium + policy.sr_coc)
+    vault.balance_of(pa).assert_equal(_W(840) + policy.pure_premium)
+
+    etk.rebalance()
+
+    etk.get_loan(pa).assert_equal(_W(400) - policy.pure_premium)
+    USD.balance_of(etk).assert_equal(_W(1100) + policy.pure_premium + policy.sr_coc)
+    vault.balance_of(pa).assert_equal(_W(840) + policy.pure_premium)
+    vault.total_assets().assert_equal(initial_investment_value + investment_earning, decimals=0)
