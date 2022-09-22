@@ -41,11 +41,11 @@ def kill_flask(c):
 def test(c, coverage=False, longrun=False):
     # coverage = "--cov=app --cov-config=app/.coveragerc" if coverage else ""
     # longrun = "--longrun" if longrun else ""
-    docker_exec(c, f"brownie test --gas")
+    docker_exec(c, "brownie test --gas")
     if longrun:
-        docker_exec(c, f"npm install")
-        docker_exec(c, f"npx hardhat compile")
-        docker_exec(c, f"npx hardhat test")
+        docker_exec(c, "npm install")
+        docker_exec(c, "npx hardhat compile")
+        docker_exec(c, "npx hardhat test")
 
 
 @ns.add_task
@@ -64,8 +64,9 @@ def refresh_requirements_txt(c, upgrade=False, package=None):
 
 @ns.add_task
 @task
-def docs(c, serve=True, clean=True, browser="brave-browser"):
+def docs(c, serve=True, clean=True, open_browser=True, browser="brave-browser"):
     serve = "serve" if serve else ""
     clean = "clean" if clean else ""
-    c.run(f"sleep 5 && {browser} http://127.0.0.1:18000/", asynchronous=True)
+    if open_browser:
+        c.run(f"sleep 5 && {browser} http://127.0.0.1:18000/", asynchronous=True)
     docker_exec(c, f"scripts/build-docs.sh {clean} {serve}")
