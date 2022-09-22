@@ -1831,16 +1831,21 @@ def test_same_asset_manager_for_etk_and_pa(tenv):
 
     # Create vault and asset manager
     vault = tenv.module.FixedRateVault(asset=USD)
-    asset_manager = tenv.module.ERC4626AssetManager(
+    asset_manager_etk = tenv.module.ERC4626AssetManager(
         vault=vault,
         reserve=etk,
+    )
+
+    asset_manager_pa = tenv.module.ERC4626AssetManager(
+        vault=vault,
+        reserve=pa,
     )
 
     pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
 
     # Set asset manager for etk
     with etk.as_("ADMIN"):
-        etk.set_asset_manager(asset_manager, False)
+        etk.set_asset_manager(asset_manager_etk, False)
 
     pool.access.grant_component_role(etk, "LEVEL2_ROLE", "ADMIN")
 
@@ -1860,7 +1865,7 @@ def test_same_asset_manager_for_etk_and_pa(tenv):
 
     # Set asset manager for pa
     with pa.as_("ADMIN"):
-        pa.set_asset_manager(asset_manager, False)
+        pa.set_asset_manager(asset_manager_pa, False)
 
     pool.access.grant_component_role(pa, "LEVEL2_ROLE", "ADMIN")
 
@@ -1924,16 +1929,21 @@ def test_same_asset_manager_for_etk_and_pa_with_policy(tenv):
 
     # Create vault and asset manager
     vault = tenv.module.FixedRateVault(asset=USD)
-    asset_manager = tenv.module.ERC4626AssetManager(
+    asset_manager_etk = tenv.module.ERC4626AssetManager(
         vault=vault,
         reserve=etk,
+    )
+
+    asset_manager_pa = tenv.module.ERC4626AssetManager(
+        vault=vault,
+        reserve=pa,
     )
 
     pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
 
     # Set asset manager for etk
     with etk.as_("ADMIN"):
-        etk.set_asset_manager(asset_manager, False)
+        etk.set_asset_manager(asset_manager_etk, False)
 
     pool.access.grant_component_role(etk, "LEVEL2_ROLE", "ADMIN")
 
@@ -1953,7 +1963,7 @@ def test_same_asset_manager_for_etk_and_pa_with_policy(tenv):
 
     # Set asset manager for pa
     with pa.as_("ADMIN"):
-        pa.set_asset_manager(asset_manager, False)
+        pa.set_asset_manager(asset_manager_pa, False)
 
     pool.access.grant_component_role(pa, "LEVEL2_ROLE", "ADMIN")
 
@@ -1974,11 +1984,14 @@ def test_same_asset_manager_for_etk_and_pa_with_policy(tenv):
         internal_id=22,
     )
 
+    vault.balance_of(pa).assert_equal(_W(0))
+
     # After checkpoint the cash should be rebalanced
     pa.checkpoint()
     initial_investment_value = _W(3500) + _W(840) + policy.sr_coc
 
     assert USD.balance_of(pa) == _W(160)
+    vault.balance_of(pa).assert_equal(_W(840) + policy.pure_premium)
     vault.total_assets().assert_equal(_W(3500) + _W(840) + policy.pure_premium)
     total_assets = vault.total_assets()
     pa.pure_premiums.assert_equal(_W(4))
