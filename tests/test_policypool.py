@@ -2233,5 +2233,8 @@ def test_repay_loan(tenv):
     USD.balance_of(pa).assert_equal(_W(100))
 
     rm.resolve_policy(policy_2.id, _W(0))
-    # pa.pure_premiums.assert_equal(_W(0))
-    # USD.balance_of(pa).assert_equal(_W(150))
+    pa.pure_premiums.assert_equal(_W(0))
+    USD.balance_of(pa).assert_equal(_W(0))
+    etk.get_loan(pa).assert_equal(_W(150))
+
+    etk.balance_of("LP1").assert_equal(_W("855.5"))

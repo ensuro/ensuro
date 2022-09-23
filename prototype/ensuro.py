@@ -914,7 +914,11 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
         if not borrowed_from_etk:
             return pure_premium_won
         repay_amount = min(borrowed_from_etk, pure_premium_won)
-        # self._transfer_to(etk, repay_amount) - TODO: ensure enough balance
+
+        # If not enought liquidity, it deinvests from the asset manager
+        if self.currency.balance_of(self) < repay_amount:
+            self.asset_manager.refill_wallet(repay_amount)
+
         etk.repay_loan(self, repay_amount, self)
         return pure_premium_won - repay_amount
 
