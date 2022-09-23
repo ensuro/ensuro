@@ -161,7 +161,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * @dev Modifier that checks the caller has a given role
    */
   modifier onlyRole(bytes32 role) {
-    _access.checkRole(role, msg.sender);
+    _access.checkRole(role, _msgSender());
     _;
   }
 
@@ -169,7 +169,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * @dev Modifier that checks the caller has any of the given rolea
    */
   modifier onlyRole2(bytes32 role1, bytes32 role2) {
-    _access.checkRole2(role1, role2, msg.sender);
+    _access.checkRole2(role1, role2, _msgSender());
     _;
   }
 
@@ -363,9 +363,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     Component storage comp = _components[component];
     require(comp.status != ComponentStatus.inactive, "Component not found");
     require(
-      (newStatus == ComponentStatus.active && _access.hasRole(LEVEL1_ROLE, msg.sender)) ||
-        (newStatus == ComponentStatus.suspended && _access.hasRole(GUARDIAN_ROLE, msg.sender)) ||
-        (newStatus == ComponentStatus.deprecated && _access.hasRole(LEVEL1_ROLE, msg.sender)),
+      (newStatus == ComponentStatus.active && _access.hasRole(LEVEL1_ROLE, _msgSender())) ||
+        (newStatus == ComponentStatus.suspended && _access.hasRole(GUARDIAN_ROLE, _msgSender())) ||
+        (newStatus == ComponentStatus.deprecated && _access.hasRole(LEVEL1_ROLE, _msgSender())),
       "Only GUARDIAN can suspend / Only LEVEL1 can activate/deprecate"
     );
     comp.status = newStatus;
@@ -406,8 +406,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
 
   function deposit(IEToken eToken, uint256 amount) external override whenNotPaused {
     require(_etkStatus(eToken) == ComponentStatus.active, "eToken is not active");
-    _currency.safeTransferFrom(msg.sender, address(eToken), amount);
-    eToken.deposit(msg.sender, amount);
+    _currency.safeTransferFrom(_msgSender(), address(eToken), amount);
+    eToken.deposit(_msgSender(), amount);
   }
 
   function withdraw(IEToken eToken, uint256 amount)
@@ -421,7 +421,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
       etkStatus == ComponentStatus.active || etkStatus == ComponentStatus.deprecated,
       "eToken not found or withdraws not allowed"
     );
-    address provider = msg.sender;
+    address provider = _msgSender();
     return eToken.withdraw(provider, amount);
   }
 
@@ -432,7 +432,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     uint96 internalId
   ) external override whenNotPaused returns (uint256) {
     IRiskModule rm = policy.riskModule;
-    require(address(rm) == msg.sender, "Only the RM can create new policies");
+    require(address(rm) == _msgSender(), "Only the RM can create new policies");
     require(_rmStatus(rm) == ComponentStatus.active, "RM module not found or not active");
     policy.id = (uint256(uint160(address(rm))) << 96) + internalId;
     _policies[policy.id] = policy.hash();
@@ -497,7 +497,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   ) internal {
     _validatePolicy(policy);
     IRiskModule rm = policy.riskModule;
-    require(expired || address(rm) == msg.sender, "Only the RM can resolve policies");
+    require(expired || address(rm) == _msgSender(), "Only the RM can resolve policies");
     require(payout == 0 || policy.expiration > block.timestamp, "Can't pay expired policy");
     ComponentStatus compStatus = _rmStatus(rm);
     require(
