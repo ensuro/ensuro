@@ -22,7 +22,7 @@ from ethproto.contracts import ERC721Token
 from ethproto.wadray import RAY, Ray, Wad, _W, _R
 import time
 
-DAYS_PER_YEAR = 3600
+DAYS_PER_YEAR = 365
 HOURS_PER_DAY = 24
 SECONDS_IN_HOUR = 3600
 SECONDS_IN_YEAR = 365 * 24 * SECONDS_IN_HOUR
@@ -794,14 +794,12 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
     @only_component_role("LEVEL2_ROLE")
     def set_deficit_ratio(self, new_ratio, adjustment):
         require(
-            new_ratio <= _W(1) and new_ratio > 0,
+            new_ratio <= _W(1) and new_ratio >= 0,
             "Validation: deficitRatio must be <= 1",
         )
         max_deficit = -self.active_pure_premiums * new_ratio
         if not adjustment:
-            require(
-                self.surplus >= max_deficit, "Validation: surplus must be >= maxDeficit"
-            )
+            require(self.surplus >= max_deficit, "Validation: surplus must be >= maxDeficit")
             self.deficit_ratio = new_ratio
             return
 

@@ -2141,3 +2141,89 @@ def test_same_asset_manager_for_etk_and_pa_resolve_policy(tenv):
     USD.balance_of(etk).assert_equal(_W(1100) + policy.pure_premium + policy.sr_coc)
     vault.balance_of(pa).assert_equal(_W(840) + policy.pure_premium)
     vault.total_assets().assert_equal(initial_investment_value + investment_earning, decimals=0)
+
+
+def test_repay_loan(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        coll_ratio: 1
+        sr_roc: "0.02"
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 20000
+        initial_balances:
+        - user: LP1
+          amount: 10000
+        - user: CUST1
+          amount: 2000
+    etokens:
+      - name: eUSD1YEAR
+    """
+
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    rm = pool.risk_modules["Roulette"]
+    pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
+    pa = rm.premiums_account
+
+    USD = pool.currency
+    etk = pool.etokens["eUSD1YEAR"]
+
+    pool.access.grant_component_role(pa, "LEVEL2_ROLE", USD.owner)
+    pa.set_deficit_ratio(_W(0), True)
+
+    # Create vault
+    vault = tenv.module.FixedRateVault(asset=USD)
+    asset_manager = tenv.module.ERC4626AssetManager(
+        vault=vault,
+        reserve=etk,
+    )
+
+    pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
+    # Set asset manager
+    with pa.as_("ADMIN"):
+        pa.set_asset_manager(asset_manager, False)
+
+    pool.access.grant_component_role(pa, "LEVEL2_ROLE", "ADMIN")
+
+    with pa.as_("ADMIN"):
+        pa.forward_to_asset_manager("set_liquidity_thresholds", _W(10), _W(100), _W(1000))
+
+    _deposit(pool, "eUSD1YEAR", "LP1", _W(1000))
+    assert etk.balance_of("LP1") == _W(1000)
+
+    USD.approve("CUST1", pool.contract_id, _W(600))
+    USD.approve("CUST1", rm.owner, _W(600))
+    policy = rm.new_policy(
+        payout=_W(500),
+        premium=_W(300),
+        on_behalf_of="CUST1",
+        loss_prob=_W("0.5"),
+        expiration=timecontrol.now + 365 * DAY // 2,
+        internal_id=22,
+    )
+
+    etk.balance_of("LP1").assert_equal(_W(1000))
+
+    policy_2 = rm.new_policy(
+        payout=_W(400),
+        premium=_W(300),
+        on_behalf_of="CUST1",
+        loss_prob=_W("0.5"),
+        expiration=timecontrol.now + 365 * DAY // 2,
+        internal_id=33,
+    )
+
+    etk.balance_of("LP1").assert_equal(_W(1000))
+
+    rm.resolve_policy(policy.id, _W(500))
+
+    pa.pure_premiums.assert_equal(_W(200))
+    etk.balance_of("LP1").assert_equal(_W("752.5"))
+
+    rm.resolve_policy(policy_2.id, _W(0))
+    pa.pure_premiums.assert_equal(_W(0))
+    etk.balance_of("LP1").assert_equal(_W("954.5"))
