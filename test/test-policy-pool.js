@@ -17,6 +17,8 @@ const {
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
+const COMPONENT_STATUS_DEPRECATED = 2;
+
 describe("PolicyPool contract", function () {
   let currency;
   let pool;
@@ -40,6 +42,7 @@ describe("PolicyPool contract", function () {
       grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
       treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
     });
+    pool._A = _A;
 
     accessManager = await hre.ethers.getContractAt("AccessManager", await pool.access());
   });
@@ -111,6 +114,19 @@ describe("PolicyPool contract", function () {
       .withArgs(premiumsAccount.address);
   });
 
+  it("Removes the PA as borrower from the jr etoken on PremiumsAccount removal", async () => {
+    const etk = await addEToken(pool, {});
+    const premiumsAccount = await deployPremiumsAccount(hre, pool, { jrEtkAddr: etk.address }, false);
+
+    await pool.addComponent(premiumsAccount.address, 3);
+
+    pool.changeComponentStatus(premiumsAccount.address, COMPONENT_STATUS_DEPRECATED);
+
+    await expect(pool.removeComponent(premiumsAccount.address))
+      .to.emit(etk, "InternalBorrowerRemoved")
+      .withArgs(premiumsAccount.address, 0);
+  });
+
   it("Adds the PA as borrower on the sr etoken", async () => {
     const etk = await addEToken(pool, {});
     const premiumsAccount = await deployPremiumsAccount(hre, pool, { srEtkAddr: etk.address }, false);
@@ -120,11 +136,109 @@ describe("PolicyPool contract", function () {
       .withArgs(premiumsAccount.address);
   });
 
+  it("Removes the PA as borrower from the sr etoken on PremiumsAccount removal", async () => {
+    const etk = await addEToken(pool, {});
+    const premiumsAccount = await deployPremiumsAccount(hre, pool, { srEtkAddr: etk.address }, false);
+
+    await pool.addComponent(premiumsAccount.address, 3);
+
+    pool.changeComponentStatus(premiumsAccount.address, COMPONENT_STATUS_DEPRECATED);
+
+    await expect(pool.removeComponent(premiumsAccount.address))
+      .to.emit(etk, "InternalBorrowerRemoved")
+      .withArgs(premiumsAccount.address, 0);
+  });
+
   it("Does not allow suspending unknown components", async () => {
     const premiumsAccount = await deployPremiumsAccount(hre, pool, {}, false);
 
     await grantRole(hre, accessManager, "GUARDIAN_ROLE", owner.address);
 
     await expect(pool.changeComponentStatus(premiumsAccount.address, 1)).to.be.revertedWith("Component not found");
+  });
+
+  it("Only allows riskmodule to create policies", async () => {
+    const now = await helpers.time.latest();
+    const policyData = [
+      1, // id
+      _A(1000), // payout
+      _A(110), // premium
+      _W(0), // jrScr
+      _W(0), // srScr
+      _W("0.1"), // lossProb
+      _W(10), // purePremium
+      _W(0), // ensuroCommission
+      _W(0), // partnerCommission
+      _W(0), // jrCoc
+      _W(0), // srCoc
+      "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // riskModule
+      now, // start
+      now + 3600 * 5, // expiration
+    ];
+
+    await expect(pool.newPolicy(policyData, cust.address, backend.address, 11)).to.be.revertedWith(
+      "Only the RM can create new policies"
+    );
+  });
+
+  async function deployRiskModuleFixture() {
+    // Setup the liquidity sources
+    const etk = await addEToken(pool, {});
+    const premiumsAccount = await deployPremiumsAccount(hre, pool, { srEtkAddr: etk.address });
+
+    await currency.connect(lp).approve(pool.address, _A(5000));
+    await pool.connect(lp).deposit(etk.address, _A(5000));
+
+    // Setup the risk module
+    const RiskModule = await hre.ethers.getContractFactory("RiskModuleMock");
+    const rm = await addRiskModule(pool, premiumsAccount, RiskModule, {
+      extraArgs: [],
+    });
+
+    return { etk, premiumsAccount, rm };
+  }
+
+  async function deployPolicyFixture() {
+    const { rm } = await helpers.loadFixture(deployRiskModuleFixture);
+    const now = await helpers.time.latest();
+
+    // Deploy a new policy
+    await currency.connect(cust).approve(pool.address, _A(110));
+    await currency.connect(cust).approve(backend.address, _A(110));
+
+    await accessManager.grantComponentRole(rm.address, await rm.PRICER_ROLE(), backend.address);
+    await accessManager.grantComponentRole(rm.address, await rm.RESOLVER_ROLE(), backend.address);
+    const tx = await rm.connect(backend).newPolicy(
+      _A(1000), // payout
+      _A(10), // premium
+      _W(0), // lossProb
+      now + 3600 * 5, // expiration
+      cust.address, // payer
+      cust.address, // holder
+      123 // internalId
+    );
+
+    const receipt = await tx.wait();
+
+    // Try to resolve it without going through the riskModule
+    const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
+
+    return { policy: newPolicyEvt.args.policy, receipt };
+  }
+
+  it("Only allows riskmodule to resolve unexpired policies", async () => {
+    const { rm } = await helpers.loadFixture(deployRiskModuleFixture);
+    const { policy } = await helpers.loadFixture(deployPolicyFixture);
+
+    await expect(pool.resolvePolicy(policy, 0)).to.be.revertedWith("Only the RM can resolve policies");
+  });
+
+  it("Does not allow a bigger payout than the one setup in the policy", async () => {
+    const { rm } = await helpers.loadFixture(deployRiskModuleFixture);
+    const { policy } = await helpers.loadFixture(deployPolicyFixture);
+
+    await expect(rm.connect(backend).resolvePolicy(policy, policy.payout + _A(10))).to.be.revertedWith(
+      "payout > policy.payout"
+    );
   });
 });
