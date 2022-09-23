@@ -88,6 +88,29 @@ contract PolicyPoolMock is IPolicyPool {
   function withdraw(IEToken, uint256) external pure override returns (uint256) {
     revert("Not Implemented withdraw");
   }
+
+  /**
+   * @dev Simple passthrough method for testing Policy.initialize
+   */
+  function initializeAndEmitPolicy(
+    IRiskModule riskModule,
+    IRiskModule.Params memory rmParams,
+    uint256 premium,
+    uint256 payout,
+    uint256 lossProb,
+    uint40 expiration
+  ) external {
+    Policy.PolicyData memory policy = Policy.initialize(
+      riskModule,
+      rmParams,
+      premium,
+      payout,
+      lossProb,
+      expiration
+    );
+
+    emit NewPolicy(riskModule, policy);
+  }
 }
 
 /**
