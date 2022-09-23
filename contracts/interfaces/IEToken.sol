@@ -87,7 +87,7 @@ interface IEToken is IERC20 {
    *
    * @param provider The address of the liquidity provider
    * @param amount The amount deposited.
-   * @return The actual balance of the provider (TODO)
+   * @return The actual balance of the provider
    */
   function deposit(address provider, uint256 amount) external returns (uint256);
 

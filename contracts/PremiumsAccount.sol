@@ -338,12 +338,10 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
 
   /**
    *
-   * Withdraws excess premiums to the authorized role.
+   * Withdraws excess premiums (surplus) to the destination.
    *
    * This might be needed in some cases for example if we are deprecating the protocol or the excess premiums
    * are needed to compensate something. Shouldn't be used. Can be disabled revoking role WITHDRAW_WON_PREMIUMS_ROLE
-   *
-   * returns The amount withdrawed
    *
    * Requirements:
    * - onlyGlobalOrComponentRole(WITHDRAW_WON_PREMIUMS_ROLE)
@@ -351,6 +349,10 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    *
    * Events:
    * - Emits {WonPremiumsInOut} with moneyIn = false
+   *
+   * @param amount The amount to withdraw
+   * @param destination The address that will receive the transferred funds.
+   * @return Returns the actual amount withdrawn.
    */
   function withdrawWonPremiums(uint256 amount, address destination)
     external
