@@ -198,8 +198,8 @@ describe("PolicyPool contract", function () {
     return { etk, premiumsAccount, rm };
   }
 
-  async function deployPolicyFixture() {
-    const { rm } = await helpers.loadFixture(deployRiskModuleFixture);
+  async function deployRmWithPolicyFixture() {
+    const { rm } = await deployRiskModuleFixture();
     const now = await helpers.time.latest();
 
     // Deploy a new policy
@@ -223,19 +223,17 @@ describe("PolicyPool contract", function () {
     // Try to resolve it without going through the riskModule
     const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
 
-    return { policy: newPolicyEvt.args.policy, receipt };
+    return { policy: newPolicyEvt.args.policy, receipt, rm };
   }
 
   it("Only allows riskmodule to resolve unexpired policies", async () => {
-    const { rm } = await helpers.loadFixture(deployRiskModuleFixture);
-    const { policy } = await helpers.loadFixture(deployPolicyFixture);
+    const { policy } = await helpers.loadFixture(deployRmWithPolicyFixture);
 
     await expect(pool.resolvePolicy(policy, 0)).to.be.revertedWith("Only the RM can resolve policies");
   });
 
   it("Does not allow a bigger payout than the one setup in the policy", async () => {
-    const { rm } = await helpers.loadFixture(deployRiskModuleFixture);
-    const { policy } = await helpers.loadFixture(deployPolicyFixture);
+    const { policy, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
 
     await expect(rm.connect(backend).resolvePolicy(policy, policy.payout + _A(10))).to.be.revertedWith(
       "payout > policy.payout"

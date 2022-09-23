@@ -8,16 +8,22 @@ contract PolicyHolderMock is IPolicyHolder {
   uint256 public policyId;
   uint256 public payout;
   bool public fail;
+  bool public notImplemented;
 
   event NotificationReceived(uint256 kind, uint256 policyId, address operator, address from);
 
   constructor(bool fail_) {
     fail = fail_;
+    notImplemented = false;
     payout = type(uint256).max;
   }
 
   function setFail(bool fail_) external {
     fail = fail_;
+  }
+
+  function setNotImplemented(bool notImplemented_) external {
+    notImplemented = notImplemented_;
   }
 
   function onERC721Received(
@@ -26,6 +32,10 @@ contract PolicyHolderMock is IPolicyHolder {
     uint256 policyId_,
     bytes calldata
   ) external override returns (bytes4) {
+    if (notImplemented)
+      assembly {
+        revert(0, 0)
+      }
     if (fail) revert("onERC721Received: They told me I have to fail");
     policyId = policyId_;
     emit NotificationReceived(0, policyId_, operator, from);
@@ -37,6 +47,10 @@ contract PolicyHolderMock is IPolicyHolder {
     address from,
     uint256 policyId_
   ) external override returns (bytes4) {
+    if (notImplemented)
+      assembly {
+        revert(0, 0)
+      }
     if (fail) revert("onPolicyExpired: They told me I have to fail");
     policyId = policyId_;
     payout = 0;
@@ -59,6 +73,10 @@ contract PolicyHolderMock is IPolicyHolder {
     uint256 policyId_,
     uint256 amount
   ) external override returns (bytes4) {
+    if (notImplemented)
+      assembly {
+        revert(0, 0)
+      }
     if (fail) revert("onPayoutReceived: They told me I have to fail");
     policyId = policyId_;
     payout = amount;
