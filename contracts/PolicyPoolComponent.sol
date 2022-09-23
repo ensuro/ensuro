@@ -51,17 +51,17 @@ abstract contract PolicyPoolComponent is
   }
 
   modifier onlyComponentRole(bytes32 role) {
-    _policyPool.access().checkComponentRole(address(this), role, msg.sender, false);
+    _policyPool.access().checkComponentRole(address(this), role, _msgSender(), false);
     _;
   }
 
   modifier onlyGlobalOrComponentRole(bytes32 role) {
-    _policyPool.access().checkComponentRole(address(this), role, msg.sender, true);
+    _policyPool.access().checkComponentRole(address(this), role, _msgSender(), true);
     _;
   }
 
   modifier onlyGlobalOrComponentRole2(bytes32 role1, bytes32 role2) {
-    _policyPool.access().checkComponentRole2(address(this), role1, role2, msg.sender, true);
+    _policyPool.access().checkComponentRole2(address(this), role1, role2, _msgSender(), true);
     _;
   }
 
@@ -71,8 +71,8 @@ abstract contract PolicyPoolComponent is
     bytes32 role3
   ) {
     IAccessManager access = _policyPool.access();
-    if (!access.hasComponentRole(address(this), role1, msg.sender, true)) {
-      _policyPool.access().checkComponentRole2(address(this), role2, role3, msg.sender, true);
+    if (!access.hasComponentRole(address(this), role1, _msgSender(), true)) {
+      _policyPool.access().checkComponentRole2(address(this), role2, role3, _msgSender(), true);
     }
     _;
   }
@@ -117,7 +117,7 @@ abstract contract PolicyPoolComponent is
   }
 
   function hasPoolRole(bytes32 role) internal view returns (bool) {
-    return _policyPool.access().hasComponentRole(address(this), role, msg.sender, true);
+    return _policyPool.access().hasComponentRole(address(this), role, _msgSender(), true);
   }
 
   function _isTweakWad(

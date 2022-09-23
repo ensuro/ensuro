@@ -331,7 +331,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
       "You must allow ENSURO to transfer the premium"
     );
     require(
-      payer == msg.sender || _policyPool.currency().allowance(payer, msg.sender) >= premium,
+      payer == _msgSender() || _policyPool.currency().allowance(payer, _msgSender()) >= premium,
       "Payer must allow caller to transfer the premium"
     );
     require(payout <= maxPayoutPerPolicy(), "RiskModule: Payout is more than maximum per policy");
