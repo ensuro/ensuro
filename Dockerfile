@@ -1,6 +1,6 @@
 FROM python:3.9
 
-RUN curl -sL https://solc-bin.ethereum.org/linux-amd64/solc-linux-amd64-v0.8.6+commit.11564f7e > /usr/local/bin/solc && chmod +x /usr/local/bin/solc
+RUN curl -sL https://solc-bin.ethereum.org/linux-amd64/solc-linux-amd64-v0.8.16+commit.07a7930e > /usr/local/bin/solc && chmod +x /usr/local/bin/solc
 RUN curl -sL https://deb.nodesource.com/setup_16.x | bash
 RUN apt-get install -y nodejs
 
