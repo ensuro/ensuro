@@ -1027,9 +1027,6 @@ def test_payout_bigger_than_pure_premium(tenv):
     eUSD1YEAR.get_loan(premiums_account).assert_equal(_W(100) - policy.pure_premium)
 
 
-# TODO: define later if partial payouts pay to ensuro_commission and partner_commission if possible
-
-
 @set_precision(Wad, 3)
 def test_asset_manager(tenv):
     YAML_SETUP = """
@@ -2179,7 +2176,7 @@ def test_repay_loan(tenv):
     vault = tenv.module.FixedRateVault(asset=USD)
     asset_manager = tenv.module.ERC4626AssetManager(
         vault=vault,
-        reserve=etk,
+        reserve=pa,
     )
 
     pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
@@ -2190,7 +2187,7 @@ def test_repay_loan(tenv):
     pool.access.grant_component_role(pa, "LEVEL2_ROLE", "ADMIN")
 
     with pa.as_("ADMIN"):
-        pa.forward_to_asset_manager("set_liquidity_thresholds", _W(10), _W(100), _W(1000))
+        pa.forward_to_asset_manager("set_liquidity_thresholds", _W(10), _W(100), _W(150))
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(1000))
     assert etk.balance_of("LP1") == _W(1000)
@@ -2201,12 +2198,22 @@ def test_repay_loan(tenv):
         payout=_W(500),
         premium=_W(300),
         on_behalf_of="CUST1",
-        loss_prob=_W("0.5"),
+        loss_prob=_W("0.3"),
         expiration=timecontrol.now + 365 * DAY // 2,
         internal_id=22,
     )
 
+    pa.pure_premiums.assert_equal(_W(150))
+    USD.balance_of(pa).assert_equal(_W(150))
+
     etk.balance_of("LP1").assert_equal(_W(1000))
+
+    rm.resolve_policy(policy.id, _W(500))
+    pa.pure_premiums.assert_equal(_W(0))
+    USD.balance_of(pa).assert_equal(_W(0))
+    etk.get_loan(pa).assert_equal(_W(350))
+
+    etk.balance_of("LP1").assert_equal(_W("653.5"))
 
     policy_2 = rm.new_policy(
         payout=_W(400),
@@ -2217,13 +2224,14 @@ def test_repay_loan(tenv):
         internal_id=33,
     )
 
-    etk.balance_of("LP1").assert_equal(_W(1000))
+    pa.pure_premiums.assert_equal(_W(200))
+    USD.balance_of(pa).assert_equal(_W(200))
 
-    rm.resolve_policy(policy.id, _W(500))
+    pa.rebalance()
 
     pa.pure_premiums.assert_equal(_W(200))
-    etk.balance_of("LP1").assert_equal(_W("752.5"))
+    USD.balance_of(pa).assert_equal(_W(100))
 
     rm.resolve_policy(policy_2.id, _W(0))
-    pa.pure_premiums.assert_equal(_W(0))
-    etk.balance_of("LP1").assert_equal(_W("954.5"))
+    # pa.pure_premiums.assert_equal(_W(0))
+    # USD.balance_of(pa).assert_equal(_W(150))
