@@ -28,18 +28,23 @@ abstract contract Reserve is PolicyPoolComponent {
     NEGLIGIBLE_AMOUNT = 10**(policyPool_.currency().decimals() / 2);
   }
 
+  function _refillWallet(uint256 amount) internal returns (uint256) {
+    address am = address(assetManager());
+    if (am != address(0)) {
+      bytes memory result = am.functionDelegateCall(
+        abi.encodeWithSelector(IAssetManager.refillWallet.selector, amount),
+        "Error refilling wallet"
+      );
+      return abi.decode(result, (uint256));
+    }
+    return 0;
+  }
+
   function _transferTo(address destination, uint256 amount) internal {
     if (amount == 0) return;
     uint256 balance = currency().balanceOf(address(this));
     if (balance < amount) {
-      address am = address(assetManager());
-      if (am != address(0)) {
-        bytes memory result = am.functionDelegateCall(
-          abi.encodeWithSelector(IAssetManager.refillWallet.selector, amount),
-          "Error refilling wallet"
-        );
-        balance += abi.decode(result, (uint256));
-      }
+      balance += _refillWallet(amount);
       if (amount > balance) {
         if ((amount - balance) < NEGLIGIBLE_AMOUNT) {
           amount = balance;

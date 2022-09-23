@@ -100,8 +100,17 @@ describe("Test pause, unpause and upgrade contracts", function () {
     await pool.connect(guardian).pause();
     // Can't resolve Policy
     await expect(rm.connect(cust).resolvePolicy(policy, _A(10))).to.be.revertedWith("Pausable: paused");
+    // Can't transfer NFTs
+    await expect(pool.connect(cust).transferFrom(cust.address, owner.address, policy.id)).to.be.revertedWith(
+      "Pausable: paused"
+    );
+
     // UnPause PolicyPool
     await pool.connect(guardian).unpause();
+    // Can transfer
+    expect(await pool.ownerOf(policy.id)).to.be.equal(cust.address);
+    await pool.connect(cust).transferFrom(cust.address, owner.address, policy.id);
+    expect(await pool.ownerOf(policy.id)).to.be.equal(owner.address);
     // Can resolve Policy
     await expect(rm.connect(cust).resolvePolicy(policy, _A(10))).not.to.be.reverted;
   });

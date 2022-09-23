@@ -20,11 +20,13 @@ import {WadRayMath} from "./dependencies/WadRayMath.sol";
 /**
  * @title Ensuro PolicyPool contract
  * @dev This is the main contract of the protocol, it stores the eTokens (liquidity pools) and has the operations
- *      to interact with them. This is also the contract that receives and sends the underlying asset.
+ *      to interact with them. This is also the contract that receives and sends the underlying asset (currency).
  *      Also this contract keeps track of accumulated premiums in different stages:
  *      - activePurePremiums
  *      - wonPurePremiums (surplus)
  *      - borrowedActivePP (deficit borrowed from activePurePremiums)
+ *      This contract also implements the ERC721 standard, because it mints and NFT for each policy created. The
+ *      property of the NFT represents the one that will receive the payout.
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
@@ -38,13 +40,26 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   bytes32 public constant LEVEL2_ROLE = keccak256("LEVEL2_ROLE");
   bytes32 public constant LEVEL3_ROLE = keccak256("LEVEL3_ROLE");
 
+  /**
+   * @dev {AccessManager} that handles the access permissions for the PolicyPool and its components.
+   */
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IAccessManager internal immutable _access;
+
+  /**
+   * @dev {ERC20} token used in PolicyPool as currency. Usually it will be a stablecoin such as USDC.
+   */
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IERC20Metadata internal immutable _currency;
 
+  /**
+   * @dev Address of Ensuro's treasury that receives the protocol fees.
+   */
   address internal _treasury; // address of Ensuro treasury
 
+  /**
+   * @dev This enum tracks the different status that a component ({PremiumsAccount}, {EToken} or {RiskModule} can have.
+   */
   enum ComponentStatus {
     /**
      * @dev inactive status = 0 means the component doesn't exists - All operations rejected
@@ -71,6 +86,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     suspended
   }
 
+  /**
+   * @dev Enum of the different kind of top level components that can be plugged into the pool. Each one corresponds
+   * with the {EToken}, {RiskModule} and {PremiumsAccount} respectively.
+   */
   enum ComponentKind {
     unknown,
     eToken,
@@ -78,6 +97,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     premiumsAccount
   }
 
+  /**
+   * @dev Struct to keep the state and type of the components installed. The `kind` never changes. The `status`
+   * initially is `active` and can be changes with {PolicyPool-changeComponentStatus} and {PolicyPool-removeComponent}.
+   */
   struct Component {
     ComponentStatus status;
     ComponentKind kind;
@@ -85,7 +108,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
 
   /**
    * @dev Mapping of installed components (see {EToken}, {RiskModule}, {PremiumsAccount}) in the PolicyPool.
-   * For each one it keep an state {ComponentStatus}.
    */
   mapping(IPolicyPoolComponent => Component) private _components;
 
@@ -98,17 +120,27 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   /**
    * @dev Event emitted every time a new policy is added to the pool. Contains all the data about the policy that is
    * later required for doing operations with the policy like resolution or expiration.
+   *
+   * @param riskModule The risk module that created the policy
+   * @param policy The {Policy-PolicyData} struct with all the immutable fields of the policy.
    */
   event NewPolicy(IRiskModule indexed riskModule, Policy.PolicyData policy);
 
   /**
    * @dev Event emitted every time a policy is removed from the pool. If the policy expired, the `payout` is 0,
    * otherwise is the amount transferred to the policyholder.
+   *
+   * @param riskModule The risk module where that created the policy initially.
+   * @param policyId The unique id of the policy
+   * @param payout The payout that has been paid to the policy holder. 0 when the policy expired.
    */
   event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, uint256 payout);
 
   /**
    * @dev Event emitted when the treasury changes
+   *
+   * @param action The type of governance action (just setTreasury in this contract for now)
+   * @param value  The address of the new treasury
    */
   event ComponentChanged(IAccessManager.GovernanceActions indexed action, address value);
 
@@ -125,22 +157,42 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     ComponentStatus newStatus
   );
 
+  /**
+   * @dev Modifier that checks the caller has a given role
+   */
   modifier onlyRole(bytes32 role) {
     _access.checkRole(role, msg.sender);
     _;
   }
 
+  /**
+   * @dev Modifier that checks the caller has any of the given rolea
+   */
   modifier onlyRole2(bytes32 role1, bytes32 role2) {
     _access.checkRole2(role1, role2, msg.sender);
     _;
   }
 
+  /**
+   * @dev Instantiates a Policy Pool. Sets immutable fields.
+   *
+   * @param access_ The address of the {AccessManager} that manages the access permissions for the pool governance
+   * operations.
+   * @param currency_ The {ERC20} token that's used as a currency in the protocol. Usually a stablecoin such as USDC.
+   */
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(IAccessManager access_, IERC20Metadata currency_) {
     _access = access_;
     _currency = currency_;
   }
 
+  /**
+   * @dev Initializes a Policy Pool
+   *
+   * @param name_ The name of the ERC721 token.
+   * @param symbol_ The symbol of the ERC721 token.
+   * @param treasury_ The address of the treasury that will receive the protocol fees.
+   */
   function initialize(
     string memory name_,
     string memory symbol_,
@@ -160,10 +212,23 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   // solhint-disable-next-line no-empty-blocks
   function _authorizeUpgrade(address) internal override onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {}
 
+  /**
+   * @dev Pauses the contract. When the contract is paused, several operations are rejected: deposits, withdrawals, new
+   * policies, policy resolution and expiration, nft transfers.
+   *
+   * Requirements:
+   * - Must be executed by a user with the {GUARDIAN_ROLE}.
+   */
   function pause() public onlyRole(GUARDIAN_ROLE) {
     _pause();
   }
 
+  /**
+   * @dev Unpauses the contract. All the operations disabled when the contract was paused are re-enabled.
+   *
+   * Requirements:
+   * - Must be called by a user with either the {GUARDIAN_ROLE} or a {LEVEL1_ROLE}.
+   */
   function unpause() public onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {
     _unpause();
   }
@@ -176,15 +241,42 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     return _currency;
   }
 
+  /**
+   * @dev Changes the address of the treasury, the one that receives the protocol fees.
+   *
+   * Requirements:
+   * - Must be called by a user with the {LEVEL1_ROLE}.
+   *
+   * Events:
+   * - Emits {ComponentChanged} with action = setTreasury and the address of the new treasury.
+   */
   function setTreasury(address treasury_) external onlyRole(LEVEL1_ROLE) {
     _treasury = treasury_;
     emit ComponentChanged(IAccessManager.GovernanceActions.setTreasury, _treasury);
   }
 
+  /**
+   * @dev Returns the address of the treasury, the one that receives the protocol fees.
+   */
   function treasury() external view override returns (address) {
     return _treasury;
   }
 
+  /**
+   * @dev Adds a new component (either an {EToken}, {RiskModule} or {PremiumsAccount}) to the protocol. The component
+   * status will be `active`.
+   *
+   * Requirements:
+   * - Must be called by a user with the {LEVEL1_ROLE}
+   * - The component wasn't added before.
+   *
+   * Events:
+   * - Emits {ComponentStatusChanged} with status active.
+   *
+   * @param component The address of component contract. Must be an {EToken}, {RiskModule} or {PremiumsAccount} linked
+   * to this specific {PolicyPool} and matching the `kind` specified in the next paramter.
+   * @param kind The type of component to be added.
+   */
   function addComponent(IPolicyPoolComponent component, ComponentKind kind)
     external
     onlyRole(LEVEL1_ROLE)
@@ -209,6 +301,19 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     emit ComponentStatusChanged(component, kind, ComponentStatus.active);
   }
 
+  /**
+   * @dev Removes a component from the protocol. The component needs to be in `deprecated` status before doing this
+   * operation.
+   *
+   * Requirements:
+   * - Must be called by a user with the {LEVEL1_ROLE}
+   * - The component status is `deprecated`.
+   *
+   * Events:
+   * - Emits {ComponentStatusChanged} with status inactive.
+   *
+   * @param component The address of component contract. Must be a component added before.
+   */
   function removeComponent(IPolicyPoolComponent component) external onlyRole(LEVEL1_ROLE) {
     Component storage comp = _components[component];
     require(comp.status == ComponentStatus.deprecated, "Component not deprecated");
@@ -238,6 +343,19 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     delete _components[component];
   }
 
+  /**
+   * @dev Changes the status of a component.
+   *
+   * Requirements:
+   * - Must be called by a user with the {LEVEL1_ROLE} if the new status is `active` or `deprecated`.
+   * - Must be called by a user with the {GUARDIAN_ROLE} if the new status is `suspended`.
+   *
+   * Events:
+   * - Emits {ComponentStatusChanged} with the new status.
+   *
+   * @param component The address of component contract. Must be a component added before.
+   * @param newStatus The new status, must be either `active`, `deprecated` or `suspended`.
+   */
   function changeComponentStatus(IPolicyPoolComponent component, ComponentStatus newStatus)
     external
     onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
@@ -254,6 +372,12 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     emit ComponentStatusChanged(component, comp.kind, newStatus);
   }
 
+  /**
+   * @dev Returns the status of a component.
+   *
+   * @param component The address of the component
+   * @return The status of the component. See {ComponentStatus}
+   */
   function getComponentStatus(IPolicyPoolComponent component)
     external
     view
@@ -363,6 +487,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * @dev Internal function that handles the different alternative resolutions for a policy, with or without payout and
    * expiration.
    *
+   * Events:
+   * - Emits {PolicyResolved} with the payout
+   *
    * @param policy A policy created with {Policy-initialize}
    * @param payout The amount to paid to the policyholder
    * @param expired True for expiration resolution (`payout` must be 0)
@@ -448,5 +575,13 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     } catch {
       return;
     }
+  }
+
+  function _beforeTokenTransfer(
+    address from,
+    address to,
+    uint256 tokenId
+  ) internal override whenNotPaused {
+    super._beforeTokenTransfer(from, to, tokenId);
   }
 }
