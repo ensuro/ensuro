@@ -66,4 +66,11 @@ contract RiskModuleMock is RiskModule {
   ) external onlyComponentRole(PRICER_ROLE) returns (uint256) {
     return _newPolicy(payout, premium, lossProb, expiration, payer, onBehalfOf, internalId).id;
   }
+
+  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout)
+    external
+    onlyComponentRole(RESOLVER_ROLE)
+  {
+    _policyPool.resolvePolicy(policy, payout);
+  }
 }

@@ -28,6 +28,7 @@ describe("RiskModule contract", function () {
   let currency;
   let pool;
   let accessManager;
+  let premiumsAccount;
   let _A;
   let owner, lp, cust, backend;
   let RiskModule;
