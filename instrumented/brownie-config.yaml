@@ -1,6 +1,6 @@
 compiler:
   solc:
-    version: 0.8.6
+    version: 0.8.16
     optimizer:
       enabled: false
     remappings:

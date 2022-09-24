@@ -32,7 +32,7 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
 
   // solhint-disable-next-line func-name-mixedcase
   function __AccessManager_init_unchained() internal initializer {
-    _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
+    _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
   }
 
   // solhint-disable-next-line no-empty-blocks

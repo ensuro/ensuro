@@ -63,9 +63,9 @@ contract TrustfulRiskModule is RiskModule {
     uint96 internalId
   ) external onlyComponentRole(PRICER_ROLE) returns (uint256) {
     address payer = onBehalfOf;
-    if (payer != msg.sender && _policyPool.currency().allowance(payer, msg.sender) < premium)
+    if (payer != _msgSender() && _policyPool.currency().allowance(payer, _msgSender()) < premium)
       /**
-       * The standard is the payer should be the msg.sender but usually, in this type of module,
+       * The standard is the payer should be the _msgSender() but usually, in this type of module,
        * the sender is an operative account managed by software, where the onBehalfOf is a more
        * secure account (hardware wallet) that does the cash movements.
        * This non standard behaviour allows for a more secure setup, where the sender never manages
@@ -75,7 +75,7 @@ contract TrustfulRiskModule is RiskModule {
        * Note that this allowance won't be spent, so it can be set as the maximum amount of a single
        * premium even for multiple policies.
        */
-      payer = msg.sender;
+      payer = _msgSender();
 
     return _newPolicy(payout, premium, lossProb, expiration, payer, onBehalfOf, internalId).id;
   }

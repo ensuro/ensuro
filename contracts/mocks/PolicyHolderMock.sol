@@ -33,6 +33,7 @@ contract PolicyHolderMock is IPolicyHolder {
     bytes calldata
   ) external override returns (bytes4) {
     if (notImplemented)
+      // solhint-disable-next-line no-inline-assembly
       assembly {
         revert(0, 0)
       }
@@ -48,6 +49,7 @@ contract PolicyHolderMock is IPolicyHolder {
     uint256 policyId_
   ) external override returns (bytes4) {
     if (notImplemented)
+      // solhint-disable-next-line no-inline-assembly
       assembly {
         revert(0, 0)
       }
@@ -74,6 +76,7 @@ contract PolicyHolderMock is IPolicyHolder {
     uint256 amount
   ) external override returns (bytes4) {
     if (notImplemented)
+      // solhint-disable-next-line no-inline-assembly
       assembly {
         revert(0, 0)
       }
