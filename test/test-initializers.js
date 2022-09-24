@@ -13,7 +13,7 @@ const {
   addEToken,
 } = require("./test-utils");
 
-describe("Test Upgrade contracts", function () {
+describe("Test Initialize contracts", function () {
   let currency;
   let pool;
   let premiumsAccount;

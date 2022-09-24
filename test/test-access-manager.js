@@ -2,9 +2,7 @@ const { expect } = require("chai");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
-const { amountFunction, _W, getTransactionEvent, accessControlMessage, getRole } = require("./test-utils");
-
-const _A = amountFunction(6);
+const { accessControlMessage, getRole } = require("./test-utils");
 
 describe("AccessManager", () => {
   let owner, backend, user;
