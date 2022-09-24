@@ -352,3 +352,5 @@ function getRole(role) {
 }
 
 exports.getRole = getRole;
+
+if (process.env.ENABLE_HH_WARNINGS !== "yes") hre.upgrades.silenceWarnings();
