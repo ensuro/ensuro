@@ -111,7 +111,7 @@ def skip_if_coverage_activated(f):
         if "brownie" in sys.modules:
             from brownie._config import CONFIG
             if CONFIG.argv.get("coverage", False) and tenv.kind == "ethereum":
-                return
+                return pytest.skip("Coverage activated")
         return f(tenv, *args, **kwargs)
     return wrapped
 
@@ -460,6 +460,7 @@ def test_etk_asset_manager(tenv):
         etk.deposit("LP2", _W(2000))
     assert etk.total_supply() == _W(3000)
     assert etk.get_current_scale(True) == _R(1)
+    assert etk.get_current_scale(False) == _R(1)
     tenv.currency.balance_of(etk).assert_equal(_W(3000))
 
     # Create vault
@@ -790,6 +791,9 @@ def test_getset_etk_parameters_tweaks(tenv):
     with etk.as_("owner"):
         etk.grant_role("LEVEL2_ROLE", "L2_USER")
         etk.grant_role("LEVEL3_ROLE", "L3_USER")
+
+    with etk.as_("UNAUTHORIZED_USER"), pytest.raises(RevertError, match="AccessControl"):
+        setattr(etk, "liquidity_requirement", _W("0.7"))
 
     # Verifies hard-coded validations
     test_validations = [

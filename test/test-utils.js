@@ -1,11 +1,12 @@
 const { expect } = require("chai");
+const hre = require("hardhat");
 const { BigNumber } = require("ethers");
 const { LogDescription } = require("ethers/lib/utils");
 exports.WEEK = 3600 * 24 * 7;
 exports.DAY = 3600 * 24;
 
 exports.initCurrency = async function (options, initial_targets, initial_balances) {
-  const Currency = await ethers.getContractFactory("TestCurrency");
+  const Currency = await hre.ethers.getContractFactory("TestCurrency");
   let currency = await Currency.deploy(
     options.name || "Test Currency",
     options.symbol || "TEST",
@@ -94,7 +95,7 @@ exports.addEToken = async function (
   pool,
   { etkName, etkSymbol, maxUtilizationRate, poolLoanInterestRate, extraArgs, extraConstructorArgs }
 ) {
-  const EToken = await ethers.getContractFactory("EToken");
+  const EToken = await hre.ethers.getContractFactory("EToken");
   extraArgs = extraArgs || [];
   extraConstructorArgs = extraConstructorArgs || [];
   const etk = await hre.upgrades.deployProxy(
@@ -132,7 +133,7 @@ exports.impersonate = async function (address, setBalanceTo) {
   if (setBalanceTo !== undefined)
     await hre.network.provider.request({ method: "hardhat_setBalance", params: [address, setBalanceTo.toHexString()] });
 
-  return await ethers.getSigner(address);
+  return await hre.ethers.getSigner(address);
 };
 
 /**
@@ -161,8 +162,8 @@ const getTransactionEvent = function (interface, receipt, eventName) {
 exports.getTransactionEvent = getTransactionEvent;
 
 exports.deployPool = async function (hre, options) {
-  const PolicyPool = await ethers.getContractFactory("PolicyPool");
-  const AccessManager = await ethers.getContractFactory("AccessManager");
+  const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
+  const AccessManager = await hre.ethers.getContractFactory("AccessManager");
 
   // Deploy AccessManager
   const accessManager = await hre.upgrades.deployProxy(AccessManager, [], { kind: "uups" });
@@ -174,7 +175,7 @@ exports.deployPool = async function (hre, options) {
     [
       options.nftName || "Policy NFT",
       options.nftSymbol || "EPOL",
-      options.treasuryAddress || ethers.constants.AddressZero,
+      options.treasuryAddress || hre.ethers.constants.AddressZero,
     ],
     {
       constructorArgs: [accessManager.address, options.currency],
@@ -196,12 +197,12 @@ exports.deployPool = async function (hre, options) {
 };
 
 exports.deployPremiumsAccount = async function (hre, pool, options, addToPool = true) {
-  const PremiumsAccount = await ethers.getContractFactory("PremiumsAccount");
+  const PremiumsAccount = await hre.ethers.getContractFactory("PremiumsAccount");
   const premiumsAccount = await hre.upgrades.deployProxy(PremiumsAccount, [], {
     constructorArgs: [
       pool.address,
-      options.jrEtkAddr || ethers.constants.AddressZero,
-      options.srEtkAddr || ethers.constants.AddressZero,
+      options.jrEtkAddr || hre.ethers.constants.AddressZero,
+      options.srEtkAddr || hre.ethers.constants.AddressZero,
     ],
     kind: "uups",
     unsafeAllow: ["delegatecall"],
@@ -227,9 +228,8 @@ async function grantRole(hre, contract, role, user) {
   } else {
     userAddress = user;
   }
-  const roleHex = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(role));
-  if (!(await contract.hasRole(roleHex, userAddress))) {
-    await contract.grantRole(roleHex, userAddress);
+  if (!(await contract.hasRole(getRole(role), userAddress))) {
+    await contract.grantRole(getRole(role), userAddress);
   }
 }
 
@@ -243,18 +243,17 @@ async function grantComponentRole(hre, accessManager, component, role, user) {
   } else {
     userAddress = user.address === undefined ? user : user.address;
   }
-  const roleHex = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(role));
-  const componentRole = await accessManager.getComponentRole(component.address, roleHex);
+  const componentRole = getComponentRole(component.address, getRole(role));
   if (!(await accessManager.hasRole(componentRole, userAddress))) {
-    await accessManager.grantComponentRole(component.address, roleHex, userAddress);
+    await accessManager.grantComponentRole(component.address, getRole(role), userAddress);
   }
 }
 
 exports.grantComponentRole = grantComponentRole;
 
-exports._E = ethers.utils.parseEther;
+exports._E = hre.ethers.utils.parseEther;
 
-const _BN = ethers.BigNumber.from;
+const _BN = hre.ethers.BigNumber.from;
 const WAD = _BN(1e10).mul(_BN(1e8)); // 1e10*1e8=1e18
 const RAY = WAD.mul(_BN(1e9)); // 1e18*1e9=1e27
 
@@ -288,27 +287,27 @@ exports.amountFunction = function (decimals) {
   };
 };
 
-/*
-Builds the component role identifier
-
-Mimics the behaviour of the PolicyPoolConfig.getComponentRole method
-
-Component roles are roles created doing XOR between the component
-address and the original role.
-
-Example:
-    getComponentRole("0xc6e7DF5E7b4f2A278906862b61205850344D4e7d", "ORACLE_ADMIN_ROLE")
-    // "0x05e01b185238b49f750d03d945e38a7f6c3be8b54de0ee42d481eb7814f0d3a8"
-*/
+/**
+ * Builds the component role identifier
+ *
+ * Mimics the behaviour of the PolicyPoolConfig.getComponentRole method
+ *
+ * Component roles are roles created doing XOR between the component
+ * address and the original role.
+ *
+ * Example:
+ *     getComponentRole("0xc6e7DF5E7b4f2A278906862b61205850344D4e7d", "ORACLE_ADMIN_ROLE")
+ *     // "0x05e01b185238b49f750d03d945e38a7f6c3be8b54de0ee42d481eb7814f0d3a8"
+ */
 function getComponentRole(componentAddress, roleName) {
   // 32 byte array
-  const bytesRole = ethers.utils.arrayify(ethers.utils.keccak256(ethers.utils.toUtf8Bytes(roleName)));
+  const bytesRole = hre.ethers.utils.arrayify(getRole(roleName));
 
   // 20 byte array
-  const bytesAddress = ethers.utils.arrayify(componentAddress);
+  const bytesAddress = hre.ethers.utils.arrayify(componentAddress);
 
   // xor each byte, padding bytesAddress with zeros at the end
-  return ethers.utils.hexlify(bytesRole.map((elem, idx) => elem ^ (bytesAddress[idx] || 0)));
+  return hre.ethers.utils.hexlify(bytesRole.map((elem, idx) => elem ^ (bytesAddress[idx] || 0)));
 }
 
 exports.getComponentRole = getComponentRole;
@@ -317,8 +316,7 @@ exports.getComponentRole = getComponentRole;
 Builds AccessControl error message for comparison in tests
 */
 function accessControlMessage(address, component, role) {
-  const roleHash =
-    component !== null ? getComponentRole(component, role) : ethers.utils.keccak256(ethers.utils.toUtf8Bytes(role));
+  const roleHash = component !== null ? getComponentRole(component, role) : getRole(role);
 
   return `AccessControl: account ${address.toLowerCase()} is missing role ${roleHash}`;
 }
@@ -326,7 +324,7 @@ function accessControlMessage(address, component, role) {
 exports.accessControlMessage = accessControlMessage;
 
 function makePolicyId(rm, internalId) {
-  return ethers.BigNumber.from(rm.address).shl(96).add(internalId);
+  return hre.ethers.BigNumber.from(rm.address).shl(96).add(internalId);
 }
 
 exports.makePolicyId = makePolicyId;
@@ -346,3 +344,13 @@ async function blockchainNow(owner) {
 }
 
 exports.blockchainNow = blockchainNow;
+
+function getRole(role) {
+  return role === "DEFAULT_ADMIN_ROLE"
+    ? "0x0000000000000000000000000000000000000000000000000000000000000000"
+    : hre.ethers.utils.keccak256(hre.ethers.utils.toUtf8Bytes(role));
+}
+
+exports.getRole = getRole;
+
+if (process.env.ENABLE_HH_WARNINGS !== "yes") hre.upgrades.silenceWarnings();
