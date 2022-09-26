@@ -101,6 +101,13 @@ interface IPolicyPool {
   function expirePolicy(Policy.PolicyData calldata policy) external;
 
   /**
+   * @dev Returns whether or not a policy is active
+   * @param policyId The id of the policy we are querying
+   * @return Returns true if a policy with that id was created and wasn't yet resolved or expired, or false otherwise.
+   */
+  function isActive(uint256 policyId) external view returns (bool);
+
+  /**
    * @dev Deposits liquidity into an eToken. Forwards the call to {EToken-deposit}, after transferring the funds.
    * The user will receive etokens for the same amount deposited.
    *

@@ -81,6 +81,10 @@ contract PolicyPoolMock is IPolicyPool {
     return _resolvePolicy(policy, customerWon ? policy.payout : 0);
   }
 
+  function isActive(uint256 policyId) external view override returns (bool) {
+    return policyHashes[policyId] != bytes32(0);
+  }
+
   function deposit(IEToken, uint256) external pure override {
     revert("Not Implemented deposit");
   }

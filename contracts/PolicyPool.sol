@@ -479,6 +479,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     return _resolvePolicy(policy, customerWon ? policy.payout : 0, false);
   }
 
+  function isActive(uint256 policyId) external view override returns (bool) {
+    return _policies[policyId] != bytes32(0);
+  }
+
   /**
    * @dev Internal function that handles the different alternative resolutions for a policy, with or without payout and
    * expiration.

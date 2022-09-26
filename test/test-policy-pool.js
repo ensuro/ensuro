@@ -239,4 +239,12 @@ describe("PolicyPool contract", function () {
       "payout > policy.payout"
     );
   });
+
+  it("Only allows to resolve a policy once", async () => {
+    const { policy, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
+    expect(await pool.isActive(policy.id)).to.be.true;
+    await expect(rm.connect(backend).resolvePolicy(policy, policy.payout)).not.to.be.reverted;
+    expect(await pool.isActive(policy.id)).to.be.false;
+    await expect(rm.connect(backend).resolvePolicy(policy, policy.payout)).to.be.revertedWith("Policy not found");
+  });
 });
