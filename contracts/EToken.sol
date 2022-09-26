@@ -679,8 +679,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
       // loan. Since it's a permissioned call, I'm ok with this. If a caller wants to reduce the impact, it can
       // issue 1 wei repayLoan to each active loan, forcing the update of the scales
       _params.internalLoanInterestRate = _wadTo4(newValue);
-    } else {
-      revert("Invalid param!");
     }
     _parameterChanged(
       IAccessManager.GovernanceActions(

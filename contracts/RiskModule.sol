@@ -238,8 +238,6 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     } else if (param == Parameter.maxDuration) {
       require(!tweak, "Tweak exceeded");
       _params.maxDuration = newValue.toUint16();
-    } else {
-      revert("Invalid param!");
     }
     _parameterChanged(
       IAccessManager.GovernanceActions(
