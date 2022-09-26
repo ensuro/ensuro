@@ -23,7 +23,10 @@ Each policy sold and active it's a _risk_ or potential loss, a random variable t
 
 <dl>
 <dt>PolicyPool</dt>
-<dd>This is the main contract that keeps track of active policies and manages the assets. It has the methods for LP to deposit/withdraw. The PolicyPool is connected to a set of eTokens and RiskModules.</dd>
+<dd>
+PolicyPool is the protocol's main contract. It keeps track of active policies and receives spending allowances. It has methods for LP to deposit/withdraw, acting as a gateway. The PolicyPool is connected to a set of eTokens, Premiums Accounts, and RiskModules.
+This contract also follows the ERC721 standard, minting an NFT for each policy created. The owner of the NFT is who will receive the payout in case there's any.
+</dd>
 </dl>
 
 <dl>
@@ -33,32 +36,37 @@ Each policy sold and active it's a _risk_ or potential loss, a random variable t
 
 <dl>
 <dt>EToken</dt>
-<dd>This is a ERC20 compatible contract that represents the capital of each liquidity provider in a given pool. The valuation is one-to-one with the underlyng stablecoin. The view scr() returns the amount of capital that's locked backing up policies. For this capital locked, the pool receives an interest (scrInterestRate() / tokenInterestRate()) that is continously accrued in the balance of eToken holders.</dd>
+<dd>EToken is an ERC20-compatible contract that counts the capital of each liquidity provider in a given pool. The valuation is one-to-one with the underlying stablecoin. The view `scr()` returns the amount of capital that's locked backing up policies. For this capital locked, the pool receives an interest (see `scrInterestRate()` and `tokenInterestRate()`) that is continuously accrued in the balance of eToken holders.</dd>
 </dl>
 
 <dl>
 <dt>RiskModule</dt>
-<dd>This is a base contract that needs to be reimplemented with the specific logic related with custom policy parameters, validation of the received price and with different strategies for policy resolution (e.g. using oracles). This is the contract that must be called by a customer for creating a new policy that, after doing validations and storing parameters needed for resolution, will submit the new policy to the PolicyPool.</dd>
+<dd>This base contract allows risk partners and customers to interact with the protocol. It needs to be reimplemented for each different product, each time defining the proper policy parameters, price validation, and policy resolution strategy (e.g., using oracles). RiskModule must be called to create a new policy; after validating the price and storing parameters needed for resolution, RiskModule submits the policy to PolicyPool.</dd>
 </dl>
 
 <dl>
 <dt>PremiumsAccount</dt>
-<dd>The risk modules are grouped in *premiums accounts* that keep track of the pure premiums (active and earned) their policies. The responsability of these contracts is keeping track of the premiums and releasing the payouts. When premiums are exhausted (losses more than expected), they borrow money from the *eTokens* to cover the payouts. This money will be repaid when/if later the premiums account has surplus (losses less than expected).</dd>
+<dd>The risk modules are grouped in premiums accounts that keep track of their policies' pure premiums (active and earned). The responsibility of these contracts is to keep track of the premiums and release the payouts. When premiums are exhausted (losses more than expected), they borrow money from the eTokens to cover the payouts. This money will be repaid when/if later the premiums account has a surplus (losses less than expected).</dd>
+</dl>
+
+<dl>
+<dt>AssetManager</dt>
+<dd>Both _eTokens_ and _PremiumsAccounts_ are _reserves_ because they hold assets. It's possible to assign to each reserve an AssetManager. The AssetManager is a contract that operates in the reserve's context (through delegatecalls) and manages the assets by applying some strategy to invest in other DeFi protocols to generate additional returns.</dd>
 </dl>
 
 <dl>
 <dt>LPWhitelist</dt>
-<dd>This is an optional component. If present it controls which Liquidity Providers can deposit or transfer their <i>eTokens</i>.</dd>
+<dd>This is an optional component. If present it controls which Liquidity Providers can deposit or transfer their <i>eTokens</i>. Each eToken may be or not connected to a whitelist.</dd>
 </dl>
 
 <dl>
 <dt>Policy</dt>
-<dd>This is a library with the struct and the calculation of relevant attributes of a policy. It includes the logic around the distribution of the premium, calculation of SCR, shared coverage and other behaviour of the protocol.</dd>
+<dd>Policy is a library with the struct and the calculation of relevant attributes of a policy. It includes the logic around the premium distribution, SCR calculation, shared coverage, and other protocol behaviors.</dd>
 </dl>
 
 ## Governance
 
-The protocol uses three levels of access control, plus a guardian role. The roles are managed by the PolicyPoolConfig smart contract.
+The protocol uses three levels of access control, plus a guardian role. These roles can be assigned at protocol level or specifically for a component. The roles are managed by the AccessManager smart contract.
 
 More info about governance in https://docs.google.com/spreadsheets/d/1LqlogRn8AlnLq1rPTd5UT7CJI3uc31PdBaxj4pX3mtE/edit?usp=sharing
 
