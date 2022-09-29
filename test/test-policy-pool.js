@@ -239,7 +239,7 @@ describe("PolicyPool contract", function () {
     expect(await pool.isActive(policy.id)).to.be.true;
     await expect(rm.connect(backend).resolvePolicy(policy, policy.payout)).not.to.be.reverted;
     expect(await pool.isActive(policy.id)).to.be.false;
-    // await expect(rm.connect(backend).resolvePolicy(policy, _A(100))).to.be.revertedWith("Policy not found");
+    await expect(rm.connect(backend).resolvePolicy(policy, _A(100))).to.be.revertedWith("Policy not found");
   });
 
   it("Only allows riskmodule to resolve unexpired policies", async () => {

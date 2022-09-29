@@ -233,6 +233,9 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   /**
    * @dev Changes the `deficitRatio` parameter.
    *
+   * Requirements:
+   * - onlyGlobalOrComponentRole(LEVEL2_ROLE)
+   *
    * Events:
    * - Emits GovernanceAction with action = setDeficitRatio or setDeficitRatioWithAdjustment if an adjustment was made.
    *
@@ -345,7 +348,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    *
    * Requirements:
    * - onlyGlobalOrComponentRole(WITHDRAW_WON_PREMIUMS_ROLE)
-   * - _wonPurePremiums > 0
+   * - _surplus > 0
    *
    * Events:
    * - Emits {WonPremiumsInOut} with moneyIn = false
