@@ -555,6 +555,7 @@ class PolicyPool(IERC721):
         self._auto_from = self.owner
         self._etokens = {}
         self._risk_modules = {}
+        self._premiums_accounts = {}
 
     @property
     def currency(self):
@@ -613,6 +614,27 @@ class PolicyPool(IERC721):
 
     def add_premiums_account(self, pa):
         self.add_component(pa, 3)
+
+    @property
+    def premiums_accounts(self):
+        if not hasattr(self, "_premiums_accounts"):
+            self._premiums_accounts = self.fetch_premiums_accounts(self)
+        return self._premiums_accounts
+
+    @classmethod
+    def fetch_premiums_accounts(cls, wrapper):
+        events = wrapper.provider.get_events(wrapper, "ComponentStatusChanged")
+        premiums_accounts = {}
+        for evt in events:
+            if evt["args"]["kind"] != 3:
+                continue
+            pa_address = evt["args"]["component"]
+            pa_status = evt["args"]["newStatus"]
+            if pa_status == 1:  # active
+                premiums_accounts[pa_address] = PremiumsAccount.connect(pa_address)
+            elif pa_address in premiums_accounts:
+                premiums_accounts.pop(pa_address)
+        return premiums_accounts
 
     @property
     def risk_modules(self):
