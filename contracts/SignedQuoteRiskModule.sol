@@ -80,7 +80,7 @@ contract SignedQuoteRiskModule is RiskModule {
      *   unique id (quoteId), so each policyData identifies a policy.
      * - quoteValidUntil: the maximum validity of the quote
      */
-    bytes32 quoteHash = keccak256(
+    bytes32 quoteHash = ECDSA.toEthSignedMessageHash(
       abi.encodePacked(
         address(this),
         payout,
