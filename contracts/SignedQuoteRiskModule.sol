@@ -14,18 +14,24 @@ import {Policy} from "./Policy.sol";
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
-
 contract SignedQuoteRiskModule is RiskModule {
+  bytes32 public constant POLICY_CREATOR_ROLE = keccak256("POLICY_CREATOR_ROLE");
   bytes32 public constant PRICER_ROLE = keccak256("PRICER_ROLE");
   bytes32 public constant RESOLVER_ROLE = keccak256("RESOLVER_ROLE");
+
+  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+  bool internal immutable _creationIsOpen;
 
   event NewSignedPolicy(uint256 indexed policyId, bytes32 policyData);
 
   /// @custom:oz-upgrades-unsafe-allow constructor
-  // solhint-disable-next-line no-empty-blocks
-  constructor(IPolicyPool policyPool_, IPremiumsAccount premiumsAccount_)
-    RiskModule(policyPool_, premiumsAccount_)
-  {} // solhint-disable-line no-empty-blocks
+  constructor(
+    IPolicyPool policyPool_,
+    IPremiumsAccount premiumsAccount_,
+    bool creationIsOpen_
+  ) RiskModule(policyPool_, premiumsAccount_) {
+    _creationIsOpen = creationIsOpen_;
+  }
 
   /**
    * @dev Initializes the RiskModule
@@ -69,6 +75,13 @@ contract SignedQuoteRiskModule is RiskModule {
     address payer,
     address onBehalfOf
   ) internal returns (uint256 policyId) {
+    if (!_creationIsOpen)
+      _policyPool.access().checkComponentRole(
+        address(this),
+        POLICY_CREATOR_ROLE,
+        _msgSender(),
+        false
+      );
     require(quoteValidUntil >= block.timestamp, "Quote expired");
 
     /**
@@ -182,9 +195,19 @@ contract SignedQuoteRiskModule is RiskModule {
     uint40 quoteValidUntil
   ) external returns (uint256) {
     require(
-      currency().allowance(onBehalfOf, _msgSender()) > 0,
+      onBehalfOf == _msgSender() || currency().allowance(onBehalfOf, _msgSender()) > 0,
       "Sender is not authorized to create policies onBehalfOf"
     );
+    /**
+     * The standard is the payer should be the _msgSender() but usually, in this type of module,
+     * the sender is an operative account managed by software, where the onBehalfOf is a more
+     * secure account (hardware wallet) that does the cash movements.
+     * This non standard behaviour allows for a more secure setup, where the sender never manages
+     * cash.
+     * We leverage the currency's allowance mechanism to allow the sender access to the payer's
+     * funds.
+     * Note that this allowance won't be spent, so anything above 0 is accepted.
+     */
     return
       _newPolicySigned(
         payout,
