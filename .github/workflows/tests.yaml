@@ -27,6 +27,7 @@ jobs:
           ALCHEMY_URL: ${{ secrets.ALCHEMY_URL }}
       - run: npx hardhat test
         env:
+          REPORT_GAS: "1"
           ALCHEMY_URL: ${{ secrets.ALCHEMY_URL }}
       - run: npx hardhat brownie-coverage
       - name: Create coverage badge

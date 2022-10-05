@@ -180,6 +180,10 @@ describe("SignedQuoteRiskModule contract tests", function () {
     const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
 
     // Tests resolution, only by an authorized role
+    await expect(rm.connect(anon).resolvePolicyFullPayout(newPolicyEvt.args[1], true)).to.be.revertedWith(
+      accessControlMessage(anon.address, rm.address, "RESOLVER_ROLE")
+    );
+
     await expect(() => rm.connect(resolver).resolvePolicyFullPayout(newPolicyEvt.args[1], true)).to.changeTokenBalance(
       currency,
       cust,
