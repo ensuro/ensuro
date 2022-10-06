@@ -54,6 +54,23 @@ contract TrustfulRiskModule is RiskModule {
     );
   }
 
+  /**
+   * @dev Creates a new Policy
+   *
+   * Requirements:
+   * - The caller has been granted componentRole(PRICER_ROLE)
+   *
+   * Emits:
+   * - {PolicyPool.NewPolicy}
+   *
+   * @param payout The exposure (maximum payout) of the policy
+   * @param premium The premium that will be paid by the policyHolder
+   * @param lossProb The probability of having to pay the maximum payout (wad)
+   * @param expiration The expiration of the policy (timestamp)
+   * @param onBehalfOf The policy holder
+   * @param internalId An id that's unique within this module and it will be used to identify the policy
+   * @return Returns the id of the created policy
+   */
   function newPolicy(
     uint256 payout,
     uint256 premium,
@@ -80,6 +97,20 @@ contract TrustfulRiskModule is RiskModule {
     return _newPolicy(payout, premium, lossProb, expiration, payer, onBehalfOf, internalId).id;
   }
 
+  /**
+   * @dev Resolves a policy, if payout > 0, it pays to the policy holder.
+   *
+   * Requirements:
+   * - The caller has been granted componentRole(RESOLVER_ROLE)
+   * - payout <= policy.payout
+   * - block.timestamp >= policy.expiration
+   *
+   * Emits:
+   * - {PolicyPool.PolicyResolved}
+   *
+   * @param policy The policy previously created (from {NewPolicy} event)
+   * @param payout The payout to transfer to the policy holder
+   */
   function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout)
     external
     onlyComponentRole(RESOLVER_ROLE)
@@ -88,6 +119,20 @@ contract TrustfulRiskModule is RiskModule {
     _policyPool.resolvePolicy(policy, payout);
   }
 
+  /**
+   * @dev Resolves a policy with full payout (policy.payout) if customerWon == true
+   *
+   * Requirements:
+   * - The caller has been granted componentRole(RESOLVER_ROLE)
+   * - block.timestamp >= policy.expiration
+   *
+   * Emits:
+   * - {PolicyPool.PolicyResolved}
+   *
+   * @param policy The policy previously created (from {NewPolicy} event)
+   * @param customerWon If true, policy.payout is transferred to the policy holder. If false, the policy is resolved
+   * without payout and can't be longer claimed.
+   */
   function resolvePolicyFullPayout(Policy.PolicyData calldata policy, bool customerWon)
     external
     onlyComponentRole(RESOLVER_ROLE)
