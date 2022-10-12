@@ -27,7 +27,7 @@ describe("PolicyPool contract", function () {
   });
 
   it("Only allows LEVEL1_ROLE to change the treasury", async () => {
-    const { pool, accessManager } = await deployPoolFixture();
+    const { pool, accessManager } = await helpers.loadFixture(deployPoolFixture);
     const newTreasury = "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199";
 
     // User with no roles fails
@@ -49,7 +49,7 @@ describe("PolicyPool contract", function () {
   });
 
   it("Only allows LEVEL1_ROLE to add components", async () => {
-    const { pool, accessManager } = await deployPoolFixture();
+    const { pool, accessManager } = await helpers.loadFixture(deployPoolFixture);
     const premiumsAccount = await deployPremiumsAccount(hre, pool, {}, false);
 
     await expect(pool.connect(backend).addComponent(premiumsAccount.address, 3)).to.be.revertedWith(
@@ -69,14 +69,14 @@ describe("PolicyPool contract", function () {
   });
 
   it("Does not allow adding an existing component", async () => {
-    const { pool } = await deployPoolFixture();
+    const { pool } = await helpers.loadFixture(deployPoolFixture);
     const premiumsAccount = await deployPremiumsAccount(hre, pool, {}, true);
 
     await expect(pool.addComponent(premiumsAccount.address, 3)).to.be.revertedWith("Component already in the pool");
   });
 
   it("Does not allow adding a component that belongs to a different pool", async () => {
-    const { pool, currency } = await deployPoolFixture();
+    const { pool, currency } = await helpers.loadFixture(deployPoolFixture);
     const pool2 = await deployPool(hre, {
       currency: currency.address,
       grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
@@ -89,7 +89,7 @@ describe("PolicyPool contract", function () {
   });
 
   it("Adds the PA as borrower on the jr etoken", async () => {
-    const { pool } = await deployPoolFixture();
+    const { pool } = await helpers.loadFixture(deployPoolFixture);
     const etk = await addEToken(pool, {});
     const premiumsAccount = await deployPremiumsAccount(hre, pool, { jrEtkAddr: etk.address }, false);
 
@@ -99,7 +99,7 @@ describe("PolicyPool contract", function () {
   });
 
   it("Removes the PA as borrower from the jr etoken on PremiumsAccount removal", async () => {
-    const { pool } = await deployPoolFixture();
+    const { pool } = await helpers.loadFixture(deployPoolFixture);
     const etk = await addEToken(pool, {});
     const premiumsAccount = await deployPremiumsAccount(hre, pool, { jrEtkAddr: etk.address }, false);
 
@@ -113,7 +113,7 @@ describe("PolicyPool contract", function () {
   });
 
   it("Adds the PA as borrower on the sr etoken", async () => {
-    const { pool } = await deployPoolFixture();
+    const { pool } = await helpers.loadFixture(deployPoolFixture);
     const etk = await addEToken(pool, {});
     const premiumsAccount = await deployPremiumsAccount(hre, pool, { srEtkAddr: etk.address }, false);
 
@@ -123,7 +123,7 @@ describe("PolicyPool contract", function () {
   });
 
   it("Removes the PA as borrower from the sr etoken on PremiumsAccount removal", async () => {
-    const { pool } = await deployPoolFixture();
+    const { pool } = await helpers.loadFixture(deployPoolFixture);
     const etk = await addEToken(pool, {});
     const premiumsAccount = await deployPremiumsAccount(hre, pool, { srEtkAddr: etk.address }, false);
 
@@ -137,7 +137,7 @@ describe("PolicyPool contract", function () {
   });
 
   it("Does not allow suspending unknown components", async () => {
-    const { pool, accessManager } = await deployPoolFixture();
+    const { pool, accessManager } = await helpers.loadFixture(deployPoolFixture);
     const premiumsAccount = await deployPremiumsAccount(hre, pool, {}, false);
 
     await grantRole(hre, accessManager, "GUARDIAN_ROLE", owner.address);
@@ -146,7 +146,7 @@ describe("PolicyPool contract", function () {
   });
 
   it("Only allows riskmodule to create policies", async () => {
-    const { pool } = await deployPoolFixture();
+    const { pool } = await helpers.loadFixture(deployPoolFixture);
     const now = await helpers.time.latest();
     const policyData = [
       1, // id
@@ -189,7 +189,7 @@ describe("PolicyPool contract", function () {
   }
 
   async function deployRiskModuleFixture() {
-    const { pool, accessManager, currency } = await deployPoolFixture();
+    const { pool, accessManager, currency } = await helpers.loadFixture(deployPoolFixture);
     // Setup the liquidity sources
     const etk = await addEToken(pool, {});
     const premiumsAccount = await deployPremiumsAccount(hre, pool, { srEtkAddr: etk.address });
@@ -207,7 +207,7 @@ describe("PolicyPool contract", function () {
   }
 
   async function deployRmWithPolicyFixture() {
-    const { rm, pool, currency, accessManager } = await deployRiskModuleFixture();
+    const { rm, pool, currency, accessManager } = await helpers.loadFixture(deployRiskModuleFixture);
     const now = await helpers.time.latest();
 
     // Deploy a new policy
