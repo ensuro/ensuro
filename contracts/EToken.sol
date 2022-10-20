@@ -100,7 +100,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     string memory symbol_,
     uint256 maxUtilizationRate_,
     uint256 internalLoanInterestRate_
-  ) internal initializer {
+  ) internal onlyInitializing {
     _name = name_;
     _symbol = symbol_;
     _tsScaled.init();

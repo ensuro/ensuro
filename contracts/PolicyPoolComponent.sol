@@ -83,7 +83,7 @@ abstract contract PolicyPoolComponent is
   }
 
   // solhint-disable-next-line func-name-mixedcase
-  function __PolicyPoolComponent_init() internal initializer {
+  function __PolicyPoolComponent_init() internal onlyInitializing {
     __UUPSUpgradeable_init();
     __Pausable_init();
   }

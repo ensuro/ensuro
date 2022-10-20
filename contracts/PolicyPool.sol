@@ -205,7 +205,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   // solhint-disable-next-line func-name-mixedcase
-  function __PolicyPool_init_unchained(address treasury_) internal initializer {
+  function __PolicyPool_init_unchained(address treasury_) internal onlyInitializing {
     _treasury = treasury_;
   }
 
