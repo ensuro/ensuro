@@ -517,6 +517,70 @@ class TrustfulRiskModule(RiskModule):
             return self.resolve_policy_(policy.as_tuple(), customer_won_or_amount)
 
 
+class SignedQuoteRiskModule(RiskModule):
+    eth_contract = "SignedQuoteRiskModule"
+    proxy_kind = "uups"
+
+    new_policy_ = MethodAdapter(
+        (
+            ("payout", "amount"),
+            ("premium", "amount"),
+            ("loss_prob", "wad"),
+            ("expiration", "int"),
+            ("on_behalf_of", "address"),
+            ("policy_data", "bytes32"),
+            ("quote_signature_r", "bytes32"),
+            ("quote_signature_vs", "bytes32"),
+            ("quote_valid_until", "int"),
+        ),
+        "receipt",
+    )
+
+    new_policy_paid_by_holder_ = MethodAdapter(
+        (
+            ("payout", "amount"),
+            ("premium", "amount"),
+            ("loss_prob", "wad"),
+            ("expiration", "int"),
+            ("on_behalf_of", "address"),
+            ("policy_data", "bytes32"),
+            ("quote_signature_r", "bytes32"),
+            ("quote_signature_vs", "bytes32"),
+            ("quote_valid_until", "int"),
+        ),
+        "receipt",
+    )
+
+    def new_policy_paid_by_holder(self, *args, **kwargs):
+        if "premium" not in kwargs:
+            kwargs["premium"] = MAX_UINT
+        if "payer" not in kwargs:
+            kwargs["payer"] = kwargs.get("on_behalf_of")
+        receipt = self.new_policy_paid_by_holder_(*args, **kwargs)
+        if "NewPolicy" in receipt.events:
+            policy_data = receipt.events["NewPolicy"]["policy"]
+            policy = Policy(*policy_data, address_book=self.provider.address_book)
+            policy_db.add_policy(self.policy_pool.contract.address, policy)
+            return policy
+        else:
+            return None
+
+    resolve_policy_full_payout = MethodAdapter(
+        (("policy", Policy.FIELDS), ("customer_won", "bool"))
+    )
+    resolve_policy_ = MethodAdapter((("policy", Policy.FIELDS), ("payout", "amount")))
+
+    def resolve_policy(self, policy_id, customer_won_or_amount):
+        global policy_db
+        policy = policy_db.get_policy(self.policy_pool.contract.address, policy_id)
+        if customer_won_or_amount is True or customer_won_or_amount is False:
+            return self.resolve_policy_full_payout(
+                policy.as_tuple(), customer_won_or_amount
+            )
+        else:
+            return self.resolve_policy_(policy.as_tuple(), customer_won_or_amount)
+
+
 class AccessManager(ETHWrapper):
     eth_contract = "AccessManager"
 
