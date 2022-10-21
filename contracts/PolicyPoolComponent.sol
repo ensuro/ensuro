@@ -79,6 +79,7 @@ abstract contract PolicyPoolComponent is
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(IPolicyPool policyPool_) {
+    _disableInitializers();
     _policyPool = policyPool_;
   }
 

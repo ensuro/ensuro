@@ -24,6 +24,11 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
     _;
   }
 
+  /// @custom:oz-upgrades-unsafe-allow constructor
+  constructor() {
+    _disableInitializers();
+  }
+
   function initialize() public initializer {
     __AccessControl_init();
     __UUPSUpgradeable_init();

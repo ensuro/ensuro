@@ -182,6 +182,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    */
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(IAccessManager access_, IERC20Metadata currency_) {
+    _disableInitializers();
     _access = access_;
     _currency = currency_;
   }
