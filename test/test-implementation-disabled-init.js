@@ -2,10 +2,12 @@ const { expect } = require("chai");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
-const { initCurrency, amountFunction, _W } = require("./test-utils");
+const { initCurrency, amountFunction, _W, deployPremiumsAccount, deployPool } = require("./test-utils");
 
 describe("Test Implementation contracts can't be initialized", function () {
   const rndAddr = "0xd758af6bfc2f0908d7c5f89942be52c36a6b3cab";
+  const zeroAddr = hre.ethers.constants.AddressZero;
+  const rmParams = ["Some RM Name", _W(1), _W(0), _W(0), 100e6, 1000e6, rndAddr];
 
   async function setupFixture() {
     const [owner] = await hre.ethers.getSigners();
@@ -32,16 +34,18 @@ describe("Test Implementation contracts can't be initialized", function () {
 
   async function setupFixtureWithPool() {
     const ret = await setupFixture();
-    const policyPool = await hre.upgrades.deployProxy(ret.PolicyPool, ["Policy NFT", "EPOL", rndAddr], {
-      constructorArgs: [ret.access.address, ret.currency.address],
-      kind: "uups",
-      unsafeAllow: ["delegatecall"],
-    });
-
-    await policyPool.deployed();
-
+    const policyPool = await deployPool(hre, { currency: ret.currency.address });
     return {
       policyPool,
+      ...ret,
+    };
+  }
+
+  async function setupFixtureWithPoolAndPA() {
+    const ret = await setupFixtureWithPool();
+    const premiumsAccount = await deployPremiumsAccount(hre, ret.policyPool, {});
+    return {
+      premiumsAccount,
       ...ret,
     };
   }
@@ -67,12 +71,31 @@ describe("Test Implementation contracts can't be initialized", function () {
     );
   });
 
-  it("Does not allow initialize EToken implementation", async () => {
+  it("Does not allow initialize PremiumsAccount implementation", async () => {
     const { policyPool } = await helpers.loadFixture(setupFixtureWithPool);
-    const EToken = await hre.ethers.getContractFactory("EToken");
-    const etk = await EToken.deploy(policyPool.address);
-    await expect(etk.initialize("eUSD Foobar", "eUSD", _W(1), _W("0.05"))).to.be.revertedWith(
-      "contract is already initialized"
-    );
+    const PremiumsAccount = await hre.ethers.getContractFactory("PremiumsAccount");
+    const pa = await PremiumsAccount.deploy(policyPool.address, zeroAddr, zeroAddr);
+    await expect(pa.initialize()).to.be.revertedWith("contract is already initialized");
+  });
+
+  it("Does not allow initialize TrustfulRiskModule implementation", async () => {
+    const { policyPool, premiumsAccount } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
+    const TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
+    const rm = await TrustfulRiskModule.deploy(policyPool.address, premiumsAccount.address);
+    await expect(rm.initialize(...rmParams)).to.be.revertedWith("contract is already initialized");
+  });
+
+  it("Does not allow initialize SignedQuoteRiskModule implementation", async () => {
+    const { policyPool, premiumsAccount } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
+    const SignedQuoteRiskModule = await hre.ethers.getContractFactory("SignedQuoteRiskModule");
+    const rm = await SignedQuoteRiskModule.deploy(policyPool.address, premiumsAccount.address, true);
+    await expect(rm.initialize(...rmParams)).to.be.revertedWith("contract is already initialized");
+  });
+
+  it("Does not allow initialize LPManualWhitelist implementation", async () => {
+    const { policyPool } = await helpers.loadFixture(setupFixtureWithPool);
+    const LPManualWhitelist = await hre.ethers.getContractFactory("LPManualWhitelist");
+    const wh = await LPManualWhitelist.deploy(policyPool.address);
+    await expect(wh.initialize()).to.be.revertedWith("contract is already initialized");
   });
 });

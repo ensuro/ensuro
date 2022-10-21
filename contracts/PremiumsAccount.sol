@@ -106,7 +106,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * @dev Initializes the PremiumsAccount (to be called by subclasses)
    */
   // solhint-disable-next-line func-name-mixedcase
-  function __PremiumsAccount_init() internal initializer {
+  function __PremiumsAccount_init() internal onlyInitializing {
     __PolicyPoolComponent_init();
     __PremiumsAccount_init_unchained();
   }
@@ -116,7 +116,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * so we don't need to do it on every repayment operation
    */
   // solhint-disable-next-line func-name-mixedcase
-  function __PremiumsAccount_init_unchained() internal initializer {
+  function __PremiumsAccount_init_unchained() internal onlyInitializing {
     /*
     _activePurePremiums = 0;
     */
