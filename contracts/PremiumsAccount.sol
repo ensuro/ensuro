@@ -249,10 +249,10 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   {
     require(newRatio <= 1e18, "Validation: deficitRatio must be <= 1");
 
-    uint16 ratio = (newRatio / 1e14).toUint16();
-    require(uint256(ratio) * 1e14 == newRatio, "Validation: only up to 4 decimals allowed");
+    uint16 truncatedRatio = (newRatio / 1e14).toUint16();
+    require(uint256(truncatedRatio) * 1e14 == newRatio, "Validation: only up to 4 decimals allowed");
 
-    int256 maxDeficit = _maxDeficit(ratio);
+    int256 maxDeficit = _maxDeficit(newRatio);
     require(adjustment || _surplus >= maxDeficit, "Validation: surplus must be >= maxDeficit");
 
     IAccessManager.GovernanceActions action = IAccessManager.GovernanceActions.setDeficitRatio;
@@ -263,8 +263,8 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
       _borrowFromEtk(borrow, address(this), address(_juniorEtk) != address(0));
       action = IAccessManager.GovernanceActions.setDeficitRatioWithAdjustment;
     }
-    _params.deficitRatio = ratio;
-    _parameterChanged(action, ratio, false);
+    _params.deficitRatio = truncatedRatio;
+    _parameterChanged(action, newRatio, false);
   }
 
   /**
