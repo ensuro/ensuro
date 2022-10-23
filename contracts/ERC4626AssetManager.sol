@@ -49,4 +49,11 @@ contract ERC4626AssetManager is LiquidityThresholdAssetManager {
   function getInvestmentValue() public view override returns (uint256) {
     return _vault.convertToAssets(_vault.balanceOf(address(this)));
   }
+
+  /**
+   * @dev This empty reserved space is put in place to allow future versions to add new
+   * variables without shifting down storage in the inheritance chain.
+   * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
+   */
+  uint256[50] private __gap;
 }
