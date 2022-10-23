@@ -44,9 +44,7 @@ def tenv(request):
         )
     elif request.param == "ethereum":
         PolicyPoolMockForward = wrappers.get_provider().get_contract_factory("PolicyPoolMockForward")
-        currency = wrappers.TestCurrency(
-            owner="owner", name="TEST", symbol="TEST", initial_supply=_W(10000)
-        )
+        currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(10000))
         pa_access = wrappers.AccessManager(owner="owner")
 
         def etoken_factory(**kwargs):
@@ -891,6 +889,17 @@ def test_set_deficit_ratio_and_create_policy(tenv):
     senior_etk.get_loan(pa).assert_equal(_W(7))
 
 
+def test_set_deficit_ratio_refuses_loss_of_precision(tenv):
+    pa = tenv.pa_class(
+        junior_etk=tenv.etk(name="eUSD1MONTH", symbol="ETK1"),
+        senior_etk=tenv.etk(name="eUSD1YEAR", symbol="ETK2"),
+    )
+    tenv.pool_access.grant_component_role(pa, "LEVEL2_ROLE", tenv.currency.owner)
+
+    with pytest.raises(RevertError, match="Validation: only up to 4 decimals allowed"):
+        pa.set_deficit_ratio(_W("0.12345"), True)
+
+
 def test_pa_asset_manager(tenv):
     senior_etk = tenv.etk(name="eUSD1YEAR", symbol="ETK1")
     pa = tenv.pa_class(senior_etk=senior_etk)
@@ -927,7 +936,8 @@ def test_pa_asset_manager(tenv):
 
     vault = tenv.module.FixedRateVault(asset=tenv.currency)
     asset_manager = tenv.module.ERC4626AssetManager(
-        vault=vault, reserve=pa,
+        vault=vault,
+        reserve=pa,
     )
 
     with pytest.raises(RevertError, match="AccessControl"):
@@ -958,7 +968,7 @@ def test_pa_asset_manager(tenv):
 
     # After one month record the earnings
     tenv.time_control.fast_forward(MONTH)
-    interest_earnings = _W(140 * 0.05 * 30/365)
+    interest_earnings = _W(140 * 0.05 * 30 / 365)
     vault.total_assets().assert_equal(_W(140) + interest_earnings)
     pa.record_earnings()
 

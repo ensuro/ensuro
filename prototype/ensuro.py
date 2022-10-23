@@ -797,6 +797,10 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
             new_ratio <= _W(1) and new_ratio >= 0,
             "Validation: deficitRatio must be <= 1",
         )
+        require(
+            (int(new_ratio) // 1e14) * 1e14 == new_ratio,
+            "Validation: only up to 4 decimals allowed",
+        )
         max_deficit = -self.active_pure_premiums * new_ratio
         if not adjustment:
             require(self.surplus >= max_deficit, "Validation: surplus must be >= maxDeficit")
