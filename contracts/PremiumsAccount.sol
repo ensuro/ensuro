@@ -250,7 +250,10 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     require(newRatio <= 1e18, "Validation: deficitRatio must be <= 1");
 
     uint16 truncatedRatio = (newRatio / 1e14).toUint16();
-    require(uint256(truncatedRatio) * 1e14 == newRatio, "Validation: only up to 4 decimals allowed");
+    require(
+      uint256(truncatedRatio) * 1e14 == newRatio,
+      "Validation: only up to 4 decimals allowed"
+    );
 
     int256 maxDeficit = _maxDeficit(newRatio);
     require(adjustment || _surplus >= maxDeficit, "Validation: surplus must be >= maxDeficit");
