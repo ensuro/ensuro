@@ -134,7 +134,6 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   }
 
   function _setAssetManager(IAssetManager newAM) internal override {
-    require(address(newAM) != address(0), "PremiumsAccount: newAM cannot be the zero address");
     _params.assetManager = newAM;
   }
 

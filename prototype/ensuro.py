@@ -365,10 +365,6 @@ class ReserveMixin:
 
     @only_role("LEVEL1_ROLE", "GUARDIAN_ROLE")
     def set_asset_manager(self, asset_manager, force):
-        require(
-            asset_manager is not None,
-            "PremiumsAccount: newAM cannot be the zero address",
-        )
         if self.asset_manager:
             if force:
                 try:
@@ -380,6 +376,7 @@ class ReserveMixin:
         self.asset_manager = asset_manager
 
     def _transfer_to(self, target, amount):
+        require(target != 0, "Reserve: transfer to the zero address")
         if amount == _W(0):
             return
         balance = self.currency.balance_of(self.contract_id)
@@ -676,13 +673,13 @@ class EToken(ReserveMixin, ERC20Token):
 
     def _max_negative_adjustment(self):
         return max(
-            self.total_supply()
-            - (self.MIN_SCALE * _R(10) * self._base_supply().to_ray()).to_wad(),
+            self.total_supply() - (self.MIN_SCALE * _R(10) * self._base_supply().to_ray()).to_wad(),
             _W(0),
         )
 
     @external
     def add_borrower(self, borrower):
+        require(borrower is not None, "EToken: Borrower cannot be the zero address")
         # Must be called ONLY by the PolicyPool
         borrower = ContractProxyField().adapt(borrower)
         if borrower not in self.loans:
@@ -714,7 +711,6 @@ class EToken(ReserveMixin, ERC20Token):
 
     @external
     def repay_loan(self, msg_sender, amount, on_behalf_of):
-        require(on_behalf_of is not None, "EToken: Cannot repayLoan onBehalfOf the zero address.")
         require(amount > 0, "EToken: amount should be greater than zero.")
         borrower = on_behalf_of
         loan = self.loans.get(ContractProxyField().adapt(borrower), None)

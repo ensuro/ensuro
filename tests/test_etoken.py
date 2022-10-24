@@ -343,8 +343,13 @@ def test_multiple_lps(tenv):
 def test_lock_scr_validation(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK")
     pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account
-    policy = tenv.policy_factory(sr_scr=_W(600), sr_interest_rate=_W("0.0365"),
-                                 expiration=tenv.time_control.now + WEEK)
+    policy = tenv.policy_factory(
+        sr_scr=_W(600), sr_interest_rate=_W("0.0365"), expiration=tenv.time_control.now + WEEK
+    )
+
+    with etk.thru(pa), pytest.raises(RevertError, match="EToken: Borrower cannot be the zero address"):
+        with etk.thru_policy_pool():
+            etk.add_borrower(None)
 
     with etk.thru_policy_pool():
         etk.add_borrower(pa)
@@ -401,9 +406,6 @@ def test_internal_loan(tenv):
 
         with pytest.raises(RevertError, match="EToken: amount should be greater than zero."):
             etk.repay_loan(pa, _W(0), pa)
-
-        with pytest.raises(RevertError, match="EToken: Cannot repayLoan onBehalfOf the zero address."):
-            etk.repay_loan(pa, lended, None)
 
         etk.repay_loan(pa, lended, pa)
         tenv.currency.balance_of(pa).assert_equal(pa_balance - lended)

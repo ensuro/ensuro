@@ -997,6 +997,5 @@ def test_pa_asset_manager(tenv):
     pa.checkpoint()
     pa.pure_premiums.assert_equal(_W(50) + interest_earnings)
 
-    with pytest.raises(RevertError, match="PremiumsAccount: newAM cannot be the zero address"):
-        with pa.as_("ADMIN"):
-            pa.set_asset_manager(None, True)
+    with pa.as_("ADMIN"):
+        pa.set_asset_manager(None, True)

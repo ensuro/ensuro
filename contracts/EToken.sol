@@ -90,6 +90,8 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     uint256 maxUtilizationRate_,
     uint256 internalLoanInterestRate_
   ) public initializer {
+    require(bytes(name_).length > 0, "EToken: name cannot be empty");
+    require(bytes(symbol_).length > 0, "EToken: symbol cannot be empty");
     __PolicyPoolComponent_init();
     __EToken_init_unchained(name_, symbol_, maxUtilizationRate_, internalLoanInterestRate_);
   }
@@ -122,10 +124,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
 
   // runs validation on EToken parameters
   function _validateParameters() internal view override {
-    require(
-      _params.minUtilizationRate < _params.maxUtilizationRate,
-      "Validation: minUtilizationRate must be lower than maxUtilizationRate"
-    );
     require(
       _params.liquidityRequirement >= 8e3 && _params.liquidityRequirement <= 13e3,
       "Validation: liquidityRequirement must be [0.8, 1.3]"
@@ -463,7 +461,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   }
 
   function _setAssetManager(IAssetManager newAM) internal override {
-    require(address(newAM) != address(0), "EToken: newAM cannot be the zero address");
     _assetManager = newAM;
   }
 
@@ -601,6 +598,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   }
 
   function addBorrower(address borrower) external override onlyPolicyPool {
+    require(borrower != address(0), "EToken: Borrower cannot be the zero address");
     TimeScaled.ScaledAmount storage loan = _loans[borrower];
     if (loan.scale == 0) {
       loan.init();
@@ -609,6 +607,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   }
 
   function removeBorrower(address borrower) external override onlyPolicyPool {
+    require(borrower != address(0), "EToken: Borrower cannot be the zero address");
     uint256 defaultedDebt = getLoan(borrower);
     delete _loans[borrower];
     emit InternalBorrowerRemoved(borrower, defaultedDebt);
@@ -634,7 +633,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   }
 
   function repayLoan(uint256 amount, address onBehalfOf) external override {
-    require(onBehalfOf != address(0), "EToken: Cannot repayLoan onBehalfOf the zero address.");
     require(amount > 0, "EToken: amount should be greater than zero.");
 
     // Anyone can call this method, since it has to pay
