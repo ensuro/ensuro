@@ -239,7 +239,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * Events:
    * - Emits GovernanceAction with action = setDeficitRatio or setDeficitRatioWithAdjustment if an adjustment was made.
    *
-   * @param adjustment If true and the new ratio leaves `_surplus < -_maxDeficit()`, if adjusts the _surplus to the new
+   * @param adjustment If true and the new ratio leaves `_surplus < -_maxDeficit()`, it adjusts the _surplus to the new
    *                   `_maxDeficit()` and borrows the difference from the eTokens.
    *                   If false and the new ratio leaves `_surplus < -_maxDeficit()`, the operation is reverted.
    */
@@ -247,9 +247,17 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     external
     onlyComponentRole(LEVEL2_ROLE)
   {
-    require(newRatio <= 1e18 && newRatio >= 0, "Validation: deficitRatio must be <= 1");
+    require(newRatio <= 1e18, "Validation: deficitRatio must be <= 1");
+
+    uint16 truncatedRatio = (newRatio / 1e14).toUint16();
+    require(
+      uint256(truncatedRatio) * 1e14 == newRatio,
+      "Validation: only up to 4 decimals allowed"
+    );
+
     int256 maxDeficit = _maxDeficit(newRatio);
     require(adjustment || _surplus >= maxDeficit, "Validation: surplus must be >= maxDeficit");
+
     IAccessManager.GovernanceActions action = IAccessManager.GovernanceActions.setDeficitRatio;
     if (_surplus < maxDeficit) {
       // Do the adjustment
@@ -258,7 +266,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
       _borrowFromEtk(borrow, address(this), address(_juniorEtk) != address(0));
       action = IAccessManager.GovernanceActions.setDeficitRatioWithAdjustment;
     }
-    _params.deficitRatio = (newRatio / 1e14).toUint16();
+    _params.deficitRatio = truncatedRatio;
     _parameterChanged(action, newRatio, false);
   }
 
