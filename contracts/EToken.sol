@@ -123,6 +123,10 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   // runs validation on EToken parameters
   function _validateParameters() internal view override {
     require(
+      _params.minUtilizationRate < _params.maxUtilizationRate,
+      "Validation: minUtilizationRate must be lower than maxUtilizationRate"
+    );
+    require(
       _params.liquidityRequirement >= 8e3 && _params.liquidityRequirement <= 13e3,
       "Validation: liquidityRequirement must be [0.8, 1.3]"
     );
@@ -339,6 +343,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
    */
   function _mint(address account, uint256 amount) internal virtual {
     require(account != address(0), "EToken: mint to the zero address");
+    require(amount > 0, "EToken: amount to mint should be greater than zero");
 
     _beforeTokenTransfer(address(0), account, amount);
     uint256 scaledAmount = _tsScaled.add(amount, tokenInterestRate());
@@ -458,6 +463,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   }
 
   function _setAssetManager(IAssetManager newAM) internal override {
+    require(address(newAM) != address(0), "EToken: newAM cannot be the zero address");
     _assetManager = newAM;
   }
 
@@ -628,6 +634,9 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   }
 
   function repayLoan(uint256 amount, address onBehalfOf) external override {
+    require(onBehalfOf != address(0), "EToken: Cannot repayLoan onBehalfOf the zero address.");
+    require(amount > 0, "EToken: amount should be greater than zero.");
+
     // Anyone can call this method, since it has to pay
     currency().safeTransferFrom(_msgSender(), address(this), amount);
     TimeScaled.ScaledAmount storage loan = _loans[onBehalfOf];
@@ -650,6 +659,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     external
     onlyGlobalOrComponentRole2(LEVEL2_ROLE, LEVEL3_ROLE)
   {
+    _validateParameters();
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     if (param == Parameter.liquidityRequirement) {
       require(

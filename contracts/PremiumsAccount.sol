@@ -134,6 +134,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   }
 
   function _setAssetManager(IAssetManager newAM) internal override {
+    require(address(newAM) != address(0), "PremiumsAccount: newAM cannot be the zero address");
     _params.assetManager = newAM;
   }
 
@@ -284,6 +285,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     address receiver,
     bool jrEtk
   ) internal {
+    require(receiver != address(0), "PremiumsAccount: receiver cannot be the zero address");
     uint256 left;
     if (jrEtk) {
       // Consume Junior Pool until exhausted
@@ -370,6 +372,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     onlyGlobalOrComponentRole(WITHDRAW_WON_PREMIUMS_ROLE)
     returns (uint256)
   {
+    require(destination != address(0), "PremiumsAccount: destination cannot be the zero address");
     if (_surplus <= 0) {
       amount = 0;
     } else {

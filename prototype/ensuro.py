@@ -365,6 +365,10 @@ class ReserveMixin:
 
     @only_role("LEVEL1_ROLE", "GUARDIAN_ROLE")
     def set_asset_manager(self, asset_manager, force):
+        require(
+            asset_manager is not None,
+            "PremiumsAccount: newAM cannot be the zero address",
+        )
         if self.asset_manager:
             if force:
                 try:
@@ -710,6 +714,8 @@ class EToken(ReserveMixin, ERC20Token):
 
     @external
     def repay_loan(self, msg_sender, amount, on_behalf_of):
+        require(on_behalf_of is not None, "EToken: Cannot repayLoan onBehalfOf the zero address.")
+        require(amount > 0, "EToken: amount should be greater than zero.")
         borrower = on_behalf_of
         loan = self.loans.get(ContractProxyField().adapt(borrower), None)
         require(loan is not None, "Borrower not registered")
@@ -840,6 +846,7 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
     @external
     @only_component_role("WITHDRAW_WON_PREMIUMS_ROLE")
     def withdraw_won_premiums(self, amount, destination):
+        require(destination is not None, "PremiumsAccount: destination cannot be the zero address")
         s = self.surplus if self.surplus >= 0 else 0
         if amount > s:
             amount = s
@@ -849,6 +856,7 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
         return amount
 
     def _borrow_from_etk(self, borrow, receiver, jr_etk):
+        require(receiver is not None, "PremiumsAccount: receiver cannot be the zero address")
         if jr_etk:
             amount_left = self.junior_etk.internal_loan(
                 self,

@@ -199,6 +199,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     string memory symbol_,
     address treasury_
   ) public initializer {
+    require(bytes(name_).length > 0, "PolicyPool: name cannot be empty");
+    require(bytes(symbol_).length > 0, "PolicyPool: symbol cannot be empty");
     __UUPSUpgradeable_init();
     __ERC721_init(name_, symbol_);
     __Pausable_init();
@@ -252,6 +254,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * - Emits {ComponentChanged} with action = setTreasury and the address of the new treasury.
    */
   function setTreasury(address treasury_) external onlyRole(LEVEL1_ROLE) {
+    require(treasury_ != address(0), "PolicyPool: treasury cannot be the zero address");
     _treasury = treasury_;
     emit ComponentChanged(IAccessManager.GovernanceActions.setTreasury, _treasury);
   }

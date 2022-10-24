@@ -399,6 +399,12 @@ def test_internal_loan(tenv):
         assert tenv.currency.balance_of("CUST1") == lended
         assert etk.get_loan(pa) == lended
 
+        with pytest.raises(RevertError, match="EToken: amount should be greater than zero."):
+            etk.repay_loan(pa, _W(0), pa)
+
+        with pytest.raises(RevertError, match="EToken: Cannot repayLoan onBehalfOf the zero address."):
+            etk.repay_loan(pa, lended, None)
+
         etk.repay_loan(pa, lended, pa)
         tenv.currency.balance_of(pa).assert_equal(pa_balance - lended)
         pa_balance -= lended

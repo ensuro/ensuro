@@ -79,6 +79,10 @@ abstract contract PolicyPoolComponent is
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(IPolicyPool policyPool_) {
+    require(
+      address(policyPool_) != address(0),
+      "PolicyPoolComponent: policyPool cannot be zero address"
+    );
     _disableInitializers();
     _policyPool = policyPool_;
   }

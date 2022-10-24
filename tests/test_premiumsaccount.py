@@ -123,6 +123,9 @@ def test_withdraw_won_premiums(tenv):
     treasury = "ENS"
     tenv.pool_access.grant_component_role(pa, "WITHDRAW_WON_PREMIUMS_ROLE", tenv.currency.owner)
 
+    with pytest.raises(RevertError, match="PremiumsAccount: destination cannot be the zero address"):
+        pa.withdraw_won_premiums(_W(100), None)
+
     with pytest.raises(RevertError, match="No premiums to withdraw"):
         pa.withdraw_won_premiums(_W(100), treasury)
 
@@ -994,5 +997,6 @@ def test_pa_asset_manager(tenv):
     pa.checkpoint()
     pa.pure_premiums.assert_equal(_W(50) + interest_earnings)
 
-    with pa.as_("ADMIN"):
-        pa.set_asset_manager(None, True)
+    with pytest.raises(RevertError, match="PremiumsAccount: newAM cannot be the zero address"):
+        with pa.as_("ADMIN"):
+            pa.set_asset_manager(None, True)

@@ -262,6 +262,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   }
 
   function setWallet(address wallet_) external onlyComponentRole(RM_PROVIDER_ROLE) {
+    require(wallet_ != address(0), "RiskModule: wallet cannot be the zero address");
     _wallet = wallet_;
     _parameterChanged(IAccessManager.GovernanceActions.setWallet, uint256(uint160(wallet_)), false);
   }

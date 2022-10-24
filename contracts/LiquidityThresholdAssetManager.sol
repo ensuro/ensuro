@@ -37,6 +37,10 @@ abstract contract LiquidityThresholdAssetManager is IAssetManager {
   }
 
   constructor(IERC20Metadata asset_) {
+    require(
+      address(asset_) != address(0),
+      "LiquidityThresholdAssetManager: asset cannot be zero address"
+    );
     _asset = asset_;
   }
 

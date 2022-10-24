@@ -43,6 +43,13 @@ describe("PolicyPool contract", function () {
 
     // User with LEVEL1_ROLE passes
     await grantRole(hre, accessManager, "LEVEL1_ROLE", backend.address);
+
+    // Cant set treasury to 0x0
+    const zeroAddress = "0x0000000000000000000000000000000000000000";
+    await expect(pool.connect(backend).setTreasury(zeroAddress)).to.be.revertedWith(
+      "PolicyPool: treasury cannot be the zero address"
+    );
+
     await expect(pool.connect(backend).setTreasury(newTreasury)).to.emit(pool, "ComponentChanged");
 
     expect(await pool.treasury()).to.equal(newTreasury);
@@ -254,5 +261,31 @@ describe("PolicyPool contract", function () {
     await expect(rm.connect(backend).resolvePolicy(policy, policy.payout + _A(10))).to.be.revertedWith(
       "payout > policy.payout"
     );
+  });
+
+  it("Initialize PolicyPool without name and symbol fails", async () => {
+    const currency = await initCurrency(
+      { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(10000) },
+      [lp, cust, backend],
+      [_A(5000), _A(500), _A(1000)]
+    );
+
+    await expect(
+      deployPool(hre, {
+        nftName: "",
+        currency: currency.address,
+        grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
+        treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
+      })
+    ).to.be.revertedWith("PolicyPool: name cannot be empty");
+
+    await expect(
+      deployPool(hre, {
+        nftSymbol: "",
+        currency: currency.address,
+        grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
+        treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
+      })
+    ).to.be.revertedWith("PolicyPool: symbol cannot be empty");
   });
 });
