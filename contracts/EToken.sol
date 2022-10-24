@@ -131,6 +131,15 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
       "Validation: maxUtilizationRate must be [0.5, 1]"
     );
     require(_params.minUtilizationRate <= 1e4, "Validation: minUtilizationRate must be [0, 1]");
+    /*
+     * We don't validate minUtilizationRate < maxUtilizationRate because the opposite is valid too.
+     * These limits aren't strong limits on the values the utilization rate can take, but instead they are
+     * limits on specific operations.
+     * `minUtilizationRate` is used to avoid new deposits to dilute the yields of existing LPs, but it doesn't
+     * prevent the UR from going down in other operations (`unlockScr` for example).
+     * `maxUtilizationRate` is used to prevent selling more coverage when UR is too high, only checked on `lockScr`
+     * operations, but not in withdrawals or other operations.
+     */
     require(
       _params.internalLoanInterestRate <= 5e3,
       "Validation: internalLoanInterestRate must be <= 50%"
@@ -586,6 +595,12 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     onlyPolicyPool
     returns (uint256)
   {
+    /**
+     * Here we don't check for maxUtilizationRate because that limit only affects locking more capital (`lockScr`), but
+     * doesn't affects the right of liquidity providers to withdraw their funds.
+     * The only limit for withdraws is the `totalWithdrawable()` function, that's affected by the relation between the
+     * scr and the totalSupply.
+     */
     amount = Math.min(amount, Math.min(balanceOf(provider), totalWithdrawable()));
     if (amount == 0) return 0;
     _burn(provider, amount);
