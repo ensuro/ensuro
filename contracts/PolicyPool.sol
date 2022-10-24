@@ -182,6 +182,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    */
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(IAccessManager access_, IERC20Metadata currency_) {
+    _disableInitializers();
     _access = access_;
     _currency = currency_;
   }
@@ -205,7 +206,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   // solhint-disable-next-line func-name-mixedcase
-  function __PolicyPool_init_unchained(address treasury_) internal initializer {
+  function __PolicyPool_init_unchained(address treasury_) internal onlyInitializing {
     _treasury = treasury_;
   }
 

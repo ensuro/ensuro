@@ -79,11 +79,12 @@ abstract contract PolicyPoolComponent is
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(IPolicyPool policyPool_) {
+    _disableInitializers();
     _policyPool = policyPool_;
   }
 
   // solhint-disable-next-line func-name-mixedcase
-  function __PolicyPoolComponent_init() internal initializer {
+  function __PolicyPoolComponent_init() internal onlyInitializing {
     __UUPSUpgradeable_init();
     __Pausable_init();
   }

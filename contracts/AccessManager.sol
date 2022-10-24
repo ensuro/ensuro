@@ -24,6 +24,11 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
     _;
   }
 
+  /// @custom:oz-upgrades-unsafe-allow constructor
+  constructor() {
+    _disableInitializers();
+  }
+
   function initialize() public initializer {
     __AccessControl_init();
     __UUPSUpgradeable_init();
@@ -31,7 +36,7 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
   }
 
   // solhint-disable-next-line func-name-mixedcase
-  function __AccessManager_init_unchained() internal initializer {
+  function __AccessManager_init_unchained() internal onlyInitializing {
     _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
   }
 

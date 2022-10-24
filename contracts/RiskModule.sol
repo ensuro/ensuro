@@ -80,7 +80,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     uint256 maxPayoutPerPolicy_,
     uint256 exposureLimit_,
     address wallet_
-  ) internal initializer {
+  ) internal onlyInitializing {
     __PolicyPoolComponent_init();
     __RiskModule_init_unchained(
       name_,
@@ -102,7 +102,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     uint256 maxPayoutPerPolicy_,
     uint256 exposureLimit_,
     address wallet_
-  ) internal initializer {
+  ) internal onlyInitializing {
     _name = name_;
     _params = PackedParams({
       moc: 1e4,
