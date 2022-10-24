@@ -101,8 +101,8 @@ exports.addEToken = async function (
   const etk = await hre.upgrades.deployProxy(
     EToken,
     [
-      etkName || "EToken",
-      etkSymbol || "eUSD1YEAR",
+      etkName === undefined ? "EToken" : "",
+      etkSymbol === undefined ? "eUSD1YEAR" : "",
       _W(maxUtilizationRate) || _W(1),
       _W(poolLoanInterestRate) || _W("0.05"),
       ...extraArgs,
