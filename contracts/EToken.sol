@@ -243,13 +243,32 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     address recipient,
     uint256 amount
   ) public virtual override returns (bool) {
+    address spender = _msgSender();
+    _spendAllowance(sender, spender, amount);
     _transfer(sender, recipient, amount);
-
-    uint256 currentAllowance = _allowances[sender][_msgSender()];
-    require(currentAllowance >= amount, "EToken: transfer amount exceeds allowance");
-    _approve(sender, _msgSender(), currentAllowance - amount);
-
     return true;
+  }
+
+  /**
+   * @dev Updates `owner` s allowance for `spender` based on spent `amount`.
+   *
+   * Does not update the allowance amount in case of infinite allowance.
+   * Revert if not enough allowance is available.
+   *
+   * Might emit an {Approval} event.
+   */
+  function _spendAllowance(
+    address owner,
+    address spender,
+    uint256 amount
+  ) internal virtual {
+    uint256 currentAllowance = allowance(owner, spender);
+    if (currentAllowance != type(uint256).max) {
+      require(currentAllowance >= amount, "EToken: insufficient allowance");
+      unchecked {
+        _approve(owner, spender, currentAllowance - amount);
+      }
+    }
   }
 
   /**
@@ -265,7 +284,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
    * - `spender` cannot be the zero address.
    */
   function increaseAllowance(address spender, uint256 addedValue) public virtual returns (bool) {
-    _approve(_msgSender(), spender, _allowances[_msgSender()][spender] + addedValue);
+    _approve(_msgSender(), spender, allowance(_msgSender(), spender) + addedValue);
     return true;
   }
 
@@ -629,12 +648,12 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
 
   function repayLoan(uint256 amount, address onBehalfOf) external override {
     // Anyone can call this method, since it has to pay
-    currency().safeTransferFrom(_msgSender(), address(this), amount);
     TimeScaled.ScaledAmount storage loan = _loans[onBehalfOf];
     require(loan.scale != 0, "Not a registered borrower");
     loan.sub(amount, internalLoanInterestRate());
     _discreteChange(int256(amount));
     emit InternalLoanRepaid(onBehalfOf, amount);
+    currency().safeTransferFrom(_msgSender(), address(this), amount);
   }
 
   function getLoan(address borrower) public view virtual override returns (uint256) {

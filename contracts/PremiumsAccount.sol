@@ -342,9 +342,9 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * @param amount The amount to be transferred.
    */
   function receiveGrant(uint256 amount) external {
-    currency().safeTransferFrom(_msgSender(), address(this), amount);
     _storePurePremiumWon(amount);
     emit WonPremiumsInOut(true, amount);
+    currency().safeTransferFrom(_msgSender(), address(this), amount);
   }
 
   /**
