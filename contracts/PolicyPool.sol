@@ -441,8 +441,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
 
     // Effects
     policy.id = (uint256(uint160(address(rm))) << 96) + internalId;
+    require(_policies[policy.id] == bytes32(0), "Policy already exists");
     _policies[policy.id] = policy.hash();
-    _safeMint(policyHolder, policy.id, "");
 
     // Interactions
     pa.policyCreated(policy);
@@ -455,6 +455,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     if (policy.partnerCommission > 0 && payer != rm.wallet())
       _currency.safeTransferFrom(payer, rm.wallet(), policy.partnerCommission);
     // TODO: this code does up to 5 ERC20 transfers. How we can avoid this? Delayed transfers?
+    _safeMint(policyHolder, policy.id, "");
 
     emit NewPolicy(rm, policy);
     return policy.id;
