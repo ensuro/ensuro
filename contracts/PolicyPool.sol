@@ -500,6 +500,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     uint256 payout,
     bool expired
   ) internal {
+    // Checks
     _validatePolicy(policy);
     IRiskModule rm = policy.riskModule;
     require(expired || address(rm) == _msgSender(), "Only the RM can resolve policies");
@@ -519,6 +520,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
       compStatus == ComponentStatus.active || compStatus == ComponentStatus.deprecated,
       "PremiumsAccount must be active or deprecated to process resolutions"
     );
+    // Effects
+    delete _policies[policy.id];
+    // Interactions
     if (customerWon) {
       address policyOwner = ownerOf(policy.id);
       pa.policyResolvedWithPayout(policyOwner, policy, payout);
@@ -529,7 +533,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     rm.releaseExposure(policy.payout);
 
     emit PolicyResolved(policy.riskModule, policy.id, payout);
-    delete _policies[policy.id];
     if (payout > 0) {
       _notifyPayout(policy.id, payout);
     } else {
