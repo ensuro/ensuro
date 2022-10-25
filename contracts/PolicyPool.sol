@@ -432,15 +432,20 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     address policyHolder,
     uint96 internalId
   ) external override whenNotPaused returns (uint256) {
+    // Checks
     IRiskModule rm = policy.riskModule;
     require(address(rm) == _msgSender(), "Only the RM can create new policies");
     require(_rmStatus(rm) == ComponentStatus.active, "RM module not found or not active");
-    policy.id = (uint256(uint160(address(rm))) << 96) + internalId;
-    _policies[policy.id] = policy.hash();
     IPremiumsAccount pa = rm.premiumsAccount();
     require(_paStatus(pa) == ComponentStatus.active, "PremiumsAccount not found or not active");
-    pa.policyCreated(policy);
+
+    // Effects
+    policy.id = (uint256(uint160(address(rm))) << 96) + internalId;
+    _policies[policy.id] = policy.hash();
     _safeMint(policyHolder, policy.id, "");
+
+    // Interactions
+    pa.policyCreated(policy);
 
     // Distribute the premium
     _currency.safeTransferFrom(payer, address(pa), policy.purePremium);
