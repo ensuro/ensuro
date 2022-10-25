@@ -296,6 +296,15 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     require(comp.status == ComponentStatus.inactive, "Component already in the pool");
     require(component.policyPool() == this, "Component not linked to this pool");
 
+    require(
+      (kind == ComponentKind.eToken && component.supportsInterface(type(IEToken).interfaceId)) ||
+        (kind == ComponentKind.premiumsAccount &&
+          component.supportsInterface(type(IPremiumsAccount).interfaceId)) ||
+        (kind == ComponentKind.riskModule &&
+          component.supportsInterface(type(IRiskModule).interfaceId)),
+      "PolicyPool: Not the right kind"
+    );
+
     comp.status = ComponentStatus.active;
     comp.kind = kind;
     if (kind == ComponentKind.premiumsAccount) {

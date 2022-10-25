@@ -14,4 +14,9 @@ interface IPolicyPoolComponent is IERC165 {
    * @dev Returns the address of the PolicyPool (see {PolicyPool}) where this component belongs.
    */
   function policyPool() external view returns (IPolicyPool);
+
+  /**
+   * @dev See {IERC165-supportsInterface}.
+   */
+  function supportsInterface(bytes4 interfaceId) external view override returns (bool);
 }
