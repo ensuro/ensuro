@@ -121,6 +121,13 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     _validateParameters();
   }
 
+  /**
+   * @dev See {IERC165-supportsInterface}.
+   */
+  function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+    return super.supportsInterface(interfaceId) || interfaceId == type(IRiskModule).interfaceId;
+  }
+
   // runs validation on RiskModule parameters
   function _validateParameters() internal view override {
     require(_params.jrCollRatio <= 1e4, "Validation: jrCollRatio must be <=1");

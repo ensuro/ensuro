@@ -207,6 +207,13 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     __PolicyPool_init_unchained(treasury_);
   }
 
+  /**
+   * @dev See {IERC165-supportsInterface}.
+   */
+  function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+    return super.supportsInterface(interfaceId) || interfaceId == type(IPolicyPool).interfaceId;
+  }
+
   // solhint-disable-next-line func-name-mixedcase
   function __PolicyPool_init_unchained(address treasury_) internal onlyInitializing {
     _treasury = treasury_;

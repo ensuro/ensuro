@@ -122,6 +122,13 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     _validateParameters();
   }
 
+  /**
+   * @dev See {IERC165-supportsInterface}.
+   */
+  function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+    return super.supportsInterface(interfaceId) || interfaceId == type(IEToken).interfaceId;
+  }
+
   // runs validation on EToken parameters
   function _validateParameters() internal view override {
     require(

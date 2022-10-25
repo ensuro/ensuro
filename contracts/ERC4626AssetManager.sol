@@ -4,6 +4,8 @@ pragma solidity ^0.8.0;
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
+import {IAssetManager} from "./interfaces/IAssetManager.sol";
 import {LiquidityThresholdAssetManager} from "./LiquidityThresholdAssetManager.sol";
 
 /**
@@ -48,5 +50,13 @@ contract ERC4626AssetManager is LiquidityThresholdAssetManager {
 
   function getInvestmentValue() public view override returns (uint256) {
     return _vault.convertToAssets(_vault.balanceOf(address(this)));
+  }
+
+  /**
+   * @dev See {IERC165-supportsInterface}.
+   */
+  function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+    return
+      interfaceId == type(IERC165).interfaceId || interfaceId == type(IAssetManager).interfaceId;
   }
 }

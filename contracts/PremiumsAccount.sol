@@ -129,6 +129,14 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     _validateParameters();
   }
 
+  /**
+   * @dev See {IERC165-supportsInterface}.
+   */
+  function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+    return
+      super.supportsInterface(interfaceId) || interfaceId == type(IPremiumsAccount).interfaceId;
+  }
+
   function assetManager() public view override returns (IAssetManager) {
     return _params.assetManager;
   }
