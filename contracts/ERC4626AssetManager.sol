@@ -11,6 +11,8 @@ import {LiquidityThresholdAssetManager} from "./LiquidityThresholdAssetManager.s
  * @dev Using liquidity thresholds defined in {LiquidityThresholdAssetManager}, deploys the funds into an ERC4626 vault.
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
+ *
+ * @notice This contracts uses Diamond Storage and should not define state variables outside of that. See the diamondStorage method for more details.
  */
 contract ERC4626AssetManager is LiquidityThresholdAssetManager {
   using SafeCast for uint256;
@@ -49,11 +51,4 @@ contract ERC4626AssetManager is LiquidityThresholdAssetManager {
   function getInvestmentValue() public view override returns (uint256) {
     return _vault.convertToAssets(_vault.balanceOf(address(this)));
   }
-
-  /**
-   * @dev This empty reserved space is put in place to allow future versions to add new
-   * variables without shifting down storage in the inheritance chain.
-   * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
-   */
-  uint256[50] private __gap;
 }

@@ -17,6 +17,8 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
  *      cash at liquidityMiddle.
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
+ *
+ * @notice This contracts uses Diamond Storage and should not define state variables outside of that. See the diamondStorage method for more details.
  */
 abstract contract LiquidityThresholdAssetManager is IAssetManager {
   using SafeCast for uint256;
@@ -157,11 +159,4 @@ abstract contract LiquidityThresholdAssetManager is IAssetManager {
       emit GovernanceAction(IAccessManager.GovernanceActions.setLiquidityMax, max);
     }
   }
-
-  /**
-   * @dev This empty reserved space is put in place to allow future versions to add new
-   * variables without shifting down storage in the inheritance chain.
-   * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
-   */
-  uint256[50] private __gap;
 }
