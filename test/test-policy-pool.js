@@ -82,6 +82,17 @@ describe("PolicyPool contract", function () {
     await expect(pool.addComponent(premiumsAccount.address, 3)).to.be.revertedWith("Component already in the pool");
   });
 
+  it("Does not allow adding different kind of component", async () => {
+    const { pool } = await helpers.loadFixture(deployPoolFixture);
+
+    const etk = await addEToken(pool, {});
+    const premiumsAccount = await deployPremiumsAccount(hre, pool, { jrEtkAddr: etk.address }, false);
+
+    // Premiums account
+    await expect(pool.addComponent(premiumsAccount.address, 2)).to.be.revertedWith("PolicyPool: Not the right kind");
+    await expect(pool.addComponent(premiumsAccount.address, 3)).not.to.be.reverted;
+  });
+
   it("Does not allow adding a component that belongs to a different pool", async () => {
     const { pool, currency } = await helpers.loadFixture(deployPoolFixture);
     const pool2 = await deployPool(hre, {
