@@ -166,7 +166,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   /**
-   * @dev Modifier that checks the caller has any of the given rolea
+   * @dev Modifier that checks the caller has any of the given roles
    */
   modifier onlyRole2(bytes32 role1, bytes32 role2) {
     _access.checkRole2(role1, role2, _msgSender());
@@ -449,7 +449,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     _currency.safeTransferFrom(payer, _treasury, policy.ensuroCommission);
     if (policy.partnerCommission > 0 && payer != rm.wallet())
       _currency.safeTransferFrom(payer, rm.wallet(), policy.partnerCommission);
-    // TODO: this code does up to 5 ERC20 transfers. How we can avoid this? Delayed transfers?
 
     emit NewPolicy(rm, policy);
     return policy.id;

@@ -96,8 +96,8 @@ abstract contract LiquidityThresholdAssetManager is IAssetManager {
   }
 
   /**
-   * @dev This is called from PolicyPool when doesn't have enought money for payment.
-   *      After the call, there should be enought money in PolicyPool.currency().balanceOf(this) to
+   * @dev This is called from PolicyPool when doesn't have enough money for payment.
+   *      After the call, there should be enough money in PolicyPool.currency().balanceOf(this) to
    *      do the payment
    * @param paymentAmount The amount of the payment
    */

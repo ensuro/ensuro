@@ -343,28 +343,28 @@ def test_multiple_lps(tenv):
 def test_lock_scr_validation(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK")
     pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account
-    policy = tenv.policy_factory(sr_scr=_W(600), sr_interest_rate=_W("0.0365"),
-                                 expiration=tenv.time_control.now + WEEK)
+    policy = tenv.policy_factory(
+        sr_scr=_W(600), sr_interest_rate=_W("0.0365"), expiration=tenv.time_control.now + WEEK
+    )
 
     with etk.thru_policy_pool():
         etk.add_borrower(pa)
 
     with etk.thru(pa):
-        with pytest.raises(RevertError, match="Not enought funds available to cover the SCR"):
+        with pytest.raises(RevertError, match="Not enough funds available to cover the SCR"):
             etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
     with etk.thru_policy_pool():
         tenv.currency.transfer(tenv.currency.owner, etk, _W(200))
         etk.deposit("LP1", _W(200))
 
     with etk.thru(pa):
-        with pytest.raises(RevertError, match="Not enought funds available to cover the SCR"):
+        with pytest.raises(RevertError, match="Not enough funds available to cover the SCR"):
             etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
 
 
 @skip_if_coverage_activated
 def test_internal_loan(tenv):
-    etk = tenv.etoken_class(name="eUSD1WEEK",
-                            internal_loan_interest_rate=_W("0.073"))
+    etk = tenv.etoken_class(name="eUSD1WEEK", internal_loan_interest_rate=_W("0.073"))
     tenv.currency.transfer(tenv.currency.owner, etk, _W(1000))
 
     pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account
@@ -666,16 +666,18 @@ def test_max_utilization_rate(tenv):
 
     assert etk.funds_available_to_lock == _W(950)
 
-    policy = tenv.policy_factory(sr_scr=_W(1100), sr_interest_rate=_W("0.04"),
-                                 expiration=tenv.time_control.now + WEEK)
+    policy = tenv.policy_factory(
+        sr_scr=_W(1100), sr_interest_rate=_W("0.04"), expiration=tenv.time_control.now + WEEK
+    )
 
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
-    with pytest.raises(RevertError, match="Not enought funds available to cover the SCR"):
+    with pytest.raises(RevertError, match="Not enough funds available to cover the SCR"):
         with etk.thru(pa):
             etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
 
-    policy = tenv.policy_factory(sr_scr=_W(600), sr_interest_rate=_W("0.0365"),
-                                 expiration=tenv.time_control.now + WEEK)
+    policy = tenv.policy_factory(
+        sr_scr=_W(600), sr_interest_rate=_W("0.0365"), expiration=tenv.time_control.now + WEEK
+    )
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
     with etk.thru(pa):
         etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)

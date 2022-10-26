@@ -517,7 +517,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   {
     require(
       scrAmount <= this.fundsAvailableToLock(),
-      "Not enought funds available to cover the SCR"
+      "Not enough funds available to cover the SCR"
     );
     _tsScaled.updateScale(tokenInterestRate());
     if (_scr.scr == 0) {
