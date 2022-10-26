@@ -106,6 +106,16 @@ describe("Test Initialize contracts", function () {
       constructorArgs: [pool.address],
     });
 
+    const zeroAddress = "0x0000000000000000000000000000000000000000";
+    // Can't create LPManualWhitelist with zeroAddress
+    await expect(
+      hre.upgrades.deployProxy(Whitelist, [], {
+        kind: "uups",
+        unsafeAllow: ["delegatecall"],
+        constructorArgs: [zeroAddress],
+      })
+    ).to.be.revertedWith("PolicyPoolComponent: policyPool cannot be zero address");
+
     await expect(wl.initialize()).to.be.revertedWith("contract is already initialized");
   });
 });

@@ -42,7 +42,7 @@ exports.now = function () {
   return Math.floor(new Date().getTime() / 1000);
 };
 
-exports.addRiskModule = async function (
+const createRiskModule = async function (
   pool,
   premiumsAccount,
   contractFactory,
@@ -87,11 +87,46 @@ exports.addRiskModule = async function (
     moc = _W(moc);
     await rm.setParam(0, moc);
   }
+  return rm;
+};
+
+exports.createRiskModule = createRiskModule;
+
+exports.addRiskModule = async function (
+  pool,
+  premiumsAccount,
+  contractFactory,
+  {
+    rmName,
+    scrPercentage,
+    scrInterestRate,
+    ensuroFee,
+    maxScrPerPolicy,
+    scrLimit,
+    moc,
+    wallet,
+    extraArgs,
+    extraConstructorArgs,
+  }
+) {
+  const rm = await createRiskModule(pool, premiumsAccount, contractFactory, {
+    rmName,
+    scrPercentage,
+    scrInterestRate,
+    ensuroFee,
+    maxScrPerPolicy,
+    scrLimit,
+    moc,
+    wallet,
+    extraArgs,
+    extraConstructorArgs,
+  });
+
   await pool.addComponent(rm.address, 2);
   return rm;
 };
 
-exports.addEToken = async function (
+const createEToken = async function (
   pool,
   { etkName, etkSymbol, maxUtilizationRate, poolLoanInterestRate, extraArgs, extraConstructorArgs }
 ) {
@@ -115,6 +150,23 @@ exports.addEToken = async function (
   );
 
   await etk.deployed();
+  return etk;
+};
+
+exports.createEToken = createEToken;
+
+exports.addEToken = async function (
+  pool,
+  { etkName, etkSymbol, maxUtilizationRate, poolLoanInterestRate, extraArgs, extraConstructorArgs }
+) {
+  const etk = await createEToken(pool, {
+    etkName,
+    etkSymbol,
+    maxUtilizationRate,
+    poolLoanInterestRate,
+    extraArgs,
+    extraConstructorArgs,
+  });
   await pool.addComponent(etk.address, 1);
   return etk;
 };

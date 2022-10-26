@@ -10,6 +10,8 @@ const {
   getTransactionEvent,
   accessControlMessage,
   grantRole,
+  createEToken,
+  createRiskModule,
 } = require("./test-utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
@@ -85,8 +87,18 @@ describe("PolicyPool contract", function () {
   it("Does not allow adding different kind of component", async () => {
     const { pool } = await helpers.loadFixture(deployPoolFixture);
 
-    const etk = await addEToken(pool, {});
+    const etk = await createEToken(pool, {});
     const premiumsAccount = await deployPremiumsAccount(hre, pool, { jrEtkAddr: etk.address }, false);
+    const RiskModule = await hre.ethers.getContractFactory("RiskModuleMock");
+    const rm = await createRiskModule(pool, premiumsAccount, RiskModule, {});
+
+    // EToken
+    await expect(pool.addComponent(etk.address, 3)).to.be.revertedWith("PolicyPool: Not the right kind");
+    await expect(pool.addComponent(etk.address, 1)).not.to.be.reverted;
+
+    // RiskModule
+    await expect(pool.addComponent(rm.address, 3)).to.be.revertedWith("PolicyPool: Not the right kind");
+    await expect(pool.addComponent(rm.address, 2)).not.to.be.reverted;
 
     // Premiums account
     await expect(pool.addComponent(premiumsAccount.address, 2)).to.be.revertedWith("PolicyPool: Not the right kind");
