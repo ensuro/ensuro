@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity ^0.8.0;
+pragma solidity 0.8.16;
 
 /**
  * @title IAssetManager - Interface of the asset management strategy that's plugged into the reserves
