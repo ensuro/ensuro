@@ -19,6 +19,8 @@ describe("Supports interface implementation", function () {
   let RiskModule;
   let rm;
   let LPManualWhitelist, wl;
+  let assetManager, am;
+  let PolicyPoolComponent, ppc;
 
   beforeEach(async () => {
     [owner, lp, cust, backend] = await ethers.getSigners();
@@ -56,6 +58,12 @@ describe("Supports interface implementation", function () {
 
     LPManualWhitelist = await hre.ethers.getContractFactory("LPManualWhitelist");
     wl = await LPManualWhitelist.deploy(pool.address);
+
+    assetManager = await hre.ethers.getContractFactory("ERC4626AssetManager");
+    am = await assetManager.deploy(etk.address, rm.address);
+
+    PolicyPoolComponent = await ethers.getContractFactory("PolicyPoolComponentMock");
+    ppc = await PolicyPoolComponent.deploy(pool.address);
   });
 
   it("RiskModule broken if have different interfaceId", async () => {
@@ -200,5 +208,60 @@ describe("Supports interface implementation", function () {
 
     expect(await accessManager.supportsInterface(amInterfaceId)).to.be.true;
     expect(await accessManager.supportsInterface(ierc165InterfaceId)).to.be.true;
+  });
+
+  it("AssetManager broken if have different interfaceId", async () => {
+    // This is a test to check if the interfaceId is correct
+    // > const InterfaceIdCalculator = await ethers.getContractFactory("InterfaceIdCalculator")
+    // > const iidCalculator = await InterfaceIdCalculator.deploy()
+    // > await iidCalculator.IAssetManager_interfaceId()
+    // '0x799c2a5c'
+    // > await iidCalculator.IERC165_interfaceId()
+    // '0x01ffc9a7'
+
+    // Supports this interface's
+    const ierc165InterfaceId = "0x01ffc9a7";
+    const assetManagerInterfaceId = "0x799c2a5c";
+
+    // Doesn't support this interface's
+    const etknterfaceId = "0x027466bc";
+    const wrongInterfaceId = "0xffffffff";
+
+    expect(await am.supportsInterface(wrongInterfaceId)).to.be.false;
+    expect(await am.supportsInterface(etknterfaceId)).to.be.false;
+
+    expect(await am.supportsInterface(assetManagerInterfaceId)).to.be.true;
+    expect(await am.supportsInterface(ierc165InterfaceId)).to.be.true;
+  });
+
+  it("Broken if ERC4626AssetManager asset have zero address", async () => {
+    const zeroAddress = "0x0000000000000000000000000000000000000000";
+    await expect(assetManager.deploy(zeroAddress, rm.address)).to.be.revertedWith(
+      "LiquidityThresholdAssetManager: asset cannot be zero address"
+    );
+  });
+
+  it("PolicyPoolComponent broken if have different interfaceId", async () => {
+    // This is a test to check if the interfaceId is correct
+    // > const InterfaceIdCalculator = await ethers.getContractFactory("InterfaceIdCalculator")
+    // > const iidCalculator = await InterfaceIdCalculator.deploy()
+    // > await iidCalculator.IPolicyPoolComponent_interfaceId()
+    // '0x4cea22a4'
+    // > await iidCalculator.IERC165_interfaceId()
+    // '0x01ffc9a7'
+
+    // Supports this interface's
+    const ierc165InterfaceId = "0x01ffc9a7";
+    const ppcInterfaceId = "0x4cea22a4";
+
+    // Doesn't support this interface's
+    const etknterfaceId = "0x027466bc";
+    const wrongInterfaceId = "0xffffffff";
+
+    expect(await ppc.supportsInterface(wrongInterfaceId)).to.be.false;
+    expect(await ppc.supportsInterface(etknterfaceId)).to.be.false;
+
+    expect(await ppc.supportsInterface(ppcInterfaceId)).to.be.true;
+    expect(await ppc.supportsInterface(ierc165InterfaceId)).to.be.true;
   });
 });

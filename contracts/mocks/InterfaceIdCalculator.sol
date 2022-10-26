@@ -9,6 +9,7 @@ import {IRiskModule} from "../interfaces/IRiskModule.sol";
 import {IPremiumsAccount} from "../interfaces/IPremiumsAccount.sol";
 import {ILPWhitelist} from "../interfaces/ILPWhitelist.sol";
 import {IAccessManager} from "../interfaces/IAccessManager.sol";
+import {IAssetManager} from "../interfaces/IAssetManager.sol";
 
 contract InterfaceIdCalculator {
   bytes4 public constant IERC165_interfaceId = type(IERC165).interfaceId;
@@ -19,4 +20,5 @@ contract InterfaceIdCalculator {
   bytes4 public constant IPremiumsAccount_interfaceId = type(IPremiumsAccount).interfaceId;
   bytes4 public constant ILPWhitelist_interfaceId = type(ILPWhitelist).interfaceId;
   bytes4 public constant IAccessManager_interfaceId = type(IAccessManager).interfaceId;
+  bytes4 public constant IAssetManager_interfaceId = type(IAssetManager).interfaceId;
 }
