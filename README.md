@@ -70,6 +70,19 @@ The protocol uses three levels of access control, plus a guardian role. These ro
 
 More info about governance in https://docs.google.com/spreadsheets/d/1LqlogRn8AlnLq1rPTd5UT7CJI3uc31PdBaxj4pX3mtE/edit?usp=sharing
 
+## Upgradability
+
+Ensuro contracts are upgradeable, meaning the code can be changed after deployment. We implement this following the UUPS pattern (https://eips.ethereum.org/EIPS/eip-1822) where the contract used is a proxy that can be redirected to a different implementation.
+
+The main reason to do this is to be able to fix errors and to do minor changes in the protocol.
+
+We will never deploy upgrades to live contracts without prior notice to the users, mainly if it implies a change in the behavior. The permission for executing upgrades will be delegated to two different roles:
+
+- LEVEL1_ROLE: this will be delegated to a Timelock contract that will give enough time to the users to be notified of the imminent upgrade.
+- GUARDIAN_ROLE: this will used only for emergency situations to prevent hacks or fix vulnerabilities. It will be delegated to multisigs where one of the signers is a trusted third party.
+
+Have in mind the new versions of the contracts might or might not be covered by the same audit processes as the initial ones. Always check the details of the audit reports.
+
 ## Development
 
 For coding the smart contracts the approach we took was prototyping initially in Python (see folder `prototype`), and later we coded in Solidity. The tests run the same test case both on the Python prototype code and the Solidity code. To adapt the Solidity code that is called using [brownie](https://eth-brownie.readthedocs.io/en/stable/), we have some glue code implemented in `tests/wrappers.py`.
