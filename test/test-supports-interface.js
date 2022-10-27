@@ -1,267 +1,181 @@
 const { expect } = require("chai");
-const {
-  initCurrency,
-  deployPool,
-  deployPremiumsAccount,
-  addRiskModule,
-  amountFunction,
-  addEToken,
-} = require("./test-utils");
-const { ethers } = require("hardhat");
+const helpers = require("@nomicfoundation/hardhat-network-helpers");
+const { initCurrency, deployPool, deployPremiumsAccount, amountFunction } = require("./test-utils");
 
 describe("Supports interface implementation", function () {
-  let currency;
-  let pool;
-  let accessManager;
-  let premiumsAccount;
-  let _A;
-  let owner, lp, cust, backend;
-  let RiskModule;
-  let rm;
-  let LPManualWhitelist, wl;
-  let assetManager, am;
-  let PolicyPoolComponent, ppc;
+  const invalidInterfaceId = "0x12345678";
+  const zeroAddress = hre.ethers.constants.AddressZero;
+  const rndAddr = "0xd758af6bfc2f0908d7c5f89942be52c36a6b3cab";
 
-  beforeEach(async () => {
-    [owner, lp, cust, backend] = await ethers.getSigners();
+  async function setupFixture() {
+    const [owner] = await hre.ethers.getSigners();
+    /**
+     * Interface ids were calculated with this code, but we prefer to leave the values hard-coded, so this
+     * test fails when we change some interface. This way we can be sure we don't change interfaces
+     * by accident
+     */
+    /*
+    const InterfaceIdCalculator = await ethers.getContractFactory("InterfaceIdCalculator");
+    const iidCalculator = await InterfaceIdCalculator.deploy();
+    const interfaces = [
+      "IERC165",
+      "IERC20",
+      "IERC20Metadata",
+      "IERC721",
+      "IAccessControl",
+      "IEToken",
+      "IPolicyPool",
+      "IPolicyPoolComponent",
+      "IEToken",
+      "IRiskModule",
+      "IPremiumsAccount",
+      "ILPWhitelist",
+      "IAccessManager",
+      "IAssetManager",
+    ];
+    const interfaceIds = {};
+    for (const iName of interfaces) {
+      interfaceIds[iName] = await iidCalculator[iName.toUpperCase() + "_INTERFACEID"]();
+    }
+    // console.log(interfaceIds);
+    */
+    const interfaceIds = {
+      IERC165: "0x01ffc9a7",
+      IERC20: "0x36372b07",
+      IERC20Metadata: "0xa219a025",
+      IERC721: "0x80ac58cd",
+      IAccessControl: "0x7965db0b",
+      IEToken: "0x027466bc",
+      IPolicyPool: "0x4b195a48",
+      IPolicyPoolComponent: "0x4cea22a4",
+      IRiskModule: "0xda40804f",
+      IPremiumsAccount: "0xb76712ec",
+      ILPWhitelist: "0x6823eaea",
+      IAccessManager: "0x272b8c47",
+      IAssetManager: "0x799c2a5c",
+    };
 
-    _A = amountFunction(6);
+    const _A = amountFunction(6);
 
-    currency = await initCurrency(
-      { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(10000) },
-      [lp, cust, backend],
-      [_A(5000), _A(500), _A(1000)]
-    );
+    const currency = await initCurrency({ name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(10000) });
+    const AccessManager = await hre.ethers.getContractFactory("AccessManager");
+    const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
 
-    pool = await deployPool(hre, {
-      currency: currency.address,
-      grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
-      treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
-    });
-    pool._A = _A;
+    // Deploy AccessManager
+    const access = await hre.upgrades.deployProxy(AccessManager, [], { kind: "uups" });
 
-    etk = await addEToken(pool, {});
+    await access.deployed();
 
-    premiumsAccount = await deployPremiumsAccount(hre, pool, { srEtkAddr: etk.address });
+    return {
+      currency,
+      _A,
+      owner,
+      access,
+      PolicyPool,
+      interfaceIds,
+    };
+  }
 
-    accessManager = await ethers.getContractAt("AccessManager", await pool.access());
+  async function setupFixtureWithPool() {
+    const ret = await setupFixture();
+    const policyPool = await deployPool(hre, { currency: ret.currency.address });
+    return {
+      policyPool,
+      ...ret,
+    };
+  }
 
-    RiskModule = await ethers.getContractFactory("RiskModuleMock");
+  async function setupFixtureWithPoolAndPA() {
+    const ret = await setupFixtureWithPool();
+    const premiumsAccount = await deployPremiumsAccount(hre, ret.policyPool, {});
+    return {
+      premiumsAccount,
+      ...ret,
+    };
+  }
 
-    await currency.connect(lp).approve(pool.address, _A(5000));
-    await pool.connect(lp).deposit(etk.address, _A(5000));
-
-    rm = await addRiskModule(pool, premiumsAccount, RiskModule, {
-      extraArgs: [],
-    });
-    await accessManager.grantComponentRole(rm.address, await rm.PRICER_ROLE(), backend.address);
-
-    LPManualWhitelist = await hre.ethers.getContractFactory("LPManualWhitelist");
-    wl = await LPManualWhitelist.deploy(pool.address);
-
-    assetManager = await hre.ethers.getContractFactory("ERC4626AssetManager");
-    am = await assetManager.deploy(etk.address, rm.address);
-
-    PolicyPoolComponent = await ethers.getContractFactory("PolicyPoolComponentMock");
-    ppc = await PolicyPoolComponent.deploy(pool.address);
+  it("Checks AccessManager supported interfaces", async () => {
+    const { interfaceIds, access } = await helpers.loadFixture(setupFixture);
+    expect(await access.supportsInterface(interfaceIds.IERC165)).to.be.true;
+    expect(await access.supportsInterface(interfaceIds.IAccessControl)).to.be.true;
+    expect(await access.supportsInterface(interfaceIds.IAccessManager)).to.be.true;
+    expect(await access.supportsInterface(invalidInterfaceId)).to.be.false;
   });
 
-  it("RiskModule broken if have different interfaceId", async () => {
-    // This is a test to check if the interfaceId is correct
-    // > const InterfaceIdCalculator = await ethers.getContractFactory("InterfaceIdCalculator")
-    // > const iidCalculator = await InterfaceIdCalculator.deploy()
-    // > await iidCalculator.IRiskModule_interfaceId()
-    // '0xda40804f'
-    // > await iidCalculator.IERC165_interfaceId()
-    // '0x01ffc9a7'
-
-    // Supports this interface's
-    const ierc165InterfaceId = "0x01ffc9a7";
-    const rmInterfaceId = "0xda40804f";
-
-    // Doesn't support this interface's
-    const etknterfaceId = "0x027466bc";
-    const wrongInterfaceId = "0xffffffff";
-
-    expect(await rm.supportsInterface(wrongInterfaceId)).to.be.false;
-    expect(await rm.supportsInterface(etknterfaceId)).to.be.false;
-
-    expect(await rm.supportsInterface(rmInterfaceId)).to.be.true;
-    expect(await rm.supportsInterface(ierc165InterfaceId)).to.be.true;
+  it("Checks PolicyPool supported interfaces", async () => {
+    const { policyPool, interfaceIds } = await helpers.loadFixture(setupFixtureWithPool);
+    expect(await policyPool.supportsInterface(interfaceIds.IERC165)).to.be.true;
+    expect(await policyPool.supportsInterface(interfaceIds.IPolicyPool)).to.be.true;
+    expect(await policyPool.supportsInterface(interfaceIds.IERC721)).to.be.true;
+    expect(await policyPool.supportsInterface(interfaceIds.IAccessManager)).to.be.false;
   });
 
-  it("EToken broken if have different interfaceId", async () => {
-    // This is a test to check if the interfaceId is correct
-    // > const InterfaceIdCalculator = await ethers.getContractFactory("InterfaceIdCalculator")
-    // > const iidCalculator = await InterfaceIdCalculator.deploy()
-    // > await iidCalculator.IEToken_interfaceId()
-    // '0x027466bc'
-    // > await iidCalculator.IERC165_interfaceId()
-    // '0x01ffc9a7'
-
-    // Supports this interface's
-    const ierc165InterfaceId = "0x01ffc9a7";
-    const etknterfaceId = "0x027466bc";
-
-    // Doesn't support this interface's
-    const rmInterfaceId = "0xda40804f";
-    const wrongInterfaceId = "0xffffffff";
-
-    expect(await etk.supportsInterface(wrongInterfaceId)).to.be.false;
-    expect(await etk.supportsInterface(rmInterfaceId)).to.be.false;
-
-    expect(await etk.supportsInterface(etknterfaceId)).to.be.true;
-    expect(await etk.supportsInterface(ierc165InterfaceId)).to.be.true;
+  it("Checks EToken supported interfaces", async () => {
+    const { policyPool, interfaceIds } = await helpers.loadFixture(setupFixtureWithPool);
+    const EToken = await hre.ethers.getContractFactory("EToken");
+    const etk = await EToken.deploy(policyPool.address);
+    expect(await etk.supportsInterface(interfaceIds.IERC165)).to.be.true;
+    expect(await etk.supportsInterface(interfaceIds.IERC20)).to.be.true;
+    expect(await etk.supportsInterface(interfaceIds.IERC20Metadata)).to.be.true;
+    expect(await etk.supportsInterface(interfaceIds.IEToken)).to.be.true;
+    expect(await etk.supportsInterface(interfaceIds.IERC721)).to.be.false;
   });
 
-  it("PremiumsAccount broken if have different interfaceId", async () => {
-    // This is a test to check if the interfaceId is correct
-    // > const InterfaceIdCalculator = await ethers.getContractFactory("InterfaceIdCalculator")
-    // > const iidCalculator = await InterfaceIdCalculator.deploy()
-    // > await iidCalculator.IPremiumsAccount_interfaceId()
-    // '0xb76712ec'
-    // > await iidCalculator.IERC165_interfaceId()
-    // '0x01ffc9a7'
-
-    // Supports this interface's
-    const ierc165InterfaceId = "0x01ffc9a7";
-    const paInterfaceId = "0xb76712ec";
-
-    // Doesn't support this interface's
-    const etknterfaceId = "0x027466bc";
-    const wrongInterfaceId = "0xffffffff";
-
-    expect(await premiumsAccount.supportsInterface(wrongInterfaceId)).to.be.false;
-    expect(await premiumsAccount.supportsInterface(etknterfaceId)).to.be.false;
-
-    expect(await premiumsAccount.supportsInterface(paInterfaceId)).to.be.true;
-    expect(await premiumsAccount.supportsInterface(ierc165InterfaceId)).to.be.true;
+  it("Checks PremiumsAccount supported interfaces", async () => {
+    const { interfaceIds, premiumsAccount } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
+    expect(await premiumsAccount.supportsInterface(interfaceIds.IERC165)).to.be.true;
+    expect(await premiumsAccount.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.true;
+    expect(await premiumsAccount.supportsInterface(interfaceIds.IERC721)).to.be.false;
   });
 
-  it("Pool broken if have different interfaceId", async () => {
-    // This is a test to check if the interfaceId is correct
-    // > const InterfaceIdCalculator = await ethers.getContractFactory("InterfaceIdCalculator")
-    // > const iidCalculator = await InterfaceIdCalculator.deploy()
-    // > await iidCalculator.IPolicyPool_interfaceId()
-    // '0x4b195a48'
-    // > await iidCalculator.IERC165_interfaceId()
-    // '0x01ffc9a7'
-
-    // Supports this interface's
-    const ierc165InterfaceId = "0x01ffc9a7";
-    const poolInterfaceId = "0x4b195a48";
-
-    // Doesn't support this interface's
-    const wrongInterfaceId = "0xffffffff";
-    const rmInterfaceId = "0xda40804f";
-
-    expect(await pool.supportsInterface(wrongInterfaceId)).to.be.false;
-    expect(await pool.supportsInterface(rmInterfaceId)).to.be.false;
-
-    expect(await pool.supportsInterface(poolInterfaceId)).to.be.true;
-    expect(await pool.supportsInterface(ierc165InterfaceId)).to.be.true;
+  it("Checks TrustfulRiskModule supported interfaces", async () => {
+    const { interfaceIds, premiumsAccount, policyPool } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
+    const TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
+    const rm = await TrustfulRiskModule.deploy(policyPool.address, premiumsAccount.address);
+    expect(await rm.supportsInterface(interfaceIds.IERC165)).to.be.true;
+    expect(await rm.supportsInterface(interfaceIds.IRiskModule)).to.be.true;
+    expect(await rm.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.false;
   });
 
-  it("LPWhitelist broken if have different interfaceId", async () => {
-    // This is a test to check if the interfaceId is correct
-    // > const InterfaceIdCalculator = await ethers.getContractFactory("InterfaceIdCalculator")
-    // > const iidCalculator = await InterfaceIdCalculator.deploy()
-    // > await iidCalculator.ILPWhitelist_interfaceId()
-    // '0x6823eaea'
-    // > await iidCalculator.IERC165_interfaceId()
-    // '0x01ffc9a7'
-
-    // Supports this interface's
-    const ierc165InterfaceId = "0x01ffc9a7";
-    const whitelistInterfaceId = "0x6823eaea";
-
-    // Doesn't support this interface's
-    const etknterfaceId = "0x027466bc";
-    const wrongInterfaceId = "0xffffffff";
-
-    expect(await wl.supportsInterface(wrongInterfaceId)).to.be.false;
-    expect(await wl.supportsInterface(etknterfaceId)).to.be.false;
-
-    expect(await wl.supportsInterface(whitelistInterfaceId)).to.be.true;
-    expect(await wl.supportsInterface(ierc165InterfaceId)).to.be.true;
+  it("Checks SignedQuoteRiskModule supported interfaces", async () => {
+    const { interfaceIds, premiumsAccount, policyPool } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
+    const SignedQuoteRiskModule = await hre.ethers.getContractFactory("SignedQuoteRiskModule");
+    const rm = await SignedQuoteRiskModule.deploy(policyPool.address, premiumsAccount.address, false);
+    expect(await rm.supportsInterface(interfaceIds.IERC165)).to.be.true;
+    expect(await rm.supportsInterface(interfaceIds.IRiskModule)).to.be.true;
+    expect(await rm.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.false;
   });
 
-  it("AccessManager broken if have different interfaceId", async () => {
-    // This is a test to check if the interfaceId is correct
-    // > const InterfaceIdCalculator = await ethers.getContractFactory("InterfaceIdCalculator")
-    // > const iidCalculator = await InterfaceIdCalculator.deploy()
-    // > await iidCalculator.IAccessManager_interfaceId()
-    // '0x272b8c47'
-    // > await iidCalculator.IERC165_interfaceId()
-    // '0x01ffc9a7'
-
-    // Supports this interface's
-    const ierc165InterfaceId = "0x01ffc9a7";
-    const amInterfaceId = "0x272b8c47";
-
-    // Doesn't support this interface's
-    const etknterfaceId = "0x027466bc";
-    const wrongInterfaceId = "0xffffffff";
-
-    expect(await accessManager.supportsInterface(wrongInterfaceId)).to.be.false;
-    expect(await accessManager.supportsInterface(etknterfaceId)).to.be.false;
-
-    expect(await accessManager.supportsInterface(amInterfaceId)).to.be.true;
-    expect(await accessManager.supportsInterface(ierc165InterfaceId)).to.be.true;
-  });
-
-  it("AssetManager broken if have different interfaceId", async () => {
-    // This is a test to check if the interfaceId is correct
-    // > const InterfaceIdCalculator = await ethers.getContractFactory("InterfaceIdCalculator")
-    // > const iidCalculator = await InterfaceIdCalculator.deploy()
-    // > await iidCalculator.IAssetManager_interfaceId()
-    // '0x799c2a5c'
-    // > await iidCalculator.IERC165_interfaceId()
-    // '0x01ffc9a7'
-
-    // Supports this interface's
-    const ierc165InterfaceId = "0x01ffc9a7";
-    const assetManagerInterfaceId = "0x799c2a5c";
-
-    // Doesn't support this interface's
-    const etknterfaceId = "0x027466bc";
-    const wrongInterfaceId = "0xffffffff";
-
-    expect(await am.supportsInterface(wrongInterfaceId)).to.be.false;
-    expect(await am.supportsInterface(etknterfaceId)).to.be.false;
-
-    expect(await am.supportsInterface(assetManagerInterfaceId)).to.be.true;
-    expect(await am.supportsInterface(ierc165InterfaceId)).to.be.true;
+  it("Checks LPManualWhitelist supported interfaces", async () => {
+    const { policyPool, interfaceIds } = await helpers.loadFixture(setupFixtureWithPool);
+    const LPManualWhitelist = await hre.ethers.getContractFactory("LPManualWhitelist");
+    const wh = await LPManualWhitelist.deploy(policyPool.address);
+    expect(await wh.supportsInterface(interfaceIds.IERC165)).to.be.true;
+    expect(await wh.supportsInterface(interfaceIds.ILPWhitelist)).to.be.true;
+    expect(await wh.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.false;
   });
 
   it("Broken if ERC4626AssetManager asset have zero address", async () => {
-    const zeroAddress = "0x0000000000000000000000000000000000000000";
-    await expect(assetManager.deploy(zeroAddress, rm.address)).to.be.revertedWith(
+    const ERC4626AssetManager = await hre.ethers.getContractFactory("ERC4626AssetManager");
+    await expect(ERC4626AssetManager.deploy(zeroAddress, rndAddr)).to.be.revertedWith(
       "LiquidityThresholdAssetManager: asset cannot be zero address"
     );
   });
 
-  it("PolicyPoolComponent broken if have different interfaceId", async () => {
-    // This is a test to check if the interfaceId is correct
-    // > const InterfaceIdCalculator = await ethers.getContractFactory("InterfaceIdCalculator")
-    // > const iidCalculator = await InterfaceIdCalculator.deploy()
-    // > await iidCalculator.IPolicyPoolComponent_interfaceId()
-    // '0x4cea22a4'
-    // > await iidCalculator.IERC165_interfaceId()
-    // '0x01ffc9a7'
+  it("Broken if ERC4626AssetManager vault have zero address", async () => {
+    const { currency } = await helpers.loadFixture(setupFixtureWithPool);
+    const ERC4626AssetManager = await hre.ethers.getContractFactory("ERC4626AssetManager");
+    await expect(ERC4626AssetManager.deploy(currency.address, zeroAddress)).to.be.revertedWith(
+      "ERC4626AssetManager: vault cannot be zero address"
+    );
+  });
 
-    // Supports this interface's
-    const ierc165InterfaceId = "0x01ffc9a7";
-    const ppcInterfaceId = "0x4cea22a4";
-
-    // Doesn't support this interface's
-    const etknterfaceId = "0x027466bc";
-    const wrongInterfaceId = "0xffffffff";
-
-    expect(await ppc.supportsInterface(wrongInterfaceId)).to.be.false;
-    expect(await ppc.supportsInterface(etknterfaceId)).to.be.false;
-
-    expect(await ppc.supportsInterface(ppcInterfaceId)).to.be.true;
-    expect(await ppc.supportsInterface(ierc165InterfaceId)).to.be.true;
+  it("Checks ERC4626AssetManager supported interfaces", async () => {
+    const { currency, interfaceIds } = await helpers.loadFixture(setupFixtureWithPool);
+    const ERC4626AssetManager = await hre.ethers.getContractFactory("ERC4626AssetManager");
+    const am = await ERC4626AssetManager.deploy(currency.address, currency.address);
+    expect(await am.supportsInterface(interfaceIds.IERC165)).to.be.true;
+    expect(await am.supportsInterface(interfaceIds.IAssetManager)).to.be.true;
+    expect(await am.supportsInterface(interfaceIds.IERC20)).to.be.false;
   });
 });
