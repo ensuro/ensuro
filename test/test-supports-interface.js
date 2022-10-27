@@ -128,6 +128,15 @@ describe("Supports interface implementation", function () {
     expect(await premiumsAccount.supportsInterface(interfaceIds.IERC721)).to.be.false;
   });
 
+  it("Checks Reserves reject invalid asset manager", async () => {
+    const { premiumsAccount, policyPool } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
+    const TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
+    const rm = await TrustfulRiskModule.deploy(policyPool.address, premiumsAccount.address);
+    await expect(premiumsAccount.setAssetManager(rm.address, true)).to.be.revertedWith(
+      "Reserve: asset manager doesn't implements the required interface"
+    );
+  });
+
   it("Checks TrustfulRiskModule supported interfaces", async () => {
     const { interfaceIds, premiumsAccount, policyPool } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
     const TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");

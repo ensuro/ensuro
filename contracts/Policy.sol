@@ -102,8 +102,8 @@ library Policy {
     return (policy.srCoc * (block.timestamp - policy.start)) / (policy.expiration - policy.start);
   }
 
-  function hash(PolicyData memory policy) internal pure returns (bytes32) {
-    bytes32 retHash = keccak256(abi.encode(policy));
+  function hash(PolicyData memory policy) internal pure returns (bytes32 retHash) {
+    retHash = keccak256(abi.encode(policy));
     require(retHash != bytes32(0), "Policy: hash cannot be 0");
     return retHash;
   }

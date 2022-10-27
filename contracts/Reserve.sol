@@ -127,8 +127,8 @@ abstract contract Reserve is PolicyPoolComponent {
     onlyGlobalOrComponentRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
   {
     require(
-      address(newAM) == address(0) || address(newAM).isContract(),
-      "The assetManager is not a contract!"
+      address(newAM) == address(0) || newAM.supportsInterface(type(IAssetManager).interfaceId),
+      "Reserve: asset manager doesn't implements the required interface"
     );
     address am = address(assetManager());
     IAccessManager.GovernanceActions action = IAccessManager.GovernanceActions.setAssetManager;

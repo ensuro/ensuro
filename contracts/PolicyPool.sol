@@ -216,7 +216,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
 
   // solhint-disable-next-line func-name-mixedcase
   function __PolicyPool_init_unchained(address treasury_) internal onlyInitializing {
-    _treasury = treasury_;
+    _setTreasury(treasury_);
   }
 
   // solhint-disable-next-line no-empty-blocks
@@ -251,6 +251,12 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     return _currency;
   }
 
+  function _setTreasury(address treasury_) internal {
+    require(treasury_ != address(0), "PolicyPool: treasury cannot be the zero address");
+    _treasury = treasury_;
+    emit ComponentChanged(IAccessManager.GovernanceActions.setTreasury, _treasury);
+  }
+
   /**
    * @dev Changes the address of the treasury, the one that receives the protocol fees.
    *
@@ -261,9 +267,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * - Emits {ComponentChanged} with action = setTreasury and the address of the new treasury.
    */
   function setTreasury(address treasury_) external onlyRole(LEVEL1_ROLE) {
-    require(treasury_ != address(0), "PolicyPool: treasury cannot be the zero address");
-    _treasury = treasury_;
-    emit ComponentChanged(IAccessManager.GovernanceActions.setTreasury, _treasury);
+    _setTreasury(treasury_);
   }
 
   /**
