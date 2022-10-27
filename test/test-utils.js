@@ -215,6 +215,8 @@ const getTransactionEvent = function (interface, receipt, eventName) {
 
 exports.getTransactionEvent = getTransactionEvent;
 
+const randomAddress = "0x89cDb70Fee571251a66E34caa1673cE40f7549Dc";
+
 exports.deployPool = async function (hre, options) {
   const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
   const AccessManager = await hre.ethers.getContractFactory("AccessManager");
@@ -229,7 +231,7 @@ exports.deployPool = async function (hre, options) {
     [
       options.nftName === undefined ? "Policy NFT" : "",
       options.nftSymbol === undefined ? "EPOL" : "",
-      options.treasuryAddress || hre.ethers.constants.AddressZero,
+      options.treasuryAddress || randomAddress,
     ],
     {
       constructorArgs: [accessManager.address, options.currency],
