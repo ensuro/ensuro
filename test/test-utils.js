@@ -2,6 +2,8 @@ const { expect } = require("chai");
 const hre = require("hardhat");
 const { BigNumber } = require("ethers");
 const { LogDescription } = require("ethers/lib/utils");
+const { findAll } = require("solidity-ast/utils");
+
 exports.WEEK = 3600 * 24 * 7;
 exports.DAY = 3600 * 24;
 
@@ -404,5 +406,22 @@ function getRole(role) {
 }
 
 exports.getRole = getRole;
+
+async function getStorageLayout(contractSrc, contractName) {
+  const buildInfo = await hre.artifacts.getBuildInfo(`${contractSrc}:${contractName}`);
+  if (buildInfo === undefined) throw new Error(`Contract ${contractSrc}:${contractName} not in artifacts`);
+
+  const solcOutput = buildInfo.output;
+
+  const storageLayouts = {};
+
+  for (const def of findAll("ContractDefinition", solcOutput.sources[contractSrc].ast)) {
+    storageLayouts[def.name] = solcOutput.contracts[contractSrc][def.name].storageLayout;
+  }
+
+  return storageLayouts[contractName];
+}
+
+exports.getStorageLayout = getStorageLayout;
 
 if (process.env.ENABLE_HH_WARNINGS !== "yes") hre.upgrades.silenceWarnings();

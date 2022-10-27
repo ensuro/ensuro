@@ -455,15 +455,20 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     address policyHolder,
     uint96 internalId
   ) external override whenNotPaused returns (uint256) {
+    // Checks
     IRiskModule rm = policy.riskModule;
     require(address(rm) == _msgSender(), "Only the RM can create new policies");
     require(_rmStatus(rm) == ComponentStatus.active, "RM module not found or not active");
-    policy.id = (uint256(uint160(address(rm))) << 96) + internalId;
-    _policies[policy.id] = policy.hash();
     IPremiumsAccount pa = rm.premiumsAccount();
     require(_paStatus(pa) == ComponentStatus.active, "PremiumsAccount not found or not active");
+
+    // Effects
+    policy.id = (uint256(uint160(address(rm))) << 96) + internalId;
+    require(_policies[policy.id] == bytes32(0), "Policy already exists");
+    _policies[policy.id] = policy.hash();
+
+    // Interactions
     pa.policyCreated(policy);
-    _safeMint(policyHolder, policy.id, "");
 
     // Distribute the premium
     _currency.safeTransferFrom(payer, address(pa), policy.purePremium);
@@ -473,6 +478,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     if (policy.partnerCommission > 0 && payer != rm.wallet())
       _currency.safeTransferFrom(payer, rm.wallet(), policy.partnerCommission);
     // TODO: this code does up to 5 ERC20 transfers. How we can avoid this? Delayed transfers?
+    _safeMint(policyHolder, policy.id, "");
 
     emit NewPolicy(rm, policy);
     return policy.id;
@@ -523,6 +529,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     uint256 payout,
     bool expired
   ) internal {
+    // Checks
     _validatePolicy(policy);
     IRiskModule rm = policy.riskModule;
     require(expired || address(rm) == _msgSender(), "Only the RM can resolve policies");
@@ -542,6 +549,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
       compStatus == ComponentStatus.active || compStatus == ComponentStatus.deprecated,
       "PremiumsAccount must be active or deprecated to process resolutions"
     );
+    // Effects
+    delete _policies[policy.id];
+    // Interactions
     if (customerWon) {
       address policyOwner = ownerOf(policy.id);
       pa.policyResolvedWithPayout(policyOwner, policy, payout);
@@ -552,7 +562,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     rm.releaseExposure(policy.payout);
 
     emit PolicyResolved(policy.riskModule, policy.id, payout);
-    delete _policies[policy.id];
     if (payout > 0) {
       _notifyPayout(policy.id, payout);
     } else {
@@ -608,4 +617,11 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   ) internal override whenNotPaused {
     super._beforeTokenTransfer(from, to, tokenId);
   }
+
+  /**
+   * @dev This empty reserved space is put in place to allow future versions to add new
+   * variables without shifting down storage in the inheritance chain.
+   * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
+   */
+  uint256[47] private __gap;
 }

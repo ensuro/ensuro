@@ -8,6 +8,9 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
  * @dev The asset manager is a contract that's plugged and called with `delegatecall` (operates in the context of the
  *      reserve - see {Reserve}). The asset manager contract applies a strategy to invest the reserve funds and
  *      get additional yields.
+ *
+ *      All implementations of this contract should use the Diamond Storage pattern to avoid overwriting the calling contract's state.
+ *      See https://eips.ethereum.org/EIPS/eip-2535#storage
  * @author Ensuro
  */
 interface IAssetManager is IERC165 {

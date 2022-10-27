@@ -351,9 +351,9 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * @param amount The amount to be transferred.
    */
   function receiveGrant(uint256 amount) external {
-    currency().safeTransferFrom(_msgSender(), address(this), amount);
     _storePurePremiumWon(amount);
     emit WonPremiumsInOut(true, amount);
+    currency().safeTransferFrom(_msgSender(), address(this), amount);
   }
 
   /**
@@ -495,4 +495,11 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     _storePurePremiumWon(purePremiumWon);
     _unlockScr(policy);
   }
+
+  /**
+   * @dev This empty reserved space is put in place to allow future versions to add new
+   * variables without shifting down storage in the inheritance chain.
+   * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
+   */
+  uint256[47] private __gap;
 }

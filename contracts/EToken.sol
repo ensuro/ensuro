@@ -257,13 +257,32 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     address recipient,
     uint256 amount
   ) public virtual override returns (bool) {
+    address spender = _msgSender();
+    _spendAllowance(sender, spender, amount);
     _transfer(sender, recipient, amount);
-
-    uint256 currentAllowance = _allowances[sender][_msgSender()];
-    require(currentAllowance >= amount, "EToken: transfer amount exceeds allowance");
-    _approve(sender, _msgSender(), currentAllowance - amount);
-
     return true;
+  }
+
+  /**
+   * @dev Updates `owner` s allowance for `spender` based on spent `amount`.
+   *
+   * Does not update the allowance amount in case of infinite allowance.
+   * Revert if not enough allowance is available.
+   *
+   * Might emit an {Approval} event.
+   */
+  function _spendAllowance(
+    address owner,
+    address spender,
+    uint256 amount
+  ) internal virtual {
+    uint256 currentAllowance = allowance(owner, spender);
+    if (currentAllowance != type(uint256).max) {
+      require(currentAllowance >= amount, "EToken: insufficient allowance");
+      unchecked {
+        _approve(owner, spender, currentAllowance - amount);
+      }
+    }
   }
 
   /**
@@ -279,7 +298,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
    * - `spender` cannot be the zero address.
    */
   function increaseAllowance(address spender, uint256 addedValue) public virtual returns (bool) {
-    _approve(_msgSender(), spender, _allowances[_msgSender()][spender] + addedValue);
+    _approve(_msgSender(), spender, allowance(_msgSender(), spender) + addedValue);
     return true;
   }
 
@@ -724,4 +743,11 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   function whitelist() external view returns (ILPWhitelist) {
     return _params.whitelist;
   }
+
+  /**
+   * @dev This empty reserved space is put in place to allow future versions to add new
+   * variables without shifting down storage in the inheritance chain.
+   * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
+   */
+  uint256[41] private __gap;
 }

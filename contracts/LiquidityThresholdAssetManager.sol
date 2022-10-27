@@ -18,6 +18,8 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
  *      cash at liquidityMiddle.
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
+ *
+ * @notice This contracts uses Diamond Storage and should not define state variables outside of that. See the diamondStorage method for more details.
  */
 abstract contract LiquidityThresholdAssetManager is IAssetManager {
   using SafeCast for uint256;
