@@ -90,7 +90,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     uint256 maxUtilizationRate_,
     uint256 internalLoanInterestRate_
   ) public initializer {
-    __PolicyPoolComponent_init();
+    __Reserve_init();
     __EToken_init_unchained(name_, symbol_, maxUtilizationRate_, internalLoanInterestRate_);
   }
 

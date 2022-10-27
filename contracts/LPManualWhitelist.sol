@@ -34,8 +34,10 @@ contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
     external
     onlyComponentRole(LP_WHITELIST_ROLE)
   {
-    _whitelisted[provider] = whitelisted;
-    emit LPWhitelisted(provider, whitelisted);
+    if (_whitelisted[provider] != whitelisted) {
+      _whitelisted[provider] = whitelisted;
+      emit LPWhitelisted(provider, whitelisted);
+    }
   }
 
   function acceptsDeposit(

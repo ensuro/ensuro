@@ -107,7 +107,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    */
   // solhint-disable-next-line func-name-mixedcase
   function __PremiumsAccount_init() internal onlyInitializing {
-    __PolicyPoolComponent_init();
+    __Reserve_init();
     __PremiumsAccount_init_unchained();
   }
 

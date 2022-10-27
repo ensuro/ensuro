@@ -22,6 +22,12 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   using SafeCast for uint256;
 
   uint256 internal constant SECONDS_IN_YEAR_WAD = 31536000e18; /* 365 * 24 * 3600 * 10e18 */
+  uint16 internal constant HOURS_PER_YEAR = 8760; /* 24 * 365 */
+
+  uint256 internal constant FOUR_DECIMAL_TO_WAD = 1e14;
+  uint16 internal constant PERCENTAGE_FACTOR = 1e4;
+  uint16 internal constant MIN_MOC_VALUE = 5e3;
+  uint16 internal constant MAX_MOC_VALUE = 4e4;
 
   // For parameters that can be changed by the risk module provider
   bytes32 public constant RM_PROVIDER_ROLE = keccak256("RM_PROVIDER_ROLE");
@@ -105,7 +111,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   ) internal onlyInitializing {
     _name = name_;
     _params = PackedParams({
-      moc: 1e4,
+      moc: PERCENTAGE_FACTOR,
       jrCollRatio: 0,
       collRatio: _wadTo4(collRatio_),
       ensuroPpFee: _wadTo4(ensuroPpFee_),
@@ -114,7 +120,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
       srRoc: _wadTo4(srRoc_),
       maxPayoutPerPolicy: _amountToX(2, maxPayoutPerPolicy_),
       exposureLimit: _amountToX(0, exposureLimit_),
-      maxDuration: 24 * 365 // default = 1 year
+      maxDuration: HOURS_PER_YEAR
     });
     _activeExposure = 0;
     _wallet = wallet_;
@@ -123,14 +129,20 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
 
   // runs validation on RiskModule parameters
   function _validateParameters() internal view override {
-    require(_params.jrCollRatio <= 1e4, "Validation: jrCollRatio must be <=1");
-    require(_params.collRatio <= 1e4 && _params.collRatio > 0, "Validation: collRatio must be <=1");
+    require(_params.jrCollRatio <= PERCENTAGE_FACTOR, "Validation: jrCollRatio must be <=1");
+    require(
+      _params.collRatio <= PERCENTAGE_FACTOR && _params.collRatio > 0,
+      "Validation: collRatio must be <=1"
+    );
     require(_params.collRatio >= _params.jrCollRatio, "Validation: collRatio >= jrCollRatio");
-    require(_params.moc <= 4e4 && _params.moc >= 5e3, "Validation: moc must be [0.5, 4]");
-    require(_params.ensuroPpFee <= 1e4, "Validation: ensuroPpFee must be <= 1");
-    require(_params.ensuroCocFee <= 1e4, "Validation: ensuroCocFee must be <= 1");
-    require(_params.srRoc <= 1e4, "Validation: srRoc must be <= 1 (100%)");
-    require(_params.jrRoc <= 1e4, "Validation: jrRoc must be <= 1 (100%)");
+    require(
+      _params.moc <= MAX_MOC_VALUE && _params.moc >= MIN_MOC_VALUE,
+      "Validation: moc must be [0.5, 4]"
+    );
+    require(_params.ensuroPpFee <= PERCENTAGE_FACTOR, "Validation: ensuroPpFee must be <= 1");
+    require(_params.ensuroCocFee <= PERCENTAGE_FACTOR, "Validation: ensuroCocFee must be <= 1");
+    require(_params.srRoc <= PERCENTAGE_FACTOR, "Validation: srRoc must be <= 1 (100%)");
+    require(_params.jrRoc <= PERCENTAGE_FACTOR, "Validation: jrRoc must be <= 1 (100%)");
     // _maxPayoutPerPolicy no limits
     require(
       exposureLimit() >= _activeExposure,
@@ -150,12 +162,12 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   // solhint-disable-next-line func-name-mixedcase
   function _4toWad(uint16 value) internal pure returns (uint256) {
     // 4 decimals to Wad (18 decimals)
-    return uint256(value) * 1e14;
+    return uint256(value) * FOUR_DECIMAL_TO_WAD;
   }
 
   function _wadTo4(uint256 value) internal pure returns (uint16) {
     // Wad to 4 decimals
-    return (value / 1e14).toUint16();
+    return (value / FOUR_DECIMAL_TO_WAD).toUint16();
   }
 
   // solhint-disable-next-line func-name-mixedcase
