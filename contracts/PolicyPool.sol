@@ -407,8 +407,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
 
   function deposit(IEToken eToken, uint256 amount) external override whenNotPaused {
     require(_etkStatus(eToken) == ComponentStatus.active, "eToken is not active");
+    uint256 balanceBefore = _currency.balanceOf(address(eToken));
     _currency.safeTransferFrom(_msgSender(), address(eToken), amount);
-    eToken.deposit(_msgSender(), amount);
+    eToken.deposit(_msgSender(), _currency.balanceOf(address(eToken)) - balanceBefore);
   }
 
   function withdraw(IEToken eToken, uint256 amount)
