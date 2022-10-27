@@ -641,14 +641,14 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
 
   function repayLoan(uint256 amount, address onBehalfOf) external override {
     require(amount > 0, "EToken: amount should be greater than zero.");
-
     // Anyone can call this method, since it has to pay
-    currency().safeTransferFrom(_msgSender(), address(this), amount);
     TimeScaled.ScaledAmount storage loan = _loans[onBehalfOf];
     require(loan.scale != 0, "Not a registered borrower");
     loan.sub(amount, internalLoanInterestRate());
     _discreteChange(int256(amount));
     emit InternalLoanRepaid(onBehalfOf, amount);
+    // Interaction at the end for security reasons
+    currency().safeTransferFrom(_msgSender(), address(this), amount);
   }
 
   function getLoan(address borrower) public view virtual override returns (uint256) {
@@ -664,7 +664,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     external
     onlyGlobalOrComponentRole2(LEVEL2_ROLE, LEVEL3_ROLE)
   {
-    _validateParameters();
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     if (param == Parameter.liquidityRequirement) {
       require(

@@ -21,12 +21,7 @@ contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
-  constructor(IPolicyPool policyPool_) PolicyPoolComponent(policyPool_) {
-    require(
-      address(policyPool_) != address(0),
-      "LPManualWhitelist: policyPool cannot be zero address"
-    );
-  }
+  constructor(IPolicyPool policyPool_) PolicyPoolComponent(policyPool_) {}
 
   /**
    * @dev Initializes the Whitelist contract
