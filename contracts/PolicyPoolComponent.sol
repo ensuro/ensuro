@@ -14,8 +14,8 @@ import {WadRayMath} from "./dependencies/WadRayMath.sol";
  * @dev This is the base class of all the components of the protocol that are linked to the PolicyPool and created
  *      after it.
  *      Holds the reference to _policyPool as immutable, also provides access to common admin roles:
- *      - LEVEL1_ROLE: High impact changes like upgrades or other critical operations
- *      - LEVEL2_ROLE: Mid-impact changes like adding new risk modules or changing some parameters
+ *      - LEVEL1_ROLE: High impact changes like upgrades, adding or removing components or other critical operations
+ *      - LEVEL2_ROLE: Mid-impact changes like changing some parameters
  *      - LEVEL3_ROLE: Low-impact changes like changing some parameters up to given percentage (tweaks)
  *      - GUARDIAN_ROLE: For emergency operations oriented to protect the protocol in case of attacks or hacking.
  *
