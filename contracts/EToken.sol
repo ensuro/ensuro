@@ -91,8 +91,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     uint256 maxUtilizationRate_,
     uint256 internalLoanInterestRate_
   ) public initializer {
-    require(bytes(name_).length > 0, "EToken: name cannot be empty");
-    require(bytes(symbol_).length > 0, "EToken: symbol cannot be empty");
     __PolicyPoolComponent_init();
     __EToken_init_unchained(name_, symbol_, maxUtilizationRate_, internalLoanInterestRate_);
   }
@@ -104,6 +102,8 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     uint256 maxUtilizationRate_,
     uint256 internalLoanInterestRate_
   ) internal onlyInitializing {
+    require(bytes(name_).length > 0, "EToken: name cannot be empty");
+    require(bytes(symbol_).length > 0, "EToken: symbol cannot be empty");
     _name = name_;
     _symbol = symbol_;
     _tsScaled.init();
