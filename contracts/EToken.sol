@@ -32,6 +32,13 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   using SafeERC20 for IERC20Metadata;
   using SafeCast for uint256;
 
+  uint256 internal constant FOUR_DECIMAL_TO_WAD = 1e14;
+  uint16 internal constant HUNDRED_PERCENT = 1e4;
+  uint16 internal constant MAX_UR_MIN = 5e3; // 50% - Minimum value for Max Utilization Rate
+  uint16 internal constant LIQ_REQ_MIN = 8e3; // 80%
+  uint16 internal constant LIQ_REQ_MAX = 13e3; // 130%
+  uint16 internal constant INT_LOAN_IR_MAX = 5e3; // 50% - Maximum value for InternalLoan interest rate
+
   // Attributes taken from ERC20
   mapping(address => uint256) private _balances;
   mapping(address => mapping(address => uint256)) private _allowances;
@@ -91,7 +98,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     uint256 maxUtilizationRate_,
     uint256 internalLoanInterestRate_
   ) public initializer {
-    __PolicyPoolComponent_init();
+    __Reserve_init();
     __EToken_init_unchained(name_, symbol_, maxUtilizationRate_, internalLoanInterestRate_);
   }
 
@@ -114,7 +121,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     }); */
     _params = PackedParams({
       maxUtilizationRate: _wadTo4(maxUtilizationRate_),
-      liquidityRequirement: 1e4,
+      liquidityRequirement: HUNDRED_PERCENT,
       minUtilizationRate: 0,
       internalLoanInterestRate: _wadTo4(internalLoanInterestRate_),
       whitelist: ILPWhitelist(address(0))
@@ -137,16 +144,19 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   // runs validation on EToken parameters
   function _validateParameters() internal view override {
     require(
-      _params.liquidityRequirement >= 8e3 && _params.liquidityRequirement <= 13e3,
+      _params.liquidityRequirement >= LIQ_REQ_MIN && _params.liquidityRequirement <= LIQ_REQ_MAX,
       "Validation: liquidityRequirement must be [0.8, 1.3]"
     );
     require(
-      _params.maxUtilizationRate >= 5e3 && _params.maxUtilizationRate <= 1e4,
+      _params.maxUtilizationRate >= MAX_UR_MIN && _params.maxUtilizationRate <= HUNDRED_PERCENT,
       "Validation: maxUtilizationRate must be [0.5, 1]"
     );
-    require(_params.minUtilizationRate <= 1e4, "Validation: minUtilizationRate must be [0, 1]");
     require(
-      _params.internalLoanInterestRate <= 5e3,
+      _params.minUtilizationRate <= HUNDRED_PERCENT,
+      "Validation: minUtilizationRate must be [0, 1]"
+    );
+    require(
+      _params.internalLoanInterestRate <= INT_LOAN_IR_MAX,
       "Validation: internalLoanInterestRate must be <= 50%"
     );
   }
@@ -498,12 +508,12 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   // solhint-disable-next-line func-name-mixedcase
   function _4toWad(uint16 value) internal pure returns (uint256) {
     // 4 decimals to Wad (18 decimals)
-    return uint256(value) * 1e14;
+    return uint256(value) * FOUR_DECIMAL_TO_WAD;
   }
 
   function _wadTo4(uint256 value) internal pure returns (uint16) {
     // Wad to 4 decimals
-    return (value / 1e14).toUint16();
+    return (value / FOUR_DECIMAL_TO_WAD).toUint16();
   }
 
   function scr() public view virtual override returns (uint256) {

@@ -40,6 +40,14 @@ abstract contract Reserve is PolicyPoolComponent {
   }
 
   /**
+   * @dev Initializes the Reserve (to be called by subclasses)
+   */
+  // solhint-disable-next-line func-name-mixedcase
+  function __Reserve_init() internal onlyInitializing {
+    __PolicyPoolComponent_init();
+  }
+
+  /**
    * @dev Refills the reserve's balance, deinvesting from the asset manager to be able to make a payment
    *
    * @param amount The amount of the payment that needs to be made
