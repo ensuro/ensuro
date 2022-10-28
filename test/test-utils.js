@@ -70,7 +70,7 @@ const createRiskModule = async function (
       rmName || "RiskModule",
       _W(scrPercentage) || _W(1),
       _W(ensuroFee) || _W(0),
-      _W(scrInterestRate) || _W(0.1),
+      _W(scrInterestRate) || _W("0.1"),
       _A(maxScrPerPolicy) || _A(1000),
       _A(scrLimit) || _A(1000000),
       wallet || "0xdD2FD4581271e230360230F9337D5c0430Bf44C0", // Random address
@@ -329,41 +329,48 @@ async function grantComponentRole(hre, accessManager, component, role, user) {
 
 exports.grantComponentRole = grantComponentRole;
 
-exports._E = hre.ethers.utils.parseEther;
+const _E = hre.ethers.utils.parseEther;
+exports._E = _E;
 
 const _BN = hre.ethers.BigNumber.from;
-const WAD = _BN(1e10).mul(_BN(1e8)); // 1e10*1e8=1e18
-const RAY = WAD.mul(_BN(1e9)); // 1e18*1e9=1e27
-
 exports._BN = _BN;
 
-const _W = function (value) {
-  if (value === undefined) return undefined;
-  if (!Number.isInteger(value)) return _BN(Math.round(value * 1e9)).mul(_BN(1e9));
-  return _BN(value).mul(WAD);
-};
+const WAD = _BN(10).pow(18); // 1e18
+exports.WAD = WAD;
 
-exports._W = _W;
+const RAY = _BN(10).pow(27); // 1e27
+exports.RAY = RAY;
 
-const _R = function (value) {
-  if (value === undefined) return undefined;
-  if (!Number.isInteger(value)) return _BN(Math.round(value * 1e9)).mul(WAD);
-  return _BN(value).mul(RAY);
-};
-
-exports._R = _R;
-
-exports.amountFunction = function (decimals) {
-  // Decimals must be at least 6
+/**
+ * Creates a fixed-point conversion function for the desired number of decimals
+ * @param decimals The number of decimals. Must be >= 6.
+ * @returns The amount function created. The function can receive strings (recommended),
+ *          floats/doubles (not recommended) and integers.
+ *
+ *          Floats will be rounded to 6 decimal before scaling.
+ */
+function amountFunction(decimals) {
   return function (value) {
     if (value === undefined) return undefined;
+
     if (typeof value === "string" || value instanceof String) {
-      return _BN(value).mul(_BN(Math.pow(10, decimals)));
-    } else {
+      return hre.ethers.utils.parseUnits(value, decimals);
+    }
+
+    if (!Number.isInteger(value)) {
       return _BN(Math.round(value * 1e6)).mul(_BN(Math.pow(10, decimals - 6)));
     }
+
+    return _BN(value).mul(_BN(10).pow(decimals));
   };
-};
+}
+exports.amountFunction = amountFunction;
+
+const _W = amountFunction(18);
+exports._W = _W;
+
+const _R = amountFunction(27);
+exports._R = _R;
 
 /**
  * Builds the component role identifier
