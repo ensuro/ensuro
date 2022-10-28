@@ -673,7 +673,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     return amountAsked - amount;
   }
 
-  function repayLoan(uint256 amount, address onBehalfOf) external override {
+  function repayLoan(uint256 amount, address onBehalfOf) external override whenNotPaused {
     require(amount > 0, "EToken: amount should be greater than zero.");
     // Anyone can call this method, since it has to pay
     TimeScaled.ScaledAmount storage loan = _loans[onBehalfOf];
