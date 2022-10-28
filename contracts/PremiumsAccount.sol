@@ -35,6 +35,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   using SafeCast for uint256;
 
   bytes32 public constant WITHDRAW_WON_PREMIUMS_ROLE = keccak256("WITHDRAW_WON_PREMIUMS_ROLE");
+  uint256 internal constant FOUR_DECIMAL_TO_WAD = 1e14;
 
   /**
    * @dev The Junior eToken is the first {EToken} to which the PremiumsAccount will go for credit when it runs out of
@@ -227,7 +228,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * @dev Returns the percentage of the active pure premiums that can be used to cover losses of finalized policies.
    */
   function deficitRatio() public view returns (uint256) {
-    return uint256(_params.deficitRatio) * 1e14; // 4 -> 18 decimals
+    return uint256(_params.deficitRatio) * FOUR_DECIMAL_TO_WAD; // 4 -> 18 decimals
   }
 
   /**
@@ -249,9 +250,9 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   {
     require(newRatio <= 1e18, "Validation: deficitRatio must be <= 1");
 
-    uint16 truncatedRatio = (newRatio / 1e14).toUint16();
+    uint16 truncatedRatio = (newRatio / FOUR_DECIMAL_TO_WAD).toUint16();
     require(
-      uint256(truncatedRatio) * 1e14 == newRatio,
+      uint256(truncatedRatio) * FOUR_DECIMAL_TO_WAD == newRatio,
       "Validation: only up to 4 decimals allowed"
     );
 

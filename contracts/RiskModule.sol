@@ -25,9 +25,9 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   uint16 internal constant HOURS_PER_YEAR = 8760; /* 24 * 365 */
 
   uint256 internal constant FOUR_DECIMAL_TO_WAD = 1e14;
-  uint16 internal constant PERCENTAGE_FACTOR = 1e4;
-  uint16 internal constant MIN_MOC_VALUE = 5e3;
-  uint16 internal constant MAX_MOC_VALUE = 4e4;
+  uint16 internal constant HUNDRED_PERCENT = 1e4;
+  uint16 internal constant MIN_MOC = 5e3;
+  uint16 internal constant MAX_MOC = 4e4;
 
   // For parameters that can be changed by the risk module provider
   bytes32 public constant RM_PROVIDER_ROLE = keccak256("RM_PROVIDER_ROLE");
@@ -111,7 +111,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   ) internal onlyInitializing {
     _name = name_;
     _params = PackedParams({
-      moc: PERCENTAGE_FACTOR,
+      moc: HUNDRED_PERCENT,
       jrCollRatio: 0,
       collRatio: _wadTo4(collRatio_),
       ensuroPpFee: _wadTo4(ensuroPpFee_),
@@ -129,20 +129,17 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
 
   // runs validation on RiskModule parameters
   function _validateParameters() internal view override {
-    require(_params.jrCollRatio <= PERCENTAGE_FACTOR, "Validation: jrCollRatio must be <=1");
+    require(_params.jrCollRatio <= HUNDRED_PERCENT, "Validation: jrCollRatio must be <=1");
     require(
-      _params.collRatio <= PERCENTAGE_FACTOR && _params.collRatio > 0,
+      _params.collRatio <= HUNDRED_PERCENT && _params.collRatio > 0,
       "Validation: collRatio must be <=1"
     );
     require(_params.collRatio >= _params.jrCollRatio, "Validation: collRatio >= jrCollRatio");
-    require(
-      _params.moc <= MAX_MOC_VALUE && _params.moc >= MIN_MOC_VALUE,
-      "Validation: moc must be [0.5, 4]"
-    );
-    require(_params.ensuroPpFee <= PERCENTAGE_FACTOR, "Validation: ensuroPpFee must be <= 1");
-    require(_params.ensuroCocFee <= PERCENTAGE_FACTOR, "Validation: ensuroCocFee must be <= 1");
-    require(_params.srRoc <= PERCENTAGE_FACTOR, "Validation: srRoc must be <= 1 (100%)");
-    require(_params.jrRoc <= PERCENTAGE_FACTOR, "Validation: jrRoc must be <= 1 (100%)");
+    require(_params.moc <= MAX_MOC && _params.moc >= MIN_MOC, "Validation: moc must be [0.5, 4]");
+    require(_params.ensuroPpFee <= HUNDRED_PERCENT, "Validation: ensuroPpFee must be <= 1");
+    require(_params.ensuroCocFee <= HUNDRED_PERCENT, "Validation: ensuroCocFee must be <= 1");
+    require(_params.srRoc <= HUNDRED_PERCENT, "Validation: srRoc must be <= 1 (100%)");
+    require(_params.jrRoc <= HUNDRED_PERCENT, "Validation: jrRoc must be <= 1 (100%)");
     // _maxPayoutPerPolicy no limits
     require(
       exposureLimit() >= _activeExposure,

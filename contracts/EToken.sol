@@ -31,6 +31,8 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   using SafeERC20 for IERC20Metadata;
   using SafeCast for uint256;
 
+  uint256 internal constant FOUR_DECIMAL_TO_WAD = 1e14;
+
   // Attributes taken from ERC20
   mapping(address => uint256) private _balances;
   mapping(address => mapping(address => uint256)) private _allowances;
@@ -483,12 +485,12 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   // solhint-disable-next-line func-name-mixedcase
   function _4toWad(uint16 value) internal pure returns (uint256) {
     // 4 decimals to Wad (18 decimals)
-    return uint256(value) * 1e14;
+    return uint256(value) * FOUR_DECIMAL_TO_WAD;
   }
 
   function _wadTo4(uint256 value) internal pure returns (uint16) {
     // Wad to 4 decimals
-    return (value / 1e14).toUint16();
+    return (value / FOUR_DECIMAL_TO_WAD).toUint16();
   }
 
   function scr() public view virtual override returns (uint256) {
