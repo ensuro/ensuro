@@ -121,6 +121,13 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     _validateParameters();
   }
 
+  /**
+   * @dev See {IERC165-supportsInterface}.
+   */
+  function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+    return super.supportsInterface(interfaceId) || interfaceId == type(IRiskModule).interfaceId;
+  }
+
   // runs validation on RiskModule parameters
   function _validateParameters() internal view override {
     require(_params.jrCollRatio <= 1e4, "Validation: jrCollRatio must be <=1");
@@ -262,6 +269,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   }
 
   function setWallet(address wallet_) external onlyComponentRole(RM_PROVIDER_ROLE) {
+    require(wallet_ != address(0), "RiskModule: wallet cannot be the zero address");
     _wallet = wallet_;
     _parameterChanged(IAccessManager.GovernanceActions.setWallet, uint256(uint160(wallet_)), false);
   }
@@ -358,4 +366,11 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   function premiumsAccount() external view override returns (IPremiumsAccount) {
     return _premiumsAccount;
   }
+
+  /**
+   * @dev This empty reserved space is put in place to allow future versions to add new
+   * variables without shifting down storage in the inheritance chain.
+   * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
+   */
+  uint256[46] private __gap;
 }

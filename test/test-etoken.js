@@ -60,6 +60,13 @@ describe("Etoken", () => {
     expect(await etk.whitelist()).to.equal(hre.ethers.constants.AddressZero);
   });
 
+  it("Can't create etoken without name or symbol", async () => {
+    const { pool } = await helpers.loadFixture(etokenFixture);
+
+    let etk = await expect(addEToken(pool, { etkName: "" })).to.be.revertedWith("EToken: name cannot be empty");
+    etk = await expect(addEToken(pool, { etkSymbol: "" })).to.be.revertedWith("EToken: symbol cannot be empty");
+  });
+
   async function etokenFixture() {
     const currency = await initCurrency(
       { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(10000) },

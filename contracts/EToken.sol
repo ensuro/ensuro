@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.16;
 
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
@@ -101,6 +102,8 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     uint256 maxUtilizationRate_,
     uint256 internalLoanInterestRate_
   ) internal onlyInitializing {
+    require(bytes(name_).length > 0, "EToken: name cannot be empty");
+    require(bytes(symbol_).length > 0, "EToken: symbol cannot be empty");
     _name = name_;
     _symbol = symbol_;
     _tsScaled.init();
@@ -118,6 +121,17 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     });
 
     _validateParameters();
+  }
+
+  /**
+   * @dev See {IERC165-supportsInterface}.
+   */
+  function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+    return
+      super.supportsInterface(interfaceId) ||
+      interfaceId == type(IERC20).interfaceId ||
+      interfaceId == type(IERC20Metadata).interfaceId ||
+      interfaceId == type(IEToken).interfaceId;
   }
 
   // runs validation on EToken parameters
@@ -358,6 +372,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
    */
   function _mint(address account, uint256 amount) internal virtual {
     require(account != address(0), "EToken: mint to the zero address");
+    require(amount > 0, "EToken: amount to mint should be greater than zero");
 
     _beforeTokenTransfer(address(0), account, amount);
     uint256 scaledAmount = _tsScaled.add(amount, tokenInterestRate());
@@ -614,6 +629,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   }
 
   function addBorrower(address borrower) external override onlyPolicyPool {
+    require(borrower != address(0), "EToken: Borrower cannot be the zero address");
     TimeScaled.ScaledAmount storage loan = _loans[borrower];
     if (loan.scale == 0) {
       loan.init();
@@ -622,6 +638,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   }
 
   function removeBorrower(address borrower) external override onlyPolicyPool {
+    require(borrower != address(0), "EToken: Borrower cannot be the zero address");
     uint256 defaultedDebt = getLoan(borrower);
     delete _loans[borrower];
     emit InternalBorrowerRemoved(borrower, defaultedDebt);
@@ -647,12 +664,14 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   }
 
   function repayLoan(uint256 amount, address onBehalfOf) external override {
+    require(amount > 0, "EToken: amount should be greater than zero.");
     // Anyone can call this method, since it has to pay
     TimeScaled.ScaledAmount storage loan = _loans[onBehalfOf];
     require(loan.scale != 0, "Not a registered borrower");
     loan.sub(amount, internalLoanInterestRate());
     _discreteChange(int256(amount));
     emit InternalLoanRepaid(onBehalfOf, amount);
+    // Interaction at the end for security reasons
     currency().safeTransferFrom(_msgSender(), address(this), amount);
   }
 
@@ -724,4 +743,11 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   function whitelist() external view returns (ILPWhitelist) {
     return _params.whitelist;
   }
+
+  /**
+   * @dev This empty reserved space is put in place to allow future versions to add new
+   * variables without shifting down storage in the inheritance chain.
+   * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
+   */
+  uint256[41] private __gap;
 }

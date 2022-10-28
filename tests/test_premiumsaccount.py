@@ -123,6 +123,9 @@ def test_withdraw_won_premiums(tenv):
     treasury = "ENS"
     tenv.pool_access.grant_component_role(pa, "WITHDRAW_WON_PREMIUMS_ROLE", tenv.currency.owner)
 
+    with pytest.raises(RevertError, match="PremiumsAccount: destination cannot be the zero address"):
+        pa.withdraw_won_premiums(_W(100), None)
+
     with pytest.raises(RevertError, match="No premiums to withdraw"):
         pa.withdraw_won_premiums(_W(100), treasury)
 

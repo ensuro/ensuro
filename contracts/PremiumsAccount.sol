@@ -129,6 +129,14 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     _validateParameters();
   }
 
+  /**
+   * @dev See {IERC165-supportsInterface}.
+   */
+  function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+    return
+      super.supportsInterface(interfaceId) || interfaceId == type(IPremiumsAccount).interfaceId;
+  }
+
   function assetManager() public view override returns (IAssetManager) {
     return _params.assetManager;
   }
@@ -284,6 +292,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     address receiver,
     bool jrEtk
   ) internal {
+    require(receiver != address(0), "PremiumsAccount: receiver cannot be the zero address");
     uint256 left;
     if (jrEtk) {
       // Consume Junior Pool until exhausted
@@ -370,6 +379,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     onlyGlobalOrComponentRole(WITHDRAW_WON_PREMIUMS_ROLE)
     returns (uint256)
   {
+    require(destination != address(0), "PremiumsAccount: destination cannot be the zero address");
     if (_surplus <= 0) {
       amount = 0;
     } else {
@@ -485,4 +495,11 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     _storePurePremiumWon(purePremiumWon);
     _unlockScr(policy);
   }
+
+  /**
+   * @dev This empty reserved space is put in place to allow future versions to add new
+   * variables without shifting down storage in the inheritance chain.
+   * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
+   */
+  uint256[47] private __gap;
 }

@@ -8,19 +8,26 @@ resetAddresses
 
 startHHNode
 
-npx hardhat --network $NETWORK deploy $VERIFY
+ENSURO_TREASURY=0xFDa400f51aD6490542Bc6336Ea14b2D8bf7b0c34
+
+npx hardhat --network $NETWORK deploy $VERIFY \
+    --treasury-address $ENSURO_TREASURY || die "Error deploying pool"
 
 POOL=`readAddress POOL`
-dieOnError "Error reading PolicyPool address"
+ACCESSMANAGER=`readAddress ACCESSMANAGER`
+echo "PolicyPool = $POOL / AccessManager = $ACCESSMANAGER"
 
-echo "PolicyPool = $POOL"
+for ROLE in LEVEL1 LEVEL2 LEVEL3; do
+  npx hardhat --network $NETWORK ens:grantRole --contract-address $ACCESSMANAGER \
+      --role ${ROLE}_ROLE || die "Error granting ${ROLE}_ROLE"
+done
 
 npx hardhat --network $NETWORK deploy:eToken  \
-    --etk-name "Junior ETK" --save-addr JRETK \
+    --etk-name "Junior ETK" --etk-symbol "eUSDJr" --save-addr JRETK \
     --pool-address $POOL $VERIFY || die "Error deploying eToken"
 
 npx hardhat --network $NETWORK deploy:eToken  \
-    --etk-name "Senior ETK" --save-addr SRETK \
+    --etk-name "Senior ETK" --etk-symbol "eUSDSr" --save-addr SRETK \
     --pool-address $POOL $VERIFY || die "Error deploying eToken"
 
 JRETK=`readAddress JRETK`
