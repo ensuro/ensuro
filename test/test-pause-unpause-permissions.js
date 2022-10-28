@@ -194,6 +194,7 @@ describe("Test pause, unpause and upgrade contracts", function () {
     await expect(pool.connect(lp).deposit(etk.address, _A(500))).to.be.revertedWith("Pausable: paused");
     await expect(pool.connect(lp).withdraw(etk.address, _A(500))).to.be.revertedWith("Pausable: paused");
     await expect(etk.connect(lp).transfer(cust.address, _A(500))).to.be.revertedWith("Pausable: paused");
+    await expect(etk.connect(lp).repayLoan(_A(100), cust.address)).to.be.revertedWith("Pausable: paused");
 
     // UnPause EToken
     await etk.unpause();
@@ -334,5 +335,39 @@ describe("Test pause, unpause and upgrade contracts", function () {
     await premiumsAccount.unpause();
     // Can resolve Policy
     await expect(rm.connect(cust).resolvePolicy(policy, _A(10))).not.to.be.reverted;
+  });
+
+  it("Pause and Unpause EToken trying to create and expire policies", async function () {
+    const start = await blockchainNow(owner);
+    await currency.connect(cust).approve(pool.address, _A(1));
+
+    // Pause EToken
+    await etk.connect(guardian).pause();
+    expect(await etk.paused()).to.be.equal(true);
+
+    // Can't create policy because EToken is paused and can't call lockScr
+    // Can call lockScr only whenNotPaused
+    await expect(
+      rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust.address, 1)
+    ).to.be.revertedWith("Pausable: paused");
+
+    // UnPause EToken
+    await etk.unpause();
+    expect(await etk.paused()).to.be.equal(false);
+
+    const newPolicyEvt = await makePolicy(pool, rm, cust, _A(36), _A(1), _W(1 / 37), start + 3600, 1);
+    const policy = newPolicyEvt.args.policy;
+
+    // Pause EToken again
+    await etk.connect(guardian).pause();
+
+    // Can't expire Policy because EToken is paused and can't call unlockScr
+    // Can call unlockScr only whenNotPaused
+    await helpers.time.increaseTo(policy.expiration + 500);
+    await expect(pool.expirePolicy(policy)).to.be.revertedWith("Pausable: paused");
+    // UnPause EToken
+    await etk.unpause();
+    // Can expire Policy
+    await expect(pool.expirePolicy(policy)).not.to.be.reverted;
   });
 });

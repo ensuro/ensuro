@@ -573,7 +573,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     uint256 scrAmount,
     uint256 policyInterestRate,
     int256 adjustment
-  ) external override onlyBorrower {
+  ) external override onlyBorrower whenNotPaused {
     require(scrAmount <= uint256(_scr.scr), "Current SCR less than the amount you want to unlock");
     _tsScaled.updateScale(tokenInterestRate());
 
