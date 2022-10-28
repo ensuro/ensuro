@@ -36,6 +36,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
 
   bytes32 public constant WITHDRAW_WON_PREMIUMS_ROLE = keccak256("WITHDRAW_WON_PREMIUMS_ROLE");
   uint256 internal constant FOUR_DECIMAL_TO_WAD = 1e14;
+  uint16 internal constant HUNDRED_PERCENT = 1e4;
 
   /**
    * @dev The Junior eToken is the first {EToken} to which the PremiumsAccount will go for credit when it runs out of
@@ -126,7 +127,10 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     if (address(_seniorEtk) != address(0))
       currency().approve(address(_seniorEtk), type(uint256).max);
 
-    _params = PackedParams({deficitRatio: 1e4, assetManager: IAssetManager(address(0))});
+    _params = PackedParams({
+      deficitRatio: HUNDRED_PERCENT,
+      assetManager: IAssetManager(address(0))
+    });
     _validateParameters();
   }
 
@@ -159,7 +163,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
 
   function _validateParameters() internal view override {
     require(
-      _params.deficitRatio <= 1e4 && _params.deficitRatio >= 0,
+      _params.deficitRatio <= HUNDRED_PERCENT && _params.deficitRatio >= 0,
       "Validation: deficitRatio must be <= 1"
     );
   }
