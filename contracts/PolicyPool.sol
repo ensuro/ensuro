@@ -166,7 +166,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   /**
-   * @dev Modifier that checks the caller has any of the given rolea
+   * @dev Modifier that checks the caller has any of the given roles
    */
   modifier onlyRole2(bytes32 role1, bytes32 role2) {
     _access.checkRole2(role1, role2, _msgSender());

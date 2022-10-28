@@ -9,6 +9,16 @@ import {IAccessManager} from "./interfaces/IAccessManager.sol";
 /**
  * @title AccessManager - Protocol access roles
  * @dev Contract that holds the access roles for PolicyPool and other components of the protocol.
+ *
+ * [CAUTION]
+ * ====
+ * Avoid leaving a this contract without DEFAULT_ADMIN_ROLE.
+ *
+ * This contract includes the methods `revokeRole()` and `renounceRole()` that allow to revoke or renounce to
+ * specific roles. Even when there are valid reasons to leave these methods (for example revoking the initial
+ * DEFAULT_ADMIN_ROLE of the deployer account to leave just the governance account), it's good to mention these
+ * methods have to be used with care, avoiding leaving the contract without any default admin.
+ *
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */

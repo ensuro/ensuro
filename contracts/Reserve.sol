@@ -70,7 +70,7 @@ abstract contract Reserve is PolicyPoolComponent {
 
   /**
    * @dev Internal function that transfers money to a destination. It might need to call `_refillWallet` to deinvest
-   * some money to have enought liquidity for the payment.
+   * some money to have enough liquidity for the payment.
    *
    * @param destination The destination of the transfer.
    * @param amount The amount to be transferred.

@@ -555,7 +555,7 @@ class EToken(ReserveMixin, ERC20Token):
         self._update_current_scale()
         require(
             scr_amount <= self.funds_available_to_lock,
-            "Not enought funds available to cover the SCR " + self.symbol,
+            "Not enough funds available to cover the SCR " + self.symbol,
         )
 
         if self.scr == 0:
@@ -923,7 +923,7 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
             return pure_premium_won
         repay_amount = min(borrowed_from_etk, pure_premium_won)
 
-        # If not enought liquidity, it deinvests from the asset manager
+        # If not enough liquidity, it deinvests from the asset manager
         if self.currency.balance_of(self) < repay_amount:
             self.asset_manager.refill_wallet(repay_amount)
 

@@ -137,7 +137,7 @@ interface IPolicyPool {
    *
    * @param eToken The address of the eToken from where the user wants to withdraw liquidity
    * @param amount The amount to withdraw. If equal to type(uint256).max, means full withdrawal.
-   *               If the balance is not enought or can't be withdrawn (locked as SCR), it withdraws
+   *               If the balance is not enough or can't be withdrawn (locked as SCR), it withdraws
    *               as much as it can, but doesn't fails.
    * @return Returns the actual amount withdrawn.
    */

@@ -62,8 +62,8 @@ interface IAssetManager is IERC165 {
   function recordEarnings() external returns (int256);
 
   /**
-   * @dev Refills the reserve balance with enought money to do a payment. Called from the reserve when a payment needs
-   * to be made and there's no enought liquid balance (`currency().balanceOf(reserve) < paymentAmount`)
+   * @dev Refills the reserve balance with enough money to do a payment. Called from the reserve when a payment needs
+   * to be made and there's no enough liquid balance (`currency().balanceOf(reserve) < paymentAmount`)
    *
    * Events:
    * - Emits {MoneyDeinvested} with the amount transferred to the liquid balance.
