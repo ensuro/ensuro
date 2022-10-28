@@ -106,7 +106,13 @@ describe("Test Initialize contracts", function () {
       constructorArgs: [pool.address],
     });
 
-    const zeroAddress = "0x0000000000000000000000000000000000000000";
+    await expect(wl.initialize()).to.be.revertedWith("contract is already initialized");
+  });
+
+  it("Can't initialize Whitelist with zero address", async () => {
+    const Whitelist = await hre.ethers.getContractFactory("LPManualWhitelist");
+
+    const zeroAddress = hre.ethers.constants.AddressZero;
     // Can't create LPManualWhitelist with zeroAddress
     await expect(
       hre.upgrades.deployProxy(Whitelist, [], {
@@ -115,7 +121,23 @@ describe("Test Initialize contracts", function () {
         constructorArgs: [zeroAddress],
       })
     ).to.be.revertedWith("PolicyPoolComponent: policyPool cannot be zero address");
+  });
 
-    await expect(wl.initialize()).to.be.revertedWith("contract is already initialized");
+  it("Broken if ERC4626AssetManager asset have zero address", async () => {
+    const zeroAddress = hre.ethers.constants.AddressZero;
+    const rndAddr = "0xd758af6bfc2f0908d7c5f89942be52c36a6b3cab";
+    const ERC4626AssetManager = await hre.ethers.getContractFactory("ERC4626AssetManager");
+    await expect(ERC4626AssetManager.deploy(zeroAddress, rndAddr)).to.be.revertedWith(
+      "LiquidityThresholdAssetManager: asset cannot be zero address"
+    );
+  });
+
+  it("Broken if ERC4626AssetManager vault have zero address", async () => {
+    const zeroAddress = hre.ethers.constants.AddressZero;
+    const { currency } = await helpers.loadFixture(protocolFixture);
+    const ERC4626AssetManager = await hre.ethers.getContractFactory("ERC4626AssetManager");
+    await expect(ERC4626AssetManager.deploy(currency.address, zeroAddress)).to.be.revertedWith(
+      "ERC4626AssetManager: vault cannot be zero address"
+    );
   });
 });

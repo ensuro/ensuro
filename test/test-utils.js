@@ -229,8 +229,8 @@ exports.deployPool = async function (hre, options) {
   const policyPool = await hre.upgrades.deployProxy(
     PolicyPool,
     [
-      options.nftName === undefined ? "Policy NFT" : "",
-      options.nftSymbol === undefined ? "EPOL" : "",
+      options.nftName === undefined ? "Policy NFT" : options.nftName,
+      options.nftSymbol === undefined ? "EPOL" : options.nftSymbol,
       options.treasuryAddress || randomAddress,
     ],
     {
