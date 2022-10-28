@@ -201,6 +201,9 @@ def test_etoken_erc20(tenv):
     with pytest.raises(RevertError):
         etk.approve("LP1", None, expected_balance // _W(2))
 
+    with pytest.raises(RevertError):
+        etk.approve(None, "SPEND", expected_balance // _W(2))
+
     etk.approve("LP1", "SPEND", expected_balance // _W(2))
     etk.increase_allowance("LP1", "SPEND", _W(50))
     with pytest.raises(RevertError):
