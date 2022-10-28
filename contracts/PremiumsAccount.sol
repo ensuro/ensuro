@@ -113,20 +113,11 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     __PremiumsAccount_init_unchained();
   }
 
-  /**
-   * @dev In the initialization, besides settings the parameters, we approve the spending of funds by the eTokens
-   * so we don't need to do it on every repayment operation
-   */
   // solhint-disable-next-line func-name-mixedcase
   function __PremiumsAccount_init_unchained() internal onlyInitializing {
     /*
     _activePurePremiums = 0;
     */
-    if (address(_juniorEtk) != address(0))
-      currency().approve(address(_juniorEtk), type(uint256).max);
-    if (address(_seniorEtk) != address(0))
-      currency().approve(address(_seniorEtk), type(uint256).max);
-
     _params = PackedParams({
       deficitRatio: HUNDRED_PERCENT,
       assetManager: IAssetManager(address(0))
@@ -471,6 +462,12 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     // If not enough liquidity, it deinvests from the asset manager
     if (currency().balanceOf(address(this)) < repayAmount) {
       _refillWallet(repayAmount);
+    }
+    // Checks the allowance before repayment
+    if (currency().allowance(address(this), address(etk)) < repayAmount) {
+      // If I have to approve, I approve for all the pending debt (not just repayAmount), this way I avoid some
+      // future approvals.
+      currency().approve(address(etk), borrowedFromEtk);
     }
     etk.repayLoan(repayAmount, address(this));
     return purePremiumWon - repayAmount;
