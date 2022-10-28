@@ -20,6 +20,7 @@ contract ERC4626AssetManager is LiquidityThresholdAssetManager {
   IERC4626 internal immutable _vault;
 
   constructor(IERC20Metadata asset_, IERC4626 vault_) LiquidityThresholdAssetManager(asset_) {
+    require(address(vault_) != address(0), "ERC4626AssetManager: vault cannot be zero address");
     _vault = vault_;
   }
 

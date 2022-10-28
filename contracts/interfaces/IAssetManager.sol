@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
+
 /**
  * @title IAssetManager - Interface of the asset management strategy that's plugged into the reserves
  * @dev The asset manager is a contract that's plugged and called with `delegatecall` (operates in the context of the
@@ -11,7 +13,7 @@ pragma solidity ^0.8.0;
  *      See https://eips.ethereum.org/EIPS/eip-2535#storage
  * @author Ensuro
  */
-interface IAssetManager {
+interface IAssetManager is IERC165 {
   /**
    * @dev Event emitted when funds are removed from Reserve liquidity and invested in the investment strategy,
    * @param amount The amount invested

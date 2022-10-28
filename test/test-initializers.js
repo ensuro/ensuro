@@ -105,7 +105,6 @@ describe("Test Initialize contracts", function () {
       unsafeAllow: ["delegatecall"],
       constructorArgs: [pool.address],
     });
-
     await expect(wl.initialize()).to.be.revertedWith("contract is already initialized");
   });
 });

@@ -43,6 +43,13 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
   // solhint-disable-next-line no-empty-blocks
   function _authorizeUpgrade(address) internal override onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {}
 
+  /**
+   * @dev See {IERC165-supportsInterface}.
+   */
+  function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+    return super.supportsInterface(interfaceId) || interfaceId == type(IAccessManager).interfaceId;
+  }
+
   function getComponentRole(address component, bytes32 role)
     public
     pure

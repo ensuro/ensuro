@@ -182,6 +182,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    */
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(IAccessManager access_, IERC20Metadata currency_) {
+    require(address(access_) != address(0), "PolicyPool: access cannot be zero address");
+    require(address(currency_) != address(0), "PolicyPool: currency cannot be zero address");
     _disableInitializers();
     _access = access_;
     _currency = currency_;
@@ -199,15 +201,24 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     string memory symbol_,
     address treasury_
   ) public initializer {
+    require(bytes(name_).length > 0, "PolicyPool: name cannot be empty");
+    require(bytes(symbol_).length > 0, "PolicyPool: symbol cannot be empty");
     __UUPSUpgradeable_init();
     __ERC721_init(name_, symbol_);
     __Pausable_init();
     __PolicyPool_init_unchained(treasury_);
   }
 
+  /**
+   * @dev See {IERC165-supportsInterface}.
+   */
+  function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+    return super.supportsInterface(interfaceId) || interfaceId == type(IPolicyPool).interfaceId;
+  }
+
   // solhint-disable-next-line func-name-mixedcase
   function __PolicyPool_init_unchained(address treasury_) internal onlyInitializing {
-    _treasury = treasury_;
+    _setTreasury(treasury_);
   }
 
   // solhint-disable-next-line no-empty-blocks
@@ -242,6 +253,12 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     return _currency;
   }
 
+  function _setTreasury(address treasury_) internal {
+    require(treasury_ != address(0), "PolicyPool: treasury cannot be the zero address");
+    _treasury = treasury_;
+    emit ComponentChanged(IAccessManager.GovernanceActions.setTreasury, _treasury);
+  }
+
   /**
    * @dev Changes the address of the treasury, the one that receives the protocol fees.
    *
@@ -252,8 +269,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * - Emits {ComponentChanged} with action = setTreasury and the address of the new treasury.
    */
   function setTreasury(address treasury_) external onlyRole(LEVEL1_ROLE) {
-    _treasury = treasury_;
-    emit ComponentChanged(IAccessManager.GovernanceActions.setTreasury, _treasury);
+    _setTreasury(treasury_);
   }
 
   /**
@@ -285,6 +301,15 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     Component storage comp = _components[component];
     require(comp.status == ComponentStatus.inactive, "Component already in the pool");
     require(component.policyPool() == this, "Component not linked to this pool");
+
+    require(
+      (kind == ComponentKind.eToken && component.supportsInterface(type(IEToken).interfaceId)) ||
+        (kind == ComponentKind.premiumsAccount &&
+          component.supportsInterface(type(IPremiumsAccount).interfaceId)) ||
+        (kind == ComponentKind.riskModule &&
+          component.supportsInterface(type(IRiskModule).interfaceId)),
+      "PolicyPool: Not the right kind"
+    );
 
     comp.status = ComponentStatus.active;
     comp.kind = kind;

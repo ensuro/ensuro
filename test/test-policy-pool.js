@@ -10,6 +10,8 @@ const {
   getTransactionEvent,
   accessControlMessage,
   grantRole,
+  createEToken,
+  createRiskModule,
 } = require("./test-utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
@@ -43,6 +45,13 @@ describe("PolicyPool contract", function () {
 
     // User with LEVEL1_ROLE passes
     await grantRole(hre, accessManager, "LEVEL1_ROLE", backend.address);
+
+    // Cant set treasury to 0x0
+    const zeroAddress = "0x0000000000000000000000000000000000000000";
+    await expect(pool.connect(backend).setTreasury(zeroAddress)).to.be.revertedWith(
+      "PolicyPool: treasury cannot be the zero address"
+    );
+
     await expect(pool.connect(backend).setTreasury(newTreasury)).to.emit(pool, "ComponentChanged");
 
     expect(await pool.treasury()).to.equal(newTreasury);
@@ -73,6 +82,27 @@ describe("PolicyPool contract", function () {
     const premiumsAccount = await deployPremiumsAccount(hre, pool, {}, true);
 
     await expect(pool.addComponent(premiumsAccount.address, 3)).to.be.revertedWith("Component already in the pool");
+  });
+
+  it("Does not allow adding different kind of component", async () => {
+    const { pool } = await helpers.loadFixture(deployPoolFixture);
+
+    const etk = await createEToken(pool, {});
+    const premiumsAccount = await deployPremiumsAccount(hre, pool, { jrEtkAddr: etk.address }, false);
+    const RiskModule = await hre.ethers.getContractFactory("RiskModuleMock");
+    const rm = await createRiskModule(pool, premiumsAccount, RiskModule, {});
+
+    // EToken
+    await expect(pool.addComponent(etk.address, 3)).to.be.revertedWith("PolicyPool: Not the right kind");
+    await expect(pool.addComponent(etk.address, 1)).not.to.be.reverted;
+
+    // RiskModule
+    await expect(pool.addComponent(rm.address, 3)).to.be.revertedWith("PolicyPool: Not the right kind");
+    await expect(pool.addComponent(rm.address, 2)).not.to.be.reverted;
+
+    // Premiums account
+    await expect(pool.addComponent(premiumsAccount.address, 2)).to.be.revertedWith("PolicyPool: Not the right kind");
+    await expect(pool.addComponent(premiumsAccount.address, 3)).not.to.be.reverted;
   });
 
   it("Does not allow adding a component that belongs to a different pool", async () => {
@@ -254,5 +284,31 @@ describe("PolicyPool contract", function () {
     await expect(rm.connect(backend).resolvePolicy(policy, policy.payout + _A(10))).to.be.revertedWith(
       "payout > policy.payout"
     );
+  });
+
+  it("Initialize PolicyPool without name and symbol fails", async () => {
+    const currency = await initCurrency(
+      { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(10000) },
+      [lp, cust, backend],
+      [_A(5000), _A(500), _A(1000)]
+    );
+
+    await expect(
+      deployPool(hre, {
+        nftName: "",
+        currency: currency.address,
+        grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
+        treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
+      })
+    ).to.be.revertedWith("PolicyPool: name cannot be empty");
+
+    await expect(
+      deployPool(hre, {
+        nftSymbol: "",
+        currency: currency.address,
+        grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
+        treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
+      })
+    ).to.be.revertedWith("PolicyPool: symbol cannot be empty");
   });
 });
