@@ -78,7 +78,7 @@ describe("Supports interface implementation", function () {
 
   async function setupFixtureWithPool() {
     const ret = await setupFixture();
-    const policyPool = await deployPool(hre, { currency: ret.currency.address });
+    const policyPool = await deployPool(hre, { currency: ret.currency.address, access: ret.access.address });
     return {
       policyPool,
       ...ret,
@@ -162,21 +162,6 @@ describe("Supports interface implementation", function () {
     expect(await wh.supportsInterface(interfaceIds.IERC165)).to.be.true;
     expect(await wh.supportsInterface(interfaceIds.ILPWhitelist)).to.be.true;
     expect(await wh.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.false;
-  });
-
-  it("Broken if ERC4626AssetManager asset have zero address", async () => {
-    const ERC4626AssetManager = await hre.ethers.getContractFactory("ERC4626AssetManager");
-    await expect(ERC4626AssetManager.deploy(zeroAddress, rndAddr)).to.be.revertedWith(
-      "LiquidityThresholdAssetManager: asset cannot be zero address"
-    );
-  });
-
-  it("Broken if ERC4626AssetManager vault have zero address", async () => {
-    const { currency } = await helpers.loadFixture(setupFixtureWithPool);
-    const ERC4626AssetManager = await hre.ethers.getContractFactory("ERC4626AssetManager");
-    await expect(ERC4626AssetManager.deploy(currency.address, zeroAddress)).to.be.revertedWith(
-      "ERC4626AssetManager: vault cannot be zero address"
-    );
   });
 
   it("Checks ERC4626AssetManager supported interfaces", async () => {

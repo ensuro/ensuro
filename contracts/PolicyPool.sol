@@ -182,6 +182,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    */
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(IAccessManager access_, IERC20Metadata currency_) {
+    require(address(access_) != address(0), "PolicyPool: access cannot be zero address");
+    require(address(currency_) != address(0), "PolicyPool: currency cannot be zero address");
     _disableInitializers();
     _access = access_;
     _currency = currency_;

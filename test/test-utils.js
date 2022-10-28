@@ -217,20 +217,39 @@ exports.getTransactionEvent = getTransactionEvent;
 
 const randomAddress = "0x89cDb70Fee571251a66E34caa1673cE40f7549Dc";
 
+/**
+ * Deploys de PolicyPool contract and AccessManager
+ *
+ * By default deployes de PolicyPool and AccessManager and grants LEVEL 1, 2, 3 permissions
+ *
+ * options:
+ * - .currency: mandatory, the address of the currency used in the PolicyPool
+ * - .access: if specified, doesn't create an AccessManager, uses this address.toLowerCase
+ * - .nftName: default "Policy NFT"
+ * - .nftSymbol: default "EPOL"
+ * - .treasuryAddress: default randomAddress
+ * - .grantRoles: default []. List of additional roles to grant
+ * - .dontGrantL123Roles: if specified, doesn't grants LEVEL1, 2 and 3 roles.
+ */
 exports.deployPool = async function (hre, options) {
   const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
   const AccessManager = await hre.ethers.getContractFactory("AccessManager");
 
-  // Deploy AccessManager
-  const accessManager = await hre.upgrades.deployProxy(AccessManager, [], { kind: "uups" });
+  let accessManager;
 
-  await accessManager.deployed();
+  if (options.access === undefined) {
+    // Deploy AccessManager
+    accessManager = await hre.upgrades.deployProxy(AccessManager, [], { kind: "uups" });
+    await accessManager.deployed();
+  } else {
+    accessManager = await hre.ethers.getContractAt("AccessManager", options.access);
+  }
 
   const policyPool = await hre.upgrades.deployProxy(
     PolicyPool,
     [
-      options.nftName === undefined ? "Policy NFT" : "",
-      options.nftSymbol === undefined ? "EPOL" : "",
+      options.nftName === undefined ? "Policy NFT" : options.nftName,
+      options.nftSymbol === undefined ? "EPOL" : options.nftSymbol,
       options.treasuryAddress || randomAddress,
     ],
     {
@@ -246,9 +265,12 @@ exports.deployPool = async function (hre, options) {
     await grantRole(hre, accessManager, role);
   }
 
-  await grantRole(hre, accessManager, "LEVEL1_ROLE");
-  await grantRole(hre, accessManager, "LEVEL2_ROLE");
-  await grantRole(hre, accessManager, "LEVEL3_ROLE");
+  if (options.dontGrantL123Roles === undefined) {
+    await grantRole(hre, accessManager, "LEVEL1_ROLE");
+    await grantRole(hre, accessManager, "LEVEL2_ROLE");
+    await grantRole(hre, accessManager, "LEVEL3_ROLE");
+  }
+
   return policyPool;
 };
 
