@@ -480,7 +480,11 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     _currency.safeTransferFrom(payer, _treasury, policy.ensuroCommission);
     if (policy.partnerCommission > 0 && payer != rm.wallet())
       _currency.safeTransferFrom(payer, rm.wallet(), policy.partnerCommission);
-    // TODO: this code does up to 5 ERC20 transfers. How we can avoid this? Delayed transfers?
+    /**
+     * This code does up to 5 ERC20 transfers. This can be avoided to reduce the gas cost, by implementing delayed
+     * transfers. This might be considered in the future, but to avoid increasing the complexity and since so far we
+     * operate on low gas-cost blockchains, we keep it as it is.
+     */
     _safeMint(policyHolder, policy.id, "");
 
     emit NewPolicy(rm, policy);
