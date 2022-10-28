@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: Unlicense
-pragma solidity ^0.8.0;
+pragma solidity 0.8.16;
 pragma experimental ABIEncoderV2;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
