@@ -35,6 +35,8 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   using SafeCast for uint256;
 
   bytes32 public constant WITHDRAW_WON_PREMIUMS_ROLE = keccak256("WITHDRAW_WON_PREMIUMS_ROLE");
+  uint256 internal constant FOUR_DECIMAL_TO_WAD = 1e14;
+  uint16 internal constant HUNDRED_PERCENT = 1e4;
 
   /**
    * @dev The Junior eToken is the first {EToken} to which the PremiumsAccount will go for credit when it runs out of
@@ -107,7 +109,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    */
   // solhint-disable-next-line func-name-mixedcase
   function __PremiumsAccount_init() internal onlyInitializing {
-    __PolicyPoolComponent_init();
+    __Reserve_init();
     __PremiumsAccount_init_unchained();
   }
 
@@ -125,8 +127,19 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     if (address(_seniorEtk) != address(0))
       currency().approve(address(_seniorEtk), type(uint256).max);
 
-    _params = PackedParams({deficitRatio: 1e4, assetManager: IAssetManager(address(0))});
+    _params = PackedParams({
+      deficitRatio: HUNDRED_PERCENT,
+      assetManager: IAssetManager(address(0))
+    });
     _validateParameters();
+  }
+
+  /**
+   * @dev See {IERC165-supportsInterface}.
+   */
+  function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+    return
+      super.supportsInterface(interfaceId) || interfaceId == type(IPremiumsAccount).interfaceId;
   }
 
   function assetManager() public view override returns (IAssetManager) {
@@ -158,7 +171,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
 
   function _validateParameters() internal view override {
     require(
-      _params.deficitRatio <= 1e4 && _params.deficitRatio >= 0,
+      _params.deficitRatio <= HUNDRED_PERCENT && _params.deficitRatio >= 0,
       "Validation: deficitRatio must be <= 1"
     );
   }
@@ -227,7 +240,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * @dev Returns the percentage of the active pure premiums that can be used to cover losses of finalized policies.
    */
   function deficitRatio() public view returns (uint256) {
-    return uint256(_params.deficitRatio) * 1e14; // 4 -> 18 decimals
+    return uint256(_params.deficitRatio) * FOUR_DECIMAL_TO_WAD; // 4 -> 18 decimals
   }
 
   /**
@@ -249,9 +262,9 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   {
     require(newRatio <= 1e18, "Validation: deficitRatio must be <= 1");
 
-    uint16 truncatedRatio = (newRatio / 1e14).toUint16();
+    uint16 truncatedRatio = (newRatio / FOUR_DECIMAL_TO_WAD).toUint16();
     require(
-      uint256(truncatedRatio) * 1e14 == newRatio,
+      uint256(truncatedRatio) * FOUR_DECIMAL_TO_WAD == newRatio,
       "Validation: only up to 4 decimals allowed"
     );
 
@@ -284,6 +297,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     address receiver,
     bool jrEtk
   ) internal {
+    require(receiver != address(0), "PremiumsAccount: receiver cannot be the zero address");
     uint256 left;
     if (jrEtk) {
       // Consume Junior Pool until exhausted
@@ -342,9 +356,9 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * @param amount The amount to be transferred.
    */
   function receiveGrant(uint256 amount) external {
-    currency().safeTransferFrom(_msgSender(), address(this), amount);
     _storePurePremiumWon(amount);
     emit WonPremiumsInOut(true, amount);
+    currency().safeTransferFrom(_msgSender(), address(this), amount);
   }
 
   /**
@@ -370,6 +384,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     onlyGlobalOrComponentRole(WITHDRAW_WON_PREMIUMS_ROLE)
     returns (uint256)
   {
+    require(destination != address(0), "PremiumsAccount: destination cannot be the zero address");
     if (_surplus <= 0) {
       amount = 0;
     } else {
@@ -485,4 +500,11 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     _storePurePremiumWon(purePremiumWon);
     _unlockScr(policy);
   }
+
+  /**
+   * @dev This empty reserved space is put in place to allow future versions to add new
+   * variables without shifting down storage in the inheritance chain.
+   * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
+   */
+  uint256[47] private __gap;
 }

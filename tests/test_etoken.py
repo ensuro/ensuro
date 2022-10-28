@@ -347,6 +347,10 @@ def test_lock_scr_validation(tenv):
         sr_scr=_W(600), sr_interest_rate=_W("0.0365"), expiration=tenv.time_control.now + WEEK
     )
 
+    with etk.thru(pa), pytest.raises(RevertError, match="EToken: Borrower cannot be the zero address"):
+        with etk.thru_policy_pool():
+            etk.add_borrower(None)
+
     with etk.thru_policy_pool():
         etk.add_borrower(pa)
 
@@ -398,6 +402,9 @@ def test_internal_loan(tenv):
         lended = _W(401) - not_lended
         assert tenv.currency.balance_of("CUST1") == lended
         assert etk.get_loan(pa) == lended
+
+        with pytest.raises(RevertError, match="EToken: amount should be greater than zero."):
+            etk.repay_loan(pa, _W(0), pa)
 
         etk.repay_loan(pa, lended, pa)
         tenv.currency.balance_of(pa).assert_equal(pa_balance - lended)

@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
 import {IAccessManager} from "./interfaces/IAccessManager.sol";
@@ -79,6 +80,10 @@ abstract contract PolicyPoolComponent is
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(IPolicyPool policyPool_) {
+    require(
+      address(policyPool_) != address(0),
+      "PolicyPoolComponent: policyPool cannot be zero address"
+    );
     _disableInitializers();
     _policyPool = policyPool_;
   }
@@ -99,6 +104,15 @@ abstract contract PolicyPoolComponent is
       IPolicyPoolComponent(newImpl).policyPool() == _policyPool,
       "Can't upgrade changing the PolicyPool!"
     );
+  }
+
+  /**
+   * @dev See {IERC165-supportsInterface}.
+   */
+  function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+    return
+      interfaceId == type(IERC165).interfaceId ||
+      interfaceId == type(IPolicyPoolComponent).interfaceId;
   }
 
   function pause() public onlyGlobalOrComponentRole(GUARDIAN_ROLE) {
@@ -172,4 +186,11 @@ abstract contract PolicyPoolComponent is
       }
     }
   }
+
+  /**
+   * @dev This empty reserved space is put in place to allow future versions to add new
+   * variables without shifting down storage in the inheritance chain.
+   * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
+   */
+  uint256[49] private __gap;
 }

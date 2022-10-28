@@ -40,6 +40,14 @@ abstract contract Reserve is PolicyPoolComponent {
   }
 
   /**
+   * @dev Initializes the Reserve (to be called by subclasses)
+   */
+  // solhint-disable-next-line func-name-mixedcase
+  function __Reserve_init() internal onlyInitializing {
+    __PolicyPoolComponent_init();
+  }
+
+  /**
    * @dev Refills the reserve's balance, deinvesting from the asset manager to be able to make a payment
    *
    * @param amount The amount of the payment that needs to be made
@@ -68,6 +76,7 @@ abstract contract Reserve is PolicyPoolComponent {
    * @param amount The amount to be transferred.
    */
   function _transferTo(address destination, uint256 amount) internal {
+    require(destination != address(0), "Reserve: transfer to the zero address");
     if (amount == 0) return;
     uint256 balance = currency().balanceOf(address(this));
     if (balance < amount) {
@@ -126,8 +135,8 @@ abstract contract Reserve is PolicyPoolComponent {
     onlyGlobalOrComponentRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
   {
     require(
-      address(newAM) == address(0) || address(newAM).isContract(),
-      "The assetManager is not a contract!"
+      address(newAM) == address(0) || newAM.supportsInterface(type(IAssetManager).interfaceId),
+      "Reserve: asset manager doesn't implements the required interface"
     );
     address am = address(assetManager());
     IAccessManager.GovernanceActions action = IAccessManager.GovernanceActions.setAssetManager;
@@ -210,4 +219,11 @@ abstract contract Reserve is PolicyPoolComponent {
   {
     return address(assetManager()).functionDelegateCall(functionCall);
   }
+
+  /**
+   * @dev This empty reserved space is put in place to allow future versions to add new
+   * variables without shifting down storage in the inheritance chain.
+   * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
+   */
+  uint256[50] private __gap;
 }

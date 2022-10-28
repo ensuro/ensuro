@@ -2,6 +2,8 @@ const { expect } = require("chai");
 const hre = require("hardhat");
 const { BigNumber } = require("ethers");
 const { LogDescription } = require("ethers/lib/utils");
+const { findAll } = require("solidity-ast/utils");
+
 exports.WEEK = 3600 * 24 * 7;
 exports.DAY = 3600 * 24;
 
@@ -42,7 +44,7 @@ exports.now = function () {
   return Math.floor(new Date().getTime() / 1000);
 };
 
-exports.addRiskModule = async function (
+const createRiskModule = async function (
   pool,
   premiumsAccount,
   contractFactory,
@@ -87,11 +89,46 @@ exports.addRiskModule = async function (
     moc = _W(moc);
     await rm.setParam(0, moc);
   }
+  return rm;
+};
+
+exports.createRiskModule = createRiskModule;
+
+exports.addRiskModule = async function (
+  pool,
+  premiumsAccount,
+  contractFactory,
+  {
+    rmName,
+    scrPercentage,
+    scrInterestRate,
+    ensuroFee,
+    maxScrPerPolicy,
+    scrLimit,
+    moc,
+    wallet,
+    extraArgs,
+    extraConstructorArgs,
+  }
+) {
+  const rm = await createRiskModule(pool, premiumsAccount, contractFactory, {
+    rmName,
+    scrPercentage,
+    scrInterestRate,
+    ensuroFee,
+    maxScrPerPolicy,
+    scrLimit,
+    moc,
+    wallet,
+    extraArgs,
+    extraConstructorArgs,
+  });
+
   await pool.addComponent(rm.address, 2);
   return rm;
 };
 
-exports.addEToken = async function (
+const createEToken = async function (
   pool,
   { etkName, etkSymbol, maxUtilizationRate, poolLoanInterestRate, extraArgs, extraConstructorArgs }
 ) {
@@ -101,8 +138,8 @@ exports.addEToken = async function (
   const etk = await hre.upgrades.deployProxy(
     EToken,
     [
-      etkName || "EToken",
-      etkSymbol || "eUSD1YEAR",
+      etkName === undefined ? "EToken" : etkName,
+      etkSymbol === undefined ? "eUSD1YEAR" : etkSymbol,
       _W(maxUtilizationRate) || _W(1),
       _W(poolLoanInterestRate) || _W("0.05"),
       ...extraArgs,
@@ -115,6 +152,23 @@ exports.addEToken = async function (
   );
 
   await etk.deployed();
+  return etk;
+};
+
+exports.createEToken = createEToken;
+
+exports.addEToken = async function (
+  pool,
+  { etkName, etkSymbol, maxUtilizationRate, poolLoanInterestRate, extraArgs, extraConstructorArgs }
+) {
+  const etk = await createEToken(pool, {
+    etkName,
+    etkSymbol,
+    maxUtilizationRate,
+    poolLoanInterestRate,
+    extraArgs,
+    extraConstructorArgs,
+  });
   await pool.addComponent(etk.address, 1);
   return etk;
 };
@@ -161,21 +215,42 @@ const getTransactionEvent = function (interface, receipt, eventName) {
 
 exports.getTransactionEvent = getTransactionEvent;
 
+const randomAddress = "0x89cDb70Fee571251a66E34caa1673cE40f7549Dc";
+
+/**
+ * Deploys de PolicyPool contract and AccessManager
+ *
+ * By default deployes de PolicyPool and AccessManager and grants LEVEL 1, 2, 3 permissions
+ *
+ * options:
+ * - .currency: mandatory, the address of the currency used in the PolicyPool
+ * - .access: if specified, doesn't create an AccessManager, uses this address.toLowerCase
+ * - .nftName: default "Policy NFT"
+ * - .nftSymbol: default "EPOL"
+ * - .treasuryAddress: default randomAddress
+ * - .grantRoles: default []. List of additional roles to grant
+ * - .dontGrantL123Roles: if specified, doesn't grants LEVEL1, 2 and 3 roles.
+ */
 exports.deployPool = async function (hre, options) {
   const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
   const AccessManager = await hre.ethers.getContractFactory("AccessManager");
 
-  // Deploy AccessManager
-  const accessManager = await hre.upgrades.deployProxy(AccessManager, [], { kind: "uups" });
+  let accessManager;
 
-  await accessManager.deployed();
+  if (options.access === undefined) {
+    // Deploy AccessManager
+    accessManager = await hre.upgrades.deployProxy(AccessManager, [], { kind: "uups" });
+    await accessManager.deployed();
+  } else {
+    accessManager = await hre.ethers.getContractAt("AccessManager", options.access);
+  }
 
   const policyPool = await hre.upgrades.deployProxy(
     PolicyPool,
     [
-      options.nftName || "Policy NFT",
-      options.nftSymbol || "EPOL",
-      options.treasuryAddress || hre.ethers.constants.AddressZero,
+      options.nftName === undefined ? "Policy NFT" : options.nftName,
+      options.nftSymbol === undefined ? "EPOL" : options.nftSymbol,
+      options.treasuryAddress || randomAddress,
     ],
     {
       constructorArgs: [accessManager.address, options.currency],
@@ -190,9 +265,12 @@ exports.deployPool = async function (hre, options) {
     await grantRole(hre, accessManager, role);
   }
 
-  await grantRole(hre, accessManager, "LEVEL1_ROLE");
-  await grantRole(hre, accessManager, "LEVEL2_ROLE");
-  await grantRole(hre, accessManager, "LEVEL3_ROLE");
+  if (options.dontGrantL123Roles === undefined) {
+    await grantRole(hre, accessManager, "LEVEL1_ROLE");
+    await grantRole(hre, accessManager, "LEVEL2_ROLE");
+    await grantRole(hre, accessManager, "LEVEL3_ROLE");
+  }
+
   return policyPool;
 };
 
@@ -352,5 +430,22 @@ function getRole(role) {
 }
 
 exports.getRole = getRole;
+
+async function getStorageLayout(contractSrc, contractName) {
+  const buildInfo = await hre.artifacts.getBuildInfo(`${contractSrc}:${contractName}`);
+  if (buildInfo === undefined) throw new Error(`Contract ${contractSrc}:${contractName} not in artifacts`);
+
+  const solcOutput = buildInfo.output;
+
+  const storageLayouts = {};
+
+  for (const def of findAll("ContractDefinition", solcOutput.sources[contractSrc].ast)) {
+    storageLayouts[def.name] = solcOutput.contracts[contractSrc][def.name].storageLayout;
+  }
+
+  return storageLayouts[contractName];
+}
+
+exports.getStorageLayout = getStorageLayout;
 
 if (process.env.ENABLE_HH_WARNINGS !== "yes") hre.upgrades.silenceWarnings();

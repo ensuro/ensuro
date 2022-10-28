@@ -182,6 +182,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    */
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(IAccessManager access_, IERC20Metadata currency_) {
+    require(address(access_) != address(0), "PolicyPool: access cannot be zero address");
+    require(address(currency_) != address(0), "PolicyPool: currency cannot be zero address");
     _disableInitializers();
     _access = access_;
     _currency = currency_;
@@ -199,15 +201,24 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     string memory symbol_,
     address treasury_
   ) public initializer {
+    require(bytes(name_).length > 0, "PolicyPool: name cannot be empty");
+    require(bytes(symbol_).length > 0, "PolicyPool: symbol cannot be empty");
     __UUPSUpgradeable_init();
     __ERC721_init(name_, symbol_);
     __Pausable_init();
     __PolicyPool_init_unchained(treasury_);
   }
 
+  /**
+   * @dev See {IERC165-supportsInterface}.
+   */
+  function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+    return super.supportsInterface(interfaceId) || interfaceId == type(IPolicyPool).interfaceId;
+  }
+
   // solhint-disable-next-line func-name-mixedcase
   function __PolicyPool_init_unchained(address treasury_) internal onlyInitializing {
-    _treasury = treasury_;
+    _setTreasury(treasury_);
   }
 
   // solhint-disable-next-line no-empty-blocks
@@ -242,6 +253,12 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     return _currency;
   }
 
+  function _setTreasury(address treasury_) internal {
+    require(treasury_ != address(0), "PolicyPool: treasury cannot be the zero address");
+    _treasury = treasury_;
+    emit ComponentChanged(IAccessManager.GovernanceActions.setTreasury, _treasury);
+  }
+
   /**
    * @dev Changes the address of the treasury, the one that receives the protocol fees.
    *
@@ -252,8 +269,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * - Emits {ComponentChanged} with action = setTreasury and the address of the new treasury.
    */
   function setTreasury(address treasury_) external onlyRole(LEVEL1_ROLE) {
-    _treasury = treasury_;
-    emit ComponentChanged(IAccessManager.GovernanceActions.setTreasury, _treasury);
+    _setTreasury(treasury_);
   }
 
   /**
@@ -285,6 +301,15 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     Component storage comp = _components[component];
     require(comp.status == ComponentStatus.inactive, "Component already in the pool");
     require(component.policyPool() == this, "Component not linked to this pool");
+
+    require(
+      (kind == ComponentKind.eToken && component.supportsInterface(type(IEToken).interfaceId)) ||
+        (kind == ComponentKind.premiumsAccount &&
+          component.supportsInterface(type(IPremiumsAccount).interfaceId)) ||
+        (kind == ComponentKind.riskModule &&
+          component.supportsInterface(type(IRiskModule).interfaceId)),
+      "PolicyPool: Not the right kind"
+    );
 
     comp.status = ComponentStatus.active;
     comp.kind = kind;
@@ -407,8 +432,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
 
   function deposit(IEToken eToken, uint256 amount) external override whenNotPaused {
     require(_etkStatus(eToken) == ComponentStatus.active, "eToken is not active");
+    uint256 balanceBefore = _currency.balanceOf(address(eToken));
     _currency.safeTransferFrom(_msgSender(), address(eToken), amount);
-    eToken.deposit(_msgSender(), amount);
+    eToken.deposit(_msgSender(), _currency.balanceOf(address(eToken)) - balanceBefore);
   }
 
   function withdraw(IEToken eToken, uint256 amount)
@@ -432,15 +458,20 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     address policyHolder,
     uint96 internalId
   ) external override whenNotPaused returns (uint256) {
+    // Checks
     IRiskModule rm = policy.riskModule;
     require(address(rm) == _msgSender(), "Only the RM can create new policies");
     require(_rmStatus(rm) == ComponentStatus.active, "RM module not found or not active");
-    policy.id = (uint256(uint160(address(rm))) << 96) + internalId;
-    _policies[policy.id] = policy.hash();
     IPremiumsAccount pa = rm.premiumsAccount();
     require(_paStatus(pa) == ComponentStatus.active, "PremiumsAccount not found or not active");
+
+    // Effects
+    policy.id = (uint256(uint160(address(rm))) << 96) + internalId;
+    require(_policies[policy.id] == bytes32(0), "Policy already exists");
+    _policies[policy.id] = policy.hash();
+
+    // Interactions
     pa.policyCreated(policy);
-    _safeMint(policyHolder, policy.id, "");
 
     // Distribute the premium
     _currency.safeTransferFrom(payer, address(pa), policy.purePremium);
@@ -449,6 +480,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     _currency.safeTransferFrom(payer, _treasury, policy.ensuroCommission);
     if (policy.partnerCommission > 0 && payer != rm.wallet())
       _currency.safeTransferFrom(payer, rm.wallet(), policy.partnerCommission);
+    // TODO: this code does up to 5 ERC20 transfers. How we can avoid this? Delayed transfers?
+    _safeMint(policyHolder, policy.id, "");
 
     emit NewPolicy(rm, policy);
     return policy.id;
@@ -499,6 +532,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     uint256 payout,
     bool expired
   ) internal {
+    // Checks
     _validatePolicy(policy);
     IRiskModule rm = policy.riskModule;
     require(expired || address(rm) == _msgSender(), "Only the RM can resolve policies");
@@ -518,6 +552,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
       compStatus == ComponentStatus.active || compStatus == ComponentStatus.deprecated,
       "PremiumsAccount must be active or deprecated to process resolutions"
     );
+    // Effects
+    delete _policies[policy.id];
+    // Interactions
     if (customerWon) {
       address policyOwner = ownerOf(policy.id);
       pa.policyResolvedWithPayout(policyOwner, policy, payout);
@@ -528,7 +565,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     rm.releaseExposure(policy.payout);
 
     emit PolicyResolved(policy.riskModule, policy.id, payout);
-    delete _policies[policy.id];
     if (payout > 0) {
       _notifyPayout(policy.id, payout);
     } else {
@@ -584,4 +620,11 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   ) internal override whenNotPaused {
     super._beforeTokenTransfer(from, to, tokenId);
   }
+
+  /**
+   * @dev This empty reserved space is put in place to allow future versions to add new
+   * variables without shifting down storage in the inheritance chain.
+   * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
+   */
+  uint256[47] private __gap;
 }

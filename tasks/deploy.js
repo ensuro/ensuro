@@ -45,19 +45,12 @@ function saveAddress(name, address) {
   fs.writeFileSync(".addresses.json", JSON.stringify(addresses));
 }
 
-async function etherscanEndpoints(hre) {
-  try {
-    return await hre.run("verify:get-etherscan-endpoint", {
-      provider: hre.network.provider,
-      networkName: hre.network.name,
-    });
-  } catch (error) {
-    return {};
-  }
+function etherscanUrl() {
+  return process.env.ETHERSCAN_URL;
 }
 
 async function logContractCreated(hre, contractName, address) {
-  const browserUrl = (await etherscanEndpoints(hre)).browserURL;
+  const browserUrl = etherscanUrl();
   if (browserUrl) {
     console.log(`${contractName} deployed to: ${browserUrl}/address/${address}`);
   } else {
@@ -75,16 +68,49 @@ async function verifyContract(hre, contract, isProxy, constructorArguments) {
       address: address,
       constructorArguments: constructorArguments,
     });
-    const etherscanURL = (await etherscanEndpoints(hre)).browserURL;
-    if (isProxy && etherscanURL) {
+    if (isProxy) {
       console.log(
         "Contract successfully verified, you should verify the proxy at " +
-          `${etherscanURL}/proxyContractChecker?a=${contract.address}`
+          `${etherscanUrl()}/proxyContractChecker?a=${contract.address}`
       );
     }
   } catch (error) {
     console.log("Error verifying contract", error);
   }
+}
+
+async function deployContract({ saveAddr, verify, contractClass, constructorArgs }, hre) {
+  const ContractFactory = await hre.ethers.getContractFactory(contractClass);
+  const contract = await ContractFactory.deploy(...constructorArgs);
+  if (verify) {
+    // From https://ethereum.stackexchange.com/a/119622/79726
+    await contract.deployTransaction.wait(6);
+  } else {
+    await contract.deployed();
+  }
+  await logContractCreated(hre, contractClass, contract.address);
+  saveAddress(saveAddr, contract.address);
+  if (verify) await verifyContract(hre, contract, false, constructorArgs);
+  return { ContractFactory, contract };
+}
+
+async function deployProxyContract({ saveAddr, verify, contractClass, constructorArgs, initializeArgs }, hre) {
+  const ContractFactory = await hre.ethers.getContractFactory(contractClass);
+  const contract = await hre.upgrades.deployProxy(ContractFactory, initializeArgs || [], {
+    constructorArgs: constructorArgs,
+    kind: "uups",
+    unsafeAllow: ["delegatecall"],
+  });
+  if (verify) {
+    // From https://ethereum.stackexchange.com/a/119622/79726
+    await contract.deployTransaction.wait(6);
+  } else {
+    await contract.deployed();
+  }
+  await logContractCreated(hre, contractClass, contract.address);
+  saveAddress(saveAddr, contract.address);
+  if (verify) await verifyContract(hre, contract, true, constructorArgs);
+  return { ContractFactory, contract };
 }
 
 async function grantComponentRole(hre, contract, component, role, user) {
@@ -96,12 +122,13 @@ async function grantComponentRole(hre, contract, component, role, user) {
     userAddress = user;
   }
   const roleHex = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(role));
-  const componentRole = await contract.getComponentRole(component.address, roleHex);
+  const componentAddress = component.address || component;
+  const componentRole = await contract.getComponentRole(componentAddress, roleHex);
   if (!(await contract.hasRole(componentRole, userAddress))) {
-    await contract.grantComponentRole(component.address, roleHex, userAddress);
-    console.log(`Role ${role} (${roleHex}) Component ${component.address} granted to ${userAddress}`);
+    await contract.grantComponentRole(componentAddress, roleHex, userAddress);
+    console.log(`Role ${role} (${roleHex}) Component ${componentAddress} granted to ${userAddress}`);
   } else {
-    console.log(`Role ${role} (${roleHex}) Component ${component.address} already granted to ${userAddress}`);
+    console.log(`Role ${role} (${roleHex}) Component ${componentAddress} already granted to ${userAddress}`);
   }
 }
 
@@ -131,26 +158,21 @@ async function grantRoleTask({ contractAddress, role, account, component }, hre)
   }
 }
 
-async function deployTestCurrency({ saveAddr, verify, currName, currSymbol, initialSupply }, hre) {
-  const TestCurrency = await hre.ethers.getContractFactory("TestCurrency");
-  const currency = await TestCurrency.deploy(currName, currSymbol, _A(initialSupply), amountDecimals());
-  await currency.deployed();
-  await logContractCreated(hre, "TestCurrency", currency.address);
-  saveAddress(saveAddr, currency.address);
-  console.log(`TestCurrency created with ${amountDecimals()} decimals`);
-  if (verify) await verifyContract(hre, currency, false, [currName, currSymbol, _A(initialSupply), amountDecimals()]);
-  return currency.address;
+async function deployTestCurrency({ currName, currSymbol, initialSupply, ...opts }, hre) {
+  return (
+    await deployContract(
+      {
+        contractClass: "TestCurrency",
+        constructorArgs: [currName, currSymbol, _A(initialSupply), amountDecimals()],
+        ...opts,
+      },
+      hre
+    )
+  ).contract.address;
 }
 
-async function deployAccessManager({ saveAddr, verify }, hre) {
-  const AccessManager = await hre.ethers.getContractFactory("AccessManager");
-  const policyPoolConfig = await hre.upgrades.deployProxy(AccessManager, [], { kind: "uups" });
-
-  await policyPoolConfig.deployed();
-  await logContractCreated(hre, "AccessManager", policyPoolConfig.address);
-  saveAddress(saveAddr, policyPoolConfig.address);
-  if (verify) await verifyContract(hre, policyPoolConfig, true);
-  return policyPoolConfig.address;
+async function deployAccessManager(opts, hre) {
+  return (await deployProxyContract({ contractClass: "AccessManager", ...opts }, hre)).contract.address;
 }
 
 async function _getDefaultSigner(hre) {
@@ -158,126 +180,120 @@ async function _getDefaultSigner(hre) {
   return signers[0];
 }
 
-async function deployPolicyPool(
-  { saveAddr, verify, accessAddress, nftAddress, currencyAddress,
-    nftName, nftSymbol, treasuryAddress },
-  hre
-) {
-  const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
-  const policyPool = await hre.upgrades.deployProxy(
-    PolicyPool,
-    [nftName, nftSymbol, treasuryAddress],
-    {
-      constructorArgs: [accessAddress, currencyAddress],
-      kind: "uups",
-      unsafeAllow: ["delegatecall"],
-    }
-  );
-
-  await policyPool.deployed();
-  await logContractCreated(hre, "PolicyPool", policyPool.address);
-  saveAddress(saveAddr, policyPool.address);
-
-  if (verify) await verifyContract(hre, policyPool, true, [accessAddress, nftAddress, currencyAddress]);
-
-  const policyPoolConfig = await hre.ethers.getContractAt("AccessManager", await policyPool.access());
-  await grantRole(hre, policyPoolConfig, "LEVEL1_ROLE");
-  await grantRole(hre, policyPoolConfig, "LEVEL2_ROLE");
-  await grantRole(hre, policyPoolConfig, "LEVEL3_ROLE");
-  return policyPool.address;
+async function deployPolicyPool({ accessAddress, currencyAddress, nftName, nftSymbol, treasuryAddress, ...opts }, hre) {
+  return (
+    await deployProxyContract(
+      {
+        contractClass: "PolicyPool",
+        constructorArgs: [accessAddress, currencyAddress],
+        initializeArgs: [nftName, nftSymbol, treasuryAddress],
+        ...opts,
+      },
+      hre
+    )
+  ).contract.address;
 }
 
 async function deployEToken(
-  { saveAddr, verify, poolAddress, etkName, etkSymbol, maxUtilizationRate, poolLoanInterestRate },
+  { poolAddress, etkName, etkSymbol, maxUtilizationRate, poolLoanInterestRate, ...opts },
   hre
 ) {
-  const EToken = await hre.ethers.getContractFactory("EToken");
-  const etoken = await hre.upgrades.deployProxy(
-    EToken,
-    [etkName, etkSymbol, _W(maxUtilizationRate), _W(poolLoanInterestRate)],
+  const { contract } = await deployProxyContract(
     {
-      kind: "uups",
+      contractClass: "EToken",
       constructorArgs: [poolAddress],
-      unsafeAllow: ["delegatecall"],
-    }
+      initializeArgs: [etkName, etkSymbol, _W(maxUtilizationRate), _W(poolLoanInterestRate)],
+      ...opts,
+    },
+    hre
   );
-
-  await etoken.deployed();
-  await logContractCreated(hre, `EToken ${etkName}`, etoken.address);
-  saveAddress(saveAddr, etoken.address);
-  if (verify) await verifyContract(hre, etoken, true, [poolAddress]);
   const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
-  await policyPool.addComponent(etoken.address, 1);
-  return etoken.address;
+  await policyPool.addComponent(contract.address, 1);
+  return contract.address;
 }
 
-async function deployPremiumsAccount({ saveAddr, verify, poolAddress, juniorEtk, seniorEtk }, hre) {
-  const PremiumsAccount = await hre.ethers.getContractFactory("PremiumsAccount");
-  const pa = await hre.upgrades.deployProxy(PremiumsAccount, [], {
-    kind: "uups",
-    unsafeAllow: ["delegatecall"],
-    constructorArgs: [poolAddress, juniorEtk, seniorEtk],
-  });
-
-  await pa.deployed();
-  await logContractCreated(hre, `PremiumsAccount`, pa.address);
-  saveAddress(saveAddr, pa.address);
-  if (verify) await verifyContract(hre, pa, true, [poolAddress]);
+async function deployPremiumsAccount({ poolAddress, juniorEtk, seniorEtk, ...opts }, hre) {
+  const { contract } = await deployProxyContract(
+    {
+      contractClass: "PremiumsAccount",
+      constructorArgs: [poolAddress, juniorEtk, seniorEtk],
+      initializeArgs: [],
+      ...opts,
+    },
+    hre
+  );
   const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
-  await policyPool.addComponent(pa.address, 3);
-  return pa.address;
+  await policyPool.addComponent(contract.address, 3);
+  return contract.address;
 }
 
 async function deployRiskModule(
   {
-    saveAddr,
-    verify,
     rmClass,
     rmName,
     poolAddress,
     paAddress,
     collRatio,
+    jrCollRatio,
     roc,
+    jrRoc,
     ensuroPpFee,
     ensuroCocFee,
     maxPayoutPerPolicy,
     exposureLimit,
+    maxDuration,
     moc,
     wallet,
     extraArgs,
     extraConstructorArgs,
+    ...opts
   },
   hre
 ) {
   extraArgs = extraArgs || [];
   extraConstructorArgs = extraConstructorArgs || [];
-  const RiskModule = await hre.ethers.getContractFactory(rmClass);
-  const rm = await hre.upgrades.deployProxy(
-    RiskModule,
-    [rmName, _W(collRatio), _W(ensuroPpFee), _W(roc), _A(maxPayoutPerPolicy), _A(exposureLimit), wallet, ...extraArgs],
+  const { contract } = await deployProxyContract(
     {
-      kind: "uups",
-      unsafeAllow: ["delegatecall"],
+      contractClass: rmClass,
       constructorArgs: [poolAddress, paAddress, ...extraConstructorArgs],
-    }
+      initializeArgs: [
+        rmName,
+        _W(collRatio),
+        _W(ensuroPpFee),
+        _W(roc),
+        _A(maxPayoutPerPolicy),
+        _A(exposureLimit),
+        wallet,
+        ...extraArgs,
+      ],
+      ...opts,
+    },
+    hre
   );
-
-  await rm.deployed();
-  await logContractCreated(hre, `${rmClass} ${rmName}`, rm.address);
-  saveAddress(saveAddr, rm.address);
-  if (verify) await verifyContract(hre, rm, true, [poolAddress, ...extraConstructorArgs]);
+  const rm = contract;
 
   if (moc != 1.0) {
     moc = _W(moc);
     await rm.setParam(0, moc);
   }
+  if (jrCollRatio != 0.0) {
+    jrCollRatio = _W(jrCollRatio);
+    await rm.setParam(1, jrCollRatio);
+  }
+  if (jrRoc != 0.0) {
+    jrRoc = _W(jrRoc);
+    await rm.setParam(5, jrRoc);
+  }
   if (ensuroCocFee != 0) {
     ensuroCocFee = _W(ensuroCocFee);
     await rm.setParam(4, ensuroCocFee);
   }
+  if (maxDuration != 24 * 365) {
+    await rm.setParam(9, ensuroCocFee);
+  }
   const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
-  await policyPool.addComponent(rm.address, 2);
-  return rm.address;
+  await policyPool.addComponent(contract.address, 2);
+  return contract.address;
 }
 
 async function deployFlightDelayRM(opts, hre) {
@@ -286,98 +302,88 @@ async function deployFlightDelayRM(opts, hre) {
 }
 
 async function deployPriceRM(opts, hre) {
-  opts.extraConstructorArgs = [opts.asset, opts.referenceCurrency, _W(opts.slotSize)];
+  opts.extraConstructorArgs = [opts.asset, opts.referenceCurrency, opts.priceOracle, _W(opts.slotSize)];
   return deployRiskModule(opts, hre);
 }
 
-async function deployAssetManager(
-  {
-    saveAddr,
-    verify,
-    amClass,
-    poolAddress,
-    liquidityMin,
-    liquidityMiddle,
-    liquidityMax,
-    extraConstructorArgs,
-    extraArgs,
-  },
-  hre
-) {
-  extraArgs = extraArgs || [];
-  extraConstructorArgs = extraConstructorArgs || [];
-  const AssetManager = await hre.ethers.getContractFactory(amClass);
-  const am = await hre.upgrades.deployProxy(
-    AssetManager,
-    [_A(liquidityMin), _A(liquidityMiddle), _A(liquidityMax), ...extraArgs],
-    {
-      kind: "uups",
-      unsafeAllow: ["delegatecall"],
-      constructorArgs: [poolAddress, ...extraConstructorArgs],
-    }
-  );
-
-  await am.deployed();
-  await logContractCreated(hre, `${amClass}`, am.address);
-  saveAddress(saveAddr, am.address);
-  if (verify) await verifyContract(hre, am, true, [poolAddress, ...extraConstructorArgs]);
-  const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
-  const policyPoolConfig = await hre.ethers.getContractAt("AccessManager", await policyPool.access());
-  await policyPoolConfig.setAssetManager(am.address);
-  return am.address;
+async function deploySignedQuoteRM(opts, hre) {
+  opts.extraConstructorArgs = [opts.creationIsOpen];
+  return deployRiskModule(opts, hre);
 }
 
-async function deployFixedIntestRateAssetManager(opts, hre) {
-  opts.extraArgs = [_R(opts.interestRate)];
-  return deployAssetManager(opts, hre);
+async function setAssetManager({ reserve, amAddress, liquidityMin, liquidityMiddle, liquidityMax }, hre) {
+  const reserveContract = await hre.ethers.getContractAt("Reserve", reserve);
+  await reserveContract.setAssetManager(amAddress, false);
+  console.log(`Asset Manager ${amAddress} set to reserve ${reserve}`);
+  if (liquidityMin !== undefined || liquidityMiddle !== undefined || liquidityMax !== undefined) {
+    liquidityMin = liquidityMin === undefined ? ethers.constants.MaxUint256 : _A(liquidityMin);
+    liquidityMiddle = liquidityMiddle === undefined ? ethers.constants.MaxUint256 : _A(liquidityMiddle);
+    liquidityMax = liquidityMax === undefined ? ethers.constants.MaxUint256 : _A(liquidityMax);
+    const amContract = await hre.ethers.getContractAt(
+      "ERC4626AssetManager", // Not relevant if it's ERC4626AssetManager, only need setLiquidityThresholds
+      amAddress
+    );
+    await reserveContract.forwardToAssetManager(
+      amContract.interface.encodeFunctionData("setLiquidityThresholds", [liquidityMin, liquidityMiddle, liquidityMax])
+    );
+    console.log(`setLiquidityThresholds(${liquidityMin}, ${liquidityMiddle}, ${liquidityMax}`);
+  }
 }
 
-async function deployAaveAssetManager(opts, hre) {
-  opts.extraArgs = [_W(opts.claimRewardsMin), _W(opts.reinvestRewardsMin)];
-  opts.extraConstructorArgs = [opts.aaveAddrProv];
-  return deployAssetManager(opts, hre);
+async function deployERC4626AssetManager({ asset, vault, amClass, ...opts }, hre) {
+  return (
+    await deployContract(
+      {
+        contractClass: amClass,
+        constructorArgs: [asset, vault],
+        ...opts,
+      },
+      hre
+    )
+  ).contract.address;
 }
 
-async function deployExchange({ saveAddr, verify, poolAddress, maxSlippage, swapRouter, priceOracle }, hre) {
-  const Exchange = await hre.ethers.getContractFactory("Exchange");
-  const exchange = await hre.upgrades.deployProxy(Exchange, [priceOracle, swapRouter, _W(maxSlippage)], {
-    kind: "uups",
-    unsafeAllow: ["delegatecall"],
-    constructorArgs: [poolAddress],
-  });
-
-  await exchange.deployed();
-  await logContractCreated(hre, "Exchange", exchange.address);
-  saveAddress(saveAddr, exchange.address);
-  if (verify) await verifyContract(hre, exchange, true, [poolAddress]);
-  const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
-  const policyPoolConfig = await hre.ethers.getContractAt("AccessManager", await policyPool.access());
-  await policyPoolConfig.setExchange(exchange.address);
-  return exchange.address;
+async function deployAaveAssetManager({ asset, aave, amClass, ...opts }, hre) {
+  return (
+    await deployContract(
+      {
+        contractClass: amClass,
+        constructorArgs: [asset, aave],
+        ...opts,
+      },
+      hre
+    )
+  ).contract.address;
 }
 
 async function deployWhitelist(
-  { saveAddr, verify, wlClass, poolAddress, extraConstructorArgs, extraArgs, eToken },
+  { wlClass, poolAddress, extraConstructorArgs, extraArgs, eToken, eToken2, eToken3, opts },
   hre
 ) {
   extraArgs = extraArgs || [];
   extraConstructorArgs = extraConstructorArgs || [];
-  const Whitelist = await hre.ethers.getContractFactory(wlClass);
-  const wl = await hre.upgrades.deployProxy(Whitelist, [...extraArgs], {
-    kind: "uups",
-    unsafeAllow: ["delegatecall"],
-    constructorArgs: [poolAddress, ...extraConstructorArgs],
-  });
-
-  await wl.deployed();
-  await logContractCreated(hre, `${wlClass}`, wl.address);
-  saveAddress(saveAddr, wl.address);
-  if (verify) await verifyContract(hre, wl, true, [poolAddress, ...extraConstructorArgs]);
+  const { contract } = await deployProxyContract(
+    {
+      contractClass: wlClass,
+      constructorArgs: [poolAddress, ...extraConstructorArgs],
+      initializeArgs: [...extraArgs],
+      ...opts,
+    },
+    hre
+  );
   if (eToken !== undefined) {
     const etk = await hre.ethers.getContractAt("EToken", eToken);
-    await etk.setWhitelist(wl.address);
+    await etk.setWhitelist(contract.address);
   }
-  return wl.address;
+  if (eToken2 !== undefined) {
+    const etk = await hre.ethers.getContractAt("EToken", eToken2);
+    await etk.setWhitelist(contract.address);
+  }
+  if (eToken3 !== undefined) {
+    const etk = await hre.ethers.getContractAt("EToken", eToken3);
+    await etk.setWhitelist(contract.address);
+  }
+  return contract.address;
 }
 
 async function trustfullPolicy({ rmAddress, payout, premium, lossProb, expiration, customer }, hre) {
@@ -485,7 +491,7 @@ function add_task() {
     .addOptionalParam("nftSymbol", "Symbol of Policies NFT Token", "EPOL", types.str)
     .addOptionalParam("currencyAddress", "Currency Address", undefined, types.address)
     .addOptionalParam("accessAddress", "AccessManager Address", undefined, types.address)
-    .addOptionalParam("treasuryAddress", "Treasury Address", ethers.constants.AddressZero, types.address)
+    .addParam("treasuryAddress", "Treasury Address", types.address)
     .setAction(async function (taskArgs, hre) {
       if (taskArgs.currencyAddress === undefined) {
         taskArgs.saveAddr = "CURRENCY";
@@ -518,7 +524,6 @@ function add_task() {
     .addOptionalParam("nftName", "Name of Policies NFT Token", "Ensuro Policies NFT", types.str)
     .addOptionalParam("nftSymbol", "Symbol of Policies NFT Token", "EPOL", types.str)
     .addOptionalParam("treasuryAddress", "Treasury Address", ethers.constants.AddressZero, types.address)
-    .addParam("nftAddress", "NFT Address", types.address)
     .addParam("currencyAddress", "Currency Address", types.address)
     .addParam("accessAddress", "AccessManager Address", types.address)
     .setAction(deployPolicyPool);
@@ -527,8 +532,8 @@ function add_task() {
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addOptionalParam("saveAddr", "Save created contract address", "ETOKEN", types.str)
     .addParam("poolAddress", "PolicyPool Address", types.address)
-    .addOptionalParam("etkName", "Name of EToken", "eUSD1WEEK", types.str)
-    .addOptionalParam("etkSymbol", "Symbol of EToken", "eUSD1W", types.str)
+    .addParam("etkName", "Name of EToken", types.str)
+    .addParam("etkSymbol", "Symbol of EToken", types.str)
     .addOptionalParam("maxUtilizationRate", "Max Utilization Rate", 1.0, types.float)
     .addOptionalParam("poolLoanInterestRate", "Interest rate when pool takes money from eToken", 0.05, types.float)
     .setAction(deployEToken);
@@ -549,71 +554,95 @@ function add_task() {
     .addOptionalParam("rmClass", "RiskModule contract", "TrustfulRiskModule", types.str)
     .addOptionalParam("rmName", "Name of the RM", "Test RM", types.str)
     .addOptionalParam("collRatio", "Collateralization ratio", 1.0, types.float)
+    .addOptionalParam("jrCollRatio", "Junior Collateralization ratio", 0.0, types.float)
     .addOptionalParam("ensuroPpFee", "Ensuro Pure Premium Fee", 0.02, types.float)
     .addOptionalParam("ensuroCocFee", "Ensuro Coc Fee", 0.1, types.float)
-    .addOptionalParam("roc", "Interest rate paid to LPs for solvency capital", 0.05, types.float)
+    .addOptionalParam("roc", "Interest rate paid to Senior LPs for solvency capital", 0.05, types.float)
+    .addOptionalParam("jrRoc", "Interest rate paid to Junior LPs for solvency capital", 0.0, types.float)
     .addOptionalParam("maxPayoutPerPolicy", "Max Payout Per policy", 10000, types.float)
     .addOptionalParam("exposureLimit", "Exposure (sum of payouts) limit for the RM", 1e6, types.float)
+    .addOptionalParam("maxDuration", "Maximum policy duration in hours", 24 * 365, types.int)
     .addOptionalParam("moc", "Margin of Conservativism", 1.0, types.float)
     .addParam("wallet", "RM address", types.address)
     .setAction(deployRiskModule);
 
-  task("deploy:assetManager", "Deploys a AssetManager and assigns it to the pool")
+  task("deploy:signedQuoteRiskModule", "Deploys a RiskModule and adds it to the pool")
+    .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
+    .addOptionalParam("saveAddr", "Save created contract address", "RM", types.str)
+    .addParam("poolAddress", "PolicyPool Address", types.address)
+    .addParam("paAddress", "PremiumsAccount Address", types.address)
+    .addOptionalParam("rmClass", "RiskModule contract", "SignedQuoteRiskModule", types.str)
+    .addOptionalParam("rmName", "Name of the RM", "Test RM", types.str)
+    .addOptionalParam("collRatio", "Collateralization ratio", 1.0, types.float)
+    .addOptionalParam("jrCollRatio", "Junior Collateralization ratio", 0.0, types.float)
+    .addOptionalParam("ensuroPpFee", "Ensuro Pure Premium Fee", 0.02, types.float)
+    .addOptionalParam("ensuroCocFee", "Ensuro Coc Fee", 0.1, types.float)
+    .addOptionalParam("roc", "Interest rate paid to Senior LPs for solvency capital", 0.05, types.float)
+    .addOptionalParam("jrRoc", "Interest rate paid to Junior LPs for solvency capital", 0.0, types.float)
+    .addOptionalParam("maxPayoutPerPolicy", "Max Payout Per policy", 10000, types.float)
+    .addOptionalParam("exposureLimit", "Exposure (sum of payouts) limit for the RM", 1e6, types.float)
+    .addOptionalParam("maxDuration", "Maximum policy duration in hours", 24 * 365, types.int)
+    .addOptionalParam("moc", "Margin of Conservativism", 1.0, types.float)
+    .addOptionalParam("creationIsOpen", "Indicates if anyone can create policies (with a quote)",
+                      true, types.boolean)
+    .addParam("wallet", "RM address", types.address)
+    .setAction(deploySignedQuoteRM);
+
+  task("deploy:priceRiskModule", "Deploys and injects a Price RiskModule")
+    .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
+    .addOptionalParam("saveAddr", "Save created contract address", "RM", types.str)
+    .addParam("poolAddress", "PolicyPool Address", types.address)
+    .addParam("paAddress", "PremiumsAccount Address", types.address)
+    .addOptionalParam("rmClass", "RiskModule contract", "PriceRiskModule", types.str)
+    .addOptionalParam("rmName", "Name of the RM", "Price Risk Module", types.str)
+    .addOptionalParam("collRatio", "Collateralization ratio", 1.0, types.float)
+    .addOptionalParam("jrCollRatio", "Junior Collateralization ratio", 0.0, types.float)
+    .addOptionalParam("ensuroPpFee", "Ensuro Pure Premium Fee", 0.02, types.float)
+    .addOptionalParam("ensuroCocFee", "Ensuro Coc Fee", 0.1, types.float)
+    .addOptionalParam("roc", "Interest rate paid to Senior LPs for solvency capital", 0.05, types.float)
+    .addOptionalParam("jrRoc", "Interest rate paid to Junior LPs for solvency capital", 0.0, types.float)
+    .addOptionalParam("maxPayoutPerPolicy", "Max Payout Per policy", 10000, types.float)
+    .addOptionalParam("exposureLimit", "Exposure (sum of payouts) limit for the RM", 1e6, types.float)
+    .addOptionalParam("maxDuration", "Maximum policy duration in hours", 24 * 365, types.int)
+    .addOptionalParam("moc", "Margin of Conservativism", 1.0, types.float)
+    .addParam("wallet", "RM address", types.address)
+    .addParam("asset", "Insured asset address", types.address)
+    .addParam("referenceCurrency", "Reference currency address", types.address)
+    .addParam("priceOracle", "Address of the PriceOracle", types.address)
+    .addOptionalParam("slotSize", "Slot size", 0.01, types.float)
+    .setAction(deployPriceRM);
+
+  task("ens:setAssetManager", "Sets an asset manager to a reserve")
+    .addParam("reserve", "Reserve Address", types.address)
+    .addParam("amAddress", "Address of Asset Manager (reuse one already deployed)", types.address)
+    .addOptionalParam("liquidityMin", "liquidityMin", undefined, types.float)
+    .addOptionalParam("liquidityMiddle", "liquidityMiddle", undefined, types.float)
+    .addOptionalParam("liquidityMax", "liquidityMax", undefined, types.float)
+    .setAction(setAssetManager);
+
+  task("deploy:erc4626AssetManager", "Deploys an ERC4626 AssetManager")
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addOptionalParam("saveAddr", "Save created contract address", "ASSETMANAGER", types.str)
-    .addParam("poolAddress", "PolicyPool Address", types.address)
-    .addOptionalParam("rmClass", "AssetManager contract", "FixedRateAssetManager", types.str)
-    .addOptionalParam("liquidityMin", "liquidityMin", 100, types.float)
-    .addOptionalParam("liquidityMiddle", "liquidityMiddle", 150, types.float)
-    .addOptionalParam("liquidityMax", "liquidityMax", 200, types.float)
-    .setAction(deployAssetManager);
-
-  task("deploy:fixedInterestAssetManager", "Deploys a FixedRateAssetManager")
-    .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
-    .addParam("poolAddress", "PolicyPool Address", types.address)
-    .addOptionalParam("amClass", "AssetManager contract", "FixedRateAssetManager", types.str)
-    .addOptionalParam("liquidityMin", "liquidityMin", 100, types.float)
-    .addOptionalParam("liquidityMiddle", "liquidityMiddle", 150, types.float)
-    .addOptionalParam("liquidityMax", "liquidityMax", 200, types.float)
-    .addOptionalParam("interestRate", "interestRate", 0.1, types.float)
-    .setAction(deployFixedIntestRateAssetManager);
+    .addParam("asset", "Asset Address", types.address)
+    .addParam("vault", "Vault Address", types.address)
+    .addOptionalParam("amClass", "AssetManager contract", "ERC4626AssetManager", types.str)
+    .setAction(deployERC4626AssetManager);
 
   task("deploy:aaveAssetManager", "Deploys a AaveAssetManager")
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
-    .addParam("poolAddress", "PolicyPool Address", types.address)
-    .addOptionalParam("amClass", "AssetManager contract", "AaveAssetManager", types.str)
-    .addOptionalParam("liquidityMin", "liquidityMin", 100, types.float)
-    .addOptionalParam("liquidityMiddle", "liquidityMiddle", 150, types.float)
-    .addOptionalParam("liquidityMax", "liquidityMax", 200, types.float)
-    .addOptionalParam("claimRewardsMin", "claimRewardsMin", 10, types.float)
-    .addOptionalParam("reinvestRewardsMin", "reinvestRewardsMin", 20, types.float)
-    .addOptionalParam(
-      "aaveAddrProv",
-      "AAVE Address Provider",
-      "0xd05e3E715d945B59290df0ae8eF85c1BdB684744",
-      types.address
-    )
+    .addOptionalParam("saveAddr", "Save created contract address", "ASSETMANAGER", types.str)
+    .addParam("asset", "Asset Address", types.address)
+    .addParam("aave", "AAVE LendingPool Address", types.address)
+    .addOptionalParam("amClass", "AssetManager contract", "AAVEv3AssetManager", types.str)
     .setAction(deployAaveAssetManager);
-
-  task("deploy:exchange", "Deploy the Exchange")
-    .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
-    .addOptionalParam("saveAddr", "Save created contract address", "EXCHANGE", types.str)
-    .addParam("poolAddress", "PolicyPool Address", types.address)
-    .addOptionalParam("maxSlippage", "maxSlippage", 0.02, types.float)
-    .addOptionalParam("priceOracle", "Price Oracle", "0x0229f777b0fab107f9591a41d5f02e4e98db6f2d", types.address)
-    .addOptionalParam(
-      "swapRouter",
-      "Uniswap Router Address",
-      "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506",
-      types.address
-    )
-    .setAction(deployExchange);
 
   task("deploy:whitelist", "Deploys a Whitelisting contract")
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addOptionalParam("saveAddr", "Save created contract address", "WHITELIST", types.str)
     .addOptionalParam("wlClass", "Whitelisting contract", "LPManualWhitelist", types.str)
     .addOptionalParam("eToken", "Set the Whitelist to a given eToken", undefined, types.address)
+    .addOptionalParam("eToken2", "Set the Whitelist to a given eToken", undefined, types.address)
+    .addOptionalParam("eToken3", "Set the Whitelist to a given eToken", undefined, types.address)
     .addParam("poolAddress", "PolicyPool Address", types.address)
     .setAction(deployWhitelist);
 
@@ -662,7 +691,7 @@ function add_task() {
   task("ens:grantRole", "Grants a given role")
     .addParam("contractAddress", "Contract", undefined, types.address)
     .addParam("role", "Role", types.str)
-    .addParam("account", "Account", undefined, types.address)
+    .addOptionalParam("account", "Account", undefined, types.address)
     .addOptionalParam(
       "component",
       "Address of the component if it's a component role",

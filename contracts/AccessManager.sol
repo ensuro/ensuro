@@ -53,6 +53,13 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
   // solhint-disable-next-line no-empty-blocks
   function _authorizeUpgrade(address) internal override onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {}
 
+  /**
+   * @dev See {IERC165-supportsInterface}.
+   */
+  function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+    return super.supportsInterface(interfaceId) || interfaceId == type(IAccessManager).interfaceId;
+  }
+
   function getComponentRole(address component, bytes32 role)
     public
     pure
@@ -115,4 +122,11 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
   ) external onlyRole(getRoleAdmin(getComponentRole(component, role))) {
     _grantRole(getComponentRole(component, role), account);
   }
+
+  /**
+   * @dev This empty reserved space is put in place to allow future versions to add new
+   * variables without shifting down storage in the inheritance chain.
+   * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
+   */
+  uint256[50] private __gap;
 }

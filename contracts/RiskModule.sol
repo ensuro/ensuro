@@ -22,6 +22,12 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   using SafeCast for uint256;
 
   uint256 internal constant SECONDS_IN_YEAR_WAD = 31536000e18; /* 365 * 24 * 3600 * 10e18 */
+  uint16 internal constant HOURS_PER_YEAR = 8760; /* 24 * 365 */
+
+  uint256 internal constant FOUR_DECIMAL_TO_WAD = 1e14;
+  uint16 internal constant HUNDRED_PERCENT = 1e4;
+  uint16 internal constant MIN_MOC = 5e3;
+  uint16 internal constant MAX_MOC = 4e4;
 
   // For parameters that can be changed by the risk module provider
   bytes32 public constant RM_PROVIDER_ROLE = keccak256("RM_PROVIDER_ROLE");
@@ -105,7 +111,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   ) internal onlyInitializing {
     _name = name_;
     _params = PackedParams({
-      moc: 1e4,
+      moc: HUNDRED_PERCENT,
       jrCollRatio: 0,
       collRatio: _wadTo4(collRatio_),
       ensuroPpFee: _wadTo4(ensuroPpFee_),
@@ -114,23 +120,33 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
       srRoc: _wadTo4(srRoc_),
       maxPayoutPerPolicy: _amountToX(2, maxPayoutPerPolicy_),
       exposureLimit: _amountToX(0, exposureLimit_),
-      maxDuration: 24 * 365 // default = 1 year
+      maxDuration: HOURS_PER_YEAR
     });
     _activeExposure = 0;
     _wallet = wallet_;
     _validateParameters();
   }
 
+  /**
+   * @dev See {IERC165-supportsInterface}.
+   */
+  function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+    return super.supportsInterface(interfaceId) || interfaceId == type(IRiskModule).interfaceId;
+  }
+
   // runs validation on RiskModule parameters
   function _validateParameters() internal view override {
-    require(_params.jrCollRatio <= 1e4, "Validation: jrCollRatio must be <=1");
-    require(_params.collRatio <= 1e4 && _params.collRatio > 0, "Validation: collRatio must be <=1");
+    require(_params.jrCollRatio <= HUNDRED_PERCENT, "Validation: jrCollRatio must be <=1");
+    require(
+      _params.collRatio <= HUNDRED_PERCENT && _params.collRatio > 0,
+      "Validation: collRatio must be <=1"
+    );
     require(_params.collRatio >= _params.jrCollRatio, "Validation: collRatio >= jrCollRatio");
-    require(_params.moc <= 4e4 && _params.moc >= 5e3, "Validation: moc must be [0.5, 4]");
-    require(_params.ensuroPpFee <= 1e4, "Validation: ensuroPpFee must be <= 1");
-    require(_params.ensuroCocFee <= 1e4, "Validation: ensuroCocFee must be <= 1");
-    require(_params.srRoc <= 1e4, "Validation: srRoc must be <= 1 (100%)");
-    require(_params.jrRoc <= 1e4, "Validation: jrRoc must be <= 1 (100%)");
+    require(_params.moc <= MAX_MOC && _params.moc >= MIN_MOC, "Validation: moc must be [0.5, 4]");
+    require(_params.ensuroPpFee <= HUNDRED_PERCENT, "Validation: ensuroPpFee must be <= 1");
+    require(_params.ensuroCocFee <= HUNDRED_PERCENT, "Validation: ensuroCocFee must be <= 1");
+    require(_params.srRoc <= HUNDRED_PERCENT, "Validation: srRoc must be <= 1 (100%)");
+    require(_params.jrRoc <= HUNDRED_PERCENT, "Validation: jrRoc must be <= 1 (100%)");
     // _maxPayoutPerPolicy no limits
     require(
       exposureLimit() >= _activeExposure,
@@ -150,12 +166,12 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   // solhint-disable-next-line func-name-mixedcase
   function _4toWad(uint16 value) internal pure returns (uint256) {
     // 4 decimals to Wad (18 decimals)
-    return uint256(value) * 1e14;
+    return uint256(value) * FOUR_DECIMAL_TO_WAD;
   }
 
   function _wadTo4(uint256 value) internal pure returns (uint16) {
     // Wad to 4 decimals
-    return (value / 1e14).toUint16();
+    return (value / FOUR_DECIMAL_TO_WAD).toUint16();
   }
 
   // solhint-disable-next-line func-name-mixedcase
@@ -262,6 +278,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   }
 
   function setWallet(address wallet_) external onlyComponentRole(RM_PROVIDER_ROLE) {
+    require(wallet_ != address(0), "RiskModule: wallet cannot be the zero address");
     _wallet = wallet_;
     _parameterChanged(IAccessManager.GovernanceActions.setWallet, uint256(uint160(wallet_)), false);
   }
@@ -358,4 +375,11 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   function premiumsAccount() external view override returns (IPremiumsAccount) {
     return _premiumsAccount;
   }
+
+  /**
+   * @dev This empty reserved space is put in place to allow future versions to add new
+   * variables without shifting down storage in the inheritance chain.
+   * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
+   */
+  uint256[46] private __gap;
 }

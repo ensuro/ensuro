@@ -376,6 +376,7 @@ class ReserveMixin:
         self.asset_manager = asset_manager
 
     def _transfer_to(self, target, amount):
+        require(target != 0, "Reserve: transfer to the zero address")
         if amount == _W(0):
             return
         balance = self.currency.balance_of(self.contract_id)
@@ -672,13 +673,13 @@ class EToken(ReserveMixin, ERC20Token):
 
     def _max_negative_adjustment(self):
         return max(
-            self.total_supply()
-            - (self.MIN_SCALE * _R(10) * self._base_supply().to_ray()).to_wad(),
+            self.total_supply() - (self.MIN_SCALE * _R(10) * self._base_supply().to_ray()).to_wad(),
             _W(0),
         )
 
     @external
     def add_borrower(self, borrower):
+        require(borrower is not None, "EToken: Borrower cannot be the zero address")
         # Must be called ONLY by the PolicyPool
         borrower = ContractProxyField().adapt(borrower)
         if borrower not in self.loans:
@@ -710,6 +711,7 @@ class EToken(ReserveMixin, ERC20Token):
 
     @external
     def repay_loan(self, msg_sender, amount, on_behalf_of):
+        require(amount > 0, "EToken: amount should be greater than zero.")
         borrower = on_behalf_of
         loan = self.loans.get(ContractProxyField().adapt(borrower), None)
         require(loan is not None, "Borrower not registered")
@@ -840,6 +842,7 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
     @external
     @only_component_role("WITHDRAW_WON_PREMIUMS_ROLE")
     def withdraw_won_premiums(self, amount, destination):
+        require(destination is not None, "PremiumsAccount: destination cannot be the zero address")
         s = self.surplus if self.surplus >= 0 else 0
         if amount > s:
             amount = s
@@ -849,6 +852,7 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
         return amount
 
     def _borrow_from_etk(self, borrow, receiver, jr_etk):
+        require(receiver is not None, "PremiumsAccount: receiver cannot be the zero address")
         if jr_etk:
             amount_left = self.junior_etk.internal_loan(
                 self,

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
@@ -30,6 +31,13 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   using TimeScaled for TimeScaled.ScaledAmount;
   using SafeERC20 for IERC20Metadata;
   using SafeCast for uint256;
+
+  uint256 internal constant FOUR_DECIMAL_TO_WAD = 1e14;
+  uint16 internal constant HUNDRED_PERCENT = 1e4;
+  uint16 internal constant MAX_UR_MIN = 5e3; // 50% - Minimum value for Max Utilization Rate
+  uint16 internal constant LIQ_REQ_MIN = 8e3; // 80%
+  uint16 internal constant LIQ_REQ_MAX = 13e3; // 130%
+  uint16 internal constant INT_LOAN_IR_MAX = 5e3; // 50% - Maximum value for InternalLoan interest rate
 
   // Attributes taken from ERC20
   mapping(address => uint256) private _balances;
@@ -90,7 +98,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     uint256 maxUtilizationRate_,
     uint256 internalLoanInterestRate_
   ) public initializer {
-    __PolicyPoolComponent_init();
+    __Reserve_init();
     __EToken_init_unchained(name_, symbol_, maxUtilizationRate_, internalLoanInterestRate_);
   }
 
@@ -101,6 +109,8 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     uint256 maxUtilizationRate_,
     uint256 internalLoanInterestRate_
   ) internal onlyInitializing {
+    require(bytes(name_).length > 0, "EToken: name cannot be empty");
+    require(bytes(symbol_).length > 0, "EToken: symbol cannot be empty");
     _name = name_;
     _symbol = symbol_;
     _tsScaled.init();
@@ -111,7 +121,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     }); */
     _params = PackedParams({
       maxUtilizationRate: _wadTo4(maxUtilizationRate_),
-      liquidityRequirement: 1e4,
+      liquidityRequirement: HUNDRED_PERCENT,
       minUtilizationRate: 0,
       internalLoanInterestRate: _wadTo4(internalLoanInterestRate_),
       whitelist: ILPWhitelist(address(0))
@@ -120,17 +130,31 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     _validateParameters();
   }
 
+  /**
+   * @dev See {IERC165-supportsInterface}.
+   */
+  function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+    return
+      super.supportsInterface(interfaceId) ||
+      interfaceId == type(IERC20).interfaceId ||
+      interfaceId == type(IERC20Metadata).interfaceId ||
+      interfaceId == type(IEToken).interfaceId;
+  }
+
   // runs validation on EToken parameters
   function _validateParameters() internal view override {
     require(
-      _params.liquidityRequirement >= 8e3 && _params.liquidityRequirement <= 13e3,
+      _params.liquidityRequirement >= LIQ_REQ_MIN && _params.liquidityRequirement <= LIQ_REQ_MAX,
       "Validation: liquidityRequirement must be [0.8, 1.3]"
     );
     require(
-      _params.maxUtilizationRate >= 5e3 && _params.maxUtilizationRate <= 1e4,
+      _params.maxUtilizationRate >= MAX_UR_MIN && _params.maxUtilizationRate <= HUNDRED_PERCENT,
       "Validation: maxUtilizationRate must be [0.5, 1]"
     );
-    require(_params.minUtilizationRate <= 1e4, "Validation: minUtilizationRate must be [0, 1]");
+    require(
+      _params.minUtilizationRate <= HUNDRED_PERCENT,
+      "Validation: minUtilizationRate must be [0, 1]"
+    );
     /*
      * We don't validate minUtilizationRate < maxUtilizationRate because the opposite is valid too.
      * These limits aren't strong limits on the values the utilization rate can take, but instead they are
@@ -141,7 +165,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
      * operations, but not in withdrawals or other operations.
      */
     require(
-      _params.internalLoanInterestRate <= 5e3,
+      _params.internalLoanInterestRate <= INT_LOAN_IR_MAX,
       "Validation: internalLoanInterestRate must be <= 50%"
     );
   }
@@ -252,13 +276,32 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     address recipient,
     uint256 amount
   ) public virtual override returns (bool) {
+    address spender = _msgSender();
+    _spendAllowance(sender, spender, amount);
     _transfer(sender, recipient, amount);
-
-    uint256 currentAllowance = _allowances[sender][_msgSender()];
-    require(currentAllowance >= amount, "EToken: transfer amount exceeds allowance");
-    _approve(sender, _msgSender(), currentAllowance - amount);
-
     return true;
+  }
+
+  /**
+   * @dev Updates `owner` s allowance for `spender` based on spent `amount`.
+   *
+   * Does not update the allowance amount in case of infinite allowance.
+   * Revert if not enough allowance is available.
+   *
+   * Might emit an {Approval} event.
+   */
+  function _spendAllowance(
+    address owner,
+    address spender,
+    uint256 amount
+  ) internal virtual {
+    uint256 currentAllowance = allowance(owner, spender);
+    if (currentAllowance != type(uint256).max) {
+      require(currentAllowance >= amount, "EToken: insufficient allowance");
+      unchecked {
+        _approve(owner, spender, currentAllowance - amount);
+      }
+    }
   }
 
   /**
@@ -274,7 +317,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
    * - `spender` cannot be the zero address.
    */
   function increaseAllowance(address spender, uint256 addedValue) public virtual returns (bool) {
-    _approve(_msgSender(), spender, _allowances[_msgSender()][spender] + addedValue);
+    _approve(_msgSender(), spender, allowance(_msgSender(), spender) + addedValue);
     return true;
   }
 
@@ -348,6 +391,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
    */
   function _mint(address account, uint256 amount) internal virtual {
     require(account != address(0), "EToken: mint to the zero address");
+    require(amount > 0, "EToken: amount to mint should be greater than zero");
 
     _beforeTokenTransfer(address(0), account, amount);
     uint256 scaledAmount = _tsScaled.add(amount, tokenInterestRate());
@@ -473,12 +517,12 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   // solhint-disable-next-line func-name-mixedcase
   function _4toWad(uint16 value) internal pure returns (uint256) {
     // 4 decimals to Wad (18 decimals)
-    return uint256(value) * 1e14;
+    return uint256(value) * FOUR_DECIMAL_TO_WAD;
   }
 
   function _wadTo4(uint256 value) internal pure returns (uint16) {
     // Wad to 4 decimals
-    return (value / 1e14).toUint16();
+    return (value / FOUR_DECIMAL_TO_WAD).toUint16();
   }
 
   function scr() public view virtual override returns (uint256) {
@@ -610,6 +654,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   }
 
   function addBorrower(address borrower) external override onlyPolicyPool {
+    require(borrower != address(0), "EToken: Borrower cannot be the zero address");
     TimeScaled.ScaledAmount storage loan = _loans[borrower];
     if (loan.scale == 0) {
       loan.init();
@@ -618,6 +663,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   }
 
   function removeBorrower(address borrower) external override onlyPolicyPool {
+    require(borrower != address(0), "EToken: Borrower cannot be the zero address");
     uint256 defaultedDebt = getLoan(borrower);
     delete _loans[borrower];
     emit InternalBorrowerRemoved(borrower, defaultedDebt);
@@ -643,13 +689,15 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   }
 
   function repayLoan(uint256 amount, address onBehalfOf) external override {
+    require(amount > 0, "EToken: amount should be greater than zero.");
     // Anyone can call this method, since it has to pay
-    currency().safeTransferFrom(_msgSender(), address(this), amount);
     TimeScaled.ScaledAmount storage loan = _loans[onBehalfOf];
     require(loan.scale != 0, "Not a registered borrower");
     loan.sub(amount, internalLoanInterestRate());
     _discreteChange(int256(amount));
     emit InternalLoanRepaid(onBehalfOf, amount);
+    // Interaction at the end for security reasons
+    currency().safeTransferFrom(_msgSender(), address(this), amount);
   }
 
   function getLoan(address borrower) public view virtual override returns (uint256) {
@@ -720,4 +768,11 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   function whitelist() external view returns (ILPWhitelist) {
     return _params.whitelist;
   }
+
+  /**
+   * @dev This empty reserved space is put in place to allow future versions to add new
+   * variables without shifting down storage in the inheritance chain.
+   * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
+   */
+  uint256[41] private __gap;
 }

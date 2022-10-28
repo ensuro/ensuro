@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
 import {IAssetManager} from "./interfaces/IAssetManager.sol";
 import {IAccessManager} from "./interfaces/IAccessManager.sol";
@@ -17,6 +18,8 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
  *      cash at liquidityMiddle.
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
+ *
+ * @notice This contracts uses Diamond Storage and should not define state variables outside of that. See the diamondStorage method for more details.
  */
 abstract contract LiquidityThresholdAssetManager is IAssetManager {
   using SafeCast for uint256;
@@ -37,6 +40,10 @@ abstract contract LiquidityThresholdAssetManager is IAssetManager {
   }
 
   constructor(IERC20Metadata asset_) {
+    require(
+      address(asset_) != address(0),
+      "LiquidityThresholdAssetManager: asset cannot be zero address"
+    );
     _asset = asset_;
   }
 
@@ -156,5 +163,13 @@ abstract contract LiquidityThresholdAssetManager is IAssetManager {
       ds.liquidityMax = (max / 10**_asset.decimals()).toUint32();
       emit GovernanceAction(IAccessManager.GovernanceActions.setLiquidityMax, max);
     }
+  }
+
+  /**
+   * @dev See {IERC165-supportsInterface}.
+   */
+  function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+    return
+      interfaceId == type(IERC165).interfaceId || interfaceId == type(IAssetManager).interfaceId;
   }
 }
