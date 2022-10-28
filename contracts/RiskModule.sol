@@ -127,6 +127,15 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     _validateParameters();
   }
 
+  function _upgradeValidations(address newImpl) internal view virtual override {
+    super._upgradeValidations(newImpl);
+    IRiskModule newRM = IRiskModule(newImpl);
+    require(
+      newRM.premiumsAccount() == _premiumsAccount,
+      "Can't upgrade changing the PremiumsAccount"
+    );
+  }
+
   /**
    * @dev See {IERC165-supportsInterface}.
    */

@@ -221,8 +221,16 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     _setTreasury(treasury_);
   }
 
-  // solhint-disable-next-line no-empty-blocks
-  function _authorizeUpgrade(address) internal override onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {}
+  function _authorizeUpgrade(address newImpl)
+    internal
+    view
+    override
+    onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
+  {
+    IPolicyPool newPool = IPolicyPool(newImpl);
+    require(newPool.access() == _access, "Can't upgrade changing the access manager");
+    require(newPool.currency() == _currency, "Can't upgrade changing the currency");
+  }
 
   /**
    * @dev Pauses the contract. When the contract is paused, several operations are rejected: deposits, withdrawals, new

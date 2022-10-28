@@ -100,6 +100,10 @@ abstract contract PolicyPoolComponent is
     override
     onlyGlobalOrComponentRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
   {
+    _upgradeValidations(newImpl);
+  }
+
+  function _upgradeValidations(address newImpl) internal view virtual {
     require(
       IPolicyPoolComponent(newImpl).policyPool() == _policyPool,
       "Can't upgrade changing the PolicyPool!"
