@@ -461,6 +461,11 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
 
     // If not enough liquidity, it deinvests from the asset manager
     if (currency().balanceOf(address(this)) < repayAmount) {
+      /**
+       * I send `repayAmount` because the IAssetManager expects the full amount that's needed, not the missing one.
+       * It uses the value of the full amount to optimize the deinvestment leaving more liquidity if possible to avoid
+       * future deinvestment. It will only fail if it can't refill `repayAmount - currency().balanceOf(address(this))`
+       */
       _refillWallet(repayAmount);
     }
     // Checks the allowance before repayment
