@@ -95,8 +95,8 @@ def test_premiums_account_creation(tenv):
     jr_etk = pa.junior_etk
     sr_etk = pa.senior_etk
 
-    tenv.currency.allowance(pa, jr_etk).assert_equal(MAX_UINT)
-    tenv.currency.allowance(pa, sr_etk).assert_equal(MAX_UINT)
+    tenv.currency.allowance(pa, jr_etk).assert_equal(_W(0))
+    tenv.currency.allowance(pa, sr_etk).assert_equal(_W(0))
 
 
 def test_receive_grant(tenv):
@@ -208,9 +208,14 @@ def test_withdraw_won_premiums_with_borrowed_active_pp(tenv):
     pa.receive_grant(tenv.currency.owner, _W(100))
     pa.won_pure_premiums.assert_equal(_W(100) - pa.active_pure_premiums)
 
+    loan_prev = senior_etk.get_loan(pa)
+    tenv.currency.allowance(pa, senior_etk).assert_equal(_W(0))
     # Expire policy
     with pa.thru_policy_pool():
         pa.policy_expired(policy)
+    # Checks part of the loan was repaid and the allowance is at the remaining debt
+    senior_etk.get_loan(pa).assert_equal(loan_prev - policy.pure_premium)
+    tenv.currency.allowance(pa, senior_etk).assert_equal(loan_prev - policy.pure_premium)
     pa.active_pure_premiums.assert_equal(_W(0))
     pa.borrowed_active_pp.assert_equal(_W(0))
     pa.won_pure_premiums.assert_equal(_W(100) - policy.payout * policy.loss_prob * rm.moc)

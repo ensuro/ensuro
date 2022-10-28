@@ -767,11 +767,6 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Infinite approval for eTokens for pool loan repayment
-        if self.junior_etk:
-            self.currency.approve(self, self.junior_etk.contract_id, Wad(2**256 - 1))
-        if self.senior_etk:
-            self.currency.approve(self, self.senior_etk.contract_id, Wad(2**256 - 1))
 
     def has_role(self, role, account):
         return self.pool.access.has_role(role, account)
@@ -926,6 +921,9 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
         # If not enought liquidity, it deinvests from the asset manager
         if self.currency.balance_of(self) < repay_amount:
             self.asset_manager.refill_wallet(repay_amount)
+
+        if self.currency.allowance(self, etk) < repay_amount:
+            self.currency.approve(self, etk.contract_id, borrowed_from_etk)
 
         etk.repay_loan(self, repay_amount, self)
         return pure_premium_won - repay_amount
