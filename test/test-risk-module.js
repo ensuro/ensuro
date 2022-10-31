@@ -9,6 +9,7 @@ const {
   amountFunction,
   addEToken,
   getTransactionEvent,
+  grantRole,
   getComponentRole,
   accessControlMessage,
   makePolicyId,
@@ -67,6 +68,17 @@ describe("RiskModule contract", function () {
       extraArgs: [],
     });
     await accessManager.grantComponentRole(rm.address, await rm.PRICER_ROLE(), backend.address);
+  });
+
+  it("Set params jrCollRatio validations", async () => {
+    let jrCollRatio = 0;
+    await rm.setParam(1, jrCollRatio);
+
+    await grantRole(hre, accessManager, "LEVEL3_ROLE", lp.address);
+    await rm.connect(lp).setParam(1, jrCollRatio);
+
+    jrCollRatio = 100;
+    await expect(rm.connect(lp).setParam(1, jrCollRatio)).to.be.revertedWith("Tweak exceeded");
   });
 
   it("Allows msg.sender as payer", async () => {
