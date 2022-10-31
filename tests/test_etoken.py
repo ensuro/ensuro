@@ -201,6 +201,9 @@ def test_etoken_erc20(tenv):
     with pytest.raises(RevertError):
         etk.approve("LP1", None, expected_balance // _W(2))
 
+    with pytest.raises(RevertError):
+        etk.approve(None, "SPEND", expected_balance // _W(2))
+
     etk.approve("LP1", "SPEND", expected_balance // _W(2))
     etk.increase_allowance("LP1", "SPEND", _W(50))
     with pytest.raises(RevertError):
@@ -892,3 +895,20 @@ def test_getset_etk_parameters_tweaks(tenv):
         with etk.as_("L3_USER"):
             setattr(etk, attr_name, attr_value)
         assert getattr(etk, attr_name) == attr_value
+
+
+def test_mint_to_zero_address(tenv):
+    if tenv.kind != "ethereum":
+        pytest.skip("mint not fully implemented in Python")
+
+    etk = tenv.etoken_class(name="eUSD1WEEK")
+    tenv.currency.transfer(tenv.currency.owner, etk, _W(1000))
+    with etk.thru_policy_pool():
+        with pytest.raises(RevertError):
+            assert etk.deposit(None, _W(1000)) == _W(1000)
+
+    with etk.thru_policy_pool():
+        with pytest.raises(RevertError):
+            assert etk.deposit("LP1", _W(0))
+
+        assert etk.deposit("LP1", _W(1000)) == _W(1000)
