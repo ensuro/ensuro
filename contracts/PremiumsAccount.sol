@@ -125,6 +125,19 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     _validateParameters();
   }
 
+  function _upgradeValidations(address newImpl) internal view virtual override {
+    super._upgradeValidations(newImpl);
+    IPremiumsAccount newPA = IPremiumsAccount(newImpl);
+    require(
+      newPA.juniorEtk() == _juniorEtk || address(_juniorEtk) == address(0),
+      "Can't upgrade changing the Junior ETK unless to non-zero"
+    );
+    require(
+      newPA.seniorEtk() == _seniorEtk || address(_seniorEtk) == address(0),
+      "Can't upgrade changing the Senior ETK unless to non-zero"
+    );
+  }
+
   /**
    * @dev See {IERC165-supportsInterface}.
    */
