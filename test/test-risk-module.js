@@ -117,6 +117,15 @@ describe("RiskModule contract", function () {
     ).to.be.revertedWith("Exposure and MaxPayout must be >0");
   });
 
+  it("Does not allow wallet with zero address", async () => {
+    await expect(
+      addRiskModule(pool, premiumsAccount, RiskModule, {
+        wallet: hre.ethers.constants.AddressZero,
+        extraArgs: [],
+      })
+    ).to.be.revertedWith("Validation: Wallet can't be zero address");
+  });
+
   it("Does not allow a maxpayout of zero", async () => {
     await expect(
       addRiskModule(pool, premiumsAccount, RiskModule, {

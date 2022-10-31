@@ -1548,6 +1548,10 @@ def test_lp_whitelist(tenv):
     with whitelist.as_("amlcompliance"):
         whitelist.whitelist_address("LP2", True)
 
+    # Try to whitelist the same address again
+    with whitelist.as_("amlcompliance"):
+        whitelist.whitelist_address("LP2", True)
+
     assert pool.deposit("eUSD1YEAR", "LP2", _W(2000)) == _W(2000)
 
     # Transfer targets need to be whitelisted too
