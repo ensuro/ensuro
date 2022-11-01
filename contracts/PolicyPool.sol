@@ -528,6 +528,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     return _policies[policyId] != bytes32(0);
   }
 
+  function getPolicyHash(uint256 policyId) external view override returns (bytes32) {
+    return _policies[policyId];
+  }
+
   /**
    * @dev Internal function that handles the different alternative resolutions for a policy, with or without payout and
    * expiration.
