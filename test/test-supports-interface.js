@@ -4,8 +4,6 @@ const { initCurrency, deployPool, deployPremiumsAccount, amountFunction } = requ
 
 describe("Supports interface implementation", function () {
   const invalidInterfaceId = "0x12345678";
-  const zeroAddress = hre.ethers.constants.AddressZero;
-  const rndAddr = "0xd758af6bfc2f0908d7c5f89942be52c36a6b3cab";
 
   async function setupFixture() {
     const [owner] = await hre.ethers.getSigners();
@@ -46,7 +44,7 @@ describe("Supports interface implementation", function () {
       IERC721: "0x80ac58cd",
       IAccessControl: "0x7965db0b",
       IEToken: "0x027466bc",
-      IPolicyPool: "0x4b195a48",
+      IPolicyPool: "0x3234fad6",
       IPolicyPoolComponent: "0x4cea22a4",
       IRiskModule: "0xda40804f",
       IPremiumsAccount: "0xb76712ec",
