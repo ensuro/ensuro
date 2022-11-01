@@ -79,7 +79,57 @@ contract TrustfulRiskModule is RiskModule {
     address onBehalfOf,
     uint96 internalId
   ) external onlyComponentRole(PRICER_ROLE) returns (uint256) {
-    address payer = onBehalfOf;
+    return
+      _newPolicy(
+        payout,
+        premium,
+        lossProb,
+        expiration,
+        _getPayer(onBehalfOf, premium),
+        onBehalfOf,
+        internalId
+      ).id;
+  }
+
+  /**
+   * @dev Creates a new Policy. Version that returns all the PolicyData struct, not just the id.
+   *
+   * Requirements:
+   * - The caller has been granted componentRole(PRICER_ROLE)
+   *
+   * Emits:
+   * - {PolicyPool.NewPolicy}
+   *
+   * @param payout The exposure (maximum payout) of the policy
+   * @param premium The premium that will be paid by the policyHolder
+   * @param lossProb The probability of having to pay the maximum payout (wad)
+   * @param expiration The expiration of the policy (timestamp)
+   * @param onBehalfOf The policy holder
+   * @param internalId An id that's unique within this module and it will be used to identify the policy
+   * @return createdPolicy Returns the id of the created policy
+   */
+  function newPolicyFull(
+    uint256 payout,
+    uint256 premium,
+    uint256 lossProb,
+    uint40 expiration,
+    address onBehalfOf,
+    uint96 internalId
+  ) external onlyComponentRole(PRICER_ROLE) returns (Policy.PolicyData memory createdPolicy) {
+    return
+      _newPolicy(
+        payout,
+        premium,
+        lossProb,
+        expiration,
+        _getPayer(onBehalfOf, premium),
+        onBehalfOf,
+        internalId
+      );
+  }
+
+  function _getPayer(address onBehalfOf, uint256 premium) internal returns (address payer) {
+    payer = onBehalfOf;
     if (payer != _msgSender() && _policyPool.currency().allowance(payer, _msgSender()) < premium)
       /**
        * The standard is the payer should be the _msgSender() but usually, in this type of module,
@@ -93,8 +143,7 @@ contract TrustfulRiskModule is RiskModule {
        * premium even for multiple policies.
        */
       payer = _msgSender();
-
-    return _newPolicy(payout, premium, lossProb, expiration, payer, onBehalfOf, internalId).id;
+    return payer;
   }
 
   /**

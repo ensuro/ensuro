@@ -22,6 +22,7 @@ nav:
     - Reserve: Reserve.md
   - Extensions:
     - TrustfulRiskModule: TrustfulRiskModule.md
+    - SignedQuoteRiskModule: SignedQuoteRiskModule.md
     - LPManualWhitelist: LPManualWhitelist.md
     - LiquidityThresholdAssetManager: LiquidityThresholdAssetManager.md
     - ERC4626AssetManager: ERC4626AssetManager.md
