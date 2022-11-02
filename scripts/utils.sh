@@ -33,12 +33,26 @@ startHHNode() {
 }
 
 readAddress() {
-    python -c "import json; print(json.load(open('.addresses.json'))['$1'])"
+    if [ -z $ADDRESSES_FILENAME ]; then
+        ADDRESSES_FILENAME=".addresses-$NETWORK.json"
+    fi
+    python -c "import json; print(json.load(open('$ADDRESSES_FILENAME'))['$1'])"
     exit $?
 }
 
 resetAddresses() {
     python -c "open('.addresses.json', 'wt').write('{}')"
+}
+
+readPK() {
+    if [ $NETWORK != "localhost" ]; then
+        PK_VAR=${NETWORK^^}_ACCOUNTPK_1
+
+        if [ -z ${!PK_VAR} ]; then
+            read -p "Please enter the PK for the account: " -s $PK_VAR
+            export $PK_VAR
+        fi
+    fi
 }
 
 killPID() {

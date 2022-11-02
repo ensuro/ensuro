@@ -35,14 +35,24 @@ function _A(value) {
 function saveAddress(name, address) {
   if (!name || name === "") return;
   let addresses;
+  let addressesFilename;
+  if (process.env.ADDRESSES_FILENAME) {
+    addressesFilename = process.env.ADDRESSES_FILENAME;
+  } else {
+    if (process.env.NETWORK) {
+      addressesFilename = `.addresses-${process.env.NETWORK}.json`;
+    } else {
+      addressesFilename = ".addresses.json";
+    }
+  }
   try {
-    addresses = JSON.parse(fs.readFileSync(".addresses.json"));
+    addresses = JSON.parse(fs.readFileSync(addressesFilename));
   } catch (err) {
     console.log("Error reading .addresses.json", err);
     addresses = {};
   }
   addresses[name] = address;
-  fs.writeFileSync(".addresses.json", JSON.stringify(addresses));
+  fs.writeFileSync(addressesFilename, JSON.stringify(addresses, null, 4));
 }
 
 function etherscanUrl() {
@@ -302,8 +312,13 @@ async function deployFlightDelayRM(opts, hre) {
 }
 
 async function deployPriceRM(opts, hre) {
-  opts.extraConstructorArgs = [opts.asset, opts.referenceCurrency, opts.priceOracle, _W(opts.slotSize)];
-  return deployRiskModule(opts, hre);
+  opts.extraConstructorArgs = [opts.assetOracle, opts.referenceOracle, _W(opts.slotSize)];
+  opts.extraArgs = [opts.oracleTolerance];
+  const rm = await deployRiskModule(opts, hre);
+  if (opts.minDuration != 3600) {
+    // TODO: we will need ORACLE_ADMIN_ROLE
+    await rm.setMinDuration(opts.minDuration);
+  }
 }
 
 async function deploySignedQuoteRM(opts, hre) {
@@ -583,8 +598,7 @@ function add_task() {
     .addOptionalParam("exposureLimit", "Exposure (sum of payouts) limit for the RM", 1e6, types.float)
     .addOptionalParam("maxDuration", "Maximum policy duration in hours", 24 * 365, types.int)
     .addOptionalParam("moc", "Margin of Conservativism", 1.0, types.float)
-    .addOptionalParam("creationIsOpen", "Indicates if anyone can create policies (with a quote)",
-                      true, types.boolean)
+    .addOptionalParam("creationIsOpen", "Indicates if anyone can create policies (with a quote)", true, types.boolean)
     .addParam("wallet", "RM address", types.address)
     .setAction(deploySignedQuoteRM);
 
@@ -606,10 +620,11 @@ function add_task() {
     .addOptionalParam("maxDuration", "Maximum policy duration in hours", 24 * 365, types.int)
     .addOptionalParam("moc", "Margin of Conservativism", 1.0, types.float)
     .addParam("wallet", "RM address", types.address)
-    .addParam("asset", "Insured asset address", types.address)
-    .addParam("referenceCurrency", "Reference currency address", types.address)
-    .addParam("priceOracle", "Address of the PriceOracle", types.address)
+    .addParam("assetOracle", "Insured asset oracle address", types.address)
+    .addOptionalParam("referenceOracle", "Reference currency address", ethers.constants.AddressZero, types.address)
     .addOptionalParam("slotSize", "Slot size", 0.01, types.float)
+    .addOptionalParam("oracleTolerance", "Oracle age tolerance", 1800, types.int)
+    .addOptionalParam("minDuration", "Minimum time that must elapse before a policy can be triggered", 3600, types.int)
     .setAction(deployPriceRM);
 
   task("ens:setAssetManager", "Sets an asset manager to a reserve")
@@ -701,4 +716,16 @@ function add_task() {
     .setAction(grantRoleTask);
 }
 
-module.exports = { add_task };
+module.exports = {
+  add_task,
+  saveAddress,
+  logContractCreated,
+  deployContract,
+  deployProxyContract,
+  grantRole,
+  grantComponentRole,
+  deployRiskModule,
+  deploySignedQuoteRM,
+  setAssetManager,
+  deployWhitelist,
+};

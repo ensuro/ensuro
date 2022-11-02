@@ -128,7 +128,7 @@ contract TrustfulRiskModule is RiskModule {
       );
   }
 
-  function _getPayer(address onBehalfOf, uint256 premium) internal returns (address payer) {
+  function _getPayer(address onBehalfOf, uint256 premium) internal view returns (address payer) {
     payer = onBehalfOf;
     if (payer != _msgSender() && _policyPool.currency().allowance(payer, _msgSender()) < premium)
       /**
