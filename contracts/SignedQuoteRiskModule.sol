@@ -22,6 +22,12 @@ contract SignedQuoteRiskModule is RiskModule {
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   bool internal immutable _creationIsOpen;
 
+  /**
+   * @dev Event emitted every time a new policy is created. It allows to link the policyData with a particular policy
+   *
+   * @param policyId The id of the policy
+   * @param policyData The value sent in `policyData` parameter that's the hash of the off-chain stored data.
+   */
   event NewSignedPolicy(uint256 indexed policyId, bytes32 policyData);
 
   /// @custom:oz-upgrades-unsafe-allow constructor
@@ -74,7 +80,7 @@ contract SignedQuoteRiskModule is RiskModule {
     uint40 quoteValidUntil,
     address payer,
     address onBehalfOf
-  ) internal returns (uint256 policyId) {
+  ) internal returns (Policy.PolicyData memory createdPolicy) {
     if (!_creationIsOpen)
       _policyPool.access().checkComponentRole(
         address(this),
@@ -108,33 +114,92 @@ contract SignedQuoteRiskModule is RiskModule {
     _policyPool.access().checkComponentRole(address(this), PRICER_ROLE, signer, false);
     uint96 internalId = uint96(uint256(policyData) % 2**96);
 
-    policyId = _newPolicy(payout, premium, lossProb, expiration, payer, onBehalfOf, internalId).id;
-    emit NewSignedPolicy(policyId, policyData);
-    return policyId;
+    createdPolicy = _newPolicy(
+      payout,
+      premium,
+      lossProb,
+      expiration,
+      payer,
+      onBehalfOf,
+      internalId
+    );
+    emit NewSignedPolicy(createdPolicy.id, policyData);
+    return createdPolicy;
   }
 
   /**
-￼   * @dev Creates a new Policy using a signed quote. The caller is the payer of the policy.
-￼   *
-￼   * Requirements:
-￼   * - The caller approved the spending of the premium to the PolicyPool
-￼   * - The quote has been signed by an address with the component role PRICER_ROLE
-￼   *
-￼   * Emits:
-￼   * - {PolicyPool.NewPolicy}
-￼   * - {NewSignedPolicy}
-￼   *
-￼   * @param payout The exposure (maximum payout) of the policy
-￼   * @param premium The premium that will be paid by the payer
-￼   * @param lossProb The probability of having to pay the maximum payout (wad)
-￼   * @param expiration The expiration of the policy (timestamp)
-￼   * @param onBehalfOf The policy holder
-￼   * @param policyData A hash of the private details of the policy. The last 96 bits will be used as internalId
-￼   * @param quoteSignatureR The signature of the "quote". R component (EIP-2098 signature)
-￼   * @param quoteSignatureVS The signature of the "quote". VS component (EIP-2098 signature)
-￼   * @param quoteValidUntil The expiration of the quote
-￼   * @return Returns the id of the created policy
-￼   */
+￼  * @dev Creates a new Policy using a signed quote. The caller is the payer of the policy. Returns all the struct, not
+   * just the id.
+   *
+   * Same as {newPolicy} but returns all the PolicyData struct, usefull if the PolicyData needs to be stored on-chain.
+￼  *
+￼  * Requirements:
+￼  * - The caller approved the spending of the premium to the PolicyPool
+￼  * - The quote has been signed by an address with the component role PRICER_ROLE
+￼  *
+￼  * Emits:
+￼  * - {PolicyPool.NewPolicy}
+￼  * - {NewSignedPolicy}
+￼  *
+￼  * @param payout The exposure (maximum payout) of the policy
+￼  * @param premium The premium that will be paid by the payer
+￼  * @param lossProb The probability of having to pay the maximum payout (wad)
+￼  * @param expiration The expiration of the policy (timestamp)
+￼  * @param onBehalfOf The policy holder
+￼  * @param policyData A hash of the private details of the policy. The last 96 bits will be used as internalId
+￼  * @param quoteSignatureR The signature of the quote. R component (EIP-2098 signature)
+￼  * @param quoteSignatureVS The signature of the quote. VS component (EIP-2098 signature)
+￼  * @param quoteValidUntil The expiration of the quote
+￼  * @return createdPolicy Returns the created policy
+￼  */
+  function newPolicyFull(
+    uint256 payout,
+    uint256 premium,
+    uint256 lossProb,
+    uint40 expiration,
+    address onBehalfOf,
+    bytes32 policyData,
+    bytes32 quoteSignatureR,
+    bytes32 quoteSignatureVS,
+    uint40 quoteValidUntil
+  ) external returns (Policy.PolicyData memory createdPolicy) {
+    return
+      _newPolicySigned(
+        payout,
+        premium,
+        lossProb,
+        expiration,
+        policyData,
+        quoteSignatureR,
+        quoteSignatureVS,
+        quoteValidUntil,
+        _msgSender(),
+        onBehalfOf
+      );
+  }
+
+  /**
+￼  * @dev Creates a new Policy using a signed quote. The caller is the payer of the policy.
+￼  *
+￼  * Requirements:
+￼  * - The caller approved the spending of the premium to the PolicyPool
+￼  * - The quote has been signed by an address with the component role PRICER_ROLE
+￼  *
+￼  * Emits:
+￼  * - {PolicyPool.NewPolicy}
+￼  * - {NewSignedPolicy}
+￼  *
+￼  * @param payout The exposure (maximum payout) of the policy
+￼  * @param premium The premium that will be paid by the payer
+￼  * @param lossProb The probability of having to pay the maximum payout (wad)
+￼  * @param expiration The expiration of the policy (timestamp)
+￼  * @param onBehalfOf The policy holder
+￼  * @param policyData A hash of the private details of the policy. The last 96 bits will be used as internalId
+￼  * @param quoteSignatureR The signature of the quote. R component (EIP-2098 signature)
+￼  * @param quoteSignatureVS The signature of the quote. VS component (EIP-2098 signature)
+￼  * @param quoteValidUntil The expiration of the quote
+￼  * @return Returns the id of the created policy
+￼  */
   function newPolicy(
     uint256 payout,
     uint256 premium,
@@ -158,31 +223,31 @@ contract SignedQuoteRiskModule is RiskModule {
         quoteValidUntil,
         _msgSender(),
         onBehalfOf
-      );
+      ).id;
   }
 
   /**
-￼   * @dev Creates a new Policy using a signed quote. The payer is the policy holder
-￼   *
-￼   * Requirements:
-￼   * - currency().allowance(onBehalfOf, _msgSender()) > 0
-￼   * - The quote has been signed by an address with the component role PRICER_ROLE
-￼   *
-￼   * Emits:
-￼   * - {PolicyPool.NewPolicy}
-￼   * - {NewSignedPolicy}
-￼   *
-￼   * @param payout The exposure (maximum payout) of the policy
-￼   * @param premium The premium that will be paid by the payer
-￼   * @param lossProb The probability of having to pay the maximum payout (wad)
-￼   * @param expiration The expiration of the policy (timestamp)
-￼   * @param onBehalfOf The policy holder
-￼   * @param policyData A hash of the private details of the policy. The last 96 bits will be used as internalId
-￼   * @param quoteSignatureR The signature of the "quote". R component (EIP-2098 signature)
-￼   * @param quoteSignatureVS The signature of the "quote". VS component (EIP-2098 signature)
-￼   * @param quoteValidUntil The expiration of the quote
-￼   * @return Returns the id of the created policy
-￼   */
+￼  * @dev Creates a new Policy using a signed quote. The payer is the policy holder
+￼  *
+￼  * Requirements:
+￼  * - currency().allowance(onBehalfOf, _msgSender()) > 0
+￼  * - The quote has been signed by an address with the component role PRICER_ROLE
+￼  *
+￼  * Emits:
+￼  * - {PolicyPool.NewPolicy}
+￼  * - {NewSignedPolicy}
+￼  *
+￼  * @param payout The exposure (maximum payout) of the policy
+￼  * @param premium The premium that will be paid by the payer
+￼  * @param lossProb The probability of having to pay the maximum payout (wad)
+￼  * @param expiration The expiration of the policy (timestamp)
+￼  * @param onBehalfOf The policy holder
+￼  * @param policyData A hash of the private details of the policy. The last 96 bits will be used as internalId
+￼  * @param quoteSignatureR The signature of the quote. R component (EIP-2098 signature)
+￼  * @param quoteSignatureVS The signature of the quote. VS component (EIP-2098 signature)
+￼  * @param quoteValidUntil The expiration of the quote
+￼  * @return Returns the id of the created policy
+￼  */
   function newPolicyPaidByHolder(
     uint256 payout,
     uint256 premium,
@@ -220,7 +285,7 @@ contract SignedQuoteRiskModule is RiskModule {
         quoteValidUntil,
         onBehalfOf,
         onBehalfOf
-      );
+      ).id;
   }
 
   function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout)

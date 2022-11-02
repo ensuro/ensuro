@@ -101,11 +101,22 @@ interface IPolicyPool {
   function expirePolicy(Policy.PolicyData calldata policy) external;
 
   /**
-   * @dev Returns whether or not a policy is active
-   * @param policyId The id of the policy we are querying
-   * @return Returns true if a policy with that id was created and wasn't yet resolved or expired, or false otherwise.
+   * @dev Returns whether a policy is active, i.e., it's still in the PolicyPool, not yet resolved or expired.
+   *      Be aware that a policy might be active but the `block.timestamp` might be after the expiration date, so it
+   *      can't be triggered with a payout.
+   *
+   * @param policyId The id of the policy queried
+   * @return Whether the policy is active or not
    */
   function isActive(uint256 policyId) external view returns (bool);
+
+  /**
+   * @dev Returns the stored hash of the policy. It's `bytes32(0)` is the policy isn't active.
+   *
+   * @param policyId The id of the policy queried
+   * @return Returns the hash of a given policy id
+   */
+  function getPolicyHash(uint256 policyId) external view returns (bytes32);
 
   /**
    * @dev Deposits liquidity into an eToken. Forwards the call to {EToken-deposit}, after transferring the funds.
