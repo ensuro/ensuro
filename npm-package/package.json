@@ -6,7 +6,9 @@
     "**/*.sol",
     "/build/contracts/*.json",
     "/build/interfaces/*.json",
-    "/js/*.js"
+    "/js/*.js",
+    "/scripts/*.sh",
+    "/scripts/*.js"
   ],
   "repository": {
     "type": "git",
