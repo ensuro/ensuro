@@ -34,14 +34,17 @@ startHHNode() {
 
 readAddress() {
     if [ -z $ADDRESSES_FILENAME ]; then
-        ADDRESSES_FILENAME=".addresses-$NETWORK.json"
+        export ADDRESSES_FILENAME=".addresses-$NETWORK.json"
     fi
     python -c "import json; print(json.load(open('$ADDRESSES_FILENAME'))['$1'])"
     exit $?
 }
 
 resetAddresses() {
-    python -c "open('.addresses.json', 'wt').write('{}')"
+    if [ -z $ADDRESSES_FILENAME ]; then
+        export ADDRESSES_FILENAME=".addresses-$NETWORK.json"
+    fi
+    python -c "open('$ADDRESSES_FILENAME', 'wt').write('{}')"
 }
 
 readPK() {

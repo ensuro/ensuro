@@ -42,7 +42,7 @@ function saveAddress(name, address) {
     if (process.env.NETWORK) {
       addressesFilename = `.addresses-${process.env.NETWORK}.json`;
     } else {
-      addressesFilename = ".addresses.json";
+      addressesFilename = ".addresses-localhost.json";
     }
   }
   try {
