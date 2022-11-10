@@ -123,6 +123,7 @@ Also the docker container is prepared to run [hardhat](https://hardhat.org/). Th
 
 ## Code Audits
 
+- Audit by [Quantstamp](https://quantstamp.com/) - 2022-09-26 through 2022-10-20: [AuditReport](audits/Quantstamp-Ensuro-Final-Report-2022-11-09.pdf)
 - Audit by [SlowMist](https://www.slowmist.com) - 2021-09-29: [AuditReport](audits/SlowMistAuditReport-Ensuro-2021-09-29.pdf)
 
 ## Contributing
