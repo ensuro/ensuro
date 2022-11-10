@@ -257,6 +257,13 @@ class EToken(ReserveMixin, IERC20):
         with access.as_(self._auto_from):
             return access.grant_role(role, user)
 
+    @property
+    def whitelist(self):
+        if hasattr(self, "_whitelist"):
+            return self._whitelist
+        else:
+            return LPManualWhitelist.connect(eth_call(self, "whitelist"))
+
 
 class Policy:
     def __init__(

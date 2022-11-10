@@ -33,6 +33,9 @@ function _A(value) {
 }
 
 function saveAddress(name, address) {
+  if (name === undefined) {
+    throw "Didn't specified an address to save. If you don't want to save the address send null";
+  }
   if (!name || name === "") return;
   let addresses;
   let addressesFilename;
@@ -372,7 +375,7 @@ async function deployAaveAssetManager({ asset, aave, amClass, ...opts }, hre) {
 }
 
 async function deployWhitelist(
-  { wlClass, poolAddress, extraConstructorArgs, extraArgs, eToken, eToken2, eToken3, opts },
+  { wlClass, poolAddress, extraConstructorArgs, extraArgs, eToken, eToken2, eToken3, ...opts },
   hre
 ) {
   extraArgs = extraArgs || [];
