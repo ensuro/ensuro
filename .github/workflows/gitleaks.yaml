@@ -1,0 +1,12 @@
+name: gitleaks
+
+on: [push]
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - name: gitleaks-action
+        # TODO: use the latest version (paid)
+        uses: zricethezav/gitleaks-action@v1.6.0
