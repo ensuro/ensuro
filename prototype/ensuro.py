@@ -1,3 +1,4 @@
+from collections import namedtuple
 from contextlib import contextmanager
 from hashlib import md5
 from functools import wraps
@@ -27,6 +28,11 @@ HOURS_PER_DAY = 24
 SECONDS_IN_HOUR = 3600
 SECONDS_IN_YEAR = 365 * 24 * SECONDS_IN_HOUR
 MAX_UINT = 2**256 - 1
+
+PremiumComposition = namedtuple(
+    "PremiumComposition",
+    ["pure_premium", "ensuro_commission", "jr_coc", "sr_coc", "total"],
+)
 
 
 class TimeControl:
@@ -215,6 +221,9 @@ class RiskModule(AccessControlContract):
         return policy
 
     def get_minimum_premium(self, payout, loss_prob, expiration):
+        return self.get_minimum_premium_composition(payout, loss_prob, expiration).total
+
+    def get_minimum_premium_composition(self, payout, loss_prob, expiration):
         pure_premium = payout * loss_prob * self.moc
         jr_scr = max(payout * self.jr_coll_ratio - pure_premium, _W(0))
         sr_scr = max(payout * self.coll_ratio - pure_premium - jr_scr, _W(0))
@@ -233,7 +242,8 @@ class RiskModule(AccessControlContract):
         ensuro_commission = (
             pure_premium * self.ensuro_pp_fee + (jr_coc + sr_coc) * self.ensuro_coc_fee
         )
-        return pure_premium + ensuro_commission + jr_coc + sr_coc
+        total = pure_premium + ensuro_commission + jr_coc + sr_coc
+        return PremiumComposition(pure_premium, ensuro_commission, jr_coc, sr_coc, total)
 
     @external
     def remove_policy(self, policy):
