@@ -2,8 +2,8 @@ from contextlib import contextmanager
 from eth_utils import keccak
 from eth_abi import encode
 from ethproto.wadray import Wad, _W
-from ethproto.wrappers import (
-    AddressBook,  # noqa: F401
+from ethproto.wrappers import (  # noqa: F401
+    AddressBook,
     IERC20,
     IERC721,
     ETHWrapper,
@@ -259,10 +259,13 @@ class EToken(ReserveMixin, IERC20):
 
     @property
     def whitelist(self):
-        if hasattr(self, "_whitelist"):
-            return self._whitelist
-        else:
-            return LPManualWhitelist.connect(eth_call(self, "whitelist"))
+        if not hasattr(self, "_whitelist"):
+            whitelist_address = eth_call(self, "whitelist")
+            if int(whitelist_address, 16) == 0:
+                self._whitelist = None
+            else:
+                self._whitelist = LPManualWhitelist.connect(whitelist_address)
+        return self._whitelist
 
 
 class Policy:

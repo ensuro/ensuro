@@ -7,14 +7,28 @@ const _BN = ethers.BigNumber.from;
 const WAD = _BN(1e10).mul(_BN(1e8)); // 1e10*1e8=1e18
 const RAY = WAD.mul(_BN(1e9)); // 1e18*1e9=1e27
 
-function _W(value) {
-  if (!Number.isInteger(value)) return _BN(value * 1e10).mul(_BN(1e8));
-  return _BN(value).mul(WAD);
-}
+/**
+ * Creates a fixed-point conversion function for the desired number of decimals
+ * @param decimals The number of decimals. Must be >= 6.
+ * @returns The amount function created. The function can receive strings (recommended),
+ *          floats/doubles (not recommended) and integers.
+ *
+ *          Floats will be rounded to 6 decimal before scaling.
+ */
+function amountFunction(decimals) {
+  return function (value) {
+    if (value === undefined) return undefined;
 
-function _R(value) {
-  if (!Number.isInteger(value)) return _BN(Math.round(value * 1e9)).mul(WAD);
-  return _BN(value).mul(RAY);
+    if (typeof value === "string" || value instanceof String) {
+      return hre.ethers.utils.parseUnits(value, decimals);
+    }
+
+    if (!Number.isInteger(value)) {
+      return _BN(Math.round(value * 1e6)).mul(_BN(Math.pow(10, decimals - 6)));
+    }
+
+    return _BN(value).mul(_BN(10).pow(decimals));
+  };
 }
 
 function amountDecimals() {
@@ -23,13 +37,25 @@ function amountDecimals() {
   return decimals;
 }
 
-function _A(value) {
-  // Decimals must be at least 6
-  if (typeof value === "string" || value instanceof String) {
-    return _BN(value).mul(_BN(Math.pow(10, amountDecimals())));
-  } else {
-    return _BN(Math.round(value * 1e6)).mul(_BN(Math.pow(10, amountDecimals() - 6)));
+const GWei = amountFunction(9);
+const _W = amountFunction(18);
+const _R = amountFunction(27);
+const _A = amountFunction(amountDecimals());
+
+/**
+ * Transaction overrides using env variables because hardhat-ethers ignores hardhat config
+ * See: https://hardhat.org/hardhat-runner/plugins/nomiclabs-hardhat-ethers#gas-transaction-parameters-in--hardhat.config--are-not-used
+ */
+function txOverrides() {
+  const ret = {};
+  if (process.env.OVERRIDE_GAS_PRICE !== undefined) {
+    ret.gasPrice = GWei(parseFloat(process.env.OVERRIDE_GAS_PRICE));
   }
+
+  if (process.env.OVERRIDE_GAS_LIMIT !== undefined) {
+    ret.gasLimit = parseInt(process.env.OVERRIDE_GAS_LIMIT);
+  }
+  return ret || undefined;
 }
 
 function saveAddress(name, address) {
@@ -94,7 +120,7 @@ async function verifyContract(hre, contract, isProxy, constructorArguments) {
 
 async function deployContract({ saveAddr, verify, contractClass, constructorArgs }, hre) {
   const ContractFactory = await hre.ethers.getContractFactory(contractClass);
-  const contract = await ContractFactory.deploy(...constructorArgs);
+  const contract = await ContractFactory.deploy(...constructorArgs, txOverrides());
   if (verify) {
     // From https://ethereum.stackexchange.com/a/119622/79726
     await contract.deployTransaction.wait(6);
@@ -126,6 +152,14 @@ async function deployProxyContract({ saveAddr, verify, contractClass, constructo
   return { ContractFactory, contract };
 }
 
+function parseRole(role) {
+  if (role.startsWith("0x"))
+    return role;
+  if (role === "DEFAULT_ADMIN_ROLE")
+    return ethers.constants.HashZero;
+  return ethers.utils.keccak256(ethers.utils.toUtf8Bytes(role));
+}
+
 async function grantComponentRole(hre, contract, component, role, user) {
   let userAddress;
   if (user === undefined) {
@@ -134,11 +168,11 @@ async function grantComponentRole(hre, contract, component, role, user) {
   } else {
     userAddress = user;
   }
-  const roleHex = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(role));
+  const roleHex = parseRole(role);
   const componentAddress = component.address || component;
   const componentRole = await contract.getComponentRole(componentAddress, roleHex);
   if (!(await contract.hasRole(componentRole, userAddress))) {
-    await contract.grantComponentRole(componentAddress, roleHex, userAddress);
+    await contract.grantComponentRole(componentAddress, roleHex, userAddress, txOverrides());
     console.log(`Role ${role} (${roleHex}) Component ${componentAddress} granted to ${userAddress}`);
   } else {
     console.log(`Role ${role} (${roleHex}) Component ${componentAddress} already granted to ${userAddress}`);
@@ -153,9 +187,9 @@ async function grantRole(hre, contract, role, user) {
   } else {
     userAddress = user;
   }
-  const roleHex = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(role));
+  const roleHex = parseRole(role);
   if (!(await contract.hasRole(roleHex, userAddress))) {
-    await contract.grantRole(roleHex, userAddress);
+    await contract.grantRole(roleHex, userAddress, txOverrides());
     console.log(`Role ${role} (${roleHex}) granted to ${userAddress}`);
   } else {
     console.log(`Role ${role} (${roleHex}) already granted to ${userAddress}`);
@@ -221,7 +255,8 @@ async function deployEToken(
     hre
   );
   const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
-  await policyPool.addComponent(contract.address, 1);
+  if (opts.addComponent)
+    await policyPool.addComponent(contract.address, 1);
   return contract.address;
 }
 
@@ -236,7 +271,8 @@ async function deployPremiumsAccount({ poolAddress, juniorEtk, seniorEtk, ...opt
     hre
   );
   const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
-  await policyPool.addComponent(contract.address, 3);
+  if (opts.addComponent)
+    await policyPool.addComponent(contract.address, 3);
   return contract.address;
 }
 
@@ -305,7 +341,8 @@ async function deployRiskModule(
     await rm.setParam(9, ensuroCocFee);
   }
   const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
-  await policyPool.addComponent(contract.address, 2);
+  if (opts.addComponent)
+    await policyPool.addComponent(contract.address, 2);
   return contract.address;
 }
 
@@ -331,7 +368,7 @@ async function deploySignedQuoteRM(opts, hre) {
 
 async function setAssetManager({ reserve, amAddress, liquidityMin, liquidityMiddle, liquidityMax }, hre) {
   const reserveContract = await hre.ethers.getContractAt("Reserve", reserve);
-  await reserveContract.setAssetManager(amAddress, false);
+  const tx = await reserveContract.setAssetManager(amAddress, false);
   console.log(`Asset Manager ${amAddress} set to reserve ${reserve}`);
   if (liquidityMin !== undefined || liquidityMiddle !== undefined || liquidityMax !== undefined) {
     liquidityMin = liquidityMin === undefined ? ethers.constants.MaxUint256 : _A(liquidityMin);
@@ -341,6 +378,9 @@ async function setAssetManager({ reserve, amAddress, liquidityMin, liquidityMidd
       "ERC4626AssetManager", // Not relevant if it's ERC4626AssetManager, only need setLiquidityThresholds
       amAddress
     );
+
+    // To make sure the setAssetManager was executed - wait 2 confirmations
+    await tx.wait(process.env.NETWORK !== "localhost" ? 2 : undefined);
     await reserveContract.forwardToAssetManager(
       amContract.interface.encodeFunctionData("setLiquidityThresholds", [liquidityMin, liquidityMiddle, liquidityMax])
     );
@@ -549,6 +589,7 @@ function add_task() {
   task("deploy:eToken", "Deploy an EToken and adds it to the pool")
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addOptionalParam("saveAddr", "Save created contract address", "ETOKEN", types.str)
+    .addOptionalParam("addComponent", "Adds the new component to the pool", true, types.boolean)
     .addParam("poolAddress", "PolicyPool Address", types.address)
     .addParam("etkName", "Name of EToken", types.str)
     .addParam("etkSymbol", "Symbol of EToken", types.str)
@@ -559,6 +600,7 @@ function add_task() {
   task("deploy:premiumsAccount", "Deploy a premiums account")
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addOptionalParam("saveAddr", "Save created contract address", "PA", types.str)
+    .addOptionalParam("addComponent", "Adds the new component to the pool", true, types.boolean)
     .addParam("poolAddress", "PolicyPool Address", types.address)
     .addParam("juniorEtk", "Junior EToken Address", types.address)
     .addParam("seniorEtk", "Senior EToken Address", types.address)
@@ -567,6 +609,7 @@ function add_task() {
   task("deploy:riskModule", "Deploys a RiskModule and adds it to the pool")
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addOptionalParam("saveAddr", "Save created contract address", "RM", types.str)
+    .addOptionalParam("addComponent", "Adds the new component to the pool", true, types.boolean)
     .addParam("poolAddress", "PolicyPool Address", types.address)
     .addParam("paAddress", "PremiumsAccount Address", types.address)
     .addOptionalParam("rmClass", "RiskModule contract", "TrustfulRiskModule", types.str)
@@ -587,6 +630,7 @@ function add_task() {
   task("deploy:signedQuoteRiskModule", "Deploys a RiskModule and adds it to the pool")
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addOptionalParam("saveAddr", "Save created contract address", "RM", types.str)
+    .addOptionalParam("addComponent", "Adds the new component to the pool", true, types.boolean)
     .addParam("poolAddress", "PolicyPool Address", types.address)
     .addParam("paAddress", "PremiumsAccount Address", types.address)
     .addOptionalParam("rmClass", "RiskModule contract", "SignedQuoteRiskModule", types.str)
@@ -608,6 +652,7 @@ function add_task() {
   task("deploy:priceRiskModule", "Deploys and injects a Price RiskModule")
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addOptionalParam("saveAddr", "Save created contract address", "RM", types.str)
+    .addOptionalParam("addComponent", "Adds the new component to the pool", true, types.boolean)
     .addParam("poolAddress", "PolicyPool Address", types.address)
     .addParam("paAddress", "PremiumsAccount Address", types.address)
     .addOptionalParam("rmClass", "RiskModule contract", "PriceRiskModule", types.str)
