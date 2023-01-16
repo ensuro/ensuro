@@ -220,6 +220,36 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     return _tsScaled.getScale(tokenInterestRate()).rayMul(principalBalance.wadToRay()).rayToWad();
   }
 
+  // Methods following AAVE's IScaledBalanceToken, to simplify future integrations
+
+  /**
+   * @dev Returns the scaled balance of the user. The scaled balance is the sum of all the
+   * updated stored balance divided by the EToken's scale index
+   * @param user The user whose balance is calculated
+   * @return The scaled balance of the user
+   **/
+  function scaledBalanceOf(address user) external view returns (uint256) {
+    return _balances[user];
+  }
+
+  /**
+   * @dev Returns the scaled balance of the user and the scaled total supply.
+   * @param user The address of the user
+   * @return The scaled balance of the user
+   * @return The scaled balance and the scaled total supply
+   **/
+  function getScaledUserBalanceAndSupply(address user) external view returns (uint256, uint256) {
+    return (_balances[user], uint256(_tsScaled.amount));
+  }
+
+  /**
+   * @dev Returns the (un)scaled total supply of the EToken. Equals to the sum of `scaledBalanceOf(x)` of all users
+   * @return The scaled total supply
+   **/
+  function scaledTotalSupply() external view returns (uint256) {
+    return uint256(_tsScaled.amount);
+  }
+
   /**
    * @dev See {IERC20-transfer}.
    *
