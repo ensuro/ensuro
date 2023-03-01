@@ -410,10 +410,15 @@ async function deployAaveAssetManager({ asset, aave, amClass, ...opts }, hre) {
 }
 
 async function deployWhitelist(
-  { wlClass, poolAddress, extraConstructorArgs, extraArgs, eToken, eToken2, eToken3, ...opts },
+  { wlClass, poolAddress, extraConstructorArgs, extraArgs, eToken, eToken2, eToken3,
+    defaultStatus, ...opts },
   hre
 ) {
   extraArgs = extraArgs || [];
+  if (defaultStatus !== "") {
+    defaultStatus = defaultStatus.split("").map((WB) => WB == "W" ? 1 : 2);
+    extraArgs.splice(0, 0, defaultStatus);
+  }
   extraConstructorArgs = extraConstructorArgs || [];
   const { contract } = await deployProxyContract(
     {
@@ -701,6 +706,7 @@ function add_task() {
     .addOptionalParam("eToken", "Set the Whitelist to a given eToken", undefined, types.address)
     .addOptionalParam("eToken2", "Set the Whitelist to a given eToken", undefined, types.address)
     .addOptionalParam("eToken3", "Set the Whitelist to a given eToken", undefined, types.address)
+    .addOptionalParam("defaultStatus", "Default Status Ej: 'BWWB'", "BWWB", types.str)
     .addParam("poolAddress", "PolicyPool Address", types.address)
     .setAction(deployWhitelist);
 
