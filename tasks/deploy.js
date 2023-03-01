@@ -153,10 +153,8 @@ async function deployProxyContract({ saveAddr, verify, contractClass, constructo
 }
 
 function parseRole(role) {
-  if (role.startsWith("0x"))
-    return role;
-  if (role === "DEFAULT_ADMIN_ROLE")
-    return ethers.constants.HashZero;
+  if (role.startsWith("0x")) return role;
+  if (role === "DEFAULT_ADMIN_ROLE") return ethers.constants.HashZero;
   return ethers.utils.keccak256(ethers.utils.toUtf8Bytes(role));
 }
 
@@ -255,8 +253,7 @@ async function deployEToken(
     hre
   );
   const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
-  if (opts.addComponent)
-    await policyPool.addComponent(contract.address, 1);
+  if (opts.addComponent) await policyPool.addComponent(contract.address, 1);
   return contract.address;
 }
 
@@ -271,8 +268,7 @@ async function deployPremiumsAccount({ poolAddress, juniorEtk, seniorEtk, ...opt
     hre
   );
   const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
-  if (opts.addComponent)
-    await policyPool.addComponent(contract.address, 3);
+  if (opts.addComponent) await policyPool.addComponent(contract.address, 3);
   return contract.address;
 }
 
@@ -338,11 +334,10 @@ async function deployRiskModule(
     await rm.setParam(4, ensuroCocFee);
   }
   if (maxDuration != 24 * 365) {
-    await rm.setParam(9, ensuroCocFee);
+    await rm.setParam(9, maxDuration);
   }
   const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
-  if (opts.addComponent)
-    await policyPool.addComponent(contract.address, 2);
+  if (opts.addComponent) await policyPool.addComponent(contract.address, 2);
   return contract.address;
 }
 

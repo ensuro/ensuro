@@ -1064,7 +1064,6 @@ def test_asset_manager(tenv):
     rm = pool.risk_modules["Roulette"]
     pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
     pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
-    premiums_account = rm.premiums_account
 
     USD = pool.currency
     etk = pool.etokens["eUSD1YEAR"]
@@ -1112,24 +1111,15 @@ def test_asset_manager(tenv):
         expiration=timecontrol.now + 365 * DAY // 2,
         internal_id=22,
     )
-    for_lps = policy.sr_coc
 
     etk.checkpoint()
     USD.balance_of(etk).assert_equal(_W(1500) + policy.sr_coc)
     etk.balance_of("LP1").assert_equal(lp1_balance)
-    # pool.get_investable().assert_equal(policy.pure_premium)
-    # etk.get_investable().assert_equal(lp1_balance)
 
     timecontrol.fast_forward(365 * DAY // 2 - 60)
-    # pool.get_investable().assert_equal(policy.pure_premium)
-    # etk.get_investable().assert_equal(lp1_balance + for_lps, decimals=2)
 
-    # pool_share = _W(policy.pure_premium) // asset_manager.total_investable()
-    # etk_share = etk.get_investable() // asset_manager.total_investable()
     etk.checkpoint()
 
-    # premiums_account.won_pure_premiums.assert_equal(_W(8500) * _W("0.025") * pool_share)
-    # etk.balance_of("LP1").assert_equal(lp1_balance + for_lps + _W(8500) * _W("0.025") * etk_share, decimals=2)
     rm.resolve_policy(policy.id, True)
     assert USD.balance_of(etk) == _W(1500)  # balance back to middle
     vault.total_assets().assert_equal(
@@ -1390,7 +1380,7 @@ def test_distribute_negative_earnings_full_capital_from_etokens(tenv):
     )
     lp1_balance = etk.balance_of("LP1")
 
-    policy_2 = rm.new_policy(
+    rm.new_policy(
         payout=_W(5),
         premium=_W("0.75"),
         on_behalf_of="CUST1",
@@ -1526,7 +1516,19 @@ def test_lp_whitelist(tenv):
     # Without whitelist, anyone can deposit
     _deposit(pool, "eUSD1YEAR", "LP1", _W(1000))
 
-    whitelist = tenv.module.LPManualWhitelist(pool=pool)
+    WL = tenv.module.LPManualWhitelist
+
+    all_blacklisted = (WL.ST_BLACKLISTED,) * 4
+    all_whitelisted = (WL.ST_WHITELISTED,) * 4
+
+    previous_behaviour = (
+        WL.ST_BLACKLISTED,  # deposit requires explicit WL
+        WL.ST_WHITELISTED,  # withdrawal is open
+        WL.ST_WHITELISTED,  # sending transfers is open
+        WL.ST_BLACKLISTED,  # receiving transfers requires explicit WL
+    )
+
+    whitelist = tenv.module.LPManualWhitelist(pool=pool, default_status=previous_behaviour)
 
     with pool.access.as_("johndoe"), pytest.raises(RevertError, match="AccessControl"):
         etk.set_whitelist(whitelist)
@@ -1542,15 +1544,15 @@ def test_lp_whitelist(tenv):
 
     # Whitelisting requires permission
     with whitelist.as_("johndoe"), pytest.raises(RevertError, match="AccessControl"):
-        whitelist.whitelist_address("LP2", True)
+        whitelist.whitelist_address("LP2", all_whitelisted)
 
     pool.access.grant_component_role(whitelist, "LP_WHITELIST_ROLE", "amlcompliance")
     with whitelist.as_("amlcompliance"):
-        whitelist.whitelist_address("LP2", True)
+        whitelist.whitelist_address("LP2", all_whitelisted)
 
-    # Try to whitelist the same address again
+    # Try to whitelist the same address again - Probably this no longer needed
     with whitelist.as_("amlcompliance"):
-        whitelist.whitelist_address("LP2", True)
+        whitelist.whitelist_address("LP2", all_whitelisted)
 
     assert pool.deposit("eUSD1YEAR", "LP2", _W(2000)) == _W(2000)
 
@@ -1559,7 +1561,7 @@ def test_lp_whitelist(tenv):
         etk.transfer("LP2", "LP3", _W(500))
 
     with whitelist.as_("amlcompliance"):
-        whitelist.whitelist_address("LP3", True)
+        whitelist.whitelist_address("LP3", all_whitelisted)
     etk.transfer("LP2", "LP3", _W(500))
 
     etk.balance_of("LP2").assert_equal(_W(1500))
@@ -1570,11 +1572,18 @@ def test_lp_whitelist(tenv):
 
     # De-whitelist can't deposit anymore
     with whitelist.as_("amlcompliance"):
-        whitelist.whitelist_address("LP2", False)
+        whitelist.whitelist_address("LP2", all_blacklisted)
     with pytest.raises(RevertError, match="Liquidity Provider not whitelisted"):
         pool.deposit("eUSD1YEAR", "LP2", _W(1000))
 
-    # But can withdraw
+    # Can't withdraw if all_blacklisted
+    with pytest.raises(RevertError, match="Liquidity Provider not whitelisted"):
+        pool.withdraw("eUSD1YEAR", "LP2", _W(300)).assert_equal(_W(300))
+
+    # But can withdraw if using defaults
+    with whitelist.as_("amlcompliance"):
+        whitelist.whitelist_address("LP2", previous_behaviour)
+
     pool.withdraw("eUSD1YEAR", "LP2", _W(300)).assert_equal(_W(300))
 
 

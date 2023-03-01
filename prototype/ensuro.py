@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from hashlib import md5
 from functools import wraps
 from m9g import Model
-from m9g.fields import StringField, IntField, DictField, CompositeField, ListField
+from m9g.fields import StringField, IntField, DictField, CompositeField, ListField, TupleField
 from ethproto.contracts import (
     AccessControlContract,
     ERC20Token,
@@ -673,6 +673,12 @@ class EToken(ReserveMixin, ERC20Token):
         if amount == 0:
             return Wad(0)
 
+        require(
+            self.whitelist is None
+            or self.whitelist.accepts_withdrawal(self, provider, amount),
+            "Liquidity Provider not whitelisted",
+        )
+
         scaled_amount = (amount.to_ray() // self.scale_factor).to_wad()
         self.burn(provider, scaled_amount)
         self._update_token_interest_rate()
@@ -1035,8 +1041,6 @@ class PolicyPool(ERC721Token):
         policy.id = policy.risk_module.make_policy_id(internal_id)
         self.mint(policy_holder, policy.id)
 
-        assert policy.sr_interest_rate >= 0
-
         pa = policy.risk_module.premiums_account
         pa.policy_created(policy)
 
@@ -1093,20 +1097,50 @@ class PolicyPool(ERC721Token):
 
 class LPManualWhitelist(Contract):
     pool = ContractProxyField()
-    whitelisted = DictField(AddressField(), IntField(), default={})
+    wl_status = DictField(
+        AddressField(),
+        TupleField((StringField(), StringField(), StringField(), StringField())),
+        default={}
+    )
+
+    ST_BLACKLISTED = "blacklisted"
+    ST_WHITELISTED = "whitelisted"
+    ST_UNDEFINED = "undefined"
+
+    default_status = TupleField(
+        (StringField(), StringField(), StringField(), StringField()),
+        default=(ST_BLACKLISTED, ST_BLACKLISTED, ST_BLACKLISTED, ST_BLACKLISTED)
+    )
+
+    OP_DEPOSIT = 0
+    OP_WITHDRAW = 1
+    OP_SEND_TRANSFER = 2
+    OP_RECEIVE_TRANSFER = 3
 
     def has_role(self, role, account):
         return self.pool.access.has_role(role, account)
 
     @only_component_role("LP_WHITELIST_ROLE")
     def whitelist_address(self, address, whitelisted):
-        self.whitelisted[address] = whitelisted
+        self.wl_status[address] = whitelisted
+
+    def _get_status(self, provider, operation):
+        status = self.wl_status.get(provider, self.default_status)[operation]
+        if status == self.ST_UNDEFINED:
+            status = self.default_status[operation]
+        return status
 
     def accepts_deposit(self, etoken, provider, amount):
-        return self.whitelisted.get(provider, False)
+        return self._get_status(provider, self.OP_DEPOSIT) == self.ST_WHITELISTED
+
+    def accepts_withdrawal(self, etoken, provider, amount):
+        return self._get_status(provider, self.OP_WITHDRAW) == self.ST_WHITELISTED
 
     def accepts_transfer(self, etoken, from_, to_, amount):
-        return self.whitelisted.get(to_, False)
+        return (
+            self._get_status(from_, self.OP_SEND_TRANSFER) == self.ST_WHITELISTED and
+            self._get_status(to_, self.OP_RECEIVE_TRANSFER) == self.ST_WHITELISTED
+        )
 
 
 class FixedRateVault(ERC20Token):

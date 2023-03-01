@@ -14,10 +14,37 @@ import {IEToken} from "./interfaces/IEToken.sol";
  */
 contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
   bytes32 public constant LP_WHITELIST_ROLE = keccak256("LP_WHITELIST_ROLE");
+  bytes32 public constant LP_WHITELIST_ADMIN_ROLE = keccak256("LP_WHITELIST_ADMIN_ROLE");
 
-  mapping(address => bool) private _whitelisted;
+  /**
+   * @dev Enum with the different options for whitelisting status
+   */
+  enum WhitelistOptions {
+    undefined,
+    whitelisted,
+    blacklisted
+  }
 
-  event LPWhitelisted(address provider, bool whitelisted);
+  /**
+   * @dev Enum with
+   */
+  enum Actions {
+    deposit,
+    withdraw,
+    sendTransfer,
+    receiveTransfer
+  }
+
+  struct WhitelistStatus {
+    WhitelistOptions deposit;
+    WhitelistOptions withdraw;
+    WhitelistOptions sendTransfer;
+    WhitelistOptions receiveTransfer;
+  }
+
+  mapping(address => WhitelistStatus) private _wlStatus;
+
+  event LPWhitelistStatusChanged(address provider, WhitelistStatus whitelisted);
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
@@ -26,18 +53,37 @@ contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
   /**
    * @dev Initializes the Whitelist contract
    */
-  function initialize() public initializer {
+  function initialize(WhitelistStatus calldata defaultStatus) public initializer {
     __PolicyPoolComponent_init();
+    require(
+      defaultStatus.deposit != WhitelistOptions.undefined &&
+        defaultStatus.withdraw != WhitelistOptions.undefined &&
+        defaultStatus.sendTransfer != WhitelistOptions.undefined &&
+        defaultStatus.receiveTransfer != WhitelistOptions.undefined,
+      "You need to define the default status for all the operations"
+    );
+    _wlStatus[address(0)] = defaultStatus;
+    emit LPWhitelistStatusChanged(address(0), defaultStatus);
   }
 
-  function whitelistAddress(address provider, bool whitelisted)
+  function whitelistAddress(address provider, WhitelistStatus calldata newStatus)
     external
     onlyComponentRole(LP_WHITELIST_ROLE)
   {
-    if (_whitelisted[provider] != whitelisted) {
-      _whitelisted[provider] = whitelisted;
-      emit LPWhitelisted(provider, whitelisted);
-    }
+    require(provider != address(0), "You can't change the defaults");
+    _whitelistAddress(provider, newStatus);
+  }
+
+  function setWhitelistDefaults(WhitelistStatus calldata newStatus)
+    external
+    onlyComponentRole(LP_WHITELIST_ADMIN_ROLE)
+  {
+    _whitelistAddress(address(0), newStatus);
+  }
+
+  function _whitelistAddress(address provider, WhitelistStatus calldata newStatus) internal {
+    _wlStatus[provider] = newStatus;
+    emit LPWhitelistStatusChanged(provider, newStatus);
   }
 
   /**
@@ -52,16 +98,41 @@ contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
     address provider,
     uint256
   ) external view override returns (bool) {
-    return _whitelisted[provider];
+    WhitelistOptions wl = _wlStatus[provider].deposit;
+    if (wl == WhitelistOptions.undefined) {
+      wl = _wlStatus[address(0)].deposit;
+    }
+    return wl == WhitelistOptions.whitelisted;
+  }
+
+  function acceptsWithdrawal(
+    IEToken,
+    address provider,
+    uint256
+  ) external view override returns (bool) {
+    WhitelistOptions wl = _wlStatus[provider].withdraw;
+    if (wl == WhitelistOptions.undefined) {
+      wl = _wlStatus[address(0)].withdraw;
+    }
+    return wl == WhitelistOptions.whitelisted;
   }
 
   function acceptsTransfer(
     IEToken,
-    address,
+    address providerFrom,
     address providerTo,
     uint256
   ) external view override returns (bool) {
-    return _whitelisted[providerTo];
+    WhitelistOptions wl = _wlStatus[providerFrom].sendTransfer;
+    if (wl == WhitelistOptions.undefined) {
+      wl = _wlStatus[address(0)].sendTransfer;
+    }
+    if (wl != WhitelistOptions.whitelisted) return false;
+    wl = _wlStatus[providerTo].receiveTransfer;
+    if (wl == WhitelistOptions.undefined) {
+      wl = _wlStatus[address(0)].receiveTransfer;
+    }
+    return wl == WhitelistOptions.whitelisted;
   }
 
   /**
