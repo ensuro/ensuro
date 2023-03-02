@@ -59,7 +59,7 @@ describe("Test Upgrade contracts", function () {
   async function setupFixtureWithPoolAndWL() {
     const ret = await setupFixtureWithPool();
     const Whitelist = await hre.ethers.getContractFactory("LPManualWhitelist");
-    const wl = await hre.upgrades.deployProxy(Whitelist, [], {
+    const wl = await hre.upgrades.deployProxy(Whitelist, [[2, 1, 1, 2]], {
       kind: "uups",
       unsafeAllow: ["delegatecall"],
       constructorArgs: [ret.pool.address],

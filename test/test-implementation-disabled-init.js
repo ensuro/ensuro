@@ -96,6 +96,6 @@ describe("Test Implementation contracts can't be initialized", function () {
     const { policyPool } = await helpers.loadFixture(setupFixtureWithPool);
     const LPManualWhitelist = await hre.ethers.getContractFactory("LPManualWhitelist");
     const wh = await LPManualWhitelist.deploy(policyPool.address);
-    await expect(wh.initialize()).to.be.revertedWith("contract is already initialized");
+    await expect(wh.initialize([2, 1, 1, 2])).to.be.revertedWith("contract is already initialized");
   });
 });

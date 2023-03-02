@@ -100,11 +100,11 @@ describe("Test Initialize contracts", function () {
 
   it("Does not allow reinitializing Whitelist", async () => {
     const Whitelist = await hre.ethers.getContractFactory("LPManualWhitelist");
-    const wl = await hre.upgrades.deployProxy(Whitelist, [], {
+    const wl = await hre.upgrades.deployProxy(Whitelist, [[2, 1, 1, 2]], {
       kind: "uups",
       unsafeAllow: ["delegatecall"],
       constructorArgs: [pool.address],
     });
-    await expect(wl.initialize()).to.be.revertedWith("contract is already initialized");
+    await expect(wl.initialize([2, 1, 1, 2])).to.be.revertedWith("contract is already initialized");
   });
 });

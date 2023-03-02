@@ -410,13 +410,12 @@ async function deployAaveAssetManager({ asset, aave, amClass, ...opts }, hre) {
 }
 
 async function deployWhitelist(
-  { wlClass, poolAddress, extraConstructorArgs, extraArgs, eToken, eToken2, eToken3,
-    defaultStatus, ...opts },
+  { wlClass, poolAddress, extraConstructorArgs, extraArgs, eToken, eToken2, eToken3, defaultStatus, ...opts },
   hre
 ) {
   extraArgs = extraArgs || [];
   if (defaultStatus !== "") {
-    defaultStatus = defaultStatus.split("").map((WB) => WB == "W" ? 1 : 2);
+    defaultStatus = defaultStatus.split("").map((WB) => (WB == "W" ? 1 : 2));
     extraArgs.splice(0, 0, defaultStatus);
   }
   extraConstructorArgs = extraConstructorArgs || [];
