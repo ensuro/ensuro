@@ -1587,6 +1587,142 @@ def test_lp_whitelist(tenv):
     pool.withdraw("eUSD1YEAR", "LP2", _W(300)).assert_equal(_W(300))
 
 
+def test_lp_whitelist_transfers_open(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        coll_ratio: "0.1"
+        sr_roc: "0.02"
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 20000
+        initial_balances:
+        - user: LP1
+          amount: 5000
+        - user: LP2
+          amount: 3000
+        - user: CUST1
+          amount: 200
+    etokens:
+      - name: eUSD1YEAR
+        internal_loan_interest_rate: "0.06"
+      - name: eUSD1MONTH
+        internal_loan_interest_rate: "0.04"
+    """
+
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    USD = pool.currency
+    etk = pool.etokens["eUSD1YEAR"]
+
+    # Without whitelist, anyone can deposit
+    _deposit(pool, "eUSD1YEAR", "LP1", _W(1000))
+
+    WL = tenv.module.LPManualWhitelist
+
+    all_whitelisted = (WL.ST_WHITELISTED,) * 4
+
+    default_behavior = (
+        WL.ST_BLACKLISTED,  # deposit requires explicit WL
+        WL.ST_BLACKLISTED,  # withdrawal is open
+        WL.ST_WHITELISTED,  # sending transfers is open
+        WL.ST_WHITELISTED,  # receiving transfers requires explicit WL
+    )
+
+    whitelist = tenv.module.LPManualWhitelist(pool=pool, default_status=default_behavior)
+
+    pool.access.grant_role("GUARDIAN_ROLE", "admin")
+    with etk.as_("admin"):
+        etk.set_whitelist(whitelist)
+
+    # Now only whitelisted can deposit
+    USD.approve("LP2", pool.contract_id, _W(3000))
+    with pytest.raises(RevertError, match="Liquidity Provider not whitelisted"):
+        pool.deposit("eUSD1YEAR", "LP2", _W(1000))
+
+    pool.access.grant_component_role(whitelist, "LP_WHITELIST_ROLE", "amlcompliance")
+    with whitelist.as_("amlcompliance"):
+        whitelist.whitelist_address("LP2", (WL.ST_WHITELISTED,) + (WL.ST_UNDEFINED,) * 3)
+
+    assert pool.deposit("eUSD1YEAR", "LP2", _W(2000)) == _W(2000)
+
+    # Transfers are OK
+    etk.transfer("LP2", "LP3", _W(500))
+    etk.transfer("LP3", "LP2", _W(200))
+
+    # LP2 can't withdraw because default is ST_BLACKLISTED
+    with pytest.raises(RevertError, match="Liquidity Provider not whitelisted"):
+        pool.withdraw("eUSD1YEAR", "LP2", _W(300)).assert_equal(_W(300))
+
+    with whitelist.as_("amlcompliance"):
+        whitelist.whitelist_address("LP2", all_whitelisted)
+
+    # LP3 can't withdraw because default is ST_BLACKLISTED
+    with pytest.raises(RevertError, match="Liquidity Provider not whitelisted"):
+        pool.withdraw("eUSD1YEAR", "LP3", _W(300)).assert_equal(_W(300))
+
+
+def test_lp_whitelist_defaults(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        coll_ratio: "0.1"
+        sr_roc: "0.02"
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 20000
+    etokens:
+      - name: eUSD1YEAR
+        internal_loan_interest_rate: "0.06"
+    """
+
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    WL = tenv.module.LPManualWhitelist
+
+    previous_behaviour = (
+        WL.ST_BLACKLISTED,  # deposit requires explicit WL
+        WL.ST_WHITELISTED,  # withdrawal is open
+        WL.ST_WHITELISTED,  # sending transfers is open
+        WL.ST_BLACKLISTED,  # receiving transfers requires explicit WL
+    )
+
+    default_behavior = (
+        WL.ST_BLACKLISTED,  # deposit requires explicit WL
+        WL.ST_BLACKLISTED,  # withdrawal is open
+        WL.ST_WHITELISTED,  # sending transfers is open
+        WL.ST_WHITELISTED,  # receiving transfers requires explicit WL
+    )
+
+    # Check defaults not undefined validation
+    for i in range(4):
+        wrong_defaults = default_behavior[:i] + (WL.ST_UNDEFINED,) + default_behavior[i+1:]
+        assert len(wrong_defaults) == 4
+        with pytest.raises(RevertError, match="define the default status"):
+            whitelist = tenv.module.LPManualWhitelist(pool=pool, default_status=wrong_defaults)
+
+    whitelist = tenv.module.LPManualWhitelist(pool=pool, default_status=previous_behaviour)
+
+    assert whitelist.get_whitelist_defaults() == previous_behaviour
+
+    with pool.access.as_("johndoe"), pytest.raises(RevertError, match="AccessControl"):
+        whitelist.set_whitelist_defaults(default_behavior)
+
+    pool.access.grant_component_role(whitelist, "LP_WHITELIST_ADMIN_ROLE", "admin")
+
+    with whitelist.as_("admin"):
+        whitelist.set_whitelist_defaults(default_behavior)
+
+    assert whitelist.get_whitelist_defaults() == default_behavior
+
+    # Check defaults not undefined validation
+    for i in range(4):
+        wrong_defaults = default_behavior[:i] + (WL.ST_UNDEFINED,) + default_behavior[i+1:]
+        assert len(wrong_defaults) == 4
+        with whitelist.as_("admin"), pytest.raises(RevertError, match="define the default status"):
+            whitelist.set_whitelist_defaults(wrong_defaults)
+
+
 def test_expire_policy(tenv):
     YAML_SETUP = """
     risk_modules:

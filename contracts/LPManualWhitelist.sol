@@ -25,16 +25,6 @@ contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
     blacklisted
   }
 
-  /**
-   * @dev Enum with
-   */
-  enum Actions {
-    deposit,
-    withdraw,
-    sendTransfer,
-    receiveTransfer
-  }
-
   struct WhitelistStatus {
     WhitelistOptions deposit;
     WhitelistOptions withdraw;
@@ -54,14 +44,24 @@ contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
    * @dev Initializes the Whitelist contract
    */
   function initialize(WhitelistStatus calldata defaultStatus) public initializer {
+    __LPManualWhitelist_init(defaultStatus);
+  }
+
+  // solhint-disable-next-line func-name-mixedcase
+  function __LPManualWhitelist_init(WhitelistStatus calldata defaultStatus)
+    internal
+    onlyInitializing
+  {
     __PolicyPoolComponent_init();
-    require(
-      defaultStatus.deposit != WhitelistOptions.undefined &&
-        defaultStatus.withdraw != WhitelistOptions.undefined &&
-        defaultStatus.sendTransfer != WhitelistOptions.undefined &&
-        defaultStatus.receiveTransfer != WhitelistOptions.undefined,
-      "You need to define the default status for all the operations"
-    );
+    __LPManualWhitelist_init_unchained(defaultStatus);
+  }
+
+  // solhint-disable-next-line func-name-mixedcase
+  function __LPManualWhitelist_init_unchained(WhitelistStatus calldata defaultStatus)
+    internal
+    onlyInitializing
+  {
+    _checkNotUndefined(defaultStatus);
     _wlStatus[address(0)] = defaultStatus;
     emit LPWhitelistStatusChanged(address(0), defaultStatus);
   }
@@ -74,11 +74,26 @@ contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
     _whitelistAddress(provider, newStatus);
   }
 
+  function _checkNotUndefined(WhitelistStatus calldata newStatus) internal pure {
+    require(
+      newStatus.deposit != WhitelistOptions.undefined &&
+        newStatus.withdraw != WhitelistOptions.undefined &&
+        newStatus.sendTransfer != WhitelistOptions.undefined &&
+        newStatus.receiveTransfer != WhitelistOptions.undefined,
+      "You need to define the default status for all the operations"
+    );
+  }
+
   function setWhitelistDefaults(WhitelistStatus calldata newStatus)
     external
     onlyComponentRole(LP_WHITELIST_ADMIN_ROLE)
   {
+    _checkNotUndefined(newStatus);
     _whitelistAddress(address(0), newStatus);
+  }
+
+  function getWhitelistDefaults() external view returns (WhitelistStatus memory) {
+    return _wlStatus[address(0)];
   }
 
   function _whitelistAddress(address provider, WhitelistStatus calldata newStatus) internal {

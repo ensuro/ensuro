@@ -1117,12 +1117,37 @@ class LPManualWhitelist(Contract):
     OP_SEND_TRANSFER = 2
     OP_RECEIVE_TRANSFER = 3
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._check_defaults(self.default_status)
+
+        if "name" not in kwargs:
+            kwargs["name"] = "Test Vault"
+        if "symbol" not in kwargs:
+            kwargs["symbol"] = "TVAULT"
+        kwargs["decimals"] = 18
+        kwargs["total_assets_"] = ScaledAmount()
+
+    def _check_defaults(self, default_status):
+        require(
+            all(st != self.ST_UNDEFINED for st in default_status),
+            "You need to define the default status for all the operations"
+        )
+
     def has_role(self, role, account):
         return self.pool.access.has_role(role, account)
 
     @only_component_role("LP_WHITELIST_ROLE")
     def whitelist_address(self, address, whitelisted):
         self.wl_status[address] = whitelisted
+
+    @only_component_role("LP_WHITELIST_ADMIN_ROLE")
+    def set_whitelist_defaults(self, new_defaults):
+        self._check_defaults(new_defaults)
+        self.default_status = new_defaults
+
+    def get_whitelist_defaults(self):
+        return self.default_status
 
     def _get_status(self, provider, operation):
         status = self.wl_status.get(provider, self.default_status)[operation]

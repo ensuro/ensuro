@@ -919,6 +919,10 @@ class LPManualWhitelist(ETHWrapper):
         (("address", "address"), ("whitelisted", "bool")),
     )
 
+    get_whitelist_defaults = MethodAdapter((), "tuple")
+
+    set_whitelist_defaults = MethodAdapter((("new_status", "tuple"), ))
+
 
 ERC20Token = TestCurrency
 
