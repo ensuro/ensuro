@@ -1621,6 +1621,7 @@ def test_lp_whitelist_transfers_open(tenv):
     WL = tenv.module.LPManualWhitelist
 
     all_whitelisted = (WL.ST_WHITELISTED,) * 4
+    all_blacklisted = (WL.ST_BLACKLISTED,) * 4
 
     default_behavior = (
         WL.ST_BLACKLISTED,  # deposit requires explicit WL
@@ -1649,6 +1650,15 @@ def test_lp_whitelist_transfers_open(tenv):
     # Transfers are OK
     etk.transfer("LP2", "LP3", _W(500))
     etk.transfer("LP3", "LP2", _W(200))
+
+    # Change LP3 to all_blacklisted and can't receive or send transfers
+    with whitelist.as_("amlcompliance"):
+        whitelist.whitelist_address("LP3", all_blacklisted)
+
+    with pytest.raises(RevertError, match="Liquidity Provider not whitelisted"):
+        etk.transfer("LP2", "LP3", _W(100))
+    with pytest.raises(RevertError, match="Liquidity Provider not whitelisted"):
+        etk.transfer("LP3", "LP2", _W(100))
 
     # LP2 can't withdraw because default is ST_BLACKLISTED
     with pytest.raises(RevertError, match="Liquidity Provider not whitelisted"):
