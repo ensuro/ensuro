@@ -48,7 +48,7 @@ describe("Supports interface implementation", function () {
       IPolicyPoolComponent: "0x4cea22a4",
       IRiskModule: "0xda40804f",
       IPremiumsAccount: "0xb76712ec",
-      ILPWhitelist: "0x6823eaea",
+      ILPWhitelist: "0xf8722d89",
       IAccessManager: "0x272b8c47",
       IAssetManager: "0x799c2a5c",
     };
