@@ -250,6 +250,10 @@ class EToken(ReserveMixin, IERC20):
 
     get_current_scale = MethodAdapter((("updated", "bool"),), "ray")
 
+    scaled_total_supply = MethodAdapter((), "amount")
+    scaled_balance_of = MethodAdapter((("provider", "address"), ), "amount")
+    get_scaled_user_balance_and_supply = MethodAdapter((("provider", "address"), ), "(amount, amount)")
+
     def grant_role(self, role, user):
         # EToken doesn't haves grant_role
         policy_pool = PolicyPool.connect(self._policy_pool)

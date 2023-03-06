@@ -552,6 +552,19 @@ class EToken(ReserveMixin, ERC20Token):
             super().total_supply().to_ray() * self._calculate_current_scale()
         ).to_wad()
 
+    # Methods following AAVE's IScaledBalanceToken, to simplify future integrations
+    @view
+    def scaled_total_supply(self):
+        return self._base_supply()
+
+    @view
+    def get_scaled_user_balance_and_supply(self, provider):
+        return (super().balance_of(provider), self._base_supply())
+
+    @view
+    def scaled_balance_of(self, provider):
+        return super().balance_of(provider)
+
     @property
     def funds_available(self):
         return max(self.total_supply() - self.scr, _W(0))
