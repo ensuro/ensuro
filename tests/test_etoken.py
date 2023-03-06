@@ -149,6 +149,10 @@ def test_lock_unlock_scr(tenv):
         assert etk.deposit("LP1", _W(1000)) == _W(1000)
         etk.add_borrower(pa)
     assert etk.funds_available == _W(1000)
+
+    assert etk.scaled_total_supply() == _W(1000)
+    assert etk.scaled_balance_of("LP1") == _W(1000)
+
     policy = tenv.policy_factory(sr_scr=_W(600), sr_interest_rate=_W("0.0365"),
                                  expiration=tenv.time_control.now + WEEK)
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
@@ -164,6 +168,10 @@ def test_lock_unlock_scr(tenv):
     tenv.time_control.fast_forward(3 * DAY)
     etk.balance_of("LP1").assert_equal(_W(1000) + _W("0.06") * _W(5))
 
+    # Scaled balance is still 1000
+    assert etk.scaled_balance_of("LP1") == _W(1000)
+    assert etk.scaled_total_supply() == _W(1000)
+
     with etk.thru(pa):
         etk.unlock_scr(policy.sr_scr, policy.sr_interest_rate, _W(0))
 
@@ -174,8 +182,14 @@ def test_lock_unlock_scr(tenv):
     etk.balance_of("LP1").assert_equal(_W(0))
     etk.balance_of("LP2").assert_equal(expected_balance)
 
+    lp2_sc_balance, sc_ts = etk.get_scaled_user_balance_and_supply("LP2")
+    lp2_sc_balance.assert_equal(_W(1000))
+    sc_ts.assert_equal(_W(1000))
+
     with etk.thru_policy_pool():
-        etk.withdraw("LP2", None).assert_equal(expected_balance)
+        etk.withdraw("LP2", expected_balance // _W(4)).assert_equal(expected_balance // _W(4))
+        etk.scaled_balance_of("LP2").assert_equal(_W(750))
+        etk.withdraw("LP2", None).assert_equal(expected_balance * _W(3/4))
         etk.balance_of("LP2").assert_equal(_W(0))
         tenv.currency.balance_of("LP2").assert_equal(expected_balance)
     etk.balance_of("LP1").assert_equal(_W(0))
