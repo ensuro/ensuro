@@ -904,15 +904,24 @@ class LPManualWhitelist(ETHWrapper):
     eth_contract = "LPManualWhitelist"
     proxy_kind = "uups"
 
-    initialize_args = ()
+    initialize_args = (("default_status", "tuple"),)
     constructor_args = (("pool", "address"),)
 
-    def __init__(self, pool):
-        super().__init__("owner", pool.contract)
+    ST_BLACKLISTED = 2
+    ST_WHITELISTED = 1
+    ST_UNDEFINED = 0
+
+    def __init__(self, pool,
+                 default_status=(ST_BLACKLISTED,)*4):
+        super().__init__("owner", pool.contract, default_status)
 
     whitelist_address = MethodAdapter(
         (("address", "address"), ("whitelisted", "bool")),
     )
+
+    get_whitelist_defaults = MethodAdapter((), "tuple")
+
+    set_whitelist_defaults = MethodAdapter((("new_status", "tuple"), ))
 
 
 ERC20Token = TestCurrency

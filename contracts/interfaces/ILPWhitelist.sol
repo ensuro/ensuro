@@ -37,4 +37,18 @@ interface ILPWhitelist {
     address providerTo,
     uint256 amount
   ) external view returns (bool);
+
+  /**
+   * @dev Indicates whether or not a liquidity provider can withdraw an eToken.
+   *
+   * @param etoken The eToken (see {EToken}) where the provider wants to withdraw money.
+   * @param provider The address of the liquidity provider (user) that wants to withdraw
+   * @param amount The amount of the withdrawal
+   * @return true if `provider` withdraw request is accepted, false if not
+   */
+  function acceptsWithdrawal(
+    IEToken etoken,
+    address provider,
+    uint256 amount
+  ) external view returns (bool);
 }

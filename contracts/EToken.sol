@@ -647,6 +647,11 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
      */
     amount = Math.min(amount, Math.min(balanceOf(provider), totalWithdrawable()));
     if (amount == 0) return 0;
+    require(
+      address(_params.whitelist) == address(0) ||
+        _params.whitelist.acceptsWithdrawal(this, provider, amount),
+      "Liquidity Provider not whitelisted"
+    );
     _burn(provider, amount);
     _updateTokenInterestRate();
     _transferTo(provider, amount);
