@@ -61,7 +61,7 @@ contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
     internal
     onlyInitializing
   {
-    _checkNotUndefined(defaultStatus);
+    _checkDefaultStatus(defaultStatus);
     _wlStatus[address(0)] = defaultStatus;
     emit LPWhitelistStatusChanged(address(0), defaultStatus);
   }
@@ -74,7 +74,7 @@ contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
     _whitelistAddress(provider, newStatus);
   }
 
-  function _checkNotUndefined(WhitelistStatus calldata newStatus) internal pure {
+  function _checkDefaultStatus(WhitelistStatus calldata newStatus) internal pure {
     require(
       newStatus.deposit != WhitelistOptions.undefined &&
         newStatus.withdraw != WhitelistOptions.undefined &&
@@ -88,7 +88,7 @@ contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
     external
     onlyComponentRole(LP_WHITELIST_ADMIN_ROLE)
   {
-    _checkNotUndefined(newStatus);
+    _checkDefaultStatus(newStatus);
     _whitelistAddress(address(0), newStatus);
   }
 

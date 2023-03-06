@@ -7,6 +7,12 @@ const _BN = ethers.BigNumber.from;
 const WAD = _BN(1e10).mul(_BN(1e8)); // 1e10*1e8=1e18
 const RAY = WAD.mul(_BN(1e9)); // 1e18*1e9=1e27
 
+const WhitelistStatus = {
+  notdefined: 0,
+  whitelisted: 1,
+  blacklisted: 2,
+};
+
 /**
  * Creates a fixed-point conversion function for the desired number of decimals
  * @param decimals The number of decimals. Must be >= 6.
@@ -415,7 +421,9 @@ async function deployWhitelist(
 ) {
   extraArgs = extraArgs || [];
   if (defaultStatus !== "") {
-    defaultStatus = defaultStatus.split("").map((WB) => (WB == "W" ? 1 : 2));
+    defaultStatus = defaultStatus
+      .split("")
+      .map((WB) => (WB == "W" ? WhitelistStatus.whitelisted : WhitelistStatus.blacklisted));
     extraArgs.splice(0, 0, defaultStatus);
   }
   extraConstructorArgs = extraConstructorArgs || [];
@@ -776,4 +784,5 @@ module.exports = {
   deploySignedQuoteRM,
   setAssetManager,
   deployWhitelist,
+  WhitelistStatus,
 };
