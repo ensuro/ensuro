@@ -675,8 +675,10 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
      * The only limit for withdraws is the `totalWithdrawable()` function, that's affected by the relation between the
      * scr and the totalSupply.
      */
-    amount = Math.min(amount, Math.min(balanceOf(provider), totalWithdrawable()));
+    uint256 maxWithdraw = Math.min(balanceOf(provider), totalWithdrawable());
+    if (amount == type(uint256).max) amount = maxWithdraw;
     if (amount == 0) return 0;
+    require(amount <= maxWithdraw, "amount > max withdrawable");
     require(
       address(_params.whitelist) == address(0) ||
         _params.whitelist.acceptsWithdrawal(this, provider, amount),
