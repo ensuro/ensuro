@@ -165,6 +165,28 @@ describe("SignedQuoteRiskModule contract tests", function () {
     await expect(newPolicy(rm, cust, policyParams, cust, signature)).to.be.revertedWith("AccessControl: account ");
   });
 
+  it("Creates a policy where using newPolicyFull", async () => {
+    const { rm, pool, currency } = await helpers.loadFixture(deployPoolFixture);
+    const policyParams = await defaultPolicyParams({ rmAddress: rm.address, premium: _A(200) });
+    const quoteMessage = makeQuoteMessage(policyParams);
+    const signature = ethers.utils.splitSignature(await signer.signMessage(ethers.utils.arrayify(quoteMessage)));
+
+    const tx = await newPolicy(rm, cust, policyParams, anon, signature, "newPolicyFull");
+    const receipt = await tx.wait();
+    const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
+
+    // Tests resolution, only by an authorized role
+    await expect(rm.connect(anon).resolvePolicyFullPayout(newPolicyEvt.args[1], true)).to.be.revertedWith(
+      accessControlMessage(anon.address, rm.address, "RESOLVER_ROLE")
+    );
+
+    await expect(() => rm.connect(resolver).resolvePolicyFullPayout(newPolicyEvt.args[1], true)).to.changeTokenBalance(
+      currency,
+      anon,
+      policyParams.payout
+    );
+  });
+
   it("Creates a policy where payer != msg.sender using newPolicyPaidByHolder", async () => {
     const { rm, pool, currency } = await helpers.loadFixture(deployPoolFixture);
     const policyParams = await defaultPolicyParams({ rmAddress: rm.address, premium: _A(200) });

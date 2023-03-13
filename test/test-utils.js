@@ -414,8 +414,8 @@ function makePolicyId(rm, internalId) {
 
 exports.makePolicyId = makePolicyId;
 
-async function makePolicy(pool, rm, cust, payout, premium, lossProb, expiration, internalId) {
-  let tx = await rm.connect(cust).newPolicy(payout, premium, lossProb, expiration, cust.address, internalId);
+async function makePolicy(pool, rm, cust, payout, premium, lossProb, expiration, internalId, method = "newPolicy") {
+  let tx = await rm.connect(cust)[method](payout, premium, lossProb, expiration, cust.address, internalId);
   let receipt = await tx.wait();
   const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
 

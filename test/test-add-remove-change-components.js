@@ -130,7 +130,7 @@ describe("Test add, remove and change status of PolicyPool components", function
     await currency.connect(cust).approve(pool.address, _A(100));
 
     // When active newPolicies are OK
-    let newPolicyEvt = await makePolicy(pool, rm, cust, _A(36), _A(1), _W(1 / 37), start + 3600, 1);
+    let newPolicyEvt = await makePolicy(pool, rm, cust, _A(36), _A(1), _W(1 / 37), start + 3600, 1, "newPolicyFull");
     let policy = newPolicyEvt.args.policy;
 
     expect(await pool.getComponentStatus(rm.address)).to.be.equal(ST_ACTIVE);
