@@ -682,7 +682,7 @@ class EToken(ReserveMixin, ERC20Token):
             amount = max_withdraw
         if amount == 0:
             return Wad(0)
-        require(amount < max_withdraw, "amount > max withdrawable")
+        require(amount <= max_withdraw, "amount > max withdrawable")
 
         require(
             self.whitelist is None
