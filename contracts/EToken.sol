@@ -530,9 +530,8 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   }
 
   function fundsAvailableToLock() public view returns (uint256) {
-    uint256 totalSupply_ = this.totalSupply();
-    if (totalSupply_ > uint256(_scr.scr))
-      return (totalSupply_ - uint256(_scr.scr)).wadMul(maxUtilizationRate());
+    uint256 supply = this.totalSupply().wadMul(maxUtilizationRate());
+    if (supply > uint256(_scr.scr)) return supply - uint256(_scr.scr);
     else return 0;
   }
 

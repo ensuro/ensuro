@@ -571,7 +571,7 @@ class EToken(ReserveMixin, ERC20Token):
 
     @property
     def funds_available_to_lock(self):
-        return max(self.total_supply() - self.scr, _W(0)) * self.max_utilization_rate
+        return max(self.total_supply() * self.max_utilization_rate - self.scr, _W(0))
 
     @external
     def lock_scr(self, scr_amount, interest_rate):

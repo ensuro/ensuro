@@ -697,7 +697,7 @@ def test_max_utilization_rate(tenv):
     assert etk.funds_available_to_lock == _W(950)
 
     policy = tenv.policy_factory(
-        sr_scr=_W(1100), sr_interest_rate=_W("0.04"), expiration=tenv.time_control.now + WEEK
+        sr_scr=_W(951), sr_interest_rate=_W("0.04"), expiration=tenv.time_control.now + WEEK
     )
 
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
@@ -705,31 +705,52 @@ def test_max_utilization_rate(tenv):
         with etk.thru(pa):
             etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
 
+    # Lock first policy
     policy = tenv.policy_factory(
-        sr_scr=_W(600), sr_interest_rate=_W("0.0365"), expiration=tenv.time_control.now + WEEK
+        sr_scr=_W(150), sr_interest_rate=_W("0.0365"), expiration=tenv.time_control.now + WEEK
     )
-    tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
     with etk.thru(pa):
         etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
+    tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
 
-    etk.utilization_rate.assert_equal(_W("0.6"))
+    etk.funds_available_to_lock.assert_equal(_W(950 - 150))
+
+    with etk.as_("SETRATE"):
+        etk.set_max_utilization_rate(_W("0.80"))
+
+    etk.funds_available_to_lock.assert_equal(_W(800 - 150))
+
+    with etk.as_("SETRATE"):
+        etk.set_max_utilization_rate(_W("0.95"))
+
+    etk.funds_available_to_lock.assert_equal(_W(950 - 150))
+
+    # Lock 2nd policy
+    policy = tenv.policy_factory(
+        sr_scr=_W(800), sr_interest_rate=_W("0.0365"), expiration=tenv.time_control.now + WEEK
+    )
+    with etk.thru(pa):
+        etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
+    tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
+
+    etk.utilization_rate.assert_equal(_W("0.95"))
     tenv.currency.transfer(tenv.currency.owner, etk, _W(1000))
     with etk.thru_policy_pool():
         etk.deposit("LP1", _W(1000))
 
-    etk.utilization_rate.assert_equal(_W("0.3"))
+    etk.utilization_rate.assert_equal(_W("0.475"))
 
     with etk.as_("SETRATE"):
-        etk.set_min_utilization_rate(_W("0.3"))
+        etk.set_min_utilization_rate(_W("0.475"))
 
     tenv.currency.transfer(tenv.currency.owner, etk, _W(5))
     with etk.thru_policy_pool(), pytest.raises(RevertError,
                                                match="Deposit rejected - Utilization Rate < min"):
         etk.deposit("LP1", _W(5))
 
-    expected_balance = _W(2000) - _W("600")
+    withdrawable = _W(2000) - _W(950)
     with etk.thru_policy_pool():
-        etk.withdraw("LP1", _W(1400)).assert_equal(expected_balance)
+        etk.withdraw("LP1", None).assert_equal(withdrawable)
 
 
 def test_unlock_scr(tenv):
