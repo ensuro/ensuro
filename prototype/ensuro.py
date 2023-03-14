@@ -791,8 +791,8 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
     active_pure_premiums = WadField(default=Wad(0))
     surplus = WadField(default=Wad(0))
     deficit_ratio = WadField(default=_W(1))
-    jr_loan_limit = WadField(default=Wad(0))
-    sr_loan_limit = WadField(default=Wad(0))
+    jr_loan_limit_ = WadField(default=Wad(0))
+    sr_loan_limit_ = WadField(default=Wad(0))
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -815,6 +815,27 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
     @property
     def won_pure_premiums(self):
         return self.surplus if self.surplus >= 0 else Wad(0)
+
+    @external
+    @only_component_role("LEVEL2_ROLE")
+    def set_loan_limits(self, new_jr_loan_limit, new_sr_loan_limit):
+        if new_jr_loan_limit is not None:
+            self.jr_loan_limit_ = new_jr_loan_limit
+
+        if new_sr_loan_limit is not None:
+            self.sr_loan_limit_ = new_sr_loan_limit
+
+    @property
+    def jr_loan_limit(self):
+        if self.jr_loan_limit_ == Wad(0):
+            return Wad(MAX_UINT)
+        return self.jr_loan_limit_
+
+    @property
+    def sr_loan_limit(self):
+        if self.sr_loan_limit_ == Wad(0):
+            return Wad(MAX_UINT)
+        return self.sr_loan_limit_
 
     @external
     @only_component_role("LEVEL2_ROLE")
@@ -879,8 +900,7 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
         require(receiver is not None, "PremiumsAccount: receiver cannot be the zero address")
         amount_left = borrow
         if jr_etk:
-            if self.jr_loan_limit == Wad(0) or \
-                    self.junior_etk.get_loan(self) + borrow < self.jr_loan_limit:
+            if self.junior_etk.get_loan(self) + borrow < self.jr_loan_limit:
                 amount_left = self.junior_etk.internal_loan(
                     self,
                     borrow,
@@ -888,8 +908,7 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
                     False,  # Consume Junior Pool until exhausted
                 )
         if amount_left > self.NEGLIGIBLE_AMOUNT:
-            if self.sr_loan_limit == Wad(0) or \
-                    self.senior_etk.get_loan(self) + amount_left < self.jr_loan_limit:
+            if self.senior_etk.get_loan(self) + amount_left < self.jr_loan_limit:
                 amount_left = self.senior_etk.internal_loan(
                     self,
                     amount_left,

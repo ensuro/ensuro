@@ -825,6 +825,11 @@ class PremiumsAccount(ReserveMixin, ETHWrapper):
     policy_created_ = MethodAdapter((("policy", "tuple"),))
     policy_expired_ = MethodAdapter((("policy", "tuple"),))
     set_deficit_ratio = MethodAdapter((("new_ratio", "wad"), ("adjustment", "bool")))
+    set_loan_limits = MethodAdapter((("new_jr_loan_limit", "amount"), ("new_sr_loan_limit", "amount")))
+
+    jr_loan_limit = MethodAdapter((), "amount", is_property=True)
+    sr_loan_limit = MethodAdapter((), "amount", is_property=True)
+
     policy_resolved_with_payout_ = MethodAdapter(
         (("customer", "address"), ("policy", "tuple"), ("payout", "amount"))
     )

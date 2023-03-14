@@ -647,6 +647,51 @@ def test_pay_from_premium(tenv):
         pa.policy_resolved_with_payout(tenv.currency.owner, policy, _W(20))
 
 
+def test_set_loan_limits(tenv):
+    pa = tenv.pa_class(
+        junior_etk=tenv.etk(name="eUSD1MONTH", symbol="ETK1"),
+        senior_etk=tenv.etk(name="eUSD1YEAR", symbol="ETK2"),
+    )
+
+    assert pa.jr_loan_limit == MAX_UINT
+    assert pa.sr_loan_limit == MAX_UINT
+
+    with pytest.raises(RevertError, match="AccessControl"):
+        pa.set_loan_limits(_W(1), _W(2))
+
+    tenv.pool_access.grant_component_role(pa, "LEVEL2_ROLE", "ADMIN")
+
+    with pa.as_("ADMIN"):
+        pa.set_loan_limits(_W(1), _W(2))
+
+    assert pa.jr_loan_limit == _W(1)
+    assert pa.sr_loan_limit == _W(2)
+
+    with pa.as_("ADMIN"):
+        pa.set_loan_limits(_W(3), None)
+
+    assert pa.jr_loan_limit == _W(3)
+    assert pa.sr_loan_limit == _W(2)
+
+    with pa.as_("ADMIN"):
+        pa.set_loan_limits(None, _W(4))
+
+    assert pa.jr_loan_limit == _W(3)
+    assert pa.sr_loan_limit == _W(4)
+
+    with pa.as_("ADMIN"):
+        pa.set_loan_limits(_W(0), None)
+
+    assert pa.jr_loan_limit == MAX_UINT
+    assert pa.sr_loan_limit == _W(4)
+
+    with pa.as_("ADMIN"):
+        pa.set_loan_limits(None, _W(0))
+
+    assert pa.jr_loan_limit == MAX_UINT
+    assert pa.sr_loan_limit == MAX_UINT
+
+
 def test_set_deficit_ratio(tenv):
     pa = tenv.pa_class(
         junior_etk=tenv.etk(name="eUSD1MONTH", symbol="ETK1"),

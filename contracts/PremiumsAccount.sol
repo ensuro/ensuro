@@ -329,7 +329,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * @param newLimitSr     The new limit to be set for the loans taken from the Senior eToken.
                            If newLimitSr == MAX_UINT, it's ignored. If == 0, means the loans are unbounded.
    */
-  function setLoanLimit(uint256 newLimitJr, uint256 newLimitSr)
+  function setLoanLimits(uint256 newLimitJr, uint256 newLimitSr)
     external
     onlyComponentRole(LEVEL2_ROLE)
   {
