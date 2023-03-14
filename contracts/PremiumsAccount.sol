@@ -68,6 +68,8 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   struct PackedParams {
     uint16 deficitRatio;
     IAssetManager assetManager;
+    uint32 jrLoanLimit;
+    uint32 srLoanLimit;
   }
 
   PackedParams internal _params;
@@ -120,7 +122,9 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     */
     _params = PackedParams({
       deficitRatio: HUNDRED_PERCENT,
-      assetManager: IAssetManager(address(0))
+      assetManager: IAssetManager(address(0)),
+      jrLoanLimit: 0,
+      srLoanLimit: 0
     });
     _validateParameters();
   }
@@ -240,11 +244,35 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     return -int256(_activePurePremiums.wadMul(ratio));
   }
 
+  function _toAmount(uint32 value) internal view returns (uint256) {
+    // 0 decimals to amount decimals
+    return uint256(value) * 10**currency().decimals();
+  }
+
+  function _toZeroDecimals(uint256 amount) internal view returns (uint32) {
+    // Wad to X decimals
+    return (amount / 10**currency().decimals()).toUint32();
+  }
+
   /**
    * @dev Returns the percentage of the active pure premiums that can be used to cover losses of finalized policies.
    */
   function deficitRatio() public view returns (uint256) {
     return uint256(_params.deficitRatio) * FOUR_DECIMAL_TO_WAD; // 4 -> 18 decimals
+  }
+
+  /**
+   * @dev Returns the limit on the Junior eToken loans (infinite if _params.srLoanLimit == 0)
+   */
+  function jrLoanLimit() public view returns (uint256) {
+    return _params.jrLoanLimit == 0 ? type(uint256).max : _toAmount(_params.jrLoanLimit);
+  }
+
+  /**
+   * @dev Returns the limit on the Senior eToken loans (infinite if _params.srLoanLimit == 0)
+   */
+  function srLoanLimit() public view returns (uint256) {
+    return _params.srLoanLimit == 0 ? type(uint256).max : _toAmount(_params.srLoanLimit);
   }
 
   /**
@@ -288,6 +316,34 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   }
 
   /**
+   * @dev Changes the `jrLoanLimit` or `srLoanLimit` parameter.
+   *
+   * Requirements:
+   * - onlyGlobalOrComponentRole(LEVEL2_ROLE)
+   *
+   * Events:
+   * - Emits GovernanceAction with action = setDeficitRatio or setDeficitRatioWithAdjustment if an adjustment was made.
+   *
+   * @param newLimitJr     The new limit to be set for the loans taken from the Junior eToken.
+                           If newLimitJr == MAX_UINT, it's ignored. If == 0, means the loans are unbounded.
+   * @param newLimitSr     The new limit to be set for the loans taken from the Senior eToken.
+                           If newLimitSr == MAX_UINT, it's ignored. If == 0, means the loans are unbounded.
+   */
+  function setLoanLimit(uint256 newLimitJr, uint256 newLimitSr)
+    external
+    onlyComponentRole(LEVEL2_ROLE)
+  {
+    if (newLimitJr != type(uint256).max) {
+      _params.jrLoanLimit = _toZeroDecimals(newLimitJr);
+      _parameterChanged(IAccessManager.GovernanceActions.setJrLoanLimit, newLimitJr, false);
+    }
+    if (newLimitSr != type(uint256).max) {
+      _params.srLoanLimit = _toZeroDecimals(newLimitSr);
+      _parameterChanged(IAccessManager.GovernanceActions.setSrLoanLimit, newLimitSr, false);
+    }
+  }
+
+  /**
    * @dev Internal function called when money in the PremiumsAccount is not enough and we need to borrow from the
    * eTokens.
    *
@@ -303,15 +359,18 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   ) internal {
     require(receiver != address(0), "PremiumsAccount: receiver cannot be the zero address");
     uint256 left;
-    if (jrEtk) {
-      // Consume Junior Pool until exhausted
+    if (jrEtk && (_juniorEtk.getLoan(address(this)) + borrow) < jrLoanLimit()) {
       left = _juniorEtk.internalLoan(borrow, receiver, false);
+      // for simplicity, I don't take partial loans (if currentDebt < jrLoanLimit but
+      // currentDebt+borrow > jrLoanLimit, we could borrow something but we don't)
     } else {
       left = borrow;
     }
     if (left > NEGLIGIBLE_AMOUNT) {
       // Consume Senior Pool only up to SCR
-      left = _seniorEtk.internalLoan(left, receiver, true);
+      if (_seniorEtk.getLoan(address(this)) + left < srLoanLimit()) {
+        left = _seniorEtk.internalLoan(left, receiver, false);
+      }
       require(left <= NEGLIGIBLE_AMOUNT, "Don't know where to take the rest of the money");
     }
   }

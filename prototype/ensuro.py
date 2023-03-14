@@ -791,6 +791,8 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
     active_pure_premiums = WadField(default=Wad(0))
     surplus = WadField(default=Wad(0))
     deficit_ratio = WadField(default=_W(1))
+    jr_loan_limit = WadField(default=Wad(0))
+    sr_loan_limit = WadField(default=Wad(0))
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -875,22 +877,25 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
 
     def _borrow_from_etk(self, borrow, receiver, jr_etk):
         require(receiver is not None, "PremiumsAccount: receiver cannot be the zero address")
+        amount_left = borrow
         if jr_etk:
-            amount_left = self.junior_etk.internal_loan(
-                self,
-                borrow,
-                receiver,
-                False,  # Consume Junior Pool until exhausted
-            )
-        else:
-            amount_left = borrow
+            if self.jr_loan_limit == Wad(0) or \
+                    self.junior_etk.get_loan(self) + borrow < self.jr_loan_limit:
+                amount_left = self.junior_etk.internal_loan(
+                    self,
+                    borrow,
+                    receiver,
+                    False,  # Consume Junior Pool until exhausted
+                )
         if amount_left > self.NEGLIGIBLE_AMOUNT:
-            amount_left = self.senior_etk.internal_loan(
-                self,
-                amount_left,
-                receiver,
-                True,  # Consume Senior Pool only up to SCR
-            )
+            if self.sr_loan_limit == Wad(0) or \
+                    self.senior_etk.get_loan(self) + amount_left < self.jr_loan_limit:
+                amount_left = self.senior_etk.internal_loan(
+                    self,
+                    amount_left,
+                    receiver,
+                    True,  # Consume Senior Pool only up to SCR
+                )
             require(
                 amount_left <= self.NEGLIGIBLE_AMOUNT,
                 "Don't know where to take the rest of the money",

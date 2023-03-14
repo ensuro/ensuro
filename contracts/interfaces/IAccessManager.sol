@@ -52,10 +52,10 @@ interface IAccessManager is IAccessControlUpgradeable {
     // PremiumsAccount Governance Actions
     setDeficitRatio,
     setDeficitRatioWithAdjustment,
-    paFiller1,
-    paFiller2,
-    paFiller3,
-    paFiller4,
+    setJrLoanLimit,
+    setSrLoanLimit,
+    paFiller3, // Reserve space for future PremiumsAccount actions
+    paFiller4, // Reserve space for future PremiumsAccount actions
     // AssetManager Governance Actions
     setLiquidityMin,
     setLiquidityMiddle,
