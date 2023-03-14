@@ -3,16 +3,11 @@ const {
   initCurrency,
   deployPool,
   deployPremiumsAccount,
-  _E,
   _W,
   addRiskModule,
   amountFunction,
   addEToken,
-  getTransactionEvent,
   grantRole,
-  getComponentRole,
-  accessControlMessage,
-  makePolicyId,
 } = require("./test-utils");
 const { ethers } = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
