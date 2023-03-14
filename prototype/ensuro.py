@@ -677,14 +677,12 @@ class EToken(ReserveMixin, ERC20Token):
     @external
     def withdraw(self, provider, amount):
         self._update_current_scale()
-        balance = self.balance_of(provider)
-        if balance == 0:
-            return Wad(0)
-        if amount is None or amount > balance:
-            amount = balance
-        amount = min(amount, self.total_withdrawable())
+        max_withdraw = min(self.balance_of(provider), self.total_withdrawable())
+        if amount is None:
+            amount = max_withdraw
         if amount == 0:
             return Wad(0)
+        require(amount <= max_withdraw, "amount > max withdrawable")
 
         require(
             self.whitelist is None

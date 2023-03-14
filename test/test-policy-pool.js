@@ -267,8 +267,11 @@ describe("PolicyPool contract", function () {
   it("Only allows to resolve a policy once", async () => {
     const { policy, rm, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
     expect(await pool.isActive(policy.id)).to.be.true;
+    // At least check it's not equal to 0. Doesn't make sense to add in the test the hash calculation
+    expect(await pool.getPolicyHash(policy.id)).not.to.be.equal(hre.ethers.constants.HashZero);
     await expect(rm.connect(backend).resolvePolicy(policy, policy.payout)).not.to.be.reverted;
     expect(await pool.isActive(policy.id)).to.be.false;
+    expect(await pool.getPolicyHash(policy.id)).to.be.equal(hre.ethers.constants.HashZero);
     await expect(rm.connect(backend).resolvePolicy(policy, _A(100))).to.be.revertedWith("Policy not found");
   });
 

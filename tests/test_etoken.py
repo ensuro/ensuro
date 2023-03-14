@@ -239,14 +239,20 @@ def test_etoken_erc20(tenv):
     total_withdrawable = _W(1000) + _W("0.06") * _W(2) - policy.sr_scr - _W(100)
     etk.total_withdrawable().assert_equal(total_withdrawable)
 
-    # Max to withdraw is total_withdrawable
-    with etk.thru_policy_pool():
+    assert _W(5000) > total_withdrawable
+
+    # Max to withdraw is total_withdrawable - Only if infinite sent as parameter
+    with etk.thru_policy_pool(), pytest.raises(RevertError, match="amount > max withdrawable"):
         etk.withdraw("LP1", _W(5000)).assert_equal(total_withdrawable)
+
+    with etk.thru_policy_pool():
+        etk.withdraw("LP1", None).assert_equal(total_withdrawable)
+
     with etk.thru(pa):
         etk.unlock_scr(policy.sr_scr, policy.sr_interest_rate, _W(0))
     with etk.thru_policy_pool():
         # now max to withdraw is LP balance
-        etk.withdraw("LP1", _W(5000)).assert_equal(expected_balance // _W(2) - total_withdrawable)
+        etk.withdraw("LP1", None).assert_equal(expected_balance // _W(2) - total_withdrawable)
         etk.balance_of("LP2").assert_equal(expected_balance // _W(2) - _W(100))
         etk.withdraw("LP2", None).assert_equal(expected_balance // _W(2) - _W(100))
 

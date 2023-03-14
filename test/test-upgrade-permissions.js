@@ -15,7 +15,7 @@ describe("Test Upgrade contracts", function () {
   const zeroAddress = ethers.constants.AddressZero;
 
   async function setupFixture() {
-    const [owner, cust, lp, guardian] = await hre.ethers.getSigners();
+    const [owner, cust, lp, guardian, level1] = await hre.ethers.getSigners();
     const _A = amountFunction(6);
 
     const currency = await initCurrency(
@@ -31,6 +31,7 @@ describe("Test Upgrade contracts", function () {
     const access = await hre.upgrades.deployProxy(AccessManager, [], { kind: "uups" });
 
     await grantRole(hre, access, "GUARDIAN_ROLE", guardian.address);
+    await grantRole(hre, access, "LEVEL1_ROLE", level1.address);
 
     await access.deployed();
 
@@ -39,6 +40,7 @@ describe("Test Upgrade contracts", function () {
       _A,
       owner,
       guardian,
+      level1,
       lp,
       cust,
       access,
@@ -93,6 +95,37 @@ describe("Test Upgrade contracts", function () {
       ...ret,
     };
   }
+
+  it("Should be able to upgrade PolicyPool", async () => {
+    const { pool, cust, guardian, currency, access } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
+    const PolicyPool = await ethers.getContractFactory("PolicyPool");
+    const newImpl = await PolicyPool.deploy(access.address, currency.address);
+
+    // Cust cant upgrade
+    await expect(pool.connect(cust).upgradeTo(newImpl.address)).to.be.revertedWith("AccessControl:");
+
+    await pool.connect(guardian).upgradeTo(newImpl.address);
+  });
+
+  it("Shouldn't be able to upgrade PolicyPool changing the AccessManager", async () => {
+    const { pool, level1, currency, access } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
+    const PolicyPool = await ethers.getContractFactory("PolicyPool");
+    const newImpl = await PolicyPool.deploy(currency.address, access.address); // Inverted addresses
+
+    await expect(pool.connect(level1).upgradeTo(newImpl.address)).to.be.revertedWith(
+      "Can't upgrade changing the access manager"
+    );
+  });
+
+  it("Shouldn't be able to upgrade PolicyPool changing the Currency", async () => {
+    const { pool, level1, access } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
+    const PolicyPool = await ethers.getContractFactory("PolicyPool");
+    const newImpl = await PolicyPool.deploy(access.address, access.address); // 2nd should be currency.address
+
+    await expect(pool.connect(level1).upgradeTo(newImpl.address)).to.be.revertedWith(
+      "Can't upgrade changing the currency"
+    );
+  });
 
   it("Should be able to upgrade EToken", async () => {
     const { pool, cust, guardian, etk } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
@@ -262,7 +295,7 @@ describe("Test Upgrade contracts", function () {
   });
 
   it("Should be able to upgrade AccessManager contract", async () => {
-    const { guardian, cust, wl, access } = await helpers.loadFixture(setupFixtureWithPool);
+    const { guardian, cust, access } = await helpers.loadFixture(setupFixtureWithPool);
     const AccessManager = await ethers.getContractFactory("AccessManager");
     const newAM = await AccessManager.deploy();
 
