@@ -96,7 +96,7 @@ contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
     return _wlStatus[address(0)];
   }
 
-  function _whitelistAddress(address provider, WhitelistStatus calldata newStatus) internal {
+  function _whitelistAddress(address provider, WhitelistStatus memory newStatus) internal {
     _wlStatus[provider] = newStatus;
     emit LPWhitelistStatusChanged(provider, newStatus);
   }
