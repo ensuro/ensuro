@@ -10,6 +10,14 @@ on:
       version:
         description: "Package version"
         required: true
+      tag:
+        description: "Package tag"
+        required: true
+        default: "latest"
+        type: choice
+        options:
+          - latest
+          - beta
 
 jobs:
   npm-upload:
@@ -41,5 +49,11 @@ jobs:
 
       - run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_AUTOMATION_TOKEN }}" > ./build/npm-package/.npmrc
 
-      - run: npm publish
+      - run: |
+          RELEASE_TAG="${{ github.event.inputs.tag }}"
+          if [ -z "$RELEASE_TAG" ]; then
+            # No manual input, we must be running on a tag
+            RELEASE_TAG=latest
+          fi
+          npm publish --tag "$RELEASE_TAG"
         working-directory: ./build/npm-package
