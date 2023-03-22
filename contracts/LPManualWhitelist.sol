@@ -43,7 +43,7 @@ contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
   /**
    * @dev Initializes the Whitelist contract
    */
-  function initialize(WhitelistStatus calldata defaultStatus) public initializer {
+  function initialize(WhitelistStatus calldata defaultStatus) public virtual initializer {
     __LPManualWhitelist_init(defaultStatus);
   }
 

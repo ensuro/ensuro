@@ -2410,3 +2410,134 @@ def test_repay_loan(tenv):
     etk.get_loan(pa).assert_equal(_W(150))
 
     etk.balance_of("LP1").assert_equal(_W("855.5"))
+
+
+def test_loss_propagation_limits(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Roulette
+        coll_ratio: 1
+        jr_coll_ratio: 0.5
+        sr_roc: "0.1"
+        jr_roc: "0.2"
+        ensuro_pp_fee: 0
+        exposure_limit: "100000"
+        max_payout_per_policy: "1000"
+        roles:
+          - user: owner
+            role: PRICER_ROLE
+          - user: owner
+            role: RESOLVER_ROLE
+    currency:
+        name: USD
+        decimals: 18
+        symbol: $
+        initial_supply: 7000
+        initial_balances:
+        - user: LP1
+          amount: 2000
+        - user: LP2
+          amount: 3000
+        - user: CUST1
+          amount: 1000
+        - user: CHARITY
+          amount: 600
+    etokens:
+      - name: eUSDJr
+        internal_loan_interest_rate: "0.2"
+      - name: eUSDSr
+        internal_loan_interest_rate: "0.1"
+    premiums_accounts:
+    - senior_etk: eUSDSr
+      junior_etk: eUSDJr
+      deficit_ratio: 0
+      jr_loan_limit: 1000
+      sr_loan_limit: 500
+    """
+
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    rm = pool.risk_modules["Roulette"]
+
+    pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
+    pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
+    pa = rm.premiums_account
+
+    USD = pool.currency
+    etkSr = pool.etokens["eUSDSr"]
+    etkJr = pool.etokens["eUSDJr"]
+
+    USD.approve("CUST1", pool.contract_id, _W(1000))
+    USD.approve("CUST1", rm.owner, Wad(2**256 - 1))
+
+    # LP1 deposits 2000 in eUSDJr
+    # LP2 deposits 3000 in eUSDSr
+    _deposit(pool, "eUSDJr", "LP1", _W(2000))
+    _deposit(pool, "eUSDSr", "LP2", _W(3000))
+
+    # Create 5 policies of 400 each / 5% loss - pure_premiums = 100
+    policies = []
+    for i in range(5):
+        policy = rm.new_policy(
+            payout=_W(400),
+            premium=None,
+            on_behalf_of="CUST1",
+            loss_prob=_W("0.05"),
+            expiration=timecontrol.now + 30 * DAY,
+            internal_id=i + 1,
+        )
+        assert policy.pure_premium == _W(20)
+        policies.append(policy)
+
+    assert pa.pure_premiums == _W(100)
+
+    # Trigger 1st Policy - Jr Loan = 400 - 20
+    rm.resolve_policy(policies[0].id, True)
+    assert pa.pure_premiums == _W(80)
+    etkJr.get_loan(pa).assert_equal(_W(400 - 20))
+    etkSr.get_loan(pa).assert_equal(_W(0))
+
+    # Trigger 2nd Policy - Jr Loan = 800 - 40
+    rm.resolve_policy(policies[1].id, True)
+    assert pa.pure_premiums == _W(60)
+    etkJr.get_loan(pa).assert_equal(_W(800 - 40))
+    etkSr.get_loan(pa).assert_equal(_W(0))
+
+    # Trigger 3rd Policy - Jr Loan unchanged - Sr Loan = 400
+    rm.resolve_policy(policies[2].id, True)
+    assert pa.pure_premiums == _W(40)
+    etkJr.get_loan(pa).assert_equal(_W(1000))  # Max limit reached
+    # The rest of the loan goes to etkSr even when etkJr had more capital
+    etkSr.get_loan(pa).assert_equal(_W(400 - 240 - 20))
+    etkSr.get_loan(pa).assert_equal(_W(140))
+
+    # Expire 4th Policy
+    with pytest.raises(RevertError, match="Don't know where to source the rest of the money"):
+        # Can't resolve in full because it will exceed the 500 limit of etkSr
+        rm.resolve_policy(policies[3].id, True)
+    rm.resolve_policy(policies[3].id, _W(379))  # 380 won't work because of loan interests
+    assert pa.pure_premiums == _W(20)
+    etkJr.get_loan(pa).assert_equal(_W(1000))  # Unchanged
+    etkSr.get_loan(pa).assert_equal(_W(499))
+
+    timecontrol.fast_forward(30 * DAY)
+
+    # Loans increase because of interest rate
+    etkJr.get_loan(pa).assert_equal(_W(1000) + _W(1000 * 30/365 * .2))
+    jrLoan = etkJr.get_loan(pa)
+    etkSr.get_loan(pa).assert_equal(_W(499) + _W(499 * 30/365 * .1))
+    srLoan = etkSr.get_loan(pa)
+
+    # Expire 5th Policy - Sr Loan = 400 - 20 - 20 = 360
+    pool.expire_policy(policies[4].id)
+    assert pa.pure_premiums == _W(0)
+    etkJr.get_loan(pa).assert_equal(jrLoan)  # Unchanged
+    etkSr.get_loan(pa).assert_equal(srLoan - _W(20))  # 20 of debt paid, to the senior first
+    srLoan = etkSr.get_loan(pa)
+
+    # Charity pays 500 to the PA
+    USD.approve("CHARITY", pa, _W(600))
+    pa.receive_grant("CHARITY", _W(600))
+
+    etkSr.get_loan(pa).assert_equal(_W(0))
+    etkJr.get_loan(pa).assert_equal(jrLoan - (_W(600) - srLoan))

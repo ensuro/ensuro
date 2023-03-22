@@ -191,34 +191,53 @@ def test_withdraw_won_premiums_with_borrowed_active_pp(tenv):
         policy_2.payout * policy_2.loss_prob * rm.moc + policy.payout * policy.loss_prob * rm.moc
     )
 
+    pure_premiums = pa.active_pure_premiums
+
     tenv.time_control.fast_forward(2 * DAY)
 
     # Resolve policy
-    tenv.currency.transfer(tenv.currency.owner, pa, _W(3))
+    tenv.currency.transfer(tenv.currency.owner, pa, policy.pure_premium + policy_2.pure_premium)
     tenv.currency.approve(tenv.currency.owner, pa, _W(100))
     assert tenv.currency.allowance(tenv.currency.owner, pa) == _W(100)
 
     with pa.thru_policy_pool():
         pa.policy_resolved_with_payout(tenv.currency.owner, policy_2, _W(12))
 
+    senior_etk.get_loan(pa).assert_equal(_W(12) - pure_premiums)
+    senior_loan = senior_etk.get_loan(pa)
+
     pa.borrowed_active_pp.assert_equal(policy.payout * policy.loss_prob * rm.moc)
     pa.active_pure_premiums.assert_equal(policy.payout * policy.loss_prob * rm.moc)
     pa.won_pure_premiums.assert_equal(_W(0))
 
-    pa.receive_grant(tenv.currency.owner, _W(100))
-    pa.won_pure_premiums.assert_equal(_W(100) - pa.active_pure_premiums)
-
-    loan_prev = senior_etk.get_loan(pa)
     tenv.currency.allowance(pa, senior_etk).assert_equal(_W(0))
     # Expire policy
     with pa.thru_policy_pool():
         pa.policy_expired(policy)
-    # Checks part of the loan was repaid and the allowance is at the remaining debt
-    senior_etk.get_loan(pa).assert_equal(loan_prev - policy.pure_premium)
-    tenv.currency.allowance(pa, senior_etk).assert_equal(loan_prev - policy.pure_premium)
+
+    # Senior unchanged, allowance remains 0 because no repayment made - won premium used to cover deficit
+    senior_etk.get_loan(pa).assert_equal(senior_loan)
+    tenv.currency.allowance(pa, senior_etk).assert_equal(_W(0))
+
+    # Create new policy and expire it
+    tenv.currency.transfer(tenv.currency.owner, pa, policy.pure_premium)
+    with pa.thru_policy_pool():
+        pa.policy_created(policy)
+    pa.active_pure_premiums.assert_equal(policy.payout * policy.loss_prob * rm.moc)
+    with pa.thru_policy_pool():
+        pa.policy_expired(policy)
+
+    # Check repayment made
+    senior_etk.get_loan(pa).assert_equal(senior_loan - policy.pure_premium)
+    tenv.currency.allowance(pa, senior_etk).assert_equal(senior_loan - policy.pure_premium)
+    senior_loan = senior_etk.get_loan(pa)
+
+    pa.receive_grant(tenv.currency.owner, _W(100))
+    pa.won_pure_premiums.assert_equal(_W(100) - senior_loan)
+
+    senior_etk.get_loan(pa).assert_equal(_W(0))
     pa.active_pure_premiums.assert_equal(_W(0))
     pa.borrowed_active_pp.assert_equal(_W(0))
-    pa.won_pure_premiums.assert_equal(_W(100) - policy.payout * policy.loss_prob * rm.moc)
 
 
 def test_policy_created_without_etokens(tenv):
@@ -690,6 +709,23 @@ def test_set_loan_limits(tenv):
 
     assert pa.jr_loan_limit == MAX_UINT
     assert pa.sr_loan_limit == MAX_UINT
+
+    if tenv.kind != "ethereum":
+        return
+
+    with pa.as_("ADMIN"), pytest.raises(RevertError, match="Validation: no decimals allowed"):
+        pa.set_loan_limits(_W("13.12"), None)
+
+    with pa.as_("ADMIN"), pytest.raises(RevertError, match="Validation: no decimals allowed"):
+        pa.set_loan_limits(None, _W("13.12"))
+
+    tenv.pool_access.grant_role("LEVEL2_ROLE", "GLOBAL_ADMIN")
+
+    with pa.as_("ADMIN"):
+        pa.set_loan_limits(_W(21), _W(12))
+
+    assert pa.jr_loan_limit == _W(21)
+    assert pa.sr_loan_limit == _W(12)
 
 
 def test_set_deficit_ratio(tenv):

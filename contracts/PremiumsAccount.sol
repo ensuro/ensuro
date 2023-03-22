@@ -290,7 +290,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    */
   function setDeficitRatio(uint256 newRatio, bool adjustment)
     external
-    onlyComponentRole(LEVEL2_ROLE)
+    onlyGlobalOrComponentRole(LEVEL2_ROLE)
   {
     require(newRatio <= 1e18, "Validation: deficitRatio must be <= 1");
 
@@ -331,14 +331,22 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    */
   function setLoanLimits(uint256 newLimitJr, uint256 newLimitSr)
     external
-    onlyComponentRole(LEVEL2_ROLE)
+    onlyGlobalOrComponentRole(LEVEL2_ROLE)
   {
     if (newLimitJr != type(uint256).max) {
       _params.jrLoanLimit = _toZeroDecimals(newLimitJr);
+      require(
+        _toAmount(_params.jrLoanLimit) == newLimitJr,
+        "Validation: no decimals allowed"
+      );
       _parameterChanged(IAccessManager.GovernanceActions.setJrLoanLimit, newLimitJr, false);
     }
     if (newLimitSr != type(uint256).max) {
       _params.srLoanLimit = _toZeroDecimals(newLimitSr);
+      require(
+        _toAmount(_params.srLoanLimit) == newLimitSr,
+        "Validation: no decimals allowed"
+      );
       _parameterChanged(IAccessManager.GovernanceActions.setSrLoanLimit, newLimitSr, false);
     }
   }
@@ -358,20 +366,22 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     bool jrEtk
   ) internal {
     require(receiver != address(0), "PremiumsAccount: receiver cannot be the zero address");
-    uint256 left;
-    if (jrEtk && (_juniorEtk.getLoan(address(this)) + borrow) < jrLoanLimit()) {
-      left = _juniorEtk.internalLoan(borrow, receiver, false);
-      // for simplicity, I don't take partial loans (if currentDebt < jrLoanLimit but
-      // currentDebt+borrow > jrLoanLimit, we could borrow something but we don't)
-    } else {
-      left = borrow;
+    uint256 left = borrow;
+    if (jrEtk) {
+      if (_juniorEtk.getLoan(address(this)) + borrow <= jrLoanLimit()) {
+        left = _juniorEtk.internalLoan(borrow, receiver, false);
+      } else if (_juniorEtk.getLoan(address(this)) < jrLoanLimit()) {
+        // Partial loan
+        uint256 loanExcess = _juniorEtk.getLoan(address(this)) + borrow - jrLoanLimit();
+        left = loanExcess + _juniorEtk.internalLoan(borrow - loanExcess, receiver, false);
+      }
     }
     if (left > NEGLIGIBLE_AMOUNT) {
       // Consume Senior Pool only up to SCR
       if (_seniorEtk.getLoan(address(this)) + left < srLoanLimit()) {
         left = _seniorEtk.internalLoan(left, receiver, false);
-      }
-      require(left <= NEGLIGIBLE_AMOUNT, "Don't know where to take the rest of the money");
+      } // in the senior eToken doesn't make sense to handle partial loan
+      require(left <= NEGLIGIBLE_AMOUNT, "Don't know where to source the rest of the money");
     }
   }
 
@@ -419,9 +429,16 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * @param amount The amount to be transferred.
    */
   function receiveGrant(uint256 amount) external {
-    _storePurePremiumWon(amount);
-    emit WonPremiumsInOut(true, amount);
+    // I need to receive the money first (without following the Check-Effects-Interactions) pattern because I need
+    // the money to pay the eTokens
     currency().safeTransferFrom(_msgSender(), address(this), amount);
+    uint256 purePremiumWon = amount;
+    if (address(_seniorEtk) != address(0)) purePremiumWon = _repayLoan(purePremiumWon, _seniorEtk);
+    if (address(_juniorEtk) != address(0)) purePremiumWon = _repayLoan(purePremiumWon, _juniorEtk);
+
+    // Finally store purePremiumWon
+    _storePurePremiumWon(purePremiumWon);
+    emit WonPremiumsInOut(true, amount);
   }
 
   /**
