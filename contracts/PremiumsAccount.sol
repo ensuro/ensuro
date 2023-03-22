@@ -335,18 +335,12 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   {
     if (newLimitJr != type(uint256).max) {
       _params.jrLoanLimit = _toZeroDecimals(newLimitJr);
-      require(
-        _toAmount(_params.jrLoanLimit) == newLimitJr,
-        "Validation: no decimals allowed"
-      );
+      require(_toAmount(_params.jrLoanLimit) == newLimitJr, "Validation: no decimals allowed");
       _parameterChanged(IAccessManager.GovernanceActions.setJrLoanLimit, newLimitJr, false);
     }
     if (newLimitSr != type(uint256).max) {
       _params.srLoanLimit = _toZeroDecimals(newLimitSr);
-      require(
-        _toAmount(_params.srLoanLimit) == newLimitSr,
-        "Validation: no decimals allowed"
-      );
+      require(_toAmount(_params.srLoanLimit) == newLimitSr, "Validation: no decimals allowed");
       _parameterChanged(IAccessManager.GovernanceActions.setSrLoanLimit, newLimitSr, false);
     }
   }
