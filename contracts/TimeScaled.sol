@@ -125,14 +125,11 @@ library TimeScaled {
     require(scaledAmount.scale >= MIN_SCALE, "Scale too small, can lead to rounding errors");
   }
 
-  function maxNegativeAdjustment(ScaledAmount storage scaledAmount, uint256 interestRate)
+  function minValue(ScaledAmount storage scaledAmount)
     internal
     view
     returns (uint256)
   {
-    uint256 ts = getScaledAmount(scaledAmount, interestRate);
-    uint256 minTs = uint256(scaledAmount.amount).wadToRay().rayMul(MIN_SCALE).rayToWad();
-    if (ts > minTs) return ts - minTs;
-    else return 0;
+    return uint256(scaledAmount.amount).wadToRay().rayMul(MIN_SCALE).rayToWad();
   }
 }

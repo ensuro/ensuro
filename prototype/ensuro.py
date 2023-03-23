@@ -720,12 +720,6 @@ class EToken(ReserveMixin, ERC20Token):
 
         return amount
 
-    def _max_negative_adjustment(self):
-        return max(
-            self.total_supply() - (self.MIN_SCALE * _R(10) * self._base_supply().to_ray()).to_wad(),
-            _W(0),
-        )
-
     @external
     def add_borrower(self, borrower):
         require(borrower is not None, "EToken: Borrower cannot be the zero address")
@@ -734,19 +728,22 @@ class EToken(ReserveMixin, ERC20Token):
         if borrower not in self.loans:
             self.loans[borrower] = ScaledAmount()
 
+    @view
+    def max_negative_adjustment(self):
+        return max(
+            self.total_supply() - (self.MIN_SCALE * _R(10) * self._base_supply().to_ray()).to_wad(),
+            _W(0),
+        )
+
     @external
-    def internal_loan(self, borrower, amount, receiver, from_available=True):
+    def internal_loan(self, borrower, amount, receiver):
         amount_asked = amount
         amount = amount_asked
 
-        if from_available:
-            if amount > self.funds_available:
-                amount = self.funds_available
-        else:
-            if amount > self.total_supply():
-                amount = self.total_supply()
-        if amount > self._max_negative_adjustment():
-            amount = self._max_negative_adjustment()
+        if amount > self.total_supply():
+            amount = self.total_supply()
+        if amount > self.max_negative_adjustment():
+            amount = self.max_negative_adjustment()
             if amount <= 0:
                 return amount_asked
         loan = self.loans.get(ContractProxyField().adapt(borrower), None)
@@ -931,8 +928,7 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
                 amount_left = self.junior_etk.internal_loan(
                     self,
                     borrow,
-                    receiver,
-                    False,  # Consume Junior Pool until exhausted
+                    receiver
                 )
             elif self.junior_etk.get_loan(self) < self.jr_loan_limit:
                 loan_excess = self.junior_etk.get_loan(self) + borrow - self.jr_loan_limit
@@ -940,8 +936,7 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
                 amount_left = loan_excess + self.junior_etk.internal_loan(
                     self,
                     borrow - loan_excess,
-                    receiver,
-                    False,  # Consume Junior Pool until exhausted
+                    receiver
                 )
         if amount_left > self.NEGLIGIBLE_AMOUNT:
             if self.senior_etk.get_loan(self) + amount_left <= self.sr_loan_limit:
@@ -949,8 +944,7 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
                 amount_left = self.senior_etk.internal_loan(
                     self,
                     amount_left,
-                    receiver,
-                    True,  # Consume Senior Pool only up to SCR
+                    receiver
                 )
             require(
                 amount_left <= self.NEGLIGIBLE_AMOUNT,

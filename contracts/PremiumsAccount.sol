@@ -65,6 +65,15 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    */
   int256 internal _surplus;
 
+  /**
+   * @dev This struct has the parameters that can be modified by governance
+   * @member deficitRatio A value between [0, 1] that defines the percentage of active pure premiums that can be used
+   *                      to cover losses.
+   * @member assetManager This is the implementation contract that manages the PremiumsAccount's funds. See
+   *                      {IAssetManager}
+   * @member jrLoanLimit  This is the maximum amount that can be borrowed from the Junior eToken (without decimals)
+   * @member srLoanLimit  This is the maximum amount that can be borrowed from the Senior eToken (without decimals)
+   */
   struct PackedParams {
     uint16 deficitRatio;
     IAssetManager assetManager;
@@ -250,7 +259,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   }
 
   function _toZeroDecimals(uint256 amount) internal view returns (uint32) {
-    // Wad to X decimals
+    // Removes the decimals from the amount
     return (amount / 10**currency().decimals()).toUint32();
   }
 
@@ -262,7 +271,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   }
 
   /**
-   * @dev Returns the limit on the Junior eToken loans (infinite if _params.srLoanLimit == 0)
+   * @dev Returns the limit on the Junior eToken loans (infinite if _params.jrLoanLimit == 0)
    */
   function jrLoanLimit() public view returns (uint256) {
     return _params.jrLoanLimit == 0 ? type(uint256).max : _toAmount(_params.jrLoanLimit);
@@ -363,17 +372,17 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     uint256 left = borrow;
     if (jrEtk) {
       if (_juniorEtk.getLoan(address(this)) + borrow <= jrLoanLimit()) {
-        left = _juniorEtk.internalLoan(borrow, receiver, false);
+        left = _juniorEtk.internalLoan(borrow, receiver);
       } else if (_juniorEtk.getLoan(address(this)) < jrLoanLimit()) {
         // Partial loan
         uint256 loanExcess = _juniorEtk.getLoan(address(this)) + borrow - jrLoanLimit();
-        left = loanExcess + _juniorEtk.internalLoan(borrow - loanExcess, receiver, false);
+        left = loanExcess + _juniorEtk.internalLoan(borrow - loanExcess, receiver);
       }
     }
     if (left > NEGLIGIBLE_AMOUNT) {
       // Consume Senior Pool only up to SCR
       if (_seniorEtk.getLoan(address(this)) + left < srLoanLimit()) {
-        left = _seniorEtk.internalLoan(left, receiver, false);
+        left = _seniorEtk.internalLoan(left, receiver);
       } // in the senior eToken doesn't make sense to handle partial loan
       require(left <= NEGLIGIBLE_AMOUNT, "Don't know where to source the rest of the money");
     }

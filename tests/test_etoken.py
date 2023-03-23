@@ -416,13 +416,17 @@ def test_internal_loan(tenv):
     etk.funds_available.assert_equal(_W(400) + _W(600 * 0.04 * 7 / 365))
 
     funds_available = etk.funds_available
+    total_supply = etk.total_supply()
+    max_negative_adjustment = etk.max_negative_adjustment()
+
+    assert max_negative_adjustment < total_supply
 
     assert funds_available < _W(401)
 
     with etk.thru(pa):
-        not_lended = etk.internal_loan(pa, _W(401), "CUST1")
-        not_lended.assert_equal(_W(401) - funds_available)
-        lended = _W(401) - not_lended
+        not_lended = etk.internal_loan(pa, _W(1001), "CUST1")
+        not_lended.assert_equal(_W(1001) - max_negative_adjustment)
+        lended = _W(1001) - not_lended
         assert tenv.currency.balance_of("CUST1") == lended
         assert etk.get_loan(pa) == lended
 

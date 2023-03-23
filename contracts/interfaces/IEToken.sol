@@ -152,14 +152,11 @@ interface IEToken is IERC20 {
    *
    * @param amount The amount required
    * @param receiver The received of the funds lent. This is usually the policyholder if the loan is used for a payout.
-   * @param fromAvailable If `true`, the funds that can be lent are only the available ones, i.e., excluding the funds
-   * locked as `scr()`. If `false`, all the `totalSupply()` is available to be lent.
    * @return Returns the amount that wasn't able to fulfil. `amount - lent`
    */
   function internalLoan(
     uint256 amount,
-    address receiver,
-    bool fromAvailable
+    address receiver
   ) external returns (uint256);
 
   /**

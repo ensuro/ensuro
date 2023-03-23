@@ -224,17 +224,18 @@ class EToken(ReserveMixin, IERC20):
         else:
             return Wad(0)
 
+    max_negative_adjustment = MethodAdapter((), "amount")
+
     internal_loan_ = MethodAdapter(
         (
             ("borrower", "msg.sender"),
             ("amount", "amount"),
             ("receiver", "address"),
-            ("from_available", "bool"),
         )
     )
 
-    def internal_loan(self, borrower, amount, receiver, from_available=True):
-        receipt = self.internal_loan_(borrower, amount, receiver, from_available)
+    def internal_loan(self, borrower, amount, receiver):
+        receipt = self.internal_loan_(borrower, amount, receiver)
         if "InternalLoan" in receipt.events:
             evt = receipt.events["InternalLoan"]
             return Wad(evt["amountAsked"]) - Wad(evt["value"])
