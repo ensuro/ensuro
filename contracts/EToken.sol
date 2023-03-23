@@ -725,7 +725,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     returns (uint256)
   {
     uint256 amountAsked = amount;
-    amount = Math.min(Math.min(amount, totalSupply()), maxNegativeAdjustment());
+    amount = Math.min(amount, maxNegativeAdjustment());
     if (amount == 0) return amountAsked;
     TimeScaled.ScaledAmount storage loan = _loans[_msgSender()];
     loan.add(amount, internalLoanInterestRate());
