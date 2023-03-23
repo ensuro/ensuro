@@ -125,11 +125,7 @@ library TimeScaled {
     require(scaledAmount.scale >= MIN_SCALE, "Scale too small, can lead to rounding errors");
   }
 
-  function minValue(ScaledAmount storage scaledAmount)
-    internal
-    view
-    returns (uint256)
-  {
+  function minValue(ScaledAmount storage scaledAmount) internal view returns (uint256) {
     return uint256(scaledAmount.amount).wadToRay().rayMul(MIN_SCALE).rayToWad();
   }
 }

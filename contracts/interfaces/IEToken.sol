@@ -154,10 +154,7 @@ interface IEToken is IERC20 {
    * @param receiver The received of the funds lent. This is usually the policyholder if the loan is used for a payout.
    * @return Returns the amount that wasn't able to fulfil. `amount - lent`
    */
-  function internalLoan(
-    uint256 amount,
-    address receiver
-  ) external returns (uint256);
+  function internalLoan(uint256 amount, address receiver) external returns (uint256);
 
   /**
    * @dev Repays a loan taken with `internalLoan`.
