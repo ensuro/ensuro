@@ -224,17 +224,18 @@ class EToken(ReserveMixin, IERC20):
         else:
             return Wad(0)
 
+    max_negative_adjustment = MethodAdapter((), "amount")
+
     internal_loan_ = MethodAdapter(
         (
             ("borrower", "msg.sender"),
             ("amount", "amount"),
             ("receiver", "address"),
-            ("from_available", "bool"),
         )
     )
 
-    def internal_loan(self, borrower, amount, receiver, from_available=True):
-        receipt = self.internal_loan_(borrower, amount, receiver, from_available)
+    def internal_loan(self, borrower, amount, receiver):
+        receipt = self.internal_loan_(borrower, amount, receiver)
         if "InternalLoan" in receipt.events:
             evt = receipt.events["InternalLoan"]
             return Wad(evt["amountAsked"]) - Wad(evt["value"])
@@ -825,6 +826,11 @@ class PremiumsAccount(ReserveMixin, ETHWrapper):
     policy_created_ = MethodAdapter((("policy", "tuple"),))
     policy_expired_ = MethodAdapter((("policy", "tuple"),))
     set_deficit_ratio = MethodAdapter((("new_ratio", "wad"), ("adjustment", "bool")))
+    set_loan_limits = MethodAdapter((("new_jr_loan_limit", "amount"), ("new_sr_loan_limit", "amount")))
+
+    jr_loan_limit = MethodAdapter((), "amount", is_property=True)
+    sr_loan_limit = MethodAdapter((), "amount", is_property=True)
+
     policy_resolved_with_payout_ = MethodAdapter(
         (("customer", "address"), ("policy", "tuple"), ("payout", "amount"))
     )

@@ -65,9 +65,20 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    */
   int256 internal _surplus;
 
+  /**
+   * @dev This struct has the parameters that can be modified by governance
+   * @member deficitRatio A value between [0, 1] that defines the percentage of active pure premiums that can be used
+   *                      to cover losses.
+   * @member assetManager This is the implementation contract that manages the PremiumsAccount's funds. See
+   *                      {IAssetManager}
+   * @member jrLoanLimit  This is the maximum amount that can be borrowed from the Junior eToken (without decimals)
+   * @member srLoanLimit  This is the maximum amount that can be borrowed from the Senior eToken (without decimals)
+   */
   struct PackedParams {
     uint16 deficitRatio;
     IAssetManager assetManager;
+    uint32 jrLoanLimit;
+    uint32 srLoanLimit;
   }
 
   PackedParams internal _params;
@@ -120,7 +131,9 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     */
     _params = PackedParams({
       deficitRatio: HUNDRED_PERCENT,
-      assetManager: IAssetManager(address(0))
+      assetManager: IAssetManager(address(0)),
+      jrLoanLimit: 0,
+      srLoanLimit: 0
     });
     _validateParameters();
   }
@@ -240,11 +253,35 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     return -int256(_activePurePremiums.wadMul(ratio));
   }
 
+  function _toAmount(uint32 value) internal view returns (uint256) {
+    // 0 decimals to amount decimals
+    return uint256(value) * 10**currency().decimals();
+  }
+
+  function _toZeroDecimals(uint256 amount) internal view returns (uint32) {
+    // Removes the decimals from the amount
+    return (amount / 10**currency().decimals()).toUint32();
+  }
+
   /**
    * @dev Returns the percentage of the active pure premiums that can be used to cover losses of finalized policies.
    */
   function deficitRatio() public view returns (uint256) {
     return uint256(_params.deficitRatio) * FOUR_DECIMAL_TO_WAD; // 4 -> 18 decimals
+  }
+
+  /**
+   * @dev Returns the limit on the Junior eToken loans (infinite if _params.jrLoanLimit == 0)
+   */
+  function jrLoanLimit() public view returns (uint256) {
+    return _params.jrLoanLimit == 0 ? type(uint256).max : _toAmount(_params.jrLoanLimit);
+  }
+
+  /**
+   * @dev Returns the limit on the Senior eToken loans (infinite if _params.srLoanLimit == 0)
+   */
+  function srLoanLimit() public view returns (uint256) {
+    return _params.srLoanLimit == 0 ? type(uint256).max : _toAmount(_params.srLoanLimit);
   }
 
   /**
@@ -262,7 +299,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    */
   function setDeficitRatio(uint256 newRatio, bool adjustment)
     external
-    onlyComponentRole(LEVEL2_ROLE)
+    onlyGlobalOrComponentRole(LEVEL2_ROLE)
   {
     require(newRatio <= 1e18, "Validation: deficitRatio must be <= 1");
 
@@ -288,6 +325,36 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   }
 
   /**
+   * @dev Changes the `jrLoanLimit` or `srLoanLimit` parameter.
+   *
+   * Requirements:
+   * - onlyGlobalOrComponentRole(LEVEL2_ROLE)
+   *
+   * Events:
+   * - Emits GovernanceAction with action = setDeficitRatio or setDeficitRatioWithAdjustment if an adjustment was made.
+   *
+   * @param newLimitJr     The new limit to be set for the loans taken from the Junior eToken.
+                           If newLimitJr == MAX_UINT, it's ignored. If == 0, means the loans are unbounded.
+   * @param newLimitSr     The new limit to be set for the loans taken from the Senior eToken.
+                           If newLimitSr == MAX_UINT, it's ignored. If == 0, means the loans are unbounded.
+   */
+  function setLoanLimits(uint256 newLimitJr, uint256 newLimitSr)
+    external
+    onlyGlobalOrComponentRole(LEVEL2_ROLE)
+  {
+    if (newLimitJr != type(uint256).max) {
+      _params.jrLoanLimit = _toZeroDecimals(newLimitJr);
+      require(_toAmount(_params.jrLoanLimit) == newLimitJr, "Validation: no decimals allowed");
+      _parameterChanged(IAccessManager.GovernanceActions.setJrLoanLimit, newLimitJr, false);
+    }
+    if (newLimitSr != type(uint256).max) {
+      _params.srLoanLimit = _toZeroDecimals(newLimitSr);
+      require(_toAmount(_params.srLoanLimit) == newLimitSr, "Validation: no decimals allowed");
+      _parameterChanged(IAccessManager.GovernanceActions.setSrLoanLimit, newLimitSr, false);
+    }
+  }
+
+  /**
    * @dev Internal function called when money in the PremiumsAccount is not enough and we need to borrow from the
    * eTokens.
    *
@@ -302,17 +369,22 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     bool jrEtk
   ) internal {
     require(receiver != address(0), "PremiumsAccount: receiver cannot be the zero address");
-    uint256 left;
+    uint256 left = borrow;
     if (jrEtk) {
-      // Consume Junior Pool until exhausted
-      left = _juniorEtk.internalLoan(borrow, receiver, false);
-    } else {
-      left = borrow;
+      if (_juniorEtk.getLoan(address(this)) + borrow <= jrLoanLimit()) {
+        left = _juniorEtk.internalLoan(borrow, receiver);
+      } else if (_juniorEtk.getLoan(address(this)) < jrLoanLimit()) {
+        // Partial loan
+        uint256 loanExcess = _juniorEtk.getLoan(address(this)) + borrow - jrLoanLimit();
+        left = loanExcess + _juniorEtk.internalLoan(borrow - loanExcess, receiver);
+      }
     }
     if (left > NEGLIGIBLE_AMOUNT) {
       // Consume Senior Pool only up to SCR
-      left = _seniorEtk.internalLoan(left, receiver, true);
-      require(left <= NEGLIGIBLE_AMOUNT, "Don't know where to take the rest of the money");
+      if (_seniorEtk.getLoan(address(this)) + left < srLoanLimit()) {
+        left = _seniorEtk.internalLoan(left, receiver);
+      } // in the senior eToken doesn't make sense to handle partial loan
+      require(left <= NEGLIGIBLE_AMOUNT, "Don't know where to source the rest of the money");
     }
   }
 
@@ -360,9 +432,16 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * @param amount The amount to be transferred.
    */
   function receiveGrant(uint256 amount) external {
-    _storePurePremiumWon(amount);
-    emit WonPremiumsInOut(true, amount);
+    // I need to receive the money first (without following the Check-Effects-Interactions) pattern because I need
+    // the money to pay the eTokens
     currency().safeTransferFrom(_msgSender(), address(this), amount);
+    uint256 purePremiumWon = amount;
+    if (address(_seniorEtk) != address(0)) purePremiumWon = _repayLoan(purePremiumWon, _seniorEtk);
+    if (address(_juniorEtk) != address(0)) purePremiumWon = _repayLoan(purePremiumWon, _juniorEtk);
+
+    // Finally store purePremiumWon
+    _storePurePremiumWon(purePremiumWon);
+    emit WonPremiumsInOut(true, amount);
   }
 
   /**

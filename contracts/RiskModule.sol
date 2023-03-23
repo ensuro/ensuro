@@ -185,12 +185,12 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
 
   // solhint-disable-next-line func-name-mixedcase
   function _XtoAmount(uint8 decimals, uint32 value) internal view returns (uint256) {
-    // X decimals to Wad (18 decimals)
+    // X decimals to currency decimals (6 for USDC)
     return uint256(value) * 10**(currency().decimals() - decimals);
   }
 
   function _amountToX(uint8 decimals, uint256 value) internal view returns (uint32) {
-    // Wad to X decimals
+    // currency decimals to X decimals (assuming X < currency decimals)
     return (value / 10**(currency().decimals() - decimals)).toUint32();
   }
 

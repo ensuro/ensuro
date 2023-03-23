@@ -43,7 +43,7 @@ describe("Supports interface implementation", function () {
       IERC20Metadata: "0xa219a025",
       IERC721: "0x80ac58cd",
       IAccessControl: "0x7965db0b",
-      IEToken: "0x027466bc",
+      IEToken: "0x90770621",
       IPolicyPool: "0x3234fad6",
       IPolicyPoolComponent: "0x4cea22a4",
       IRiskModule: "0xda40804f",

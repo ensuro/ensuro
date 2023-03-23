@@ -74,6 +74,28 @@ def only_component_role(*roles):
     return decorator
 
 
+def only_component_or_global_role(*roles):
+    def decorator(method):
+        @wraps(method)
+        def inner(self, *args, **kwargs):
+            contract_id = self.contract_id
+            for role in roles:
+                composed_role = f"{role}-{contract_id}"
+                if self.has_role(composed_role, self.running_as):
+                    break
+                if self.has_role(role, self.running_as):
+                    break
+            else:
+                raise RevertError(
+                    f"AccessControl: account {self.running_as} is missing role {role}"
+                )
+            return method(self, *args, **kwargs)
+
+        return inner
+
+    return decorator
+
+
 class RiskModule(AccessControlContract):
     policy_pool = ContractProxyField()
     premiums_account = ContractProxyField()
@@ -356,7 +378,7 @@ class Policy(Model):
 
     def jr_accrued_interest(self):
         return (
-            self.sr_scr
+            self.jr_scr
             * _W(time_control.now - self.start)
             * self.jr_interest_rate
             // _W(SECONDS_IN_YEAR)
@@ -698,12 +720,6 @@ class EToken(ReserveMixin, ERC20Token):
 
         return amount
 
-    def _max_negative_adjustment(self):
-        return max(
-            self.total_supply() - (self.MIN_SCALE * _R(10) * self._base_supply().to_ray()).to_wad(),
-            _W(0),
-        )
-
     @external
     def add_borrower(self, borrower):
         require(borrower is not None, "EToken: Borrower cannot be the zero address")
@@ -712,19 +728,22 @@ class EToken(ReserveMixin, ERC20Token):
         if borrower not in self.loans:
             self.loans[borrower] = ScaledAmount()
 
+    @view
+    def max_negative_adjustment(self):
+        return max(
+            self.total_supply() - (self.MIN_SCALE * _R(10) * self._base_supply().to_ray()).to_wad(),
+            _W(0),
+        )
+
     @external
-    def internal_loan(self, borrower, amount, receiver, from_available=True):
+    def internal_loan(self, borrower, amount, receiver):
         amount_asked = amount
         amount = amount_asked
 
-        if from_available:
-            if amount > self.funds_available:
-                amount = self.funds_available
-        else:
-            if amount > self.total_supply():
-                amount = self.total_supply()
-        if amount > self._max_negative_adjustment():
-            amount = self._max_negative_adjustment()
+        if amount > self.total_supply():
+            amount = self.total_supply()
+        if amount > self.max_negative_adjustment():
+            amount = self.max_negative_adjustment()
             if amount <= 0:
                 return amount_asked
         loan = self.loans.get(ContractProxyField().adapt(borrower), None)
@@ -791,6 +810,8 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
     active_pure_premiums = WadField(default=Wad(0))
     surplus = WadField(default=Wad(0))
     deficit_ratio = WadField(default=_W(1))
+    jr_loan_limit_ = WadField(default=Wad(0))
+    sr_loan_limit_ = WadField(default=Wad(0))
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -815,7 +836,28 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
         return self.surplus if self.surplus >= 0 else Wad(0)
 
     @external
-    @only_component_role("LEVEL2_ROLE")
+    @only_component_or_global_role("LEVEL2_ROLE")
+    def set_loan_limits(self, new_jr_loan_limit, new_sr_loan_limit):
+        if new_jr_loan_limit is not None:
+            self.jr_loan_limit_ = new_jr_loan_limit
+
+        if new_sr_loan_limit is not None:
+            self.sr_loan_limit_ = new_sr_loan_limit
+
+    @property
+    def jr_loan_limit(self):
+        if self.jr_loan_limit_ == Wad(0):
+            return Wad(MAX_UINT)
+        return self.jr_loan_limit_
+
+    @property
+    def sr_loan_limit(self):
+        if self.sr_loan_limit_ == Wad(0):
+            return Wad(MAX_UINT)
+        return self.sr_loan_limit_
+
+    @external
+    @only_component_or_global_role("LEVEL2_ROLE")
     def set_deficit_ratio(self, new_ratio, adjustment):
         require(
             new_ratio <= _W(1) and new_ratio >= 0,
@@ -859,7 +901,12 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
     @external
     def receive_grant(self, sender, amount):
         self.currency.transfer_from(self.contract_id, sender, self.contract_id, amount)
-        self._store_pure_premium_won(amount)
+        pure_premium_won = amount
+        if self.senior_etk:
+            pure_premium_won = self._repay_loan(pure_premium_won, self.senior_etk)
+        if self.junior_etk:
+            pure_premium_won = self._repay_loan(pure_premium_won, self.junior_etk)
+        self._store_pure_premium_won(pure_premium_won)
 
     @external
     @only_component_role("WITHDRAW_WON_PREMIUMS_ROLE")
@@ -875,25 +922,33 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
 
     def _borrow_from_etk(self, borrow, receiver, jr_etk):
         require(receiver is not None, "PremiumsAccount: receiver cannot be the zero address")
+        amount_left = borrow
         if jr_etk:
-            amount_left = self.junior_etk.internal_loan(
-                self,
-                borrow,
-                receiver,
-                False,  # Consume Junior Pool until exhausted
-            )
-        else:
-            amount_left = borrow
+            if self.junior_etk.get_loan(self) + borrow <= self.jr_loan_limit:
+                amount_left = self.junior_etk.internal_loan(
+                    self,
+                    borrow,
+                    receiver
+                )
+            elif self.junior_etk.get_loan(self) < self.jr_loan_limit:
+                loan_excess = self.junior_etk.get_loan(self) + borrow - self.jr_loan_limit
+                # Partial loan
+                amount_left = loan_excess + self.junior_etk.internal_loan(
+                    self,
+                    borrow - loan_excess,
+                    receiver
+                )
         if amount_left > self.NEGLIGIBLE_AMOUNT:
-            amount_left = self.senior_etk.internal_loan(
-                self,
-                amount_left,
-                receiver,
-                True,  # Consume Senior Pool only up to SCR
-            )
+            if self.senior_etk.get_loan(self) + amount_left <= self.sr_loan_limit:
+                # In the senior doesn't make sense to handle partial loan
+                amount_left = self.senior_etk.internal_loan(
+                    self,
+                    amount_left,
+                    receiver
+                )
             require(
                 amount_left <= self.NEGLIGIBLE_AMOUNT,
-                "Don't know where to take the rest of the money",
+                "Don't know where to source the rest of the money",
             )
 
     def _pay_from_premiums(self, to_pay):

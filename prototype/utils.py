@@ -90,6 +90,7 @@ def load_config(yaml_config=None, module=None):
     pool_params["access"] = access_mgr
     pool = module.PolicyPool(**pool_params)
     pool.access.grant_role("LEVEL1_ROLE", access_mgr.owner)
+    pool.access.grant_role("LEVEL2_ROLE", access_mgr.owner)
 
     default_etk = None
 
@@ -106,13 +107,31 @@ def load_config(yaml_config=None, module=None):
     default_premiums_account = None
     for premiums_account_dict in config.get("premiums_accounts", []):
         premiums_account_dict["pool"] = pool
+        premiums_account_dict["owner"] = access_mgr.owner
         if "senior_etk" in premiums_account_dict:
             premiums_account_dict["senior_etk"] = pool.etokens[premiums_account_dict["senior_etk"]]
         else:
             premiums_account_dict["senior_etk"] = default_etk
         if "junior_etk" in premiums_account_dict:
             premiums_account_dict["junior_etk"] = pool.etokens[premiums_account_dict["junior_etk"]]
-        default_premiums_account = module.PremiumsAccount(**premiums_account_dict)
+        if "deficit_ratio" in premiums_account_dict:
+            deficit_ratio = _W(premiums_account_dict.pop("deficit_ratio"))
+        else:
+            deficit_ratio = None
+        if "jr_loan_limit" in premiums_account_dict:
+            jr_loan_limit = to_wad(premiums_account_dict.pop("jr_loan_limit"))
+        else:
+            jr_loan_limit = None
+        if "sr_loan_limit" in premiums_account_dict:
+            sr_loan_limit = to_wad(premiums_account_dict.pop("sr_loan_limit"))
+        else:
+            sr_loan_limit = None
+        pa = default_premiums_account = module.PremiumsAccount(**premiums_account_dict)
+
+        if deficit_ratio is not None:
+            pa.set_deficit_ratio(deficit_ratio, True)
+        if jr_loan_limit is not None or sr_loan_limit is not None:
+            pa.set_loan_limits(jr_loan_limit, sr_loan_limit)
         pool.add_premiums_account(default_premiums_account)
 
     if default_premiums_account is None:
@@ -125,7 +144,14 @@ def load_config(yaml_config=None, module=None):
         risk_module_dict["policy_pool"] = pool
         if "premiums_account" not in risk_module_dict:
             risk_module_dict["premiums_account"] = default_premiums_account
+
+        post_init_attributes = {}
+        for key in "jr_coll_ratio,jr_roc".split(","):
+            if key in risk_module_dict:
+                post_init_attributes[key] = _W(risk_module_dict.pop(key))
         rm = module.TrustfulRiskModule(**risk_module_dict)
+        for key, value in post_init_attributes.items():
+            setattr(rm, key, value)
 
         for role_assignment in role_assignments:
             pool.access.grant_component_role(rm, role_assignment["role"], role_assignment["user"])

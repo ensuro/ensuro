@@ -511,10 +511,14 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     uint256 totalSupply_ = this.totalSupply();
     if (totalSupply_ == 0) _scr.tokenInterestRate = 0;
     else {
-      _scr.tokenInterestRate = uint256(_scr.interestRate)
-        .wadMul(uint256(_scr.scr))
-        .wadDiv(totalSupply_)
-        .toUint64();
+      uint256 newTokenInterestRate = uint256(_scr.interestRate).wadMul(uint256(_scr.scr)).wadDiv(
+        totalSupply_
+      );
+      _scr.tokenInterestRate = (newTokenInterestRate > type(uint64).max)
+        ? type(uint64).max
+        : newTokenInterestRate.toUint64();
+      // This is not the mathematically correct value, but the max we can set. The actual value of the total supply
+      // will be adjusted when the policies expire or are resolved and the SCR is unlocked.
     }
   }
 
@@ -705,16 +709,23 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     emit InternalBorrowerRemoved(borrower, defaultedDebt);
   }
 
-  function internalLoan(
-    uint256 amount,
-    address receiver,
-    bool fromAvailable
-  ) external override onlyBorrower whenNotPaused returns (uint256) {
+  /**
+   * @dev Returns the maximum negative adjustment (discrete loss) the eToken can accept without breaking consistency.
+   *      The limit comes from limits in the internal scale that takes scaledTotalSupply() to totalSupply()
+   */
+  function maxNegativeAdjustment() public view returns (uint256) {
+    return totalSupply() - _tsScaled.minValue(); // Min value accepted by _tsScaled
+  }
+
+  function internalLoan(uint256 amount, address receiver)
+    external
+    override
+    onlyBorrower
+    whenNotPaused
+    returns (uint256)
+  {
     uint256 amountAsked = amount;
-    amount = Math.min(
-      Math.min(amount, fromAvailable ? fundsAvailable() : totalSupply()),
-      _tsScaled.maxNegativeAdjustment(tokenInterestRate())
-    );
+    amount = Math.min(amount, maxNegativeAdjustment());
     if (amount == 0) return amountAsked;
     TimeScaled.ScaledAmount storage loan = _loans[_msgSender()];
     loan.add(amount, internalLoanInterestRate());
