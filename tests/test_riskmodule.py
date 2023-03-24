@@ -1,23 +1,42 @@
 import pytest
 from functools import partial
 from collections import namedtuple
+from itertools import product
 
 from ethproto.contracts import RevertError, Contract, ERC20Token, ContractProxyField
 from ethproto.wrappers import get_provider
-from ethproto.wadray import _W
+from ethproto.wadray import _W, make_integer_float, Wad
 
 from prototype import ensuro
 from prototype import wrappers
 from prototype.utils import WEEK, DAY, YEAR, DAYS_IN_YEAR
 from . import TEST_VARIANTS
 
-TEnv = namedtuple("TEnv", "time_control currency rm_class pool_access kind")
+TEnv = namedtuple("TEnv", "time_control currency rm_class pool_access kind A")
+
+USDC = make_integer_float(6, "USDC")
+_D = USDC.from_value
 
 
-@pytest.fixture(params=TEST_VARIANTS)
+# Test variants combining different number of decimals and implementation
+test_variants = [f"{variant}-dec{decimals}" for (variant, decimals) in product(TEST_VARIANTS, [6, 18])]
+
+
+@pytest.fixture(params=test_variants)
 def tenv(request):
-    if request.param == "prototype":
-        currency = ERC20Token(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
+    test_variant = request.param.split("-")[0]
+    decimals = int(request.param.split("-")[1][3:])
+
+    if decimals == 6:
+        def _A(x):
+            return Wad(_D(x))
+    else:
+        _A = _W
+
+    if test_variant == "prototype":
+        currency = ERC20Token(
+            owner="owner", name="TEST", symbol="TEST", initial_supply=_A(1000), decimals=decimals
+        )
         pool_access = ensuro.AccessManager()
 
         class PolicyPoolMock(Contract):
@@ -41,12 +60,15 @@ def tenv(request):
             pool_access=pool_access,
             kind="prototype",
             rm_class=partial(ensuro.TrustfulRiskModule, policy_pool=pool, premiums_account=premiums_account),
+            A=_A
         )
-    elif request.param == "ethereum":
+    elif test_variant == "ethereum":
         PolicyPoolMock = get_provider().get_contract_factory("PolicyPoolMock")
         PremiumsAccountMock = get_provider().get_contract_factory("PolicyPoolComponentMock")
 
-        currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(1000))
+        currency = wrappers.TestCurrency(
+            owner="owner", name="TEST", symbol="TEST", initial_supply=_A(1000), decimals=decimals
+        )
         access = wrappers.AccessManager(owner="owner")
 
         pool = PolicyPoolMock.deploy(currency.contract, access.contract, {"from": currency.owner})
@@ -62,6 +84,7 @@ def tenv(request):
                 policy_pool=wrappers.PolicyPool.connect(pool, currency.owner),
                 premiums_account=premiums_account,
             ),
+            A=_A
         )
 
 
@@ -71,16 +94,16 @@ def test_getset_rm_parameters(tenv):
         coll_ratio=_W(1),
         ensuro_pp_fee=_W("0.03"),
         sr_roc=_W("0.02"),
-        max_payout_per_policy=_W(1000),
-        exposure_limit=_W(1000000),
+        max_payout_per_policy=tenv.A(1000),
+        exposure_limit=tenv.A(1000000),
         wallet="CASINO",
     )
     assert rm.name == "Roulette"
     assert rm.coll_ratio == _W(1)
     rm.ensuro_pp_fee.assert_equal(_W("0.03"))
     rm.sr_roc.assert_equal(_W("0.02"))
-    assert rm.max_payout_per_policy == _W(1000)
-    assert rm.exposure_limit == _W(1000000)
+    assert rm.max_payout_per_policy == tenv.A(1000)
+    assert rm.exposure_limit == tenv.A(1000000)
     assert rm.wallet == "CASINO"
 
     # rm.grant_role("RM_PROVIDER_ROLE", "CASINO")  # Grant the role to the casino owner
@@ -96,8 +119,8 @@ def test_getset_rm_parameters(tenv):
         ("ensuro_pp_fee", "L2_USER", _W("0.04")),
         ("sr_roc", "L2_USER", _W("0.03")),
         ("jr_roc", "L2_USER", _W("0.05")),
-        ("max_payout_per_policy", "L2_USER", _W(2000)),
-        ("exposure_limit", "L1_USER", _W(10000000)),
+        ("max_payout_per_policy", "L2_USER", tenv.A(2000)),
+        ("exposure_limit", "L1_USER", tenv.A(10000000)),
         ("wallet", "CASINO", "CASINO_POCKET"),
         ("max_duration", "L2_USER", 180),
     ]
@@ -125,14 +148,14 @@ def test_getset_rm_parameters(tenv):
 
 def test_getset_rm_parameters_tweaks(tenv):
     if tenv.kind != "ethereum":
-        return
+        pytest.skip("Tweaks not fully implemented in Python")
     rm = tenv.rm_class(
         name="Roulette",
         coll_ratio=_W(1),
         ensuro_pp_fee=_W("0.03"),
         sr_roc=_W("0.02"),
-        max_payout_per_policy=_W(1000),
-        exposure_limit=_W(1e6),  # 1m
+        max_payout_per_policy=tenv.A(1000),
+        exposure_limit=tenv.A(1e6),  # 1m
         wallet="CASINO",
     )
     tenv.pool_access.grant_role("LEVEL1_ROLE", "L1_USER")
@@ -175,8 +198,8 @@ def test_getset_rm_parameters_tweaks(tenv):
         ("sr_roc", _W("0.03")),  # 10% allowed
         ("jr_roc", _W("0.2")),  # 10% allowed
         ("ensuro_pp_fee", _W("0.05")),  # 10% allowed
-        ("exposure_limit", _W(2e6)),  # 10% allowed - previous 1e6
-        ("max_payout_per_policy", _W(1400)),  # 30% allowed
+        ("exposure_limit", tenv.A(2e6)),  # 10% allowed - previous 1e6
+        ("max_payout_per_policy", tenv.A(1400)),  # 30% allowed
     ]
 
     for attr_name, attr_value in test_exceeded_tweaks:
@@ -195,8 +218,8 @@ def test_getset_rm_parameters_tweaks(tenv):
         ("sr_roc", _W("0.0215")),  # 10% allowed - previous 2%
         ("jr_roc", _W("0.095")),  # 10% allowed - previous 10%
         ("ensuro_pp_fee", _W("0.027")),  # 10% allowed - previous 3%
-        ("exposure_limit", _W("999900")),  # decrease 10% allowed - previous 999999
-        ("max_payout_per_policy", _W(1099)),  # 10% allowed - previous 1000
+        ("exposure_limit", tenv.A("999900")),  # decrease 10% allowed - previous 999999
+        ("max_payout_per_policy", tenv.A(1099)),  # 10% allowed - previous 1000
     ]
 
     for attr_name, attr_value in test_ok_tweaks:
@@ -211,8 +234,8 @@ def test_getset_rm_parameters_tweaks(tenv):
         ("sr_roc", _W("0.01")),
         ("jr_roc", _W("0.3")),
         ("ensuro_pp_fee", _W("0.01")),
-        ("exposure_limit", _W("700000")),
-        ("max_payout_per_policy", _W(500)),
+        ("exposure_limit", tenv.A("700000")),
+        ("max_payout_per_policy", tenv.A(500)),
         ("max_duration", 10000),
     ]
 
@@ -225,22 +248,22 @@ def test_getset_rm_parameters_tweaks(tenv):
 
     # Increases require LEVEL1_ROLE
     with rm.as_("L2_USER"), pytest.raises(RevertError, match="requires LEVEL1_ROLE"):
-        rm.exposure_limit = _W(4e6)
+        rm.exposure_limit = tenv.A(4e6)
     with rm.as_("L3_USER"), pytest.raises(RevertError, match="requires LEVEL1_ROLE"):
-        rm.exposure_limit = _W("710000")
+        rm.exposure_limit = tenv.A("710000")
 
     # Decreases are OK
     with rm.as_("L3_USER"):
-        rm.exposure_limit = _W("690000")
-        assert rm.exposure_limit == _W("690000")
+        rm.exposure_limit = tenv.A("690000")
+        assert rm.exposure_limit == tenv.A("690000")
     with rm.as_("L2_USER"):
-        rm.exposure_limit = _W("400000")
-        assert rm.exposure_limit == _W("400000")
+        rm.exposure_limit = tenv.A("400000")
+        assert rm.exposure_limit == tenv.A("400000")
 
     # L1_USER can increase over 10% liquidity
     with rm.as_("L1_USER"):
-        rm.exposure_limit = _W("4000000")
-        assert rm.exposure_limit == _W("4000000")
+        rm.exposure_limit = tenv.A("4000000")
+        assert rm.exposure_limit == tenv.A("4000000")
 
 
 def test_avoid_repeated_tweaks(tenv):
@@ -251,8 +274,8 @@ def test_avoid_repeated_tweaks(tenv):
         coll_ratio=_W(1),
         ensuro_pp_fee=_W("0.03"),
         sr_roc=_W("0.02"),
-        max_payout_per_policy=_W(1000),
-        exposure_limit=_W(1e6),  # 1m
+        max_payout_per_policy=tenv.A(1000),
+        exposure_limit=tenv.A(1e6),  # 1m
         wallet="CASINO",
     )
     tenv.pool_access.grant_role("LEVEL3_ROLE", "L3_USER")
@@ -289,14 +312,14 @@ def test_set_rm_parameter_overflow(tenv):
     rm = tenv.rm_class(
         name="Roulette", coll_ratio=_W(1), ensuro_pp_fee=_W("0.03"),
         sr_roc=_W("0.02"),
-        max_payout_per_policy=_W(1000), exposure_limit=_W(1000000),
+        max_payout_per_policy=tenv.A(1000), exposure_limit=tenv.A(1000000),
         wallet="CASINO"
     )
     tenv.pool_access.grant_role("LEVEL2_ROLE", "ADMIN")
     tenv.pool_access.grant_role("LEVEL1_ROLE", "ADMIN")
 
     with rm.as_("ADMIN"), pytest.raises(RevertError, match="SafeCast: "):
-        rm.exposure_limit = _W(2**40 + 1)
+        rm.exposure_limit = tenv.A(2**40 + 1)
 
     # Verifies OK tweaks
     test_overflows = [
@@ -307,13 +330,12 @@ def test_set_rm_parameter_overflow(tenv):
         ("ensuro_coc_fee", _W("10")),
         ("sr_roc", _W("10")),
         ("jr_roc", _W("10")),
-        ("max_payout_per_policy", _W(50000000)),
-        ("exposure_limit", _W(2**32 + 1)),
+        ("max_payout_per_policy", tenv.A(50000000)),
+        ("exposure_limit", tenv.A(2**32 + 1)),
         ("max_duration", 65536),
     ]
 
     for attr_name, attr_value in test_overflows:
-        print(attr_name, attr_value)
         with rm.as_("ADMIN"), pytest.raises(RevertError, match="SafeCast: "):
             setattr(rm, attr_name, attr_value)
 
@@ -324,14 +346,14 @@ def test_new_policy(tenv):
         coll_ratio=_W(1),
         ensuro_pp_fee=_W("0.02"),
         sr_roc=_W("0.01"),
-        max_payout_per_policy=_W(1000),
-        exposure_limit=_W(1000000),
+        max_payout_per_policy=tenv.A(1000),
+        exposure_limit=tenv.A(1000000),
         wallet="CASINO",
     )
     assert rm.name == "Roulette"
-    tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", _W(1))
-    tenv.currency.approve("JOHN_SELLER", rm.policy_pool, _W(1))
-    assert tenv.currency.allowance("JOHN_SELLER", rm.policy_pool) == _W(1)
+    tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", tenv.A(1))
+    tenv.currency.approve("JOHN_SELLER", rm.policy_pool, tenv.A(1))
+    assert tenv.currency.allowance("JOHN_SELLER", rm.policy_pool) == tenv.A(1)
     expiration = tenv.time_control.now + WEEK
 
     # Set ensuro_coc_fee
@@ -342,31 +364,31 @@ def test_new_policy(tenv):
     assert rm.ensuro_coc_fee == _W("0.03")
 
     with rm.as_("JOHN_DOE"), pytest.raises(RevertError, match="is missing role"):
-        policy = rm.new_policy(_W(36), _W(1), _W(1 / 37), expiration, "CUST1", 123)
+        policy = rm.new_policy(tenv.A(36), tenv.A(1), _W(1 / 37), expiration, "CUST1", 123)
 
     tenv.pool_access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
     with rm.as_("JOHN_SELLER"):
         policy = rm.new_policy(
-            payout=_W(36),
-            premium=_W(1),
+            payout=tenv.A(36),
+            premium=tenv.A(1),
             loss_prob=_W(1 / 37),
             expiration=expiration,
             on_behalf_of="CUST1",
             internal_id=123,
         )
 
-    policy.premium.assert_equal(_W(1))
-    policy.payout.assert_equal(_W(36))
+    policy.premium.assert_equal(tenv.A(1))
+    policy.payout.assert_equal(tenv.A(36))
     policy.loss_prob.assert_equal(_W(1 / 37))
-    policy.pure_premium.assert_equal(_W(36 * 1 / 37))
-    policy.sr_scr.assert_equal(_W(36) - policy.pure_premium)
+    policy.pure_premium.assert_equal(tenv.A(36 * 1 / 37))
+    policy.sr_scr.assert_equal(tenv.A(36) - policy.pure_premium)
     assert policy.id == rm.make_policy_id(123)
     assert policy.expiration == expiration
     assert (tenv.time_control.now - policy.start) < 60  # Must be now, giving 60 seconds tolerance
     policy.sr_coc.assert_equal(policy.sr_scr * _W("0.01") * _W(7 / 365))
     policy.ensuro_commission.assert_equal(policy.pure_premium * _W("0.02") + policy.sr_coc * _W("0.03"))
     policy.partner_commission.assert_equal(
-        _W(1) - policy.pure_premium - policy.sr_coc - policy.ensuro_commission
+        tenv.A(1) - policy.pure_premium - policy.sr_coc - policy.ensuro_commission
     )
     policy.sr_interest_rate.assert_equal(_W("0.01"))
 
@@ -385,29 +407,29 @@ def test_moc(tenv):
         coll_ratio=_W(1),
         ensuro_pp_fee=_W("0.01"),
         sr_roc=_W(0),
-        max_payout_per_policy=_W(1000),
-        exposure_limit=_W(1000000),
+        max_payout_per_policy=tenv.A(1000),
+        exposure_limit=tenv.A(1000000),
         wallet="CASINO",
     )
-    tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", _W(1))
-    tenv.currency.approve("JOHN_SELLER", rm.policy_pool, _W(1))
+    tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", tenv.A(1))
+    tenv.currency.approve("JOHN_SELLER", rm.policy_pool, tenv.A(1))
     expiration = tenv.time_control.now + WEEK
 
     tenv.pool_access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
     with rm.as_("JOHN_SELLER"):
         policy = rm.new_policy(
-            payout=_W(36),
-            premium=_W(1),
+            payout=tenv.A(36),
+            premium=tenv.A(1),
             loss_prob=_W(1 / 37),
             expiration=expiration,
             on_behalf_of="CUST1",
             internal_id=111,
         )
 
-    policy.premium.assert_equal(_W(1))
+    policy.premium.assert_equal(tenv.A(1))
     policy.loss_prob.assert_equal(_W(1 / 37))
-    policy.pure_premium.assert_equal(_W(36 * 1 / 37))
-    policy.ensuro_commission.assert_equal(_W(36 * 1 / 37 * 0.01))
+    policy.pure_premium.assert_equal(tenv.A(36 * 1 / 37))
+    policy.ensuro_commission.assert_equal(tenv.A(36 * 1 / 37 * 0.01))
     assert policy.id == rm.make_policy_id(111)
 
     with pytest.raises(RevertError, match="missing role"):
@@ -421,19 +443,19 @@ def test_moc(tenv):
 
     with rm.as_("JOHN_SELLER"):
         policy2 = rm.new_policy(
-            payout=_W(36),
-            premium=_W(1),
+            payout=tenv.A(36),
+            premium=tenv.A(1),
             loss_prob=_W(1 / 37),
             expiration=expiration,
             on_behalf_of="CUST1",
             internal_id=112,
         )
 
-    policy2.premium.assert_equal(_W(1))
+    policy2.premium.assert_equal(tenv.A(1))
     assert policy2.id == rm.make_policy_id(112)
     policy2.loss_prob.assert_equal(_W(1 / 37))
-    policy2.pure_premium.assert_equal(_W(36 * 1 / 37) * _W("1.01"))
-    policy2.ensuro_commission.assert_equal(_W(36 * 1 / 37 * 0.01) * _W("1.01"))
+    policy2.pure_premium.assert_equal(tenv.A(36 * 1 / 37) * _W("1.01"))
+    policy2.ensuro_commission.assert_equal(tenv.A(36 * 1 / 37 * 0.01) * _W("1.01"))
 
 
 def test_minimum_premium(tenv):
@@ -442,8 +464,8 @@ def test_minimum_premium(tenv):
         coll_ratio=_W("0.2"),
         ensuro_pp_fee=_W("0.01"),
         sr_roc=_W("0.10"),
-        max_payout_per_policy=_W(1000),
-        exposure_limit=_W(1000000),
+        max_payout_per_policy=tenv.A(1000),
+        exposure_limit=tenv.A(1000000),
         wallet="CASINO",
     )
     tenv.pool_access.grant_role("LEVEL2_ROLE", "DAO")
@@ -451,21 +473,21 @@ def test_minimum_premium(tenv):
         rm.moc = _W("1.3")
 
     expiration = tenv.time_control.now + WEEK
-    pure_premium = _W(36 / 37) * _W("1.3")
-    scr = _W(36) * _W("0.2") - pure_premium
-    rm.get_minimum_premium(_W(36), _W(1 / 37), expiration).assert_equal(
+    pure_premium = tenv.A(36 / 37) * _W("1.3")
+    scr = tenv.A(36) * _W("0.2") - pure_premium
+    rm.get_minimum_premium(tenv.A(36), _W(1 / 37), expiration).assert_equal(
         pure_premium * _W("1.01") + scr * _W(7 / 365) * _W("0.10")
     )
-    minimum_premium = rm.get_minimum_premium(_W(36), _W(1 / 37), expiration)
+    minimum_premium = rm.get_minimum_premium(tenv.A(36), _W(1 / 37), expiration)
 
-    tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", _W(2))
-    tenv.currency.approve("JOHN_SELLER", rm.policy_pool, _W(2))
+    tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", tenv.A(2))
+    tenv.currency.approve("JOHN_SELLER", rm.policy_pool, tenv.A(2))
 
     tenv.pool_access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
     with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="less than minimum"):
         policy = rm.new_policy(
-            payout=_W(36),
-            premium=_W("1.28"),
+            payout=tenv.A(36),
+            premium=tenv.A("1.28"),
             loss_prob=_W(1 / 37),
             expiration=expiration,
             on_behalf_of="CUST1",
@@ -474,8 +496,8 @@ def test_minimum_premium(tenv):
 
     with rm.as_("JOHN_SELLER"):
         policy = rm.new_policy(
-            payout=_W(36),
-            premium=rm.get_minimum_premium(_W(36), _W(1 / 37), expiration),
+            payout=tenv.A(36),
+            premium=rm.get_minimum_premium(tenv.A(36), _W(1 / 37), expiration),
             loss_prob=_W(1 / 37),
             expiration=expiration,
             on_behalf_of="CUST1",
@@ -484,7 +506,7 @@ def test_minimum_premium(tenv):
 
     policy.premium.assert_equal(minimum_premium, decimals=3)
     policy.loss_prob.assert_equal(_W(1 / 37))
-    policy.pure_premium.assert_equal(_W(36 * 1 / 37 * 1.3))
+    policy.pure_premium.assert_equal(tenv.A(36 * 1 / 37 * 1.3))
     policy.ensuro_commission.assert_equal(policy.pure_premium * _W("0.01"))
 
 
@@ -495,8 +517,8 @@ def test_get_minimum_premium_with_high_jr_coll_ratio(tenv):
         coll_ratio=_W("0.2"),
         ensuro_pp_fee=_W("0"),
         sr_roc=_W("0"),
-        max_payout_per_policy=_W(1000),
-        exposure_limit=_W(1000000),
+        max_payout_per_policy=tenv.A(1000),
+        exposure_limit=tenv.A(1000000),
         wallet="CASINO",
     )
 
@@ -504,8 +526,8 @@ def test_get_minimum_premium_with_high_jr_coll_ratio(tenv):
     with rm.as_("L2_USER"):
         rm.jr_coll_ratio = _W("0.1")
 
-    minimum_premium = rm.get_minimum_premium(_W(100), _W("0.01"), tenv.time_control.now + WEEK)
-    assert minimum_premium == _W(1)
+    minimum_premium = rm.get_minimum_premium(tenv.A(100), _W("0.01"), tenv.time_control.now + WEEK)
+    assert minimum_premium == tenv.A(1)
 
 
 def test_get_minimum_premium_with_low_sr_coll_ratio(tenv):
@@ -515,13 +537,13 @@ def test_get_minimum_premium_with_low_sr_coll_ratio(tenv):
         coll_ratio=_W("0.1"),  # coll_ratio == sr_coll_ratio in this case
         ensuro_pp_fee=_W("0"),
         sr_roc=_W("0"),
-        max_payout_per_policy=_W(1000),
-        exposure_limit=_W(1000000),
+        max_payout_per_policy=tenv.A(1000),
+        exposure_limit=tenv.A(1000000),
         wallet="CASINO",
     )
 
-    minimum_premium = rm.get_minimum_premium(_W(100), _W("0.2"), tenv.time_control.now + WEEK)
-    assert minimum_premium == _W(20)
+    minimum_premium = rm.get_minimum_premium(tenv.A(100), _W("0.2"), tenv.time_control.now + WEEK)
+    assert minimum_premium == tenv.A(20)
 
 
 def test_default_premium(tenv):
@@ -530,13 +552,13 @@ def test_default_premium(tenv):
         coll_ratio=_W("0.1"),
         ensuro_pp_fee=_W("0"),
         sr_roc=_W("0"),
-        max_payout_per_policy=_W(1000),
-        exposure_limit=_W(1000000),
+        max_payout_per_policy=tenv.A(1000),
+        exposure_limit=tenv.A(1000000),
         wallet="CASINO",
     )
 
-    tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", _W(2))
-    tenv.currency.approve("JOHN_SELLER", rm.policy_pool, _W(2))
+    tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", tenv.A(2))
+    tenv.currency.approve("JOHN_SELLER", rm.policy_pool, tenv.A(2))
 
     tenv.pool_access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
 
@@ -545,7 +567,7 @@ def test_default_premium(tenv):
 
     with rm.as_("JOHN_SELLER"):
         policy = rm.new_policy(
-            payout=_W(36),
+            payout=tenv.A(36),
             premium=None,
             loss_prob=_W(1 / 37),
             expiration=expiration,
@@ -553,7 +575,7 @@ def test_default_premium(tenv):
             internal_id=222,
         )
 
-    policy.premium.assert_equal(rm.get_minimum_premium(_W(36), _W(1 / 37), expiration), decimals=3)
+    policy.premium.assert_equal(rm.get_minimum_premium(tenv.A(36), _W(1 / 37), expiration), decimals=3)
 
 
 def test_premium_too_high(tenv):
@@ -562,19 +584,19 @@ def test_premium_too_high(tenv):
         coll_ratio=_W(1),
         ensuro_pp_fee=_W("0.01"),
         sr_roc=_W(0),
-        max_payout_per_policy=_W(1000),
-        exposure_limit=_W(1000000),
+        max_payout_per_policy=tenv.A(1000),
+        exposure_limit=tenv.A(1000000),
         wallet="CASINO",
     )
-    tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", _W(37))
-    tenv.currency.approve("JOHN_SELLER", rm.policy_pool, _W(37))
+    tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", tenv.A(37))
+    tenv.currency.approve("JOHN_SELLER", rm.policy_pool, tenv.A(37))
     expiration = tenv.time_control.now + WEEK
 
     tenv.pool_access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
     with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="Premium must be less than payout"):
         rm.new_policy(
-            payout=_W(36),
-            premium=_W(37),
+            payout=tenv.A(36),
+            premium=tenv.A(37),
             loss_prob=_W(1 / 37),
             expiration=expiration,
             on_behalf_of="CUST1",
@@ -588,19 +610,19 @@ def test_expiration_in_the_past_should_revert(tenv):
         coll_ratio=_W(1),
         ensuro_pp_fee=_W("0.01"),
         sr_roc=_W(0),
-        max_payout_per_policy=_W(1000),
-        exposure_limit=_W(1000000),
+        max_payout_per_policy=tenv.A(1000),
+        exposure_limit=tenv.A(1000000),
         wallet="CASINO",
     )
-    tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", _W(1))
-    tenv.currency.approve("JOHN_SELLER", rm.policy_pool, _W(1))
+    tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", tenv.A(1))
+    tenv.currency.approve("JOHN_SELLER", rm.policy_pool, tenv.A(1))
     expiration = tenv.time_control.now - WEEK
 
     tenv.pool_access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
     with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="Expiration must be in the future"):
         rm.new_policy(
-            payout=_W(36),
-            premium=_W(1),
+            payout=tenv.A(36),
+            premium=tenv.A(1),
             loss_prob=_W(1 / 37),
             expiration=expiration,
             on_behalf_of="CUST1",
@@ -614,8 +636,8 @@ def test_max_duration(tenv):
         coll_ratio=_W(1),
         ensuro_pp_fee=_W("0.01"),
         sr_roc=_W(0),
-        max_payout_per_policy=_W(1000),
-        exposure_limit=_W(1000000),
+        max_payout_per_policy=tenv.A(1000),
+        exposure_limit=tenv.A(1000000),
         wallet="CASINO",
     )
 
@@ -623,15 +645,15 @@ def test_max_duration(tenv):
     with rm.as_("L2_USER"):
         rm.max_duration = DAYS_IN_YEAR
 
-    tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", _W(1))
-    tenv.currency.approve("JOHN_SELLER", rm.policy_pool, _W(1))
+    tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", tenv.A(1))
+    tenv.currency.approve("JOHN_SELLER", rm.policy_pool, tenv.A(1))
     expiration = tenv.time_control.now + YEAR + WEEK
 
     tenv.pool_access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
     with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="Policy exceeds max duration"):
         rm.new_policy(
-            payout=_W(36),
-            premium=_W(1),
+            payout=tenv.A(36),
+            premium=tenv.A(1),
             loss_prob=_W(1 / 37),
             expiration=expiration,
             on_behalf_of="CUST1",
@@ -645,19 +667,19 @@ def test_customer_with_zero_address(tenv):
         coll_ratio=_W(1),
         ensuro_pp_fee=_W("0.01"),
         sr_roc=_W(0),
-        max_payout_per_policy=_W(1000),
-        exposure_limit=_W(1000000),
+        max_payout_per_policy=tenv.A(1000),
+        exposure_limit=tenv.A(1000000),
         wallet="CASINO",
     )
 
-    tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", _W(1))
-    tenv.currency.approve("JOHN_SELLER", rm.policy_pool, _W(1))
+    tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", tenv.A(1))
+    tenv.currency.approve("JOHN_SELLER", rm.policy_pool, tenv.A(1))
 
     tenv.pool_access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
     with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="Customer can't be zero address"):
         rm.new_policy(
-            payout=_W(36),
-            premium=_W(1),
+            payout=tenv.A(36),
+            premium=tenv.A(1),
             loss_prob=_W(1 / 37),
             expiration=tenv.time_control.now + WEEK,
             on_behalf_of=None,
@@ -671,18 +693,18 @@ def test_exceeded_max_payout(tenv):
         coll_ratio=_W(1),
         ensuro_pp_fee=_W("0.01"),
         sr_roc=_W(0),
-        max_payout_per_policy=_W(100),
-        exposure_limit=_W(1000000),
+        max_payout_per_policy=tenv.A(100),
+        exposure_limit=tenv.A(1000000),
         wallet="CASINO",
     )
 
-    tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", _W(101))
-    tenv.currency.approve("JOHN_SELLER", rm.policy_pool, _W(101))
+    tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", tenv.A(101))
+    tenv.currency.approve("JOHN_SELLER", rm.policy_pool, tenv.A(101))
 
     tenv.pool_access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
     with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="Payout is more than maximum"):
         rm.new_policy(
-            payout=_W(101),
+            payout=tenv.A(101),
             premium=None,
             loss_prob=_W(1 / 37),
             expiration=tenv.time_control.now + WEEK,
@@ -697,18 +719,18 @@ def test_exceeded_max_exposure(tenv):
         coll_ratio=_W(1),
         ensuro_pp_fee=_W("0.01"),
         sr_roc=_W(0),
-        max_payout_per_policy=_W(1000),
-        exposure_limit=_W(50),
+        max_payout_per_policy=tenv.A(1000),
+        exposure_limit=tenv.A(50),
         wallet="CASINO",
     )
 
-    tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", _W(101))
-    tenv.currency.approve("JOHN_SELLER", rm.policy_pool, _W(101))
+    tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", tenv.A(101))
+    tenv.currency.approve("JOHN_SELLER", rm.policy_pool, tenv.A(101))
 
     tenv.pool_access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
     with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="Exposure limit exceeded"):
         rm.new_policy(
-            payout=_W(101),
+            payout=tenv.A(101),
             premium=None,
             loss_prob=_W(1 / 37),
             expiration=tenv.time_control.now + WEEK,
