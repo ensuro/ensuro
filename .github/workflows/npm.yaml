@@ -52,8 +52,12 @@ jobs:
       - run: |
           RELEASE_TAG="${{ github.event.inputs.tag }}"
           if [ -z "$RELEASE_TAG" ]; then
-            # No manual input, we must be running on a tag
-            RELEASE_TAG=latest
+            if [[ "$SEMVER" == *"-beta"* ]]; then
+              RELEASE_TAG=beta
+            else
+              # No manual input, we must be running on a tag
+              RELEASE_TAG=latest
+            fi
           fi
           npm publish --tag "$RELEASE_TAG"
         working-directory: ./build/npm-package
