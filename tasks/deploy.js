@@ -1,4 +1,5 @@
 const upgrades_core = require("@openzeppelin/upgrades-core");
+const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const fs = require("fs");
 
 const ethers = require("ethers");
@@ -139,11 +140,15 @@ async function deployContract({ saveAddr, verify, contractClass, constructorArgs
   return { ContractFactory, contract };
 }
 
-async function deployProxyContract({ saveAddr, verify, contractClass, constructorArgs, initializeArgs }, hre) {
+async function deployProxyContract(
+  { saveAddr, verify, contractClass, constructorArgs, initializeArgs, initializer },
+  hre
+) {
   const ContractFactory = await hre.ethers.getContractFactory(contractClass);
   const contract = await hre.upgrades.deployProxy(ContractFactory, initializeArgs || [], {
     constructorArgs: constructorArgs,
     kind: "uups",
+    initializer: initializer,
     unsafeAllow: ["delegatecall"],
   });
   if (verify) {
@@ -200,8 +205,15 @@ async function grantRole(hre, contract, role, user) {
   }
 }
 
-async function grantRoleTask({ contractAddress, role, account, component }, hre) {
-  const contract = await hre.ethers.getContractAt("AccessManager", contractAddress);
+async function grantRoleTask({ contractAddress, role, account, component, impersonate, impersonateBalance }, hre) {
+  let contract = await hre.ethers.getContractAt("AccessManager", contractAddress);
+  if (impersonate !== undefined) {
+    const signer = await hre.ethers.getImpersonatedSigner(impersonate);
+    if (impersonateBalance !== undefined) {
+      await helpers.setBalance(signer.address, hre.ethers.utils.parseEther(impersonateBalance));
+    }
+    contract = contract.connect(signer);
+  }
   if (component === ethers.constants.AddressZero) {
     await grantRole(hre, contract, role, account);
   } else {
@@ -246,7 +258,7 @@ async function deployPolicyPool({ accessAddress, currencyAddress, nftName, nftSy
 }
 
 async function deployEToken(
-  { poolAddress, etkName, etkSymbol, maxUtilizationRate, poolLoanInterestRate, ...opts },
+  { poolAddress, etkName, etkSymbol, maxUtilizationRate, poolLoanInterestRate, runAs, ...opts },
   hre
 ) {
   const { contract } = await deployProxyContract(
@@ -258,12 +270,15 @@ async function deployEToken(
     },
     hre
   );
-  const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
-  if (opts.addComponent) await policyPool.addComponent(contract.address, 1);
+  if (opts.addComponent) {
+    let policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
+    if (runAs) policyPool = policyPool.connect(runAs);
+    await policyPool.addComponent(contract.address, 1);
+  }
   return contract.address;
 }
 
-async function deployPremiumsAccount({ poolAddress, juniorEtk, seniorEtk, ...opts }, hre) {
+async function deployPremiumsAccount({ poolAddress, juniorEtk, seniorEtk, runAs, ...opts }, hre) {
   const { contract } = await deployProxyContract(
     {
       contractClass: "PremiumsAccount",
@@ -273,8 +288,11 @@ async function deployPremiumsAccount({ poolAddress, juniorEtk, seniorEtk, ...opt
     },
     hre
   );
-  const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
-  if (opts.addComponent) await policyPool.addComponent(contract.address, 3);
+  if (opts.addComponent) {
+    let policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
+    if (runAs) policyPool = policyPool.connect(runAs);
+    await policyPool.addComponent(contract.address, 3);
+  }
   return contract.address;
 }
 
@@ -297,6 +315,7 @@ async function deployRiskModule(
     wallet,
     extraArgs,
     extraConstructorArgs,
+    runAs,
     ...opts
   },
   hre
@@ -321,7 +340,7 @@ async function deployRiskModule(
     },
     hre
   );
-  const rm = contract;
+  const rm = runAs === undefined ? contract : contract.connect(runAs);
 
   if (moc != 1.0) {
     moc = _W(moc);
@@ -342,8 +361,11 @@ async function deployRiskModule(
   if (maxDuration != 24 * 365) {
     await rm.setParam(9, maxDuration);
   }
-  const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
-  if (opts.addComponent) await policyPool.addComponent(contract.address, 2);
+  if (opts.addComponent) {
+    let policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
+    if (runAs) policyPool = policyPool.connect(runAs);
+    await policyPool.addComponent(contract.address, 2);
+  }
   return contract.address;
 }
 
@@ -416,7 +438,7 @@ async function deployAaveAssetManager({ asset, aave, amClass, ...opts }, hre) {
 }
 
 async function deployWhitelist(
-  { wlClass, poolAddress, extraConstructorArgs, extraArgs, eToken, eToken2, eToken3, defaultStatus, ...opts },
+  { wlClass, poolAddress, extraConstructorArgs, extraArgs, eToken, eToken2, eToken3, defaultStatus, runAs, ...opts },
   hre
 ) {
   extraArgs = extraArgs || [];
@@ -432,6 +454,7 @@ async function deployWhitelist(
       contractClass: wlClass,
       constructorArgs: [poolAddress, ...extraConstructorArgs],
       initializeArgs: [...extraArgs],
+      initializer: opts.initializer,
       ...opts,
     },
     hre
@@ -762,6 +785,8 @@ function add_task() {
   task("ens:grantRole", "Grants a given role")
     .addParam("contractAddress", "Contract", undefined, types.address)
     .addParam("role", "Role", types.str)
+    .addOptionalParam("impersonate", "Impersonate account before granting", undefined, types.address)
+    .addOptionalParam("impersonateBalance", "Impersonate setBalance", undefined, types.str)
     .addOptionalParam("account", "Account", undefined, types.address)
     .addOptionalParam(
       "component",
@@ -780,9 +805,13 @@ module.exports = {
   deployProxyContract,
   grantRole,
   grantComponentRole,
+  deployEToken,
+  deployPremiumsAccount,
   deployRiskModule,
   deploySignedQuoteRM,
   setAssetManager,
   deployWhitelist,
   WhitelistStatus,
+  txOverrides,
+  _A,
 };

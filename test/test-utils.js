@@ -3,11 +3,12 @@ const hre = require("hardhat");
 const { BigNumber } = require("ethers");
 const { LogDescription } = require("ethers/lib/utils");
 const { findAll } = require("solidity-ast/utils");
+const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
-exports.WEEK = 3600 * 24 * 7;
-exports.DAY = 3600 * 24;
+WEEK = 3600 * 24 * 7;
+DAY = 3600 * 24;
 
-exports.initCurrency = async function (options, initial_targets, initial_balances) {
+async function initCurrency(options, initial_targets, initial_balances) {
   const Currency = await hre.ethers.getContractFactory("TestCurrency");
   let currency = await Currency.deploy(
     options.name || "Test Currency",
@@ -22,27 +23,23 @@ exports.initCurrency = async function (options, initial_targets, initial_balance
     })
   );
   return currency;
-};
+}
 
-exports.approve_multiple = async function (currency, spender, sources, amounts) {
+async function approve_multiple(currency, spender, sources, amounts) {
   return Promise.all(
     sources.map(async function (source, index) {
       await currency.connect(source).approve(spender.address, amounts[index]);
     })
   );
-};
+}
 
-exports.check_balances = async function (currency, users, amounts) {
+async function check_balances(currency, users, amounts) {
   return Promise.all(
     users.map(async function (user, index) {
       expect(await currency.balanceOf(user.address)).to.equal(amounts[index]);
     })
   );
-};
-
-exports.now = function () {
-  return Math.floor(new Date().getTime() / 1000);
-};
+}
 
 const createRiskModule = async function (
   pool,
@@ -50,11 +47,11 @@ const createRiskModule = async function (
   contractFactory,
   {
     rmName,
-    scrPercentage,
-    scrInterestRate,
-    ensuroFee,
-    maxScrPerPolicy,
-    scrLimit,
+    collRatio,
+    srRoc,
+    ensuroPPFee,
+    maxPayoutPerPolicy,
+    exposureLimit,
     moc,
     wallet,
     extraArgs,
@@ -68,11 +65,11 @@ const createRiskModule = async function (
     contractFactory,
     [
       rmName || "RiskModule",
-      _W(scrPercentage) || _W(1),
-      _W(ensuroFee) || _W(0),
-      _W(scrInterestRate) || _W("0.1"),
-      _A(maxScrPerPolicy) || _A(1000),
-      _A(scrLimit) || _A(1000000),
+      _W(collRatio) || _W(1),
+      _W(ensuroPPFee) || _W(0),
+      _W(srRoc) || _W("0.1"),
+      _A(maxPayoutPerPolicy) || _A(1000),
+      _A(exposureLimit) || _A(1000000),
       wallet || "0xdD2FD4581271e230360230F9337D5c0430Bf44C0", // Random address
       ...extraArgs,
     ],
@@ -92,19 +89,17 @@ const createRiskModule = async function (
   return rm;
 };
 
-exports.createRiskModule = createRiskModule;
-
-exports.addRiskModule = async function (
+async function addRiskModule(
   pool,
   premiumsAccount,
   contractFactory,
   {
     rmName,
-    scrPercentage,
-    scrInterestRate,
-    ensuroFee,
-    maxScrPerPolicy,
-    scrLimit,
+    collRatio,
+    srRoc,
+    ensuroPPFee,
+    maxPayoutPerPolicy,
+    exposureLimit,
     moc,
     wallet,
     extraArgs,
@@ -113,11 +108,11 @@ exports.addRiskModule = async function (
 ) {
   const rm = await createRiskModule(pool, premiumsAccount, contractFactory, {
     rmName,
-    scrPercentage,
-    scrInterestRate,
-    ensuroFee,
-    maxScrPerPolicy,
-    scrLimit,
+    collRatio,
+    srRoc,
+    ensuroPPFee,
+    maxPayoutPerPolicy,
+    exposureLimit,
     moc,
     wallet,
     extraArgs,
@@ -126,7 +121,7 @@ exports.addRiskModule = async function (
 
   await pool.addComponent(rm.address, 2);
   return rm;
-};
+}
 
 const createEToken = async function (
   pool,
@@ -155,9 +150,7 @@ const createEToken = async function (
   return etk;
 };
 
-exports.createEToken = createEToken;
-
-exports.addEToken = async function (
+addEToken = async function addEToken(
   pool,
   { etkName, etkSymbol, maxUtilizationRate, poolLoanInterestRate, extraArgs, extraConstructorArgs }
 ) {
@@ -173,22 +166,12 @@ exports.addEToken = async function (
   return etk;
 };
 
-exports.expected_change = async function (protocol_attribute, initial, change) {
+async function expected_change(protocol_attribute, initial, change) {
   change = BigNumber.from(change);
   let actual_value = await protocol_attribute();
   expect(actual_value.sub(initial)).to.equal(change);
   return actual_value;
-};
-
-exports.impersonate = async function (address, setBalanceTo) {
-  const ok = await hre.network.provider.request({ method: "hardhat_impersonateAccount", params: [address] });
-  if (!ok) throw "Error impersonatting " + address;
-
-  if (setBalanceTo !== undefined)
-    await hre.network.provider.request({ method: "hardhat_setBalance", params: [address, setBalanceTo.toHexString()] });
-
-  return await hre.ethers.getSigner(address);
-};
+}
 
 /**
  * Finds an event in the receipt
@@ -213,8 +196,6 @@ const getTransactionEvent = function (interface, receipt, eventName) {
   return null; // not found
 };
 
-exports.getTransactionEvent = getTransactionEvent;
-
 const randomAddress = "0x89cDb70Fee571251a66E34caa1673cE40f7549Dc";
 
 /**
@@ -231,7 +212,7 @@ const randomAddress = "0x89cDb70Fee571251a66E34caa1673cE40f7549Dc";
  * - .grantRoles: default []. List of additional roles to grant
  * - .dontGrantL123Roles: if specified, doesn't grants LEVEL1, 2 and 3 roles.
  */
-exports.deployPool = async function (hre, options) {
+async function deployPool(hre, options) {
   const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
   const AccessManager = await hre.ethers.getContractFactory("AccessManager");
 
@@ -272,9 +253,9 @@ exports.deployPool = async function (hre, options) {
   }
 
   return policyPool;
-};
+}
 
-exports.deployPremiumsAccount = async function (hre, pool, options, addToPool = true) {
+async function deployPremiumsAccount(hre, pool, options, addToPool = true) {
   const PremiumsAccount = await hre.ethers.getContractFactory("PremiumsAccount");
   const premiumsAccount = await hre.upgrades.deployProxy(PremiumsAccount, [], {
     constructorArgs: [
@@ -291,7 +272,7 @@ exports.deployPremiumsAccount = async function (hre, pool, options, addToPool = 
   if (addToPool) await pool.addComponent(premiumsAccount.address, 3);
 
   return premiumsAccount;
-};
+}
 
 async function _getDefaultSigner(hre) {
   const signers = await hre.ethers.getSigners();
@@ -311,8 +292,6 @@ async function grantRole(hre, contract, role, user) {
   }
 }
 
-exports.grantRole = grantRole;
-
 async function grantComponentRole(hre, accessManager, component, role, user) {
   let userAddress;
   if (user === undefined) {
@@ -327,19 +306,13 @@ async function grantComponentRole(hre, accessManager, component, role, user) {
   }
 }
 
-exports.grantComponentRole = grantComponentRole;
-
 const _E = hre.ethers.utils.parseEther;
-exports._E = _E;
 
 const _BN = hre.ethers.BigNumber.from;
-exports._BN = _BN;
 
 const WAD = _BN(10).pow(18); // 1e18
-exports.WAD = WAD;
 
 const RAY = _BN(10).pow(27); // 1e27
-exports.RAY = RAY;
 
 /**
  * Creates a fixed-point conversion function for the desired number of decimals
@@ -364,13 +337,10 @@ function amountFunction(decimals) {
     return _BN(value).mul(_BN(10).pow(decimals));
   };
 }
-exports.amountFunction = amountFunction;
 
 const _W = amountFunction(18);
-exports._W = _W;
 
 const _R = amountFunction(27);
-exports._R = _R;
 
 /**
  * Builds the component role identifier
@@ -395,8 +365,6 @@ function getComponentRole(componentAddress, roleName) {
   return hre.ethers.utils.hexlify(bytesRole.map((elem, idx) => elem ^ (bytesAddress[idx] || 0)));
 }
 
-exports.getComponentRole = getComponentRole;
-
 /*
 Builds AccessControl error message for comparison in tests
 */
@@ -406,13 +374,9 @@ function accessControlMessage(address, component, role) {
   return `AccessControl: account ${address.toLowerCase()} is missing role ${roleHash}`;
 }
 
-exports.accessControlMessage = accessControlMessage;
-
 function makePolicyId(rm, internalId) {
   return hre.ethers.BigNumber.from(rm.address).shl(96).add(internalId);
 }
-
-exports.makePolicyId = makePolicyId;
 
 async function makePolicy(pool, rm, cust, payout, premium, lossProb, expiration, internalId, method = "newPolicy") {
   let tx = await rm.connect(cust)[method](payout, premium, lossProb, expiration, cust.address, internalId);
@@ -422,21 +386,11 @@ async function makePolicy(pool, rm, cust, payout, premium, lossProb, expiration,
   return newPolicyEvt;
 }
 
-exports.makePolicy = makePolicy;
-
-async function blockchainNow(owner) {
-  return (await owner.provider.getBlock("latest")).timestamp;
-}
-
-exports.blockchainNow = blockchainNow;
-
 function getRole(role) {
   return role === "DEFAULT_ADMIN_ROLE"
     ? "0x0000000000000000000000000000000000000000000000000000000000000000"
     : hre.ethers.utils.keccak256(hre.ethers.utils.toUtf8Bytes(role));
 }
-
-exports.getRole = getRole;
 
 async function getStorageLayout(contractSrc, contractName) {
   const buildInfo = await hre.artifacts.getBuildInfo(`${contractSrc}:${contractName}`);
@@ -453,6 +407,49 @@ async function getStorageLayout(contractSrc, contractName) {
   return storageLayouts[contractName];
 }
 
-exports.getStorageLayout = getStorageLayout;
+function makeQuoteMessage({ rmAddress, payout, premium, lossProb, expiration, policyData, validUntil }) {
+  return ethers.utils.solidityPack(
+    ["address", "uint256", "uint256", "uint256", "uint40", "bytes32", "uint40"],
+    [rmAddress, payout, premium, lossProb, expiration, policyData, validUntil]
+  );
+}
+
+async function makeSignedQuote(signer, policyParams) {
+  const quoteMessage = makeQuoteMessage(policyParams);
+  return ethers.utils.splitSignature(await signer.signMessage(ethers.utils.arrayify(quoteMessage)));
+}
 
 if (process.env.ENABLE_HH_WARNINGS !== "yes") hre.upgrades.silenceWarnings();
+
+module.exports = {
+  getStorageLayout,
+  makeQuoteMessage,
+  makeSignedQuote,
+  getRole,
+  WEEK,
+  DAY,
+  createRiskModule,
+  createEToken,
+  grantRole,
+  grantComponentRole,
+  initCurrency,
+  approve_multiple,
+  check_balances,
+  addRiskModule,
+  addEToken,
+  expected_change,
+  getTransactionEvent,
+  deployPool,
+  deployPremiumsAccount,
+  _E,
+  _BN,
+  WAD,
+  RAY,
+  amountFunction,
+  _W,
+  _R,
+  getComponentRole,
+  accessControlMessage,
+  makePolicyId,
+  makePolicy,
+};

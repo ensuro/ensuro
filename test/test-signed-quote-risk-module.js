@@ -10,6 +10,8 @@ const {
   addEToken,
   getTransactionEvent,
   accessControlMessage,
+  makeSignedQuote,
+  makeQuoteMessage,
 } = require("./test-utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
@@ -64,13 +66,6 @@ describe("SignedQuoteRiskModule contract tests", function () {
     return { etk, premiumsAccount, rm, pool, accessManager, currency };
   }
 
-  function makeQuoteMessage({ rmAddress, payout, premium, lossProb, expiration, policyData, validUntil }) {
-    return ethers.utils.solidityPack(
-      ["address", "uint256", "uint256", "uint256", "uint40", "bytes32", "uint40"],
-      [rmAddress, payout, premium, lossProb, expiration, policyData, validUntil]
-    );
-  }
-
   async function defaultPolicyParams({ rmAddress, payout, premium, lossProb, expiration, policyData, validUntil }) {
     const now = await helpers.time.latest();
     return {
@@ -102,8 +97,7 @@ describe("SignedQuoteRiskModule contract tests", function () {
   it("Creates a policy if the right signature is provided", async () => {
     const { rm, pool, currency } = await helpers.loadFixture(deployPoolFixture);
     const policyParams = await defaultPolicyParams({ rmAddress: rm.address });
-    const quoteMessage = makeQuoteMessage(policyParams);
-    const signature = ethers.utils.splitSignature(await signer.signMessage(ethers.utils.arrayify(quoteMessage)));
+    const signature = await makeSignedQuote(signer, policyParams);
     const tx = await newPolicy(rm, cust, policyParams, cust, signature);
     const receipt = await tx.wait();
     const newSignedPolicyEvt = getTransactionEvent(rm.interface, receipt, "NewSignedPolicy");
@@ -133,8 +127,7 @@ describe("SignedQuoteRiskModule contract tests", function () {
   it("Rejects a policy if signed by unauthorized user", async () => {
     const { rm } = await helpers.loadFixture(deployPoolFixture);
     const policyParams = await defaultPolicyParams({ rmAddress: rm.address });
-    const quoteMessage = makeQuoteMessage(policyParams);
-    const signature = ethers.utils.splitSignature(await anon.signMessage(ethers.utils.arrayify(quoteMessage)));
+    const signature = await makeSignedQuote(anon, policyParams);
     await expect(newPolicy(rm, cust, policyParams, cust, signature)).to.be.revertedWith(
       accessControlMessage(anon.address, rm.address, "PRICER_ROLE")
     );
@@ -155,8 +148,7 @@ describe("SignedQuoteRiskModule contract tests", function () {
     const { rm } = await helpers.loadFixture(deployPoolFixture);
     const now = await helpers.time.latest();
     const policyParams = await defaultPolicyParams({ rmAddress: rm.address, validUntil: now - 1000 });
-    const quoteMessage = makeQuoteMessage(policyParams);
-    const signature = ethers.utils.splitSignature(await signer.signMessage(ethers.utils.arrayify(quoteMessage)));
+    const signature = await makeSignedQuote(signer, policyParams);
     await expect(newPolicy(rm, cust, policyParams, cust, signature)).to.be.revertedWith("Quote expired");
 
     // If we change the policyParams, a different address is derived from the signature and it won't have
@@ -168,8 +160,7 @@ describe("SignedQuoteRiskModule contract tests", function () {
   it("Creates a policy where using newPolicyFull", async () => {
     const { rm, pool, currency } = await helpers.loadFixture(deployPoolFixture);
     const policyParams = await defaultPolicyParams({ rmAddress: rm.address, premium: _A(200) });
-    const quoteMessage = makeQuoteMessage(policyParams);
-    const signature = ethers.utils.splitSignature(await signer.signMessage(ethers.utils.arrayify(quoteMessage)));
+    const signature = await makeSignedQuote(signer, policyParams);
 
     const tx = await newPolicy(rm, cust, policyParams, anon, signature, "newPolicyFull");
     const receipt = await tx.wait();
@@ -190,8 +181,7 @@ describe("SignedQuoteRiskModule contract tests", function () {
   it("Creates a policy where payer != msg.sender using newPolicyPaidByHolder", async () => {
     const { rm, pool, currency } = await helpers.loadFixture(deployPoolFixture);
     const policyParams = await defaultPolicyParams({ rmAddress: rm.address, premium: _A(200) });
-    const quoteMessage = makeQuoteMessage(policyParams);
-    const signature = ethers.utils.splitSignature(await signer.signMessage(ethers.utils.arrayify(quoteMessage)));
+    const signature = await makeSignedQuote(signer, policyParams);
     await expect(newPolicy(rm, anon, policyParams, cust, signature, "newPolicyPaidByHolder")).to.be.revertedWith(
       "Sender is not authorized to create policies onBehalfOf"
     );
@@ -217,8 +207,7 @@ describe("SignedQuoteRiskModule contract tests", function () {
   it("If creation is not open, only authorized users can create policies", async () => {
     const { rm, accessManager } = await helpers.loadFixture(_.partial(deployPoolFixture, false));
     const policyParams = await defaultPolicyParams({ rmAddress: rm.address });
-    const quoteMessage = makeQuoteMessage(policyParams);
-    const signature = ethers.utils.splitSignature(await signer.signMessage(ethers.utils.arrayify(quoteMessage)));
+    const signature = await makeSignedQuote(signer, policyParams);
     await expect(newPolicy(rm, cust, policyParams, cust, signature)).to.be.revertedWith(
       accessControlMessage(cust.address, rm.address, "POLICY_CREATOR_ROLE")
     );

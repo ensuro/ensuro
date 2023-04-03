@@ -118,7 +118,7 @@ describe("RiskModule contract", function () {
   it("Does not allow an exposure limit of zero", async () => {
     await expect(
       addRiskModule(pool, premiumsAccount, RiskModule, {
-        scrLimit: 0,
+        exposureLimit: 0,
         extraArgs: [],
       })
     ).to.be.revertedWith("Exposure and MaxPayout must be >0");
@@ -136,7 +136,7 @@ describe("RiskModule contract", function () {
   it("Does not allow a maxpayout of zero", async () => {
     await expect(
       addRiskModule(pool, premiumsAccount, RiskModule, {
-        maxScrPerPolicy: 0,
+        maxPayoutPerPolicy: 0,
         extraArgs: [],
       })
     ).to.be.revertedWith("Exposure and MaxPayout must be >0");

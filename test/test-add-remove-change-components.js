@@ -8,7 +8,6 @@ const {
   grantComponentRole,
   grantRole,
   makePolicy,
-  blockchainNow,
   addEToken,
   getTransactionEvent,
   _W,
@@ -126,7 +125,7 @@ describe("Test add, remove and change status of PolicyPool components", function
   });
 
   it("Change status and remove RiskModule", async function () {
-    const start = await blockchainNow(owner);
+    const start = await helpers.time.latest();
     await currency.connect(cust).approve(pool.address, _A(100));
 
     // When active newPolicies are OK
@@ -187,7 +186,7 @@ describe("Test add, remove and change status of PolicyPool components", function
   });
 
   it("Change status and remove PremiumsAccount", async function () {
-    const start = await blockchainNow(owner);
+    const start = await helpers.time.latest();
     await currency.connect(cust).approve(pool.address, _A(100));
 
     // When active newPolicies are OK
