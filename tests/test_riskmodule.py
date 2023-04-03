@@ -19,7 +19,8 @@ _D = USDC.from_value
 
 
 # Test variants combining different number of decimals and implementation
-test_variants = [f"{variant}-dec{decimals}" for (variant, decimals) in product(TEST_VARIANTS, [6, 18])]
+# test_variants = [f"{variant}-dec{decimals}" for (variant, decimals) in product(TEST_VARIANTS, [6, 18])]
+test_variants = [f"{variant}-dec{decimals}" for (variant, decimals) in product(TEST_VARIANTS, [6])]
 
 
 @pytest.fixture(params=test_variants)

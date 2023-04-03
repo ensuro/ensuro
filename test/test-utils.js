@@ -182,7 +182,7 @@ async function expected_change(protocol_attribute, initial, change) {
  */
 const getTransactionEvent = function (interface, receipt, eventName) {
   // for each log in the transaction receipt
-  for (const log of receipt.events) {
+  for (const log of receipt.logs) {
     let parsedLog;
     try {
       parsedLog = interface.parseLog(log);
