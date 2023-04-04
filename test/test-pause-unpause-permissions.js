@@ -8,7 +8,6 @@ const {
   grantComponentRole,
   grantRole,
   makePolicy,
-  blockchainNow,
   addEToken,
   _W,
 } = require("./test-utils");
@@ -62,7 +61,7 @@ describe("Test pause, unpause and upgrade contracts", function () {
   });
 
   it("Pause and Unpause PolicyPool", async function () {
-    const start = await blockchainNow(owner);
+    const start = await helpers.time.latest();
 
     // Try to pause PolicyPool without permissions
     await expect(pool.pause()).to.be.revertedWith("AccessControl:");
@@ -116,7 +115,7 @@ describe("Test pause, unpause and upgrade contracts", function () {
   });
 
   it("Pause/Unpause and resolve policy with full payout", async function () {
-    const start = await blockchainNow(owner);
+    const start = await helpers.time.latest();
 
     await currency.connect(cust).approve(pool.address, _A(100));
 
@@ -148,7 +147,7 @@ describe("Test pause, unpause and upgrade contracts", function () {
   });
 
   it("Pause/Unpause and expire policy", async function () {
-    const start = await blockchainNow(owner);
+    const start = await helpers.time.latest();
 
     await currency.connect(cust).approve(pool.address, _A(100));
 
@@ -215,7 +214,7 @@ describe("Test pause, unpause and upgrade contracts", function () {
   });
 
   it("Pause and Unpause RiskModule resolve policy", async function () {
-    const start = await blockchainNow(owner);
+    const start = await helpers.time.latest();
 
     // Try to pause RiskModule  without permissions
     await expect(rm.pause()).to.be.revertedWith("AccessControl:");
@@ -241,7 +240,7 @@ describe("Test pause, unpause and upgrade contracts", function () {
   });
 
   it("Pause and Unpause RiskModule resolve policy full payout", async function () {
-    const start = await blockchainNow(owner);
+    const start = await helpers.time.latest();
 
     // Try to pause RiskModule  without permissions
     await expect(rm.pause()).to.be.revertedWith("AccessControl:");
@@ -266,7 +265,7 @@ describe("Test pause, unpause and upgrade contracts", function () {
   });
 
   it("Pause and Unpause PremiumsAccount policyExpired", async function () {
-    const start = await blockchainNow(owner);
+    const start = await helpers.time.latest();
 
     // Try to pause PremiumsAccount  without permissions
     await expect(premiumsAccount.pause()).to.be.revertedWith("AccessControl:");
@@ -302,7 +301,7 @@ describe("Test pause, unpause and upgrade contracts", function () {
   });
 
   it("Pause and Unpause PremiumsAccount policyResolvedWithPayout", async function () {
-    const start = await blockchainNow(owner);
+    const start = await helpers.time.latest();
 
     // Try to pause PremiumsAccount  without permissions
     await expect(premiumsAccount.pause()).to.be.revertedWith("AccessControl:");
@@ -338,7 +337,7 @@ describe("Test pause, unpause and upgrade contracts", function () {
   });
 
   it("Pause and Unpause EToken trying to create and expire policies", async function () {
-    const start = await blockchainNow(owner);
+    const start = await helpers.time.latest();
     await currency.connect(cust).approve(pool.address, _A(1));
 
     // Pause EToken
