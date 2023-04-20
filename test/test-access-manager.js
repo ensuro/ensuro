@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
-const { accessControlMessage, getRole, getComponentRole } = require("./test-utils");
+const { accessControlMessage, getRole } = require("./test-utils");
 
 describe("AccessManager", () => {
   let owner, backend, user;
@@ -56,7 +56,7 @@ describe("AccessManager", () => {
     );
   });
 
-  it("Only allows component-specific componentRoleAdmin to grant roles on its component", async () => {
+  it("Only allows component-specific componentRoleAdmin to grant roles on its own component", async () => {
     const { accessManager } = await helpers.loadFixture(accessManagerFixture);
     await expect(
       accessManager.connect(backend).grantComponentRole(someComponent, getRole("SOME_ROLE"), user.address)
@@ -94,6 +94,30 @@ describe("AccessManager", () => {
     await expect(
       accessManager.grantComponentRole(ANY_COMPONENT, getRole("SOME_ROLE"), user.address)
     ).to.be.revertedWith("AccessManager: invalid address for component");
+  });
+
+  it("Allows changing the admin for global roles", async () => {
+    const { accessManager } = await helpers.loadFixture(accessManagerFixture);
+
+    // random user's can't set role admin
+    await expect(
+      accessManager.connect(backend).setRoleAdmin(getRole("SOME_ROLE"), getRole("SOME_ROLE_ADMIN"))
+    ).to.be.revertedWith(accessControlMessage(backend.address, null, "DEFAULT_ADMIN_ROLE"));
+
+    // current role admin can
+    await accessManager.grantRole(getRole("DEFAULT_ADMIN_ROLE"), backend.address);
+    await accessManager.connect(backend).setRoleAdmin(getRole("SOME_ROLE"), getRole("SOME_ROLE_ADMIN"));
+    expect(await accessManager.getRoleAdmin(getRole("SOME_ROLE"))).to.equal(getRole("SOME_ROLE_ADMIN"));
+
+    // once the admin was changed, all admin can't change it again
+    await expect(
+      accessManager.connect(backend).setRoleAdmin(getRole("SOME_ROLE"), getRole("SOME_ROLE_ADMIN"))
+    ).to.be.revertedWith(accessControlMessage(backend.address, null, "SOME_ROLE_ADMIN"));
+
+    // new admin can
+    await accessManager.grantRole(getRole("SOME_ROLE_ADMIN"), user.address);
+    await accessManager.connect(user).setRoleAdmin(getRole("SOME_ROLE"), getRole("SOME_ROLE_NEW_ADMIN"));
+    expect(await accessManager.getRoleAdmin(getRole("SOME_ROLE"))).to.equal(getRole("SOME_ROLE_NEW_ADMIN"));
   });
 
   it("Checks global roles only when asked to", async () => {

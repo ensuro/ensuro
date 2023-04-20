@@ -215,6 +215,15 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
   }
 
   /**
+   * @dev Set `adminRole` as the admin role of `role`.
+   * Requirements:
+   * - the caller must be the current admin of the given `role`.
+   */
+  function setRoleAdmin(bytes32 role, bytes32 adminRole) external onlyRole(getRoleAdmin(role)) {
+    _setRoleAdmin(role, adminRole);
+  }
+
+  /**
    * @dev This empty reserved space is put in place to allow future versions to add new
    * variables without shifting down storage in the inheritance chain.
    * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
