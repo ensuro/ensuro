@@ -56,12 +56,43 @@ describe("AccessManager", () => {
     );
   });
 
-  it("Does not allow the ANY_COMPONENT address while setting admin", async () => {
+  it("Only allows component-specific componentRoleAdmin to grant roles on its component", async () => {
+    const { accessManager } = await helpers.loadFixture(accessManagerFixture);
+    await expect(
+      accessManager.connect(backend).grantComponentRole(someComponent, getRole("SOME_ROLE"), user.address)
+    ).to.be.revertedWith("AccessManager: msg.sender needs componentRoleAdmin");
+
+    // grant 'backend' componentRoleAdmin for a single component
+    await accessManager.setComponentRoleAdmin(
+      someComponent,
+      getRole("SOME_ROLE"),
+      getRole("SOME_ROLE_AT_SOME_COMPONENT_ADMIN")
+    );
+    await accessManager.grantRole(getRole("SOME_ROLE_AT_SOME_COMPONENT_ADMIN"), backend.address);
+
+    // 'backend' can grant "SOME_ROLE" on the component
+    await accessManager.connect(backend).grantComponentRole(someComponent, getRole("SOME_ROLE"), user.address);
+    expect(await accessManager.hasComponentRole(someComponent, getRole("SOME_ROLE"), user.address, false)).to.equal(
+      true
+    );
+
+    // 'backend' cannot grant "SOME_ROLE" on another component
+    const anotherComponent = "0xc1c459247a66c40bebb2020910806ee63f9e74dd";
+    await expect(
+      accessManager.connect(backend).grantComponentRole(anotherComponent, getRole("SOME_ROLE"), user.address)
+    ).to.be.revertedWith("AccessManager: msg.sender needs componentRoleAdmin");
+  });
+
+  it("Does not allow the ANY_COMPONENT address as a component", async () => {
     const { accessManager } = await helpers.loadFixture(accessManagerFixture);
     const ANY_COMPONENT = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
 
     await expect(
       accessManager.setComponentRoleAdmin(ANY_COMPONENT, getRole("SOME_ROLE"), getRole("SOME_ROLE_ADMIN_ROLE"))
+    ).to.be.revertedWith("AccessManager: invalid address for component");
+
+    await expect(
+      accessManager.grantComponentRole(ANY_COMPONENT, getRole("SOME_ROLE"), user.address)
     ).to.be.revertedWith("AccessManager: invalid address for component");
   });
 

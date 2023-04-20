@@ -32,15 +32,25 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
   // Mask for "namespacing" component roles within the global namespace
   address private constant ANY_COMPONENT = address(0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE);
 
+  /**
+    @dev Modifier that checks if the caller has either role1 or role2.
+    */
   modifier onlyRole2(bytes32 role1, bytes32 role2) {
     if (!hasRole(role1, _msgSender())) _checkRole(role2, _msgSender());
     _;
   }
 
+  /**
+    @dev Modifier that checks if the caller has admin access to the specific component-role.
+    */
   modifier onlyComponentRoleAdmin(address component, bytes32 role) {
     require(component != ANY_COMPONENT, "AccessManager: invalid address for component");
+
     require(
+      // The caller has admin on this specific component-role
       hasRole(getRoleAdmin(getComponentRole(component, role)), _msgSender()) ||
+        // or no admin was explicitly defined for this component-role combination and the caller has
+        // admin for the role on any component
         (getRoleAdmin(getComponentRole(component, role)) == DEFAULT_ADMIN_ROLE &&
           hasRole(getRoleAdmin(getComponentRole(ANY_COMPONENT, role)), _msgSender())),
       "AccessManager: msg.sender needs componentRoleAdmin"
@@ -74,6 +84,12 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
     return super.supportsInterface(interfaceId) || interfaceId == type(IAccessManager).interfaceId;
   }
 
+  /**
+   * @dev Computes a component role
+   * @param component The component address
+   * @param role The role to get
+   * @return The component role
+   */
   function getComponentRole(address component, bytes32 role)
     public
     pure
@@ -83,6 +99,14 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
     return bytes32(bytes20(component)) ^ role;
   }
 
+  /**
+   * @dev Checks if an account has a component role
+   * @param component The component address
+   * @param role The role to check
+   * @param account The account to check
+   * @param alsoGlobal If true, check for the global role as well
+   * @return Whether the account has the role
+   */
   function hasComponentRole(
     address component,
     bytes32 role,
@@ -93,6 +117,13 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
       (alsoGlobal && hasRole(role, account)) || hasRole(getComponentRole(component, role), account);
   }
 
+  /**
+   * @dev Checks if an account has a component role and reverts if not
+   * @param component The component address
+   * @param role The role to check
+   * @param account The account to check
+   * @param alsoGlobal If true, check for the global role as well
+   */
   function checkComponentRole(
     address component,
     bytes32 role,
@@ -104,6 +135,14 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
     }
   }
 
+  /**
+   * @dev Checks if an account has either of the role1 or role2 component roles and reverts if not
+   * @param component The component address
+   * @param role1 The first role to check
+   * @param role2 The second role to check
+   * @param account The account to check
+   * @param alsoGlobal If true, check for the global role as well
+   */
   function checkComponentRole2(
     address component,
     bytes32 role1,
@@ -117,10 +156,21 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
     _checkRole(getComponentRole(component, role2), account);
   }
 
+  /**
+   * @dev Checks if an account has a specific role and revert if not
+   * @param role The role to check.
+   * @param account The account to check for the role.
+   */
   function checkRole(bytes32 role, address account) external view override {
     _checkRole(role, account);
   }
 
+  /**
+   * @dev Checks if an account has a either role1 or role2 and revert if not
+   * @param role1 The first role to check.
+   * @param role2 The second role to check.
+   * @param account The account to check for the role.
+   */
   function checkRole2(
     bytes32 role1,
     bytes32 role2,
@@ -129,6 +179,16 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
     if (!hasRole(role1, account)) _checkRole(role2, account);
   }
 
+  /**
+   * @dev Grants `account` the component role `role` for the component with address `component`.
+   *
+   * Requirements:
+   * - the caller must have role admin for this component-role combination or role admin for any component
+   *
+   * @param component Address of the component for which the role is being granted.
+   * @param role Bytes32 identifier of the role being granted.
+   * @param account Address of the account being granted the role.
+   */
   function grantComponentRole(
     address component,
     bytes32 role,
@@ -137,6 +197,14 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
     _grantRole(getComponentRole(component, role), account);
   }
 
+  /**
+   * @dev Sets `adminRole` as the admin role for the component-role combination or for any component.
+   *
+   * Requirements:
+   * - caller must be the current admin for the role
+   *
+   * If `component` is the zero address, admin is granted for any component.
+   */
   function setComponentRoleAdmin(
     address component,
     bytes32 role,
