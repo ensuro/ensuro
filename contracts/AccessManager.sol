@@ -29,17 +29,21 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
   bytes32 public constant LEVEL2_ROLE = keccak256("LEVEL2_ROLE");
   bytes32 public constant LEVEL3_ROLE = keccak256("LEVEL3_ROLE");
 
+  // Mask for "namespacing" component roles within the global namespace
+  address private constant ANY_COMPONENT = address(0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE);
+
   modifier onlyRole2(bytes32 role1, bytes32 role2) {
     if (!hasRole(role1, _msgSender())) _checkRole(role2, _msgSender());
     _;
   }
 
-  modifier onlyComponentRoleAdminOrRoleAdmin(address component, bytes32 role) {
+  modifier onlyComponentRoleAdmin(address component, bytes32 role) {
+    require(component != ANY_COMPONENT, "AccessManager: invalid address for component");
     require(
       hasRole(getRoleAdmin(getComponentRole(component, role)), _msgSender()) ||
         (getRoleAdmin(getComponentRole(component, role)) == DEFAULT_ADMIN_ROLE &&
-          hasRole(getRoleAdmin(role), _msgSender())),
-      "AccessControl: msg.sender needs roleAdmin or componentRoleAdmin"
+          hasRole(getRoleAdmin(getComponentRole(ANY_COMPONENT, role)), _msgSender())),
+      "AccessManager: msg.sender needs componentRoleAdmin"
     );
     _;
   }
@@ -129,13 +133,17 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
     address component,
     bytes32 role,
     address account
-  ) external onlyComponentRoleAdminOrRoleAdmin(component, role) {
+  ) external onlyComponentRoleAdmin(component, role) {
     _grantRole(getComponentRole(component, role), account);
   }
 
-  // TODO: PROTECT THIS METHOD!!
-  function setRoleAdmin(bytes32 role, bytes32 adminRole) external {
-    _setRoleAdmin(role, adminRole);
+  function setComponentRoleAdmin(
+    address component,
+    bytes32 role,
+    bytes32 adminRole
+  ) external onlyComponentRoleAdmin(component, role) {
+    if (component == address(0)) component = ANY_COMPONENT;
+    _setRoleAdmin(getComponentRole(component, role), adminRole);
   }
 
   /**

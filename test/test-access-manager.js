@@ -13,12 +13,12 @@ describe("AccessManager", () => {
     [owner, backend, user] = await hre.ethers.getSigners();
   });
 
-  it("Allows roleAdmin to grant component roles", async () => {
+  it("Allows DEFAULT_ADMIN_ROLE to grant component roles by default", async () => {
     const { accessManager } = await helpers.loadFixture(accessManagerFixture);
 
     await expect(
       accessManager.connect(backend).grantComponentRole(someComponent, getRole("SOME_ROLE"), user.address)
-    ).to.be.revertedWith("AccessControl: msg.sender needs roleAdmin or componentRoleAdmin");
+    ).to.be.revertedWith("AccessManager: msg.sender needs componentRoleAdmin");
 
     await accessManager.grantRole(getRole("DEFAULT_ADMIN_ROLE"), backend.address);
 
@@ -29,15 +29,19 @@ describe("AccessManager", () => {
     );
   });
 
-  it("Allows roleAdmin to grant component roles", async () => {
+  it("Allows componentRoleAdmin to grant component roles", async () => {
     const { accessManager } = await helpers.loadFixture(accessManagerFixture);
 
     await expect(
       accessManager.connect(backend).grantComponentRole(someComponent, getRole("SOME_ROLE"), user.address)
-    ).to.be.revertedWith("AccessControl: msg.sender needs roleAdmin or componentRoleAdmin");
+    ).to.be.revertedWith("AccessManager: msg.sender needs componentRoleAdmin");
 
-    // we define an admin role for SOME_ROLE and grant it to backend
-    await accessManager.setRoleAdmin(getRole("SOME_ROLE"), getRole("SOME_ROLE_ADMIN_ROLE"));
+    // we define an admin role for componentRole SOME_ROLE and grant it to backend
+    await accessManager.setComponentRoleAdmin(
+      hre.ethers.constants.AddressZero,
+      getRole("SOME_ROLE"),
+      getRole("SOME_ROLE_ADMIN_ROLE")
+    );
     await accessManager.grantRole(getRole("SOME_ROLE_ADMIN_ROLE"), backend.address);
 
     // backend can now grant the component role
@@ -47,34 +51,18 @@ describe("AccessManager", () => {
     );
 
     // backend cannot grant the role globally
-    await expect(accessManager.connect(backend).grantRole(getRole("SOME_ROLE"), user.address)).to.be.reverted;
+    await expect(accessManager.connect(backend).grantRole(getRole("SOME_ROLE"), user.address)).to.be.revertedWith(
+      accessControlMessage(backend.address, null, "DEFAULT_ADMIN_ROLE")
+    );
   });
 
-  it.skip("Does not allow for collisions between component roles and global roles", async () => {
+  it("Does not allow the ANY_COMPONENT address while setting admin", async () => {
     const { accessManager } = await helpers.loadFixture(accessManagerFixture);
+    const ANY_COMPONENT = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
 
-    // given a standalone role
-    const role = getRole("GUARDIAN_ROLE"); // 0x55435dd261a4b9b3364963f7738a7a662ad9c84396d64be3365284bb7f0a5041
-
-    // and a component
-    const component = someComponent;
-
-    // we grant backend component-default-role-admin for this component
-    await accessManager.grantComponentDefaultRoleAdmin(component, backend.address);
-
-    // backend can now grant roles on this component
-    await accessManager.connect(backend).grantComponentRole(component, getRole("SOME_ROLE"), user.address);
-
-    expect(await accessManager.hasComponentRole(component, getRole("SOME_ROLE"), user.address, false)).to.be.true;
-
-    // backend cannot grant global GUARDIAN_ROLE to users by abusing grantComponentRole?
-    expect(await accessManager.hasRole(getRole("GUARDIAN_ROLE"), user.address)).to.be.false;
-    const collisionRole = getComponentRole(component, role); // Such that: collisionRole ^ component == role
-    await accessManager.connect(backend).grantComponentRole(component, collisionRole, user.address);
-    expect(await accessManager.hasRole(role, user.address)).to.be.false;
-
-    // but the component role was still granted
-    expect(await accessManager.hasComponentRole(component, role, user.address, false)).to.be.true;
+    await expect(
+      accessManager.setComponentRoleAdmin(ANY_COMPONENT, getRole("SOME_ROLE"), getRole("SOME_ROLE_ADMIN_ROLE"))
+    ).to.be.revertedWith("AccessManager: invalid address for component");
   });
 
   it("Checks global roles only when asked to", async () => {
