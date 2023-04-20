@@ -46,6 +46,7 @@ describe("AccessManager", () => {
   });
 
   it("Does not override explicit role admin with component default role admin", async () => {
+    // TODO: This test does not make sense if we don't provide a "setRoleAdmin" method. Same goes for the check on the contract itself.
     const { accessManager } = await helpers.loadFixture(accessManagerFixture);
 
     // Role admin for SOME_ROLE is not DEFAULT_ROLE_ADMIN
@@ -73,6 +74,33 @@ describe("AccessManager", () => {
     // SOME_ROLE_ADMIN can grant SOME_ROLE
     await accessManager.grantRole(getRole("SOME_ROLE_ADMIN"), backend.address);
     await accessManager.connect(backend).grantComponentRole(someComponent, getRole("SOME_ROLE"), user.address);
+  });
+
+  it("Does not allow for collisions between component roles and global roles", async () => {
+    const { accessManager } = await helpers.loadFixture(accessManagerFixture);
+
+    // given a standalone role
+    const role = getRole("GUARDIAN_ROLE"); // 0x55435dd261a4b9b3364963f7738a7a662ad9c84396d64be3365284bb7f0a5041
+
+    // and a component
+    const component = someComponent;
+
+    // we grant backend component-default-role-admin for this component
+    await accessManager.grantComponentDefaultRoleAdmin(component, backend.address);
+
+    // backend can now grant roles on this component
+    await accessManager.connect(backend).grantComponentRole(component, getRole("SOME_ROLE"), user.address);
+
+    expect(await accessManager.hasComponentRole(component, getRole("SOME_ROLE"), user.address, false)).to.be.true;
+
+    // backend cannot grant global GUARDIAN_ROLE to users by abusing grantComponentRole?
+    expect(await accessManager.hasRole(getRole("GUARDIAN_ROLE"), user.address)).to.be.false;
+    const collisionRole = getComponentRole(component, role); // Such that: collisionRole ^ component == role
+    await accessManager.connect(backend).grantComponentRole(component, collisionRole, user.address);
+    expect(await accessManager.hasRole(role, user.address)).to.be.false;
+
+    // but the component role was still granted
+    expect(await accessManager.hasComponentRole(component, role, user.address, false)).to.be.true;
   });
 
   it("Checks global roles only when asked to", async () => {
