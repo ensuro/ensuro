@@ -354,9 +354,11 @@ const _R = amountFunction(27);
  *     getComponentRole("0xc6e7DF5E7b4f2A278906862b61205850344D4e7d", "ORACLE_ADMIN_ROLE")
  *     // "0x05e01b185238b49f750d03d945e38a7f6c3be8b54de0ee42d481eb7814f0d3a8"
  */
-function getComponentRole(componentAddress, roleName) {
+function getComponentRole(componentAddress, role) {
+  if (!role.startsWith("0x")) role = getRole(role);
+
   // 32 byte array
-  const bytesRole = hre.ethers.utils.arrayify(getRole(roleName));
+  const bytesRole = hre.ethers.utils.arrayify(role);
 
   // 20 byte array
   const bytesAddress = hre.ethers.utils.arrayify(componentAddress);

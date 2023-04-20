@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
-const { accessControlMessage, getRole } = require("./test-utils");
+const { accessControlMessage, getRole, getComponentRole } = require("./test-utils");
 
 describe("AccessManager", () => {
   let owner, backend, user;
@@ -13,12 +13,12 @@ describe("AccessManager", () => {
     [owner, backend, user] = await hre.ethers.getSigners();
   });
 
-  it("Only allows roleAdmin to grant component roles", async () => {
+  it("Allows roleAdmin to grant component roles", async () => {
     const { accessManager } = await helpers.loadFixture(accessManagerFixture);
 
     await expect(
       accessManager.connect(backend).grantComponentRole(someComponent, getRole("SOME_ROLE"), user.address)
-    ).to.be.revertedWith(accessControlMessage(backend.address, null, "DEFAULT_ADMIN_ROLE"));
+    ).to.be.revertedWith("AccessControl: msg.sender needs roleAdmin or componentRoleAdmin");
 
     await accessManager.grantRole(getRole("DEFAULT_ADMIN_ROLE"), backend.address);
 
@@ -27,6 +27,54 @@ describe("AccessManager", () => {
     expect(await accessManager.hasComponentRole(someComponent, getRole("SOME_ROLE"), user.address, false)).to.equal(
       true
     );
+  });
+
+  it("Allows roleAdmin to grant component roles", async () => {
+    const { accessManager } = await helpers.loadFixture(accessManagerFixture);
+
+    await expect(
+      accessManager.connect(backend).grantComponentRole(someComponent, getRole("SOME_ROLE"), user.address)
+    ).to.be.revertedWith("AccessControl: msg.sender needs roleAdmin or componentRoleAdmin");
+
+    // we define an admin role for SOME_ROLE and grant it to backend
+    await accessManager.setRoleAdmin(getRole("SOME_ROLE"), getRole("SOME_ROLE_ADMIN_ROLE"));
+    await accessManager.grantRole(getRole("SOME_ROLE_ADMIN_ROLE"), backend.address);
+
+    // backend can now grant the component role
+    await accessManager.connect(backend).grantComponentRole(someComponent, getRole("SOME_ROLE"), user.address);
+    expect(await accessManager.hasComponentRole(someComponent, getRole("SOME_ROLE"), user.address, false)).to.equal(
+      true
+    );
+
+    // backend cannot grant the role globally
+    await expect(accessManager.connect(backend).grantRole(getRole("SOME_ROLE"), user.address)).to.be.reverted;
+  });
+
+  it.skip("Does not allow for collisions between component roles and global roles", async () => {
+    const { accessManager } = await helpers.loadFixture(accessManagerFixture);
+
+    // given a standalone role
+    const role = getRole("GUARDIAN_ROLE"); // 0x55435dd261a4b9b3364963f7738a7a662ad9c84396d64be3365284bb7f0a5041
+
+    // and a component
+    const component = someComponent;
+
+    // we grant backend component-default-role-admin for this component
+    await accessManager.grantComponentDefaultRoleAdmin(component, backend.address);
+
+    // backend can now grant roles on this component
+    await accessManager.connect(backend).grantComponentRole(component, getRole("SOME_ROLE"), user.address);
+
+    expect(await accessManager.hasComponentRole(component, getRole("SOME_ROLE"), user.address, false)).to.be.true;
+
+    // backend cannot grant global GUARDIAN_ROLE to users by abusing grantComponentRole?
+    expect(await accessManager.hasRole(getRole("GUARDIAN_ROLE"), user.address)).to.be.false;
+    const collisionRole = getComponentRole(component, role); // Such that: collisionRole ^ component == role
+    await accessManager.connect(backend).grantComponentRole(component, collisionRole, user.address);
+    expect(await accessManager.hasRole(role, user.address)).to.be.false;
+
+    // but the component role was still granted
+    expect(await accessManager.hasComponentRole(component, role, user.address, false)).to.be.true;
   });
 
   it("Checks global roles only when asked to", async () => {
@@ -74,7 +122,7 @@ describe("AccessManager", () => {
     // Grant another role locally
     await accessManager.grantComponentRole(someComponent, getRole("SOME_OTHER_ROLE"), user.address);
 
-    // No the checks pass
+    // Now the checks pass
     expect(
       await accessManager.hasComponentRole(someComponent, getRole("SOME_OTHER_ROLE"), user.address, false)
     ).to.equal(true);
