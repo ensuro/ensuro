@@ -34,6 +34,16 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
     _;
   }
 
+  modifier onlyRoleAdminOrComponentDefaultRoleAdmin(address component, bytes32 role) {
+    require(
+      hasRole(getRoleAdmin(getComponentRole(component, role)), _msgSender()) ||
+        (getRoleAdmin(getComponentRole(component, role)) == DEFAULT_ADMIN_ROLE &&
+          hasRole(getComponentRole(component, DEFAULT_ADMIN_ROLE), _msgSender())),
+      "AccessControl: msg.sender needs roleAdmin or componentRoleAdmin"
+    );
+    _;
+  }
+
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor() {
     _disableInitializers();
@@ -119,8 +129,16 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
     address component,
     bytes32 role,
     address account
-  ) external onlyRole(getRoleAdmin(getComponentRole(component, role))) {
+  ) external onlyRoleAdminOrComponentDefaultRoleAdmin(component, role) {
     _grantRole(getComponentRole(component, role), account);
+  }
+
+  function grantComponentDefaultRoleAdmin(address component, address account) external {
+    _grantRole(getComponentRole(component, DEFAULT_ADMIN_ROLE), account);
+  }
+
+  function setRoleAdmin(bytes32 role, bytes32 adminRole) external {
+    _setRoleAdmin(role, adminRole);
   }
 
   /**

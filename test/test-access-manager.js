@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
-const { accessControlMessage, getRole } = require("./test-utils");
+const { accessControlMessage, getRole, getComponentRole } = require("./test-utils");
 
 describe("AccessManager", () => {
   let owner, backend, user;
@@ -13,12 +13,12 @@ describe("AccessManager", () => {
     [owner, backend, user] = await hre.ethers.getSigners();
   });
 
-  it("Only allows roleAdmin to grant component roles", async () => {
+  it("Allows roleAdmin to grant component roles", async () => {
     const { accessManager } = await helpers.loadFixture(accessManagerFixture);
 
     await expect(
       accessManager.connect(backend).grantComponentRole(someComponent, getRole("SOME_ROLE"), user.address)
-    ).to.be.revertedWith(accessControlMessage(backend.address, null, "DEFAULT_ADMIN_ROLE"));
+    ).to.be.revertedWith("AccessControl: msg.sender needs roleAdmin or componentRoleAdmin");
 
     await accessManager.grantRole(getRole("DEFAULT_ADMIN_ROLE"), backend.address);
 
@@ -27,6 +27,52 @@ describe("AccessManager", () => {
     expect(await accessManager.hasComponentRole(someComponent, getRole("SOME_ROLE"), user.address, false)).to.equal(
       true
     );
+  });
+
+  it("Allows component-specific default roleAdmin to grant component roles", async () => {
+    const { accessManager } = await helpers.loadFixture(accessManagerFixture);
+
+    await expect(
+      accessManager.connect(backend).grantComponentRole(someComponent, getRole("SOME_ROLE"), user.address)
+    ).to.be.revertedWith("AccessControl: msg.sender needs roleAdmin or componentRoleAdmin");
+
+    await accessManager.grantComponentDefaultRoleAdmin(someComponent, backend.address);
+
+    await accessManager.connect(backend).grantComponentRole(someComponent, getRole("SOME_ROLE"), user.address);
+
+    expect(await accessManager.hasComponentRole(someComponent, getRole("SOME_ROLE"), user.address, false)).to.equal(
+      true
+    );
+  });
+
+  it("Does not override explicit role admin with component default role admin", async () => {
+    const { accessManager } = await helpers.loadFixture(accessManagerFixture);
+
+    // Role admin for SOME_ROLE is not DEFAULT_ROLE_ADMIN
+    await accessManager.setRoleAdmin(getComponentRole(someComponent, "SOME_ROLE"), getRole("SOME_ROLE_ADMIN"));
+
+    expect(await accessManager.hasComponentRole(someComponent, getRole("SOME_ROLE"), user.address, true)).to.equal(
+      false
+    );
+    expect(
+      await accessManager.hasComponentRole(someComponent, getRole("SOME_ROLE_ADMIN"), backend.address, true)
+    ).to.equal(false);
+
+    // DEFAULT_ADMIN_ROLE cannot grant SOME_ROLE
+    expect(await accessManager.hasRole(getRole("DEFAULT_ADMIN_ROLE"), owner.address)).to.equal(true);
+    await expect(
+      accessManager.connect(owner).grantComponentRole(someComponent, getRole("SOME_ROLE"), user.address)
+    ).to.be.revertedWith("AccessControl: msg.sender needs roleAdmin or componentRoleAdmin");
+
+    // Component default role admin cannot grant SOME_ROLE
+    await accessManager.grantComponentDefaultRoleAdmin(someComponent, backend.address);
+    await expect(
+      accessManager.connect(backend).grantComponentRole(someComponent, getRole("SOME_ROLE"), user.address)
+    ).to.be.revertedWith("AccessControl: msg.sender needs roleAdmin or componentRoleAdmin");
+
+    // SOME_ROLE_ADMIN can grant SOME_ROLE
+    await accessManager.grantRole(getRole("SOME_ROLE_ADMIN"), backend.address);
+    await accessManager.connect(backend).grantComponentRole(someComponent, getRole("SOME_ROLE"), user.address);
   });
 
   it("Checks global roles only when asked to", async () => {
@@ -74,7 +120,7 @@ describe("AccessManager", () => {
     // Grant another role locally
     await accessManager.grantComponentRole(someComponent, getRole("SOME_OTHER_ROLE"), user.address);
 
-    // No the checks pass
+    // Now the checks pass
     expect(
       await accessManager.hasComponentRole(someComponent, getRole("SOME_OTHER_ROLE"), user.address, false)
     ).to.equal(true);
