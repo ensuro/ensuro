@@ -218,6 +218,9 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
    * @dev Set `adminRole` as the admin role of `role`.
    * Requirements:
    * - the caller must be the current admin of the given `role`.
+   *
+   * [CAUTION]
+   * This method allows bypassing checks done by setComponentRoleAdmin. It should not be used for component roles.
    */
   function setRoleAdmin(bytes32 role, bytes32 adminRole) external onlyRole(getRoleAdmin(role)) {
     _setRoleAdmin(role, adminRole);
