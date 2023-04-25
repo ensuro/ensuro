@@ -342,6 +342,66 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     address onBehalfOf,
     uint96 internalId
   ) internal whenNotPaused returns (Policy.PolicyData memory) {
+    return
+      _newPolicyWithParams(
+        payout,
+        premium,
+        lossProb,
+        expiration,
+        payer,
+        onBehalfOf,
+        internalId,
+        params()
+      );
+  }
+
+  /**
+   * @dev Called from child contracts to create policies (after they validated the pricing), receives custom params
+   *
+   * @param payout The exposure (maximum payout) of the policy
+   * @param premium The premium that will be paid by the policyHolder
+   * @param lossProb The probability of having to pay the maximum payout (wad)
+   * @param payer The account that pays for the premium
+   * @param expiration The expiration of the policy (timestamp)
+   * @param onBehalfOf The policy holder
+   * @param internalId An id that's unique within this module and it will be used to identify the policy
+   */
+  function _newPolicyCustomParams(
+    uint256 payout,
+    uint256 premium,
+    uint256 lossProb,
+    uint40 expiration,
+    address payer,
+    address onBehalfOf,
+    uint96 internalId,
+    Params memory params_
+  ) internal whenNotPaused returns (Policy.PolicyData memory) {
+    return
+      _newPolicyWithParams(
+        payout,
+        premium,
+        lossProb,
+        expiration,
+        payer,
+        onBehalfOf,
+        internalId,
+        params_
+      );
+  }
+
+  /**
+   * @dev Internal method without whenNotPaused, MUST be called from other function that has this modifier
+   */
+  function _newPolicyWithParams(
+    uint256 payout,
+    uint256 premium,
+    uint256 lossProb,
+    uint40 expiration,
+    address payer,
+    address onBehalfOf,
+    uint96 internalId,
+    Params memory params_
+  ) internal returns (Policy.PolicyData memory) {
     if (premium == type(uint256).max) {
       premium = getMinimumPremium(payout, lossProb, expiration);
     }
@@ -361,7 +421,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     require(payout <= maxPayoutPerPolicy(), "RiskModule: Payout is more than maximum per policy");
     Policy.PolicyData memory policy = Policy.initialize(
       this,
-      params(),
+      params_,
       premium,
       payout,
       lossProb,
