@@ -297,7 +297,15 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     uint256 lossProb,
     uint40 expiration
   ) public view returns (uint256) {
-    Params memory p = params();
+    return _getMinimumPremium(payout, lossProb, expiration, params());
+  }
+
+  function _getMinimumPremium(
+    uint256 payout,
+    uint256 lossProb,
+    uint40 expiration,
+    Params memory p
+  ) internal view returns (uint256) {
     uint256 purePremium = payout.wadMul(lossProb.wadMul(p.moc));
     uint256 jrScr = payout.wadMul(p.jrCollRatio);
     if (jrScr > purePremium) {
