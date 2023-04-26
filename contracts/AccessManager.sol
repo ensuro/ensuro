@@ -10,6 +10,14 @@ import {IAccessManager} from "./interfaces/IAccessManager.sol";
  * @title AccessManager - Protocol access roles
  * @dev Contract that holds the access roles for PolicyPool and other components of the protocol.
  *
+ * Roles can be delegated globally (traditional OZ's AccessControl) or per-component using component roles.
+ *
+ * Component roles are computed by doing a bitwise XOR between the component's address (padded to 32
+ * bytes with zeros on the right) and the role's hash.
+ *
+ * For more details and examples see
+ * https://docs.ensuro.co/product-docs/smart-contracts/contracts/accessmanager#component-roles
+ *
  * [CAUTION]
  * ====
  * Avoid leaving a this contract without DEFAULT_ADMIN_ROLE.
@@ -29,8 +37,13 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
   bytes32 public constant LEVEL2_ROLE = keccak256("LEVEL2_ROLE");
   bytes32 public constant LEVEL3_ROLE = keccak256("LEVEL3_ROLE");
 
-  // Mask for "namespacing" component roles within the global namespace
-  address private constant ANY_COMPONENT = address(0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE);
+  //
+  /**
+   * @notice Special address used for setting component-role admin for a specific role on any component.
+   *
+   * Note that granting component roles using this address has no meaning.
+   */
+  address public constant ANY_COMPONENT = address(0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE);
 
   /**
     @dev Modifier that checks if the caller has either role1 or role2.
@@ -44,8 +57,7 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
     @dev Modifier that checks if the caller has admin access to the specific component-role.
     */
   modifier onlyComponentRoleAdmin(address component, bytes32 role) {
-    require(component != ANY_COMPONENT, "AccessManager: invalid address for component");
-
+    require(component != address(0), "AccessManager: invalid address for component");
     require(
       // The caller has admin on this specific component-role
       hasRole(getRoleAdmin(getComponentRole(component, role)), _msgSender()) ||
@@ -198,19 +210,19 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
   }
 
   /**
-   * @dev Sets `adminRole` as the admin role for the component-role combination or for any component.
+   * @dev Sets `adminRole` as the component-role admin for a specific component or for any component.
+   *
+   * To set the admin for any component use the ANY_COMPONENT constant.
    *
    * Requirements:
    * - caller must be the current admin for the role
    *
-   * If `component` is the zero address, admin is granted for any component.
    */
   function setComponentRoleAdmin(
     address component,
     bytes32 role,
     bytes32 adminRole
   ) external onlyComponentRoleAdmin(component, role) {
-    if (component == address(0)) component = ANY_COMPONENT;
     _setRoleAdmin(getComponentRole(component, role), adminRole);
   }
 
