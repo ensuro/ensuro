@@ -278,15 +278,19 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   }
 
   function params() public view virtual override returns (Params memory ret) {
+    return _unpackParams(_params);
+  }
+
+  function _unpackParams(PackedParams storage params_) internal view returns (Params memory ret) {
     return
       Params({
-        moc: _4toWad(_params.moc),
-        jrCollRatio: _4toWad(_params.jrCollRatio),
-        collRatio: _4toWad(_params.collRatio),
-        ensuroPpFee: _4toWad(_params.ensuroPpFee),
-        ensuroCocFee: _4toWad(_params.ensuroCocFee),
-        jrRoc: _4toWad(_params.jrRoc),
-        srRoc: _4toWad(_params.srRoc)
+        moc: _4toWad(params_.moc),
+        jrCollRatio: _4toWad(params_.jrCollRatio),
+        collRatio: _4toWad(params_.collRatio),
+        ensuroPpFee: _4toWad(params_.ensuroPpFee),
+        ensuroCocFee: _4toWad(params_.ensuroCocFee),
+        jrRoc: _4toWad(params_.jrRoc),
+        srRoc: _4toWad(params_.srRoc)
       });
   }
 
