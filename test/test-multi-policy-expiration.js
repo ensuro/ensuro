@@ -9,7 +9,6 @@ const {
   grantComponentRole,
   getTransactionEvent,
   _W,
-  makePolicyId,
 } = require("./test-utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
@@ -27,19 +26,15 @@ describe("Multiple policy expirations", function () {
 
     await helpers.time.increaseTo(policies[policies.length - 1].expiration);
 
-    let gasUsedForSingleExpiration = BigNumber.from(0);
+    let gasUsed = BigNumber.from(0);
     for (const policy of policies) {
       const tx = await pool.connect(backend).expirePolicy(policy);
       const receipt = await tx.wait();
-      gasUsedForSingleExpiration = gasUsedForSingleExpiration.add(receipt.gasUsed);
+      gasUsed = gasUsed.add(receipt.gasUsed);
     }
 
-    console.log(
-      "Total gas used by individual expiration of %s policies: %s",
-      policies.length,
-      gasUsedForSingleExpiration
-    );
-    console.log("Avg gas per policy expiration: %s", gasUsedForSingleExpiration.div(policies.length));
+    console.log("Total gas used by individual expiration of %s policies: %s", policies.length, gasUsed);
+    console.log("Avg gas per policy expiration: %s", gasUsed.div(policies.length));
   });
 
   it("Measure the gas cost of multiple policy expiration", async () => {
@@ -53,10 +48,33 @@ describe("Multiple policy expirations", function () {
     console.log("Avg gas per policy expiration: %s", receipt.gasUsed.div(policies.length));
   });
 
+  it("Measure the gas cost of chunked multiple policy expiration", async () => {
+    const { pool, backend, policies } = await helpers.loadFixture(poolWithPolicies);
+
+    await helpers.time.increaseTo(policies[policies.length - 1].expiration);
+
+    const chunkSize = 10;
+    let gasUsed = BigNumber.from(0);
+    for (let i = 0; i < policies.length; i += chunkSize) {
+      const tx = await pool.connect(backend).expirePolicies(policies.slice(i, i + chunkSize));
+      const receipt = await tx.wait();
+      gasUsed = gasUsed.add(receipt.gasUsed);
+    }
+
+    console.log(
+      "Total gas used by chunked expiration of %s policies with chunksize=%s: %s",
+      policies.length,
+      chunkSize,
+      gasUsed
+    );
+    console.log("Avg gas per policy chunk: %s", gasUsed.div(policies.length / chunkSize));
+    console.log("Avg gas per policy expiration: %s", gasUsed.div(policies.length));
+  });
+
   it.skip("Measure what's the max number of policies that can be expired without exceeding the max gas", async () => {
     const { pool, rm, backend, pricer, policies } = await helpers.loadFixture(poolWithPolicies);
 
-    const additionalPolicies = 3500; // number arrived at by trial-and-error
+    const additionalPolicies = 500; // number arrived at by trial-and-error
 
     for (let i = 0; i < additionalPolicies; i++) {
       const policy = await makePolicy({ payer: pricer.address, internalId: 100000 + i });
@@ -66,7 +84,7 @@ describe("Multiple policy expirations", function () {
       policies.push(newPolicyEvt.args.policy);
     }
 
-    await helpers.time.increaseTo(policies[policies.length - 1].expiration);
+    await helpers.time.increaseTo(policies[policies.length - 1].expiration + 100);
     const tx = await pool.connect(backend).expirePolicies(policies, {
       gasLimit: 15_000_000, // Half the polygon PoS block limit as of may 2023
     });
