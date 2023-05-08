@@ -508,6 +508,13 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     return _resolvePolicy(policy, 0, true);
   }
 
+  function expirePolicies(Policy.PolicyData[] calldata policies) external whenNotPaused {
+    for (uint256 i = 0; i < policies.length; i++) {
+      require(policies[i].expiration <= block.timestamp, "Policy not expired yet");
+      _resolvePolicy(policies[i], 0, true);
+    }
+  }
+
   function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout)
     external
     override
