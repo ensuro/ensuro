@@ -773,6 +773,7 @@ class PolicyPool(IERC721):
     get_investable = MethodAdapter((), "amount")
 
     expire_policy_ = MethodAdapter((("policy", "tuple"),))
+    expire_policies_ = MethodAdapter((("policies", "list"),))
 
     def expire_policy(self, policy_id):
         if type(policy_id) == tuple:
@@ -780,6 +781,16 @@ class PolicyPool(IERC721):
         global policy_db
         policy = policy_db.get_policy(self.contract.address, policy_id)
         return self.expire_policy_(policy.as_tuple())
+
+    def expire_policies(self, policies):
+        assert policies, "Empty list not accepted"
+        if type(policies[0]) == tuple:
+            return self.expire_policies(policies)
+        global policy_db
+        policies = [
+            policy_db.get_policy(self.contract.address, policy_id).as_tuple() for policy_id in policies
+        ]
+        return self.expire_policies_(policies)
 
 
 class PremiumsAccount(ReserveMixin, ETHWrapper):

@@ -647,12 +647,18 @@ class EToken(ReserveMixin, ERC20Token):
         self._update_token_interest_rate()
 
     def _check_balance(self):
+        if hasattr(self, "_check_balance_disabled"):
+            return
         if self.asset_manager:
             return
         balance = self.currency.balance_of(self)
+        # This validation doesn't make sense in general, because if you are late to expire policies and
+        # there are many policies, then this will fail (because total_supply keeps accruing interests
+        # besides the CoC received in premiums). Anyway I keep the validation (only in the prototype code)
+        # because it can help to find other potential issues
         require(
             balance >= self.total_supply() or (self.total_supply() - balance) < self.NEGLIGIBLE_AMOUNT,
-            "Cash balance under total_supply",
+            f"Cash balance under total_supply {balance} {self.total_supply()}",
         )
 
     @external
@@ -1135,6 +1141,13 @@ class PolicyPool(ERC721Token):
         policy = self.policies[policy_id]
         require(policy.expiration <= time_control.now, "Policy not expired yet")
         return self.resolve_policy(policy_id, Wad(0))
+
+    @external
+    def expire_policies(self, policy_ids):
+        for policy_id in policy_ids:
+            policy = self.policies[policy_id]
+            require(policy.expiration <= time_control.now, "Policy not expired yet")
+            self.resolve_policy(policy_id, Wad(0))
 
     @external
     def resolve_policy(self, policy_id, payout):

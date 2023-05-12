@@ -1824,6 +1824,89 @@ def test_expire_policy(tenv):
     return locals()
 
 
+def test_expire_policies_in_batch(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: Flight Insurance
+        coll_ratio: "0.1"
+        ensuro_pp_fee: "0.05"
+        sr_roc: "0.01"
+        wallet: "MGA"
+        roles:
+          - user: owner
+            role: PRICER_ROLE
+          - user: owner
+            role: RESOLVER_ROLE
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 6000
+        initial_balances:
+        - user: LP1
+          amount: 2000
+        - user: LP2
+          amount: 1000
+        - user: LP3
+          amount: 1000
+        - user: CUST1
+          amount: 500
+    etokens:
+      - name: eUSD1YEAR
+    roles:
+      - user: owner
+        role: LEVEL2_ROLE  # For setting moc
+    """
+
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    etk = pool.etokens["eUSD1YEAR"]
+    USD = pool.currency
+    rm = pool.risk_modules["Flight Insurance"]
+    premiums_account = rm.premiums_account
+
+    with rm.as_(rm.owner):
+        rm.moc = _W("1.1")
+        rm.ensuro_coc_fee = _W("0.05")
+
+    _deposit(pool, "eUSD1YEAR", "LP1", _W(2000))
+
+    pool.currency.approve("CUST1", pool.contract_id, _W(500))
+    pool.currency.approve("CUST1", rm.owner, _W(500))
+
+    policy_ids = []
+    for_lps = _W(0)
+
+    for i in range(5):
+        policy = rm.new_policy(
+            payout=_W(2100), premium=_W(100), on_behalf_of="CUST1",
+            loss_prob=_W("0.03"), expiration=timecontrol.now + 10 * DAY,
+            internal_id=122 + i
+        )
+        policy_ids.append(policy.id)
+        for_lps += policy.sr_coc
+
+    rm.active_exposure.assert_equal(_W(2100 * 5))
+
+    timecontrol.fast_forward(4 * DAY)
+
+    with pytest.raises(RevertError, match="Policy not expired yet"):
+        pool.expire_policies(policy_ids)
+
+    timecontrol.fast_forward(7 * DAY)
+
+    etk._check_balance_disabled = True
+
+    pool.expire_policies(policy_ids)
+    etk.scr.assert_equal(_W(0))
+    etk.funds_available.assert_equal(_W(2000) + for_lps)
+
+    USD.balance_of("CUST1").assert_equal(_W(0))
+    premiums_account.won_pure_premiums.assert_equal(policy.pure_premium * _W(5))
+    rm.active_exposure.assert_equal(_W(0))
+
+    return locals()
+
+
 def test_expire_policy_payout(tenv):
     YAML_SETUP = """
     risk_modules:

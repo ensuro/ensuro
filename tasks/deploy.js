@@ -369,21 +369,6 @@ async function deployRiskModule(
   return contract.address;
 }
 
-async function deployFlightDelayRM(opts, hre) {
-  opts.extraArgs = [opts.linkToken, [opts.oracle, opts.delayTime, _W(opts.oracleFee), opts.dataJobId, opts.sleepJobId]];
-  return deployRiskModule(opts, hre);
-}
-
-async function deployPriceRM(opts, hre) {
-  opts.extraConstructorArgs = [opts.assetOracle, opts.referenceOracle, _W(opts.slotSize)];
-  opts.extraArgs = [opts.oracleTolerance];
-  const rm = await deployRiskModule(opts, hre);
-  if (opts.minDuration != 3600) {
-    // TODO: we will need ORACLE_ADMIN_ROLE
-    await rm.setMinDuration(opts.minDuration);
-  }
-}
-
 async function deploySignedQuoteRM(opts, hre) {
   opts.extraConstructorArgs = [opts.creationIsOpen];
   return deployRiskModule(opts, hre);
@@ -678,32 +663,6 @@ function add_task() {
     .addOptionalParam("creationIsOpen", "Indicates if anyone can create policies (with a quote)", true, types.boolean)
     .addParam("wallet", "RM address", types.address)
     .setAction(deploySignedQuoteRM);
-
-  task("deploy:priceRiskModule", "Deploys and injects a Price RiskModule")
-    .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
-    .addOptionalParam("saveAddr", "Save created contract address", "RM", types.str)
-    .addOptionalParam("addComponent", "Adds the new component to the pool", true, types.boolean)
-    .addParam("poolAddress", "PolicyPool Address", types.address)
-    .addParam("paAddress", "PremiumsAccount Address", types.address)
-    .addOptionalParam("rmClass", "RiskModule contract", "PriceRiskModule", types.str)
-    .addOptionalParam("rmName", "Name of the RM", "Price Risk Module", types.str)
-    .addOptionalParam("collRatio", "Collateralization ratio", 1.0, types.float)
-    .addOptionalParam("jrCollRatio", "Junior Collateralization ratio", 0.0, types.float)
-    .addOptionalParam("ensuroPpFee", "Ensuro Pure Premium Fee", 0.02, types.float)
-    .addOptionalParam("ensuroCocFee", "Ensuro Coc Fee", 0.1, types.float)
-    .addOptionalParam("roc", "Interest rate paid to Senior LPs for solvency capital", 0.05, types.float)
-    .addOptionalParam("jrRoc", "Interest rate paid to Junior LPs for solvency capital", 0.0, types.float)
-    .addOptionalParam("maxPayoutPerPolicy", "Max Payout Per policy", 10000, types.float)
-    .addOptionalParam("exposureLimit", "Exposure (sum of payouts) limit for the RM", 1e6, types.float)
-    .addOptionalParam("maxDuration", "Maximum policy duration in hours", 24 * 365, types.int)
-    .addOptionalParam("moc", "Margin of Conservativism", 1.0, types.float)
-    .addParam("wallet", "RM address", types.address)
-    .addParam("assetOracle", "Insured asset oracle address", types.address)
-    .addOptionalParam("referenceOracle", "Reference currency address", ethers.constants.AddressZero, types.address)
-    .addOptionalParam("slotSize", "Slot size", 0.01, types.float)
-    .addOptionalParam("oracleTolerance", "Oracle age tolerance", 1800, types.int)
-    .addOptionalParam("minDuration", "Minimum time that must elapse before a policy can be triggered", 3600, types.int)
-    .setAction(deployPriceRM);
 
   task("ens:setAssetManager", "Sets an asset manager to a reserve")
     .addParam("reserve", "Reserve Address", types.address)

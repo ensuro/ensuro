@@ -59,5 +59,6 @@ jobs:
               RELEASE_TAG=latest
             fi
           fi
+          echo "RELEASE_TAG: $RELEASE_TAG / SEMVER: $SEMVER"
           npm publish --tag "$RELEASE_TAG"
         working-directory: ./build/npm-package
