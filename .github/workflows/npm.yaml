@@ -23,7 +23,7 @@ jobs:
   npm-upload:
     name: NPM Package Build and Upload
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
