@@ -342,26 +342,26 @@ async function deployRiskModule(
   );
   const rm = runAs === undefined ? contract : contract.connect(runAs);
 
-  if (moc != 1.0) {
-    moc = _W(moc);
-    await rm.setParam(0, moc);
-  }
-  if (jrCollRatio != 0.0) {
-    jrCollRatio = _W(jrCollRatio);
-    await rm.setParam(1, jrCollRatio);
-  }
-  if (jrRoc != 0.0) {
-    jrRoc = _W(jrRoc);
-    await rm.setParam(5, jrRoc);
-  }
-  if (ensuroCocFee != 0) {
-    ensuroCocFee = _W(ensuroCocFee);
-    await rm.setParam(4, ensuroCocFee);
-  }
-  if (maxDuration != 24 * 365) {
-    await rm.setParam(9, maxDuration);
-  }
   if (opts.addComponent) {
+    if (moc != 1.0) {
+      moc = _W(moc);
+      await rm.setParam(0, moc);
+    }
+    if (jrCollRatio != 0.0) {
+      jrCollRatio = _W(jrCollRatio);
+      await rm.setParam(1, jrCollRatio);
+    }
+    if (jrRoc != 0.0) {
+      jrRoc = _W(jrRoc);
+      await rm.setParam(5, jrRoc);
+    }
+    if (ensuroCocFee != 0) {
+      ensuroCocFee = _W(ensuroCocFee);
+      await rm.setParam(4, ensuroCocFee);
+    }
+    if (maxDuration != 24 * 365) {
+      await rm.setParam(9, maxDuration);
+    }
     let policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
     if (runAs) policyPool = policyPool.connect(runAs);
     await policyPool.addComponent(contract.address, 2);
@@ -772,5 +772,7 @@ module.exports = {
   deployWhitelist,
   WhitelistStatus,
   txOverrides,
+  amountFunction,
+  _W,
   _A,
 };
