@@ -57,9 +57,10 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   address internal _wallet; // Address of the RiskModule provider
 
   /// @custom:oz-upgrades-unsafe-allow constructor
-  constructor(IPolicyPool policyPool_, IPremiumsAccount premiumsAccount_)
-    PolicyPoolComponent(policyPool_)
-  {
+  constructor(
+    IPolicyPool policyPool_,
+    IPremiumsAccount premiumsAccount_
+  ) PolicyPoolComponent(policyPool_) {
     require(
       PolicyPoolComponent(address(premiumsAccount_)).policyPool() == policyPool_,
       "The PremiumsAccount must be part of the Pool"
@@ -154,18 +155,34 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     _validatePackedParams(_params);
   }
 
-  function _validatePackedParams(PackedParams storage params_) internal view {
-    require(params_.jrCollRatio <= HUNDRED_PERCENT, "Validation: jrCollRatio must be <=1");
+  function _validateParams(Params memory params_) internal pure {
+    require(_wadTo4(params_.jrCollRatio) <= HUNDRED_PERCENT, "Validation: jrCollRatio must be <=1");
     require(
-      params_.collRatio <= HUNDRED_PERCENT && params_.collRatio > 0,
+      _wadTo4(params_.collRatio) <= HUNDRED_PERCENT && params_.collRatio > 0,
       "Validation: collRatio must be <=1"
     );
-    require(params_.collRatio >= params_.jrCollRatio, "Validation: collRatio >= jrCollRatio");
-    require(params_.moc <= MAX_MOC && params_.moc >= MIN_MOC, "Validation: moc must be [0.5, 4]");
-    require(params_.ensuroPpFee <= HUNDRED_PERCENT, "Validation: ensuroPpFee must be <= 1");
-    require(params_.ensuroCocFee <= HUNDRED_PERCENT, "Validation: ensuroCocFee must be <= 1");
-    require(params_.srRoc <= HUNDRED_PERCENT, "Validation: srRoc must be <= 1 (100%)");
-    require(params_.jrRoc <= HUNDRED_PERCENT, "Validation: jrRoc must be <= 1 (100%)");
+    require(
+      _wadTo4(params_.collRatio) >= _wadTo4(params_.jrCollRatio),
+      "Validation: collRatio >= jrCollRatio"
+    );
+    require(
+      _wadTo4(params_.moc) <= MAX_MOC && params_.moc >= MIN_MOC,
+      "Validation: moc must be [0.5, 4]"
+    );
+    require(
+      _wadTo4(params_.ensuroPpFee) <= HUNDRED_PERCENT,
+      "Validation: ensuroPpFee must be <= 1"
+    );
+    require(
+      _wadTo4(params_.ensuroCocFee) <= HUNDRED_PERCENT,
+      "Validation: ensuroCocFee must be <= 1"
+    );
+    require(_wadTo4(params_.srRoc) <= HUNDRED_PERCENT, "Validation: srRoc must be <= 1 (100%)");
+    require(_wadTo4(params_.jrRoc) <= HUNDRED_PERCENT, "Validation: jrRoc must be <= 1 (100%)");
+  }
+
+  function _validatePackedParams(PackedParams storage params_) internal view {
+    _validateParams(_unpackParams(params_));
     require(
       params_.exposureLimit > 0 && params_.maxPayoutPerPolicy > 0,
       "Exposure and MaxPayout must be >0"
@@ -190,12 +207,12 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   // solhint-disable-next-line func-name-mixedcase
   function _XtoAmount(uint8 decimals, uint32 value) internal view returns (uint256) {
     // X decimals to currency decimals (6 for USDC)
-    return uint256(value) * 10**(currency().decimals() - decimals);
+    return uint256(value) * 10 ** (currency().decimals() - decimals);
   }
 
   function _amountToX(uint8 decimals, uint256 value) internal view returns (uint32) {
     // currency decimals to X decimals (assuming X < currency decimals)
-    return (value / 10**(currency().decimals() - decimals)).toUint32();
+    return (value / 10 ** (currency().decimals() - decimals)).toUint32();
   }
 
   function maxPayoutPerPolicy() public view override returns (uint256) {
@@ -218,10 +235,10 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     return _wallet;
   }
 
-  function setParam(Parameter param, uint256 newValue)
-    external
-    onlyGlobalOrComponentRole3(LEVEL1_ROLE, LEVEL2_ROLE, LEVEL3_ROLE)
-  {
+  function setParam(
+    Parameter param,
+    uint256 newValue
+  ) external onlyGlobalOrComponentRole3(LEVEL1_ROLE, LEVEL2_ROLE, LEVEL3_ROLE) {
     bool tweak = !hasPoolRole(LEVEL2_ROLE) && !hasPoolRole(LEVEL1_ROLE);
     if (param == Parameter.moc) {
       require(!tweak || _isTweakWad(_4toWad(_params.moc), newValue, 1e17), "Tweak exceeded");
@@ -357,7 +374,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     address payer,
     address onBehalfOf,
     uint96 internalId
-  ) internal whenNotPaused returns (Policy.PolicyData memory) {
+  ) internal virtual whenNotPaused returns (Policy.PolicyData memory) {
     return
       _newPolicyWithParams(
         payout,

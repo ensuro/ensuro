@@ -41,6 +41,19 @@ async function check_balances(currency, users, amounts) {
   );
 }
 
+const RiskModuleParameter = {
+  moc: 0,
+  jrCollRatio: 1,
+  collRatio: 2,
+  ensuroPpFee: 3,
+  ensuroCocFee: 4,
+  jrRoc: 5,
+  srRoc: 6,
+  maxPayoutPerPolicy: 7,
+  exposureLimit: 8,
+  maxDuration: 9,
+};
+
 const createRiskModule = async function (
   pool,
   premiumsAccount,
@@ -84,7 +97,7 @@ const createRiskModule = async function (
 
   if (moc !== undefined && moc != 1.0) {
     moc = _W(moc);
-    await rm.setParam(0, moc);
+    await rm.setParam(RiskModuleParameter.moc, moc);
   }
   return rm;
 };
@@ -424,34 +437,35 @@ async function makeSignedQuote(signer, policyParams) {
 if (process.env.ENABLE_HH_WARNINGS !== "yes") hre.upgrades.silenceWarnings();
 
 module.exports = {
-  getStorageLayout,
-  makeQuoteMessage,
-  makeSignedQuote,
-  getRole,
-  WEEK,
-  DAY,
-  createRiskModule,
-  createEToken,
-  grantRole,
-  grantComponentRole,
-  initCurrency,
+  _BN,
+  _E,
+  _R,
+  _W,
+  accessControlMessage,
+  addEToken,
+  addRiskModule,
+  amountFunction,
   approve_multiple,
   check_balances,
-  addRiskModule,
-  addEToken,
-  expected_change,
-  getTransactionEvent,
+  createEToken,
+  createRiskModule,
+  DAY,
   deployPool,
   deployPremiumsAccount,
-  _E,
-  _BN,
-  WAD,
-  RAY,
-  amountFunction,
-  _W,
-  _R,
+  expected_change,
   getComponentRole,
-  accessControlMessage,
-  makePolicyId,
+  getRole,
+  getStorageLayout,
+  getTransactionEvent,
+  grantComponentRole,
+  grantRole,
+  initCurrency,
   makePolicy,
+  makePolicyId,
+  makeQuoteMessage,
+  makeSignedQuote,
+  RAY,
+  RiskModuleParameter,
+  WAD,
+  WEEK,
 };
