@@ -346,17 +346,23 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
     const { rm } = await helpers.loadFixture(deployPoolFixture);
 
     const bucket5 = bucketParameters({});
+    const bucket7 = bucketParameters({});
     const bucket10 = bucketParameters({});
     const bucket15 = bucketParameters({});
 
     await rm.setBucket(_W("10"), bucket10.asParams());
-    expect(await rm.buckets()).to.deep.equal([_W("10")]);
+    expect(await rm.buckets()).to.deep.equal([_W("10"), _W("0"), _W("0"), _W("0")]);
 
     await rm.setBucket(_W("15"), bucket15.asParams());
-    expect(await rm.buckets()).to.deep.equal([_W("10"), _W("15")]);
+    expect(await rm.buckets()).to.deep.equal([_W("10"), _W("15"), _W("0"), _W("0")]);
 
     await rm.setBucket(_W("5"), bucket5.asParams());
-    expect(await rm.buckets()).to.deep.equal([_W("5"), _W("10"), _W("15")]);
+    expect(await rm.buckets()).to.deep.equal([_W("5"), _W("10"), _W("15"), _W("0")]);
+
+    await rm.setBucket(_W("7"), bucket5.asParams());
+    expect(await rm.buckets()).to.deep.equal([_W("5"), _W("7"), _W("10"), _W("15")]);
+
+    await expect(rm.setBucket(_W("0.2"), bucket7.asParams())).to.be.revertedWith("Buckets full");
   });
 
   it("Allows removing buckets", async () => {
@@ -380,7 +386,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
     await expect(rm.removeBucket(_W("0.10")))
       .to.emit(rm, "BucketDeleted")
       .withArgs(_W("0.10"), bucket10.asParams());
-    expect(await rm.buckets()).to.deep.equal([_W("0.05"), _W("0.15")]);
+    expect(await rm.buckets()).to.deep.equal([_W("0.05"), _W("0.15"), _W("0"), _W("0")]);
 
     // 3% lossProb still uses bucket5
     expect(await rm.getMinimumPremium(policyParams.payout, policyParams.lossProb, policyParams.expiration)).to.equal(
@@ -390,7 +396,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
     await expect(rm.removeBucket(_W("0.05")))
       .to.emit(rm, "BucketDeleted")
       .withArgs(_W("0.05"), bucket5.asParams());
-    expect(await rm.buckets()).to.deep.equal([_W("0.15")]);
+    expect(await rm.buckets()).to.deep.equal([_W("0.15"), _W("0"), _W("0"), _W("0")]);
 
     // 3% lossProb now uses bucket15
     expect(await rm.getMinimumPremium(policyParams.payout, policyParams.lossProb, policyParams.expiration)).to.equal(
@@ -400,7 +406,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
     await expect(rm.removeBucket(_W("0.07"))).to.be.revertedWith("Bucket not found");
 
     await rm.removeBucket(_W("0.15"));
-    expect(await rm.buckets()).to.deep.equal([]);
+    expect(await rm.buckets()).to.deep.equal([_W("0"), _W("0"), _W("0"), _W("0")]);
 
     // 3% lossProb now uses defaults
     expect(await rm.getMinimumPremium(policyParams.payout, policyParams.lossProb, policyParams.expiration)).to.equal(

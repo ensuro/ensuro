@@ -154,34 +154,17 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     _validatePackedParams(_params);
   }
 
-  function _validateParams(Params memory params_) internal pure {
-    require(_wadTo4(params_.jrCollRatio) <= HUNDRED_PERCENT, "Validation: jrCollRatio must be <=1");
+  function _validatePackedParams(PackedParams storage params_) internal view {
     require(
-      _wadTo4(params_.collRatio) <= HUNDRED_PERCENT && _wadTo4(params_.collRatio) > 0,
+      params_.collRatio <= HUNDRED_PERCENT && params_.collRatio > 0,
       "Validation: collRatio must be <=1"
     );
-    require(
-      _wadTo4(params_.collRatio) >= _wadTo4(params_.jrCollRatio),
-      "Validation: collRatio >= jrCollRatio"
-    );
-    require(
-      _wadTo4(params_.moc) <= MAX_MOC && _wadTo4(params_.moc) >= MIN_MOC,
-      "Validation: moc must be [0.5, 4]"
-    );
-    require(
-      _wadTo4(params_.ensuroPpFee) <= HUNDRED_PERCENT,
-      "Validation: ensuroPpFee must be <= 1"
-    );
-    require(
-      _wadTo4(params_.ensuroCocFee) <= HUNDRED_PERCENT,
-      "Validation: ensuroCocFee must be <= 1"
-    );
-    require(_wadTo4(params_.srRoc) <= HUNDRED_PERCENT, "Validation: srRoc must be <= 1 (100%)");
-    require(_wadTo4(params_.jrRoc) <= HUNDRED_PERCENT, "Validation: jrRoc must be <= 1 (100%)");
-  }
-
-  function _validatePackedParams(PackedParams storage params_) internal view {
-    _validateParams(_unpackParams(params_));
+    require(params_.collRatio >= params_.jrCollRatio, "Validation: collRatio >= jrCollRatio");
+    require(params_.moc <= MAX_MOC && params_.moc >= MIN_MOC, "Validation: moc must be [0.5, 4]");
+    require(params_.ensuroPpFee <= HUNDRED_PERCENT, "Validation: ensuroPpFee must be <= 1");
+    require(params_.ensuroCocFee <= HUNDRED_PERCENT, "Validation: ensuroCocFee must be <= 1");
+    require(params_.srRoc <= HUNDRED_PERCENT, "Validation: srRoc must be <= 1 (100%)");
+    require(params_.jrRoc <= HUNDRED_PERCENT, "Validation: jrRoc must be <= 1 (100%)");
     require(
       params_.exposureLimit > 0 && params_.maxPayoutPerPolicy > 0,
       "Exposure and MaxPayout must be >0"

@@ -74,6 +74,7 @@ module.exports = {
       // brownie expects calls and transactions to throw on revert
       throwOnTransactionFailures: true,
       throwOnCallFailures: true,
+      allowUnlimitedContractSize: true, // TODO: REMOVE THIS BEFORE MERGE
     },
     bsctestnet: {
       url: "https://data-seed-prebsc-1-s3.binance.org:8545/",
