@@ -21,6 +21,8 @@ import {Policy} from "./Policy.sol";
  * @author Ensuro
  */
 contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
+  using SafeCast for uint256;
+
   uint8 public constant MAX_BUCKETS = 4;
 
   struct PackedBuckets {
@@ -38,11 +40,9 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
   event NewBucket(uint256 lossProb, Params params);
 
   /**
-   * @dev Emitted when a risk bucket is deleted.
-   * @param lossProb The loss probability of the deleted bucket.
-   * @param params The packed parameters of the deleted bucket.
+   * @dev Emitted when the risks buckets are reset and only the default one remains
    */
-  event BucketDeleted(uint256 lossProb, Params params);
+  event BucketsReset();
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(
@@ -52,7 +52,7 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
   ) SignedQuoteRiskModule(policyPool_, premiumsAccount_, creationIsOpen_) {} // solhint-disable-line no-empty-blocks
 
   /**
-   * @dev Adds a new risk bucket with the given loss probability and parameters.
+   * @dev Adds a new risk bucket with the given loss probability and parameters after the last one.
    *
    * Requirements:
    *
@@ -61,98 +61,50 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
    * @param lossProb The loss probability of the new bucket.
    * @param params_ The parameters of the new bucket.
    */
-  function setBucket(uint256 lossProb, Params calldata params_)
+  function pushBucket(uint256 lossProb, Params calldata params_)
     public
-    onlyGlobalOrComponentRole(LEVEL1_ROLE)
+    onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE)
   {
-    _validatePackedParams(
-      _insertBucket(
-        lossProb,
-        PackedParams({
-          moc: _wadTo4(params_.moc),
-          jrCollRatio: _wadTo4(params_.jrCollRatio),
-          collRatio: _wadTo4(params_.collRatio),
-          ensuroPpFee: _wadTo4(params_.ensuroPpFee),
-          ensuroCocFee: _wadTo4(params_.ensuroCocFee),
-          jrRoc: _wadTo4(params_.jrRoc),
-          srRoc: _wadTo4(params_.srRoc),
-          maxPayoutPerPolicy: type(uint32).max, // unused
-          exposureLimit: type(uint32).max, //unused
-          maxDuration: type(uint16).max //unused
-        })
-      )
-    );
+    uint256 newBucket;
+    if (_buckets.lossProbs[0] != 0) {
+      for (
+        newBucket = 1;
+        newBucket < MAX_BUCKETS && _buckets.lossProbs[newBucket] != 0;
+        newBucket++
+      ) {}
+      require(newBucket < MAX_BUCKETS, "No more than 4 buckets accepted");
+      require(
+        lossProb > uint256(_buckets.lossProbs[newBucket - 1]),
+        "lossProb <= last lossProb - reset instead"
+      );
+    }
+    _buckets.lossProbs[newBucket] = lossProb.toUint64();
+    _bucketParams[newBucket] = PackedParams({
+      moc: _wadTo4(params_.moc),
+      jrCollRatio: _wadTo4(params_.jrCollRatio),
+      collRatio: _wadTo4(params_.collRatio),
+      ensuroPpFee: _wadTo4(params_.ensuroPpFee),
+      ensuroCocFee: _wadTo4(params_.ensuroCocFee),
+      jrRoc: _wadTo4(params_.jrRoc),
+      srRoc: _wadTo4(params_.srRoc),
+      maxPayoutPerPolicy: 0, // unused
+      exposureLimit: 0, //unused
+      maxDuration: 0 //unused
+    });
+    _validatePackedParams(_bucketParams[newBucket]);
     emit NewBucket(lossProb, params_);
   }
 
-  /**
-   * @dev Removes the risk bucket with the given loss probability.
-   *
-   * Requirements:
-   *
-   * - The caller must have the LEVEL1_ROLE
-   *
-   * @param lossProb The loss probability of the risk bucket to remove.
-   */
-  function removeBucket(uint256 lossProb) public onlyGlobalOrComponentRole(LEVEL1_ROLE) {
-    Params memory params_ = _getBucketParams(lossProb);
-    _removeBucket(lossProb);
-    emit BucketDeleted(lossProb, params_);
-  }
-
-  function _insertBucket(uint256 lossprob, PackedParams memory params_)
-    internal
-    returns (PackedParams storage)
-  {
-    require(_buckets.lossProbs[MAX_BUCKETS - 1] == 0, "Buckets full");
-
-    uint256 newBucketPos;
-
-    // Find the last element in the array
-    for (
-      newBucketPos = 0;
-      newBucketPos < MAX_BUCKETS && _buckets.lossProbs[newBucketPos] > 0;
-      newBucketPos++
-    ) {} // solhint-disable-line no-empty-blocks
-
-    // Shift everything right until the right place is found
-    for (; newBucketPos > 0 && _buckets.lossProbs[newBucketPos - 1] > lossprob; newBucketPos--) {
-      _buckets.lossProbs[newBucketPos] = _buckets.lossProbs[newBucketPos - 1];
-      _bucketParams[newBucketPos] = _bucketParams[newBucketPos - 1];
-    }
-
-    // Insert the new bucket in the right position
-    _buckets.lossProbs[newBucketPos] = SafeCast.toUint64(lossprob);
-
-    // Insert the new bucket params
-    _bucketParams[newBucketPos] = params_;
-
-    return _bucketParams[newBucketPos];
-  }
-
-  function _removeBucket(uint256 lossprob) internal {
-    uint256 bucketPos;
-    for (
-      bucketPos = 0;
-      bucketPos < MAX_BUCKETS && _buckets.lossProbs[bucketPos] != lossprob;
-      bucketPos++
-    ) {} // solhint-disable-line no-empty-blocks
-    require(bucketPos < MAX_BUCKETS, "Bucket not found");
-
-    // shift everything left
-    for (uint256 i = bucketPos; i < MAX_BUCKETS - 1; i++) {
-      _buckets.lossProbs[i] = _buckets.lossProbs[i + 1];
-      _bucketParams[i] = _bucketParams[i + 1];
-    }
-    _buckets.lossProbs[MAX_BUCKETS - 1] = 0;
-    _bucketParams[MAX_BUCKETS - 1] = PackedParams(0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+  function resetBuckets() public onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE) {
+    _buckets.lossProbs[0] = 0;
+    emit BucketsReset();
   }
 
   /**
    * @dev Returns the risk bucket parameters for the given lossProb.
    */
   function _getBucketParams(uint256 lossProb) internal view returns (Params memory) {
-    for (uint256 i = 0; i < MAX_BUCKETS && _buckets.lossProbs[i] > 0; i++) {
+    for (uint256 i = 0; i < MAX_BUCKETS && _buckets.lossProbs[i] != 0; i++) {
       if (lossProb <= _buckets.lossProbs[i]) {
         return _unpackParams(_bucketParams[i]);
       }
