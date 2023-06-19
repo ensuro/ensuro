@@ -34,12 +34,12 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
     IPolicyPool policyPool_,
     IPremiumsAccount premiumsAccount_,
     bool creationIsOpen_
-  ) SignedQuoteRiskModule(policyPool_, premiumsAccount_, creationIsOpen_) {}
+  ) SignedQuoteRiskModule(policyPool_, premiumsAccount_, creationIsOpen_) {} // solhint-disable-line no-empty-blocks
 
-  function setBucket(
-    uint256 lossProb,
-    Params calldata params_
-  ) public onlyGlobalOrComponentRole(LEVEL1_ROLE) {
+  function setBucket(uint256 lossProb, Params calldata params_)
+    public
+    onlyGlobalOrComponentRole(LEVEL1_ROLE)
+  {
     _validateParams(params_);
     _insertBucket(lossProb, params_);
     emit NewBucket(lossProb, params_);
@@ -78,11 +78,11 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
       bucketPos = 0;
       bucketPos < _buckets.length && _buckets[bucketPos] != lossprob;
       bucketPos++
-    ) {}
+    ) {} // solhint-disable-line no-empty-blocks
     require(bucketPos < _buckets.length, "Bucket not found");
 
     // shift everything left
-    for (uint i = bucketPos; i < _buckets.length - 1; i++) {
+    for (uint256 i = bucketPos; i < _buckets.length - 1; i++) {
       _buckets[i] = _buckets[i + 1];
     }
 

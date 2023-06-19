@@ -57,10 +57,9 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   address internal _wallet; // Address of the RiskModule provider
 
   /// @custom:oz-upgrades-unsafe-allow constructor
-  constructor(
-    IPolicyPool policyPool_,
-    IPremiumsAccount premiumsAccount_
-  ) PolicyPoolComponent(policyPool_) {
+  constructor(IPolicyPool policyPool_, IPremiumsAccount premiumsAccount_)
+    PolicyPoolComponent(policyPool_)
+  {
     require(
       PolicyPoolComponent(address(premiumsAccount_)).policyPool() == policyPool_,
       "The PremiumsAccount must be part of the Pool"
@@ -207,12 +206,12 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   // solhint-disable-next-line func-name-mixedcase
   function _XtoAmount(uint8 decimals, uint32 value) internal view returns (uint256) {
     // X decimals to currency decimals (6 for USDC)
-    return uint256(value) * 10 ** (currency().decimals() - decimals);
+    return uint256(value) * 10**(currency().decimals() - decimals);
   }
 
   function _amountToX(uint8 decimals, uint256 value) internal view returns (uint32) {
     // currency decimals to X decimals (assuming X < currency decimals)
-    return (value / 10 ** (currency().decimals() - decimals)).toUint32();
+    return (value / 10**(currency().decimals() - decimals)).toUint32();
   }
 
   function maxPayoutPerPolicy() public view override returns (uint256) {
@@ -235,10 +234,10 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     return _wallet;
   }
 
-  function setParam(
-    Parameter param,
-    uint256 newValue
-  ) external onlyGlobalOrComponentRole3(LEVEL1_ROLE, LEVEL2_ROLE, LEVEL3_ROLE) {
+  function setParam(Parameter param, uint256 newValue)
+    external
+    onlyGlobalOrComponentRole3(LEVEL1_ROLE, LEVEL2_ROLE, LEVEL3_ROLE)
+  {
     bool tweak = !hasPoolRole(LEVEL2_ROLE) && !hasPoolRole(LEVEL1_ROLE);
     if (param == Parameter.moc) {
       require(!tweak || _isTweakWad(_4toWad(_params.moc), newValue, 1e17), "Tweak exceeded");
