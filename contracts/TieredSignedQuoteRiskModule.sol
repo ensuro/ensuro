@@ -10,11 +10,13 @@ import {Policy} from "./Policy.sol";
 /**
  * @title Tiered SignedQuote Risk Module
  * @dev Risk Module that for policy creation verifies the different components of the price have been signed by a
-        trusted account (PRICER_ROLE). For the resolution (resolvePolicy), it has to be called by an authorized user.
-
-        It allows different collaterallization levels for different policy types, by defining tiers or buckets of loss
-        probability.
-
+ *      trusted account (PRICER_ROLE). For the resolution (resolvePolicy), it has to be called by an authorized user.
+ *
+ *      It allows different collaterallization levels for different policy types, by defining tiers or buckets of loss
+ *      probability.
+ *
+ *      Each bucket's loss probability represents the upper bound of the bucket (inclusive).
+ *
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
@@ -28,8 +30,18 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
   PackedBuckets private _buckets;
   PackedParams[MAX_BUCKETS] private _bucketParams;
 
+  /**
+   * @dev Emitted when a new risk bucket is created.
+   * @param lossProb The loss probability of the new bucket.
+   * @param params The packed parameters of the new bucket.
+   */
   event NewBucket(uint256 lossProb, Params params);
 
+  /**
+   * @dev Emitted when a risk bucket is deleted.
+   * @param lossProb The loss probability of the deleted bucket.
+   * @param params The packed parameters of the deleted bucket.
+   */
   event BucketDeleted(uint256 lossProb, Params params);
 
   /// @custom:oz-upgrades-unsafe-allow constructor
@@ -39,6 +51,16 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
     bool creationIsOpen_
   ) SignedQuoteRiskModule(policyPool_, premiumsAccount_, creationIsOpen_) {} // solhint-disable-line no-empty-blocks
 
+  /**
+   * @dev Adds a new risk bucket with the given loss probability and parameters.
+   *
+   * Requirements:
+   *
+   * - The caller must have the LEVEL1_ROLE
+   *
+   * @param lossProb The loss probability of the new bucket.
+   * @param params_ The parameters of the new bucket.
+   */
   function setBucket(uint256 lossProb, Params calldata params_)
     public
     onlyGlobalOrComponentRole(LEVEL1_ROLE)
@@ -63,6 +85,15 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
     emit NewBucket(lossProb, params_);
   }
 
+  /**
+   * @dev Removes the risk bucket with the given loss probability.
+   *
+   * Requirements:
+   *
+   * - The caller must have the LEVEL1_ROLE
+   *
+   * @param lossProb The loss probability of the risk bucket to remove.
+   */
   function removeBucket(uint256 lossProb) public onlyGlobalOrComponentRole(LEVEL1_ROLE) {
     Params memory params_ = _getBucketParams(lossProb);
     _removeBucket(lossProb);
@@ -117,6 +148,9 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
     _bucketParams[MAX_BUCKETS - 1] = PackedParams(0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
   }
 
+  /**
+   * @dev Returns the risk bucket parameters for the given lossProb.
+   */
   function _getBucketParams(uint256 lossProb) internal view returns (Params memory) {
     for (uint256 i = 0; i < MAX_BUCKETS && _buckets.lossProbs[i] > 0; i++) {
       if (lossProb <= _buckets.lossProbs[i]) {
@@ -156,6 +190,9 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
     return _getMinimumPremium(payout, lossProb, expiration, _getBucketParams(lossProb));
   }
 
+  /**
+   * @dev returns the current risk bucket limits
+   */
   function buckets() public view returns (uint256[4] memory result) {
     for (uint256 i = 0; i < MAX_BUCKETS && _buckets.lossProbs[i] > 0; i++) {
       result[i] = _buckets.lossProbs[i];
@@ -163,6 +200,9 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
     return result;
   }
 
+  /**
+   * @dev returns the risk bucket parameters for the given loss probability
+   */
   function bucketParams(uint256 lossprob) public view returns (Params memory) {
     return _getBucketParams(lossprob);
   }
