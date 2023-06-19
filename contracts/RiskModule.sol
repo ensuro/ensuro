@@ -26,8 +26,8 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
 
   uint256 internal constant FOUR_DECIMAL_TO_WAD = 1e14;
   uint16 internal constant HUNDRED_PERCENT = 1e4;
-  uint16 internal constant MIN_MOC = 5e3;
-  uint16 internal constant MAX_MOC = 4e4;
+  uint16 internal constant MIN_MOC = 5e3; // 50%
+  uint16 internal constant MAX_MOC = 4e4; // 400%
 
   // For parameters that can be changed by the risk module provider
   bytes32 public constant RM_PROVIDER_ROLE = keccak256("RM_PROVIDER_ROLE");
@@ -158,7 +158,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   function _validateParams(Params memory params_) internal pure {
     require(_wadTo4(params_.jrCollRatio) <= HUNDRED_PERCENT, "Validation: jrCollRatio must be <=1");
     require(
-      _wadTo4(params_.collRatio) <= HUNDRED_PERCENT && params_.collRatio > 0,
+      _wadTo4(params_.collRatio) <= HUNDRED_PERCENT && _wadTo4(params_.collRatio) > 0,
       "Validation: collRatio must be <=1"
     );
     require(
@@ -166,7 +166,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
       "Validation: collRatio >= jrCollRatio"
     );
     require(
-      _wadTo4(params_.moc) <= MAX_MOC && params_.moc >= MIN_MOC,
+      _wadTo4(params_.moc) <= MAX_MOC && _wadTo4(params_.moc) >= MIN_MOC,
       "Validation: moc must be [0.5, 4]"
     );
     require(

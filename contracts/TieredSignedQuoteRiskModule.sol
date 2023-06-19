@@ -26,9 +26,8 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
 
   mapping(uint256 => Params) private bucketParams;
 
-  // _params are the default parameters inherited from parent contract
-
   event NewBucket(uint256 lossProb, Params params);
+  event BucketDeleted(uint256 lossProb, Params params);
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(
@@ -41,8 +40,15 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
     uint256 lossProb,
     Params calldata params_
   ) public onlyGlobalOrComponentRole(LEVEL1_ROLE) {
+    _validateParams(params_);
     _insertBucket(lossProb, params_);
     emit NewBucket(lossProb, params_);
+  }
+
+  function removeBucket(uint256 lossProb) public onlyGlobalOrComponentRole(LEVEL1_ROLE) {
+    Params memory params_ = _getBucketParams(lossProb);
+    _removeBucket(lossProb);
+    emit BucketDeleted(lossProb, params_);
   }
 
   function _insertBucket(uint256 lossprob, Params memory params_) internal {
@@ -66,8 +72,26 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
     bucketParams[lossprob] = params_;
   }
 
+  function _removeBucket(uint256 lossprob) internal {
+    uint256 bucketPos;
+    for (
+      bucketPos = 0;
+      bucketPos < buckets.length && buckets[bucketPos] != lossprob;
+      bucketPos++
+    ) {}
+    require(bucketPos < buckets.length, "Bucket not found");
+
+    // shift everything left
+    for (uint i = bucketPos; i < buckets.length - 1; i++) {
+      buckets[i] = buckets[i + 1];
+    }
+
+    // remove last element
+    buckets.pop();
+  }
+
   function _getBucketParams(uint256 lossProb) internal view returns (Params memory params) {
-    params = _unpackParams(_params); // TODO: just use params()?
+    params = this.params();
     for (uint256 i = 0; i < buckets.length && buckets[i] > 0; i++) {
       if (lossProb <= buckets[i]) {
         params = bucketParams[buckets[i]];
@@ -105,5 +129,9 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
     uint40 expiration
   ) public view virtual override returns (uint256) {
     return _getMinimumPremium(payout, lossProb, expiration, _getBucketParams(lossProb));
+  }
+
+  function listBuckets() public view returns (uint256[] memory) {
+    return buckets;
   }
 }

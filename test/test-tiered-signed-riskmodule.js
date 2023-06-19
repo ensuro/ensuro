@@ -146,7 +146,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
   // END copied test cases
 
   it("Uses the default parameters when no buckets are set up", async () => {
-    const { rm, pool, currency } = await helpers.loadFixture(deployPoolFixture);
+    const { rm, pool } = await helpers.loadFixture(deployPoolFixture);
     const policyParams = await defaultPolicyParams({ rmAddress: rm.address });
     const signature = await makeSignedQuote(signer, policyParams);
     const tx = await newPolicy(rm, cust, policyParams, cust, signature);
@@ -165,7 +165,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
   });
 
   it("Single bucket: uses correct bucket", async () => {
-    const { rm, pool, currency } = await helpers.loadFixture(deployPoolFixture);
+    const { rm, pool } = await helpers.loadFixture(deployPoolFixture);
     const rmParams = await rm.params();
     const bucket = bucketParameters({
       moc: _W("1.1"),
@@ -225,6 +225,195 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
     expect(policy3Data.jrCoc).to.equal(_A("0.821917"));
     expect(policy3Data.srCoc).to.equal(_A("5.753422"));
     expect(policy3Data.ensuroCommission).to.equal(_W("0"));
+  });
+
+  it("Two buckets: uses correct bucket", async () => {
+    const { rm, pool } = await helpers.loadFixture(deployPoolFixture);
+    const rmParams = await rm.params();
+    const bucket15 = bucketParameters({
+      moc: _W("1.1"),
+      jrCollRatio: _W("0.17"),
+      collRatio: _W("0.5"),
+      ensuroPpFee: rmParams[RiskModuleParameter.ensuroPpFee],
+      ensuroCocFee: rmParams[RiskModuleParameter.ensuroCocFee],
+      jrRoc: _W("0.25"),
+      srRoc: _W("0.29"),
+    });
+
+    const bucket10 = bucketParameters({
+      moc: _W("1"),
+      jrCollRatio: _W("0.12"),
+      collRatio: _W("1.0"),
+      ensuroPpFee: _W("0.01"),
+      ensuroCocFee: _W("0.02"),
+      jrRoc: _W("0.05"),
+      srRoc: _W("0.09"),
+    });
+
+    await expect(rm.setBucket(_W("0.15"), bucket15.asParams()))
+      .to.emit(rm, "NewBucket")
+      .withArgs(_W("0.15"), bucket15.asParams());
+
+    await expect(rm.setBucket(_W("0.10"), bucket10.asParams()))
+      .to.emit(rm, "NewBucket")
+      .withArgs(_W("0.10"), bucket10.asParams());
+
+    // Policy with lossProb < 10 uses bucket10
+    const policy1Params = await defaultPolicyParams({
+      rmAddress: rm.address,
+      lossProb: _W("0.055"),
+      payout: _A("790"),
+    });
+
+    const signature1 = await makeSignedQuote(signer, policy1Params);
+    const policy1Tx = await newPolicy(rm, cust, policy1Params, cust, signature1);
+
+    const policy1Data = await getPolicyData(pool, policy1Tx);
+    expect(policy1Data.moc).to.equal(bucket10.moc);
+    expect(policy1Data.purePremium).to.equal(_A("43.45"));
+    expect(policy1Data.jrScr).to.equal(_A("51.35"));
+    expect(policy1Data.srScr).to.equal(_A("695.2"));
+    expect(policy1Data.jrCoc).to.equal(_A("0.211027"));
+    expect(policy1Data.srCoc).to.equal(_A("5.142573"));
+    expect(policy1Data.ensuroCommission).to.equal(_A("0.541572"));
+    expect(await rm.getMinimumPremium(policy1Params.payout, policy1Params.lossProb, policy1Params.expiration)).to.equal(
+      _A("49.345172")
+    );
+
+    // Policy with lossProb = 10 uses bucket10
+    const policy2Params = await defaultPolicyParams({
+      rmAddress: rm.address,
+      lossProb: _W("0.1"),
+      payout: _A("930"),
+    });
+
+    const signature2 = await makeSignedQuote(signer, policy2Params);
+    const policy2Tx = await newPolicy(rm, cust, policy2Params, cust, signature2);
+
+    const policy2Data = await getPolicyData(pool, policy2Tx);
+    expect(policy2Data.moc).to.equal(bucket10.moc);
+    expect(policy2Data.purePremium).to.equal(_A("93"));
+    expect(policy2Data.jrScr).to.equal(_A("18.6"));
+    expect(policy2Data.srScr).to.equal(_A("818.4"));
+    expect(policy2Data.jrCoc).to.equal(_A("0.076438"));
+    expect(policy2Data.srCoc).to.equal(_A("6.053915"));
+    expect(policy2Data.ensuroCommission).to.equal(_A("1.052607"));
+    expect(await rm.getMinimumPremium(policy2Params.payout, policy2Params.lossProb, policy2Params.expiration)).to.equal(
+      _A("100.18296")
+    );
+
+    // Policy with lossProb > 10 uses bucket15
+    const policy3Params = await defaultPolicyParams({
+      rmAddress: rm.address,
+      lossProb: _W("0.101"),
+    });
+
+    const signature3 = await makeSignedQuote(signer, policy3Params);
+    const policy3Tx = await newPolicy(rm, cust, policy3Params, cust, signature3);
+
+    const policy3Data = await getPolicyData(pool, policy3Tx);
+    expect(policy3Data.moc).to.equal(bucket15.moc);
+    expect(policy3Data.purePremium).to.equal(_A("111.1"));
+    expect(policy3Data.jrScr).to.equal(_A("58.9"));
+    expect(policy3Data.srScr).to.equal(_A("330"));
+    expect(policy3Data.jrCoc).to.equal(_A("1.210274"));
+    expect(policy3Data.srCoc).to.equal(_A("7.865750"));
+    expect(policy3Data.ensuroCommission).to.equal(_A("0"));
+    expect(await rm.getMinimumPremium(policy3Params.payout, policy3Params.lossProb, policy3Params.expiration)).to.equal(
+      _A("120.176024")
+    );
+
+    // Policy with lossProb > 15 uses defaults
+    const policy4Params = await defaultPolicyParams({ rmAddress: rm.address, lossProb: _W("0.2") });
+
+    const signature4 = await makeSignedQuote(signer, policy4Params);
+    const policy4Tx = await newPolicy(rm, cust, policy4Params, cust, signature4);
+
+    const policy4Data = await getPolicyData(pool, policy4Tx);
+    expect(policy4Data.moc).to.equal(rmParams[RiskModuleParameter.moc]);
+    expect(policy4Data.purePremium).to.equal(_A("200"));
+    expect(policy4Data.jrScr).to.equal(_A("100"));
+    expect(policy4Data.srScr).to.equal(_A("700"));
+    expect(policy4Data.jrCoc).to.equal(_A("0.821917"));
+    expect(policy4Data.srCoc).to.equal(_A("5.753422"));
+    expect(policy4Data.ensuroCommission).to.equal(_W("0"));
+    expect(await rm.getMinimumPremium(policy4Params.payout, policy4Params.lossProb, policy4Params.expiration)).to.equal(
+      _A("206.575339")
+    );
+  });
+
+  it("Inserts buckets in the right order", async () => {
+    const { rm } = await helpers.loadFixture(deployPoolFixture);
+
+    const bucket5 = bucketParameters({});
+    const bucket10 = bucketParameters({});
+    const bucket15 = bucketParameters({});
+
+    await rm.setBucket(_W("10"), bucket10.asParams());
+    expect(await rm.listBuckets()).to.deep.equal([_W("10")]);
+
+    await rm.setBucket(_W("15"), bucket15.asParams());
+    expect(await rm.listBuckets()).to.deep.equal([_W("10"), _W("15")]);
+
+    await rm.setBucket(_W("5"), bucket5.asParams());
+    expect(await rm.listBuckets()).to.deep.equal([_W("5"), _W("10"), _W("15")]);
+  });
+
+  it("Allows removing buckets", async () => {
+    const { rm, pool } = await helpers.loadFixture(deployPoolFixture);
+
+    const bucket5 = bucketParameters({ moc: _W("0.8") });
+    const bucket10 = bucketParameters({ moc: _W("0.9") });
+    const bucket15 = bucketParameters({ moc: _W("1.0") });
+
+    await rm.setBucket(_W("0.1"), bucket10.asParams());
+    await rm.setBucket(_W("0.15"), bucket15.asParams());
+    await rm.setBucket(_W("0.05"), bucket5.asParams());
+
+    const policyParams = await defaultPolicyParams({ rmAddress: rm.address, lossProb: _W("0.03") });
+
+    // 3% lossProb uses bucket5
+    expect(await rm.getMinimumPremium(policyParams.payout, policyParams.lossProb, policyParams.expiration)).to.equal(
+      _A("27.922193")
+    );
+
+    await expect(rm.removeBucket(_W("0.10")))
+      .to.emit(rm, "BucketDeleted")
+      .withArgs(_W("0.10"), bucket10.asParams());
+    expect(await rm.listBuckets()).to.deep.equal([_W("0.05"), _W("0.15")]);
+
+    // 3% lossProb still uses bucket5
+    expect(await rm.getMinimumPremium(policyParams.payout, policyParams.lossProb, policyParams.expiration)).to.equal(
+      _A("27.922190")
+    );
+
+    await expect(rm.removeBucket(_W("0.05")))
+      .to.emit(rm, "BucketDeleted")
+      .withArgs(_W("0.05"), bucket5.asParams());
+    expect(await rm.listBuckets()).to.deep.equal([_W("0.15")]);
+
+    // 3% lossProb now uses bucket15
+    expect(await rm.getMinimumPremium(policyParams.payout, policyParams.lossProb, policyParams.expiration)).to.equal(
+      _A("34.163011")
+    );
+
+    await expect(rm.removeBucket(_W("0.07"))).to.be.revertedWith("Bucket not found");
+
+    await rm.removeBucket(_W("0.15"));
+    expect(await rm.listBuckets()).to.deep.equal([]);
+
+    // 3% lossProb now uses defaults
+    expect(await rm.getMinimumPremium(policyParams.payout, policyParams.lossProb, policyParams.expiration)).to.equal(
+      _A("37.972591")
+    );
+  });
+
+  it("Validates bucket parameters", async () => {
+    const { rm } = await helpers.loadFixture(deployPoolFixture);
+
+    await expect(rm.setBucket(_W("0.1"), bucketParameters({ moc: _W("0.2") }).asParams())).to.be.revertedWith(
+      "Validation: moc must be [0.5, 4]"
+    );
   });
 });
 
