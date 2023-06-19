@@ -22,9 +22,9 @@ import "hardhat/console.sol";
  * @author Ensuro
  */
 contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
-  uint256[] private buckets;
+  uint256[] private _buckets;
 
-  mapping(uint256 => Params) private bucketParams;
+  mapping(uint256 => Params) private _bucketParams;
 
   event NewBucket(uint256 lossProb, Params params);
   event BucketDeleted(uint256 lossProb, Params params);
@@ -53,48 +53,48 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
 
   function _insertBucket(uint256 lossprob, Params memory params_) internal {
     // make room in the buckets array
-    buckets.push(0);
+    _buckets.push(0);
 
     // Shift everything right until the right place is found
     uint256 newBucketPos;
     for (
-      newBucketPos = buckets.length - 1;
-      newBucketPos > 0 && buckets[newBucketPos - 1] > lossprob;
+      newBucketPos = _buckets.length - 1;
+      newBucketPos > 0 && _buckets[newBucketPos - 1] > lossprob;
       newBucketPos--
     ) {
-      buckets[newBucketPos] = buckets[newBucketPos - 1];
+      _buckets[newBucketPos] = _buckets[newBucketPos - 1];
     }
 
     // Insert the new bucket in the right position
-    buckets[newBucketPos] = lossprob;
+    _buckets[newBucketPos] = lossprob;
 
     // Insert the new bucket params
-    bucketParams[lossprob] = params_;
+    _bucketParams[lossprob] = params_;
   }
 
   function _removeBucket(uint256 lossprob) internal {
     uint256 bucketPos;
     for (
       bucketPos = 0;
-      bucketPos < buckets.length && buckets[bucketPos] != lossprob;
+      bucketPos < _buckets.length && _buckets[bucketPos] != lossprob;
       bucketPos++
     ) {}
-    require(bucketPos < buckets.length, "Bucket not found");
+    require(bucketPos < _buckets.length, "Bucket not found");
 
     // shift everything left
-    for (uint i = bucketPos; i < buckets.length - 1; i++) {
-      buckets[i] = buckets[i + 1];
+    for (uint i = bucketPos; i < _buckets.length - 1; i++) {
+      _buckets[i] = _buckets[i + 1];
     }
 
     // remove last element
-    buckets.pop();
+    _buckets.pop();
   }
 
   function _getBucketParams(uint256 lossProb) internal view returns (Params memory params) {
     params = this.params();
-    for (uint256 i = 0; i < buckets.length && buckets[i] > 0; i++) {
-      if (lossProb <= buckets[i]) {
-        params = bucketParams[buckets[i]];
+    for (uint256 i = 0; i < _buckets.length && _buckets[i] > 0; i++) {
+      if (lossProb <= _buckets[i]) {
+        params = _bucketParams[_buckets[i]];
         break;
       }
     }
@@ -131,7 +131,11 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
     return _getMinimumPremium(payout, lossProb, expiration, _getBucketParams(lossProb));
   }
 
-  function listBuckets() public view returns (uint256[] memory) {
-    return buckets;
+  function buckets() public view returns (uint256[] memory) {
+    return _buckets;
+  }
+
+  function bucketParams(uint256 lossprob) public view returns (Params memory) {
+    return _getBucketParams(lossprob);
   }
 }
