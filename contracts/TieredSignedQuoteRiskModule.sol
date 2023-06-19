@@ -113,6 +113,8 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
       _buckets.lossProbs[i] = _buckets.lossProbs[i + 1];
       _bucketParams[i] = _bucketParams[i + 1];
     }
+    _buckets.lossProbs[MAX_BUCKETS - 1] = 0;
+    _bucketParams[MAX_BUCKETS - 1] = PackedParams(0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
   }
 
   function _getBucketParams(uint256 lossProb) internal view returns (Params memory) {

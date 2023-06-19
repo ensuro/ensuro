@@ -414,6 +414,46 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
     );
   });
 
+  it("Handles bucket removal border cases properly", async () => {
+    const { rm } = await helpers.loadFixture(deployPoolFixture);
+
+    const bucket5 = bucketParameters({ moc: _W("0.8") });
+    const bucket10 = bucketParameters({ moc: _W("0.9") });
+    const bucket15 = bucketParameters({ moc: _W("1.0") });
+    const bucket20 = bucketParameters({ moc: _W("1.1") });
+
+    const policyParams = await defaultPolicyParams({ rmAddress: rm.address });
+    await rm.setBucket(_W("0.1"), bucket10.asParams());
+
+    // 10% lossprob uses bucket10, the only bucket
+    expect(await rm.getMinimumPremium(policyParams.payout, _W("0.1"), policyParams.expiration)).to.equal(
+      _A("96.571231")
+    );
+
+    // Removing the bucket makes the same policy use the defaults
+    await rm.removeBucket(_W("0.1"));
+    expect(await rm.getMinimumPremium(policyParams.payout, _W("0.1"), policyParams.expiration)).to.equal(
+      _A("107.397252")
+    );
+
+    // Fill all buckets
+    await rm.setBucket(_W("0.05"), bucket5.asParams());
+    await rm.setBucket(_W("0.10"), bucket10.asParams());
+    await rm.setBucket(_W("0.15"), bucket15.asParams());
+    await rm.setBucket(_W("0.20"), bucket20.asParams());
+
+    // 17% lossprob uses bucket20, the last one
+    expect(await rm.getMinimumPremium(policyParams.payout, _W("0.17"), policyParams.expiration)).to.equal(
+      _A("196.606438")
+    );
+
+    // removing bucket20 makes the same policy use the defaults
+    await rm.removeBucket(_W("0.20"));
+    expect(await rm.getMinimumPremium(policyParams.payout, _W("0.17"), policyParams.expiration)).to.equal(
+      _A("176.821897")
+    );
+  });
+
   it("Allows obtaining bucket parameters", async () => {
     const { rm } = await helpers.loadFixture(deployPoolFixture);
     bucket = bucketParameters({});
