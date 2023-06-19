@@ -7,9 +7,6 @@ import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
 import {SignedQuoteRiskModule} from "./SignedQuoteRiskModule.sol";
 import {Policy} from "./Policy.sol";
 
-// DEBUG: import hardhat console
-import "hardhat/console.sol";
-
 /**
  * @title Tiered SignedQuote Risk Module
  * @dev Risk Module that for policy creation verifies the different components of the price have been signed by a
@@ -36,10 +33,10 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
     bool creationIsOpen_
   ) SignedQuoteRiskModule(policyPool_, premiumsAccount_, creationIsOpen_) {} // solhint-disable-line no-empty-blocks
 
-  function setBucket(uint256 lossProb, Params calldata params_)
-    public
-    onlyGlobalOrComponentRole(LEVEL1_ROLE)
-  {
+  function setBucket(
+    uint256 lossProb,
+    Params calldata params_
+  ) public onlyGlobalOrComponentRole(LEVEL1_ROLE) {
     _validateParams(params_);
     _insertBucket(lossProb, params_);
     emit NewBucket(lossProb, params_);
