@@ -16,6 +16,7 @@ describe("Storage Gaps", () => {
     "RiskModule",
     "SignedQuoteRiskModule",
     "TrustfulRiskModule",
+    "TieredSignedQuoteRiskModule",
   ];
 
   for (const contract of contracts) {
