@@ -149,7 +149,6 @@ def test_wrapper_allows_obtaining_buckets(tenv: TEnv):
         exposure_limit=_A(1000000),
         wallet="CASINO",
     )
-
     tenv.pool_access.grant_role("LEVEL1_ROLE", "owner")
 
     rm.push_bucket(
@@ -204,20 +203,21 @@ def test_wrapper_allows_obtaining_buckets(tenv: TEnv):
         buckets[Wad(bucket)] = ensuro.BucketParams.from_contract_bucket_params(bucket_params)
 
     proto_rm.set_buckets(buckets)
-    expiration = tenv.time_control.now + WEEK
+
+    expiration = ensuro.time_control.now + WEEK
 
     # Policy with default risk bucket
     premium_composition = proto_rm.get_minimum_premium_composition(_A(1000), _W("0.1"), expiration)
     assert premium_composition.pure_premium == _A("100")
     assert premium_composition.jr_coc == _A("0")
-    assert premium_composition.sr_coc == _A("0.345214")
+    assert premium_composition.sr_coc == _A("0.345205")
     assert premium_composition.ensuro_commission == _A("3")
-    assert premium_composition.total == _A("103.345214")
+    assert premium_composition.total == _A("103.345205")
 
     # Policy with first risk bucket
     premium_composition = proto_rm.get_minimum_premium_composition(_A(1500), _W("0.05"), expiration)
     assert premium_composition.pure_premium == _A("67.5")
     assert premium_composition.jr_coc == _A("0")
-    assert premium_composition.sr_coc == _A("0.217197")
+    assert premium_composition.sr_coc == _A("0.217191")
     assert premium_composition.ensuro_commission == _A("0")
-    assert premium_composition.total == _A("67.717197")
+    assert premium_composition.total == _A("67.717191")
