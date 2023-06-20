@@ -13,6 +13,7 @@ const {
   makeSignedQuote,
   makeQuoteMessage,
   RiskModuleParameter,
+  grantRole,
 } = require("./test-utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
@@ -21,10 +22,10 @@ const SECONDS_PER_YEAR = 3600 * 24 * 365;
 
 describe("TieredSignedQuoteRiskModule contract tests", function () {
   let _A;
-  let lp, cust, signer, resolver, anon;
+  let lp, cust, signer, resolver, anon, level1, level2;
 
   beforeEach(async () => {
-    [__, lp, cust, signer, resolver, anon] = await hre.ethers.getSigners();
+    [__, lp, cust, signer, resolver, anon, level1, level2] = await hre.ethers.getSigners();
 
     _A = amountFunction(6);
   });
@@ -103,48 +104,6 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
     );
   }
 
-  // Following 2 test cases copied from test-signed-quote-riskmodule.js as a sanity check during WIP
-  // TODO: remove these 2 test cases and make test-signed-quote-riskmodule.js run all tests in both contracts
-  it("Creates a policy if the right signature is provided", async () => {
-    const { rm, pool, currency } = await helpers.loadFixture(deployPoolFixture);
-    const policyParams = await defaultPolicyParams({ rmAddress: rm.address });
-    const signature = await makeSignedQuote(signer, policyParams);
-    const tx = await newPolicy(rm, cust, policyParams, cust, signature);
-    const receipt = await tx.wait();
-    const newSignedPolicyEvt = getTransactionEvent(rm.interface, receipt, "NewSignedPolicy");
-    const policyData = policyParams.policyData;
-    // Verify the event is emited and the last 96 bits of the policyData are used as internalId
-    const policyId = newSignedPolicyEvt.args[0];
-    const twoPow96 = ethers.BigNumber.from(2).pow(96);
-    const internalId = policyId.mod(twoPow96);
-    expect(internalId).to.be.equal(ethers.BigNumber.from(policyData).mod(twoPow96));
-    // The first 160 bits of policyId is the module address
-    expect(policyId.div(twoPow96)).to.be.equal(ethers.BigNumber.from(rm.address));
-    // The second parameter is the policyData itself
-    expect(newSignedPolicyEvt.args[1]).to.be.equal(policyData);
-
-    const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
-
-    // Tests resolution, only by an authorized role
-    await expect(rm.connect(anon).resolvePolicy(newPolicyEvt.args[1], policyParams.payout)).to.be.revertedWith(
-      accessControlMessage(anon.address, rm.address, "RESOLVER_ROLE")
-    );
-
-    await expect(() =>
-      rm.connect(resolver).resolvePolicy(newPolicyEvt.args[1], policyParams.payout)
-    ).to.changeTokenBalance(currency, cust, policyParams.payout);
-  });
-
-  it("Rejects a policy if signed by unauthorized user", async () => {
-    const { rm } = await helpers.loadFixture(deployPoolFixture);
-    const policyParams = await defaultPolicyParams({ rmAddress: rm.address });
-    const signature = await makeSignedQuote(anon, policyParams);
-    await expect(newPolicy(rm, cust, policyParams, cust, signature)).to.be.revertedWith(
-      accessControlMessage(anon.address, rm.address, "PRICER_ROLE")
-    );
-  });
-  // END copied test cases
-
   it("Uses the default parameters when no buckets are set up", async () => {
     const { rm, pool } = await helpers.loadFixture(deployPoolFixture);
     const policyParams = await defaultPolicyParams({ rmAddress: rm.address });
@@ -162,6 +121,32 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
     expect(policyData.srScr).to.equal(_A("700"));
     expect(policyData.jrCoc).to.equal(_A("1.643835"));
     expect(policyData.srCoc).to.equal(_A("5.753422"));
+  });
+
+  it("Only allows LEVEL1 and LEVEL2 to set/reset buckets", async () => {
+    const { rm, pool, accessManager } = await helpers.loadFixture(deployPoolFixture);
+
+    // level1
+    await expect(rm.connect(level1).pushBucket(_W("0.15"), bucketParameters({}))).to.be.revertedWith(
+      accessControlMessage(level1.address, rm.address, "LEVEL2_ROLE")
+    );
+    await expect(rm.connect(level1).resetBuckets()).to.be.revertedWith(
+      accessControlMessage(level1.address, rm.address, "LEVEL2_ROLE")
+    );
+    await grantRole(hre, accessManager, "LEVEL1_ROLE", level1.address);
+    await expect(rm.connect(level1).pushBucket(_W("0.15"), bucketParameters({}))).not.to.be.reverted;
+    await expect(rm.connect(level1).resetBuckets()).not.to.be.reverted;
+
+    // level2
+    await expect(rm.connect(level2).pushBucket(_W("0.15"), bucketParameters({}))).to.be.revertedWith(
+      accessControlMessage(level2.address, rm.address, "LEVEL2_ROLE")
+    );
+    await expect(rm.connect(level2).resetBuckets()).to.be.revertedWith(
+      accessControlMessage(level2.address, rm.address, "LEVEL2_ROLE")
+    );
+    await grantRole(hre, accessManager, "LEVEL2_ROLE", level2.address);
+    await expect(rm.connect(level2).pushBucket(_W("0.15"), bucketParameters({}))).not.to.be.reverted;
+    await expect(rm.connect(level2).resetBuckets()).not.to.be.reverted;
   });
 
   it("Single bucket: uses correct bucket", async () => {

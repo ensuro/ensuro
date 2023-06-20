@@ -153,6 +153,15 @@ describe("Supports interface implementation", function () {
     expect(await rm.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.false;
   });
 
+  it("Checks TieredSignedQuoteRiskModule supported interfaces", async () => {
+    const { interfaceIds, premiumsAccount, policyPool } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
+    const TieredSignedQuoteRiskModule = await hre.ethers.getContractFactory("TieredSignedQuoteRiskModule");
+    const rm = await TieredSignedQuoteRiskModule.deploy(policyPool.address, premiumsAccount.address, false);
+    expect(await rm.supportsInterface(interfaceIds.IERC165)).to.be.true;
+    expect(await rm.supportsInterface(interfaceIds.IRiskModule)).to.be.true;
+    expect(await rm.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.false;
+  });
+
   it("Checks LPManualWhitelist supported interfaces", async () => {
     const { policyPool, interfaceIds } = await helpers.loadFixture(setupFixtureWithPool);
     const LPManualWhitelist = await hre.ethers.getContractFactory("LPManualWhitelist");
