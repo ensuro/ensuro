@@ -596,6 +596,19 @@ class SignedQuoteRiskModule(RiskModule):
             return self.resolve_policy_(policy.as_tuple(), customer_won_or_amount)
 
 
+class TieredSignedQuoteRiskModule(SignedQuoteRiskModule):
+    eth_contract = "TieredSignedQuoteRiskModule"
+    proxy_kind = "uups"
+
+    push_bucket = MethodAdapter((("bucket", "wad"), ("params", "tuple")))
+
+    reset_buckets = MethodAdapter()
+
+    buckets = MethodAdapter(return_type="tuple")
+
+    bucket_params = MethodAdapter((), "tuple")
+
+
 class AccessManager(ETHWrapper):
     eth_contract = "AccessManager"
 

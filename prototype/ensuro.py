@@ -291,6 +291,62 @@ class TrustfulRiskModule(RiskModule):
             return self.policy_pool.resolve_policy(policy_id, customer_won)
 
 
+class BucketParams(Model):
+    moc = WadField(default=_W(1))
+    jr_coll_ratio = WadField(default=Wad(0))
+    coll_ratio = WadField(default=_W(0))
+    ensuro_pp_fee = WadField(default=Wad(0))
+    ensuro_coc_fee = WadField(default=Wad(0))
+    jr_roc = WadField(default=Wad(0))
+    sr_roc = WadField(default=Wad(0))
+
+
+class TieredSignedQuoteRiskModule(RiskModule):
+
+    def set_buckets(self, buckets: dict[Wad, BucketParams]):
+        self._buckets = buckets.copy()
+
+    def reset_buckets(self):
+        self._buckets = dict()
+
+    def get_bucket(self, loss_prob: Wad) -> BucketParams:
+        for bound, bucket in self._buckets.items():
+            if loss_prob <= bound:
+                return bucket
+        return BucketParams(
+            moc=self.moc,
+            jr_coll_ratio=self.jr_coll_ratio,
+            coll_ratio=self.coll_ratio,
+            ensuro_pp_fee=self.ensuro_pp_fee,
+            ensuro_coc_fee=self.ensuro_coc_fee,
+            jr_roc=self.jr_roc,
+            sr_roc=self.sr_roc,
+        )
+
+    def get_minimum_premium_composition(self, payout, loss_prob, expiration) -> PremiumComposition:
+        bucket = self.get_bucket(loss_prob)
+        pure_premium = payout * loss_prob * bucket.moc
+        jr_scr = max(payout * bucket.jr_coll_ratio - pure_premium, _W(0))
+        sr_scr = max(payout * bucket.coll_ratio - pure_premium - jr_scr, _W(0))
+        jr_coc = (
+            jr_scr
+            * bucket.jr_roc
+            * _W(expiration - time_control.now)
+            // _W(SECONDS_IN_YEAR)
+        )
+        sr_coc = (
+            sr_scr
+            * bucket.sr_roc
+            * _W(expiration - time_control.now)
+            // _W(SECONDS_IN_YEAR)
+        )
+        ensuro_commission = (
+            pure_premium * bucket.ensuro_pp_fee + (jr_coc + sr_coc) * bucket.ensuro_coc_fee
+        )
+        total = pure_premium + ensuro_commission + jr_coc + sr_coc
+        return PremiumComposition(pure_premium, ensuro_commission, jr_coc, sr_coc, total)
+
+
 class Policy(Model):
     id = IntField()
     risk_module = ContractProxyField()
