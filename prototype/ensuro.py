@@ -327,6 +327,10 @@ class BucketParams(Model):
 
 class TieredSignedQuoteRiskModule(RiskModule):
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._buckets = {}
+
     def set_buckets(self, buckets: dict[Wad, BucketParams]):
         self._buckets = buckets.copy()
 
