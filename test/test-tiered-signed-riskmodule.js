@@ -177,7 +177,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
       srRoc: _W("0.29"),
     });
 
-    await expect(rm.setBucket(_W("0.15"), bucket.asParams()))
+    await expect(rm.pushBucket(_W("0.15"), bucket.asParams()))
       .to.emit(rm, "NewBucket")
       .withArgs(_W("0.15"), bucket.asParams());
 
@@ -250,13 +250,13 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
       srRoc: _W("0.09"),
     });
 
-    await expect(rm.setBucket(_W("0.15"), bucket15.asParams()))
-      .to.emit(rm, "NewBucket")
-      .withArgs(_W("0.15"), bucket15.asParams());
-
-    await expect(rm.setBucket(_W("0.10"), bucket10.asParams()))
+    await expect(rm.pushBucket(_W("0.10"), bucket10.asParams()))
       .to.emit(rm, "NewBucket")
       .withArgs(_W("0.10"), bucket10.asParams());
+
+    await expect(rm.pushBucket(_W("0.15"), bucket15.asParams()))
+      .to.emit(rm, "NewBucket")
+      .withArgs(_W("0.15"), bucket15.asParams());
 
     // Policy with lossProb < 10 uses bucket10
     const policy1Params = await defaultPolicyParams({
@@ -342,7 +342,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
     );
   });
 
-  it("Inserts buckets in the right order", async () => {
+  it("Only allows bucket insertion in the right order", async () => {
     const { rm } = await helpers.loadFixture(deployPoolFixture);
 
     const bucket5 = bucketParameters({});
@@ -350,114 +350,37 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
     const bucket10 = bucketParameters({});
     const bucket15 = bucketParameters({});
 
-    await rm.setBucket(_W("10"), bucket10.asParams());
+    await rm.pushBucket(_W("10"), bucket10.asParams());
     expect(await rm.buckets()).to.deep.equal([_W("10"), _W("0"), _W("0"), _W("0")]);
 
-    await rm.setBucket(_W("15"), bucket15.asParams());
+    await rm.pushBucket(_W("15"), bucket15.asParams());
     expect(await rm.buckets()).to.deep.equal([_W("10"), _W("15"), _W("0"), _W("0")]);
 
-    await rm.setBucket(_W("5"), bucket5.asParams());
+    await expect(rm.pushBucket(_W("5"), bucket5.asParams())).to.be.revertedWith(
+      "lossProb <= last lossProb - reset instead"
+    );
+
+    await expect(rm.resetBuckets()).to.emit(rm, "BucketsReset");
+    await rm.pushBucket(_W("5"), bucket5.asParams());
+    await rm.pushBucket(_W("10"), bucket10.asParams());
+    await rm.pushBucket(_W("15"), bucket15.asParams());
+
     expect(await rm.buckets()).to.deep.equal([_W("5"), _W("10"), _W("15"), _W("0")]);
 
-    await rm.setBucket(_W("7"), bucket5.asParams());
+    await expect(rm.resetBuckets()).to.emit(rm, "BucketsReset");
+    await rm.pushBucket(_W("5"), bucket5.asParams());
+    await rm.pushBucket(_W("7"), bucket7.asParams());
+    await rm.pushBucket(_W("10"), bucket10.asParams());
+    await rm.pushBucket(_W("15"), bucket15.asParams());
     expect(await rm.buckets()).to.deep.equal([_W("5"), _W("7"), _W("10"), _W("15")]);
 
-    await expect(rm.setBucket(_W("0.2"), bucket7.asParams())).to.be.revertedWith("Buckets full");
-  });
-
-  it("Allows removing buckets", async () => {
-    const { rm, pool } = await helpers.loadFixture(deployPoolFixture);
-
-    const bucket5 = bucketParameters({ moc: _W("0.8") });
-    const bucket10 = bucketParameters({ moc: _W("0.9") });
-    const bucket15 = bucketParameters({ moc: _W("1.0") });
-
-    await rm.setBucket(_W("0.1"), bucket10.asParams());
-    await rm.setBucket(_W("0.15"), bucket15.asParams());
-    await rm.setBucket(_W("0.05"), bucket5.asParams());
-
-    const policyParams = await defaultPolicyParams({ rmAddress: rm.address, lossProb: _W("0.03") });
-
-    // 3% lossProb uses bucket5
-    expect(await rm.getMinimumPremium(policyParams.payout, policyParams.lossProb, policyParams.expiration)).to.equal(
-      _A("27.922193")
-    );
-
-    await expect(rm.removeBucket(_W("0.10")))
-      .to.emit(rm, "BucketDeleted")
-      .withArgs(_W("0.10"), bucket10.asParams());
-    expect(await rm.buckets()).to.deep.equal([_W("0.05"), _W("0.15"), _W("0"), _W("0")]);
-
-    // 3% lossProb still uses bucket5
-    expect(await rm.getMinimumPremium(policyParams.payout, policyParams.lossProb, policyParams.expiration)).to.equal(
-      _A("27.922190")
-    );
-
-    await expect(rm.removeBucket(_W("0.05")))
-      .to.emit(rm, "BucketDeleted")
-      .withArgs(_W("0.05"), bucket5.asParams());
-    expect(await rm.buckets()).to.deep.equal([_W("0.15"), _W("0"), _W("0"), _W("0")]);
-
-    // 3% lossProb now uses bucket15
-    expect(await rm.getMinimumPremium(policyParams.payout, policyParams.lossProb, policyParams.expiration)).to.equal(
-      _A("34.163011")
-    );
-
-    await expect(rm.removeBucket(_W("0.07"))).to.be.revertedWith("Bucket not found");
-
-    await rm.removeBucket(_W("0.15"));
-    expect(await rm.buckets()).to.deep.equal([_W("0"), _W("0"), _W("0"), _W("0")]);
-
-    // 3% lossProb now uses defaults
-    expect(await rm.getMinimumPremium(policyParams.payout, policyParams.lossProb, policyParams.expiration)).to.equal(
-      _A("37.972591")
-    );
-  });
-
-  it("Handles bucket removal border cases properly", async () => {
-    const { rm } = await helpers.loadFixture(deployPoolFixture);
-
-    const bucket5 = bucketParameters({ moc: _W("0.8") });
-    const bucket10 = bucketParameters({ moc: _W("0.9") });
-    const bucket15 = bucketParameters({ moc: _W("1.0") });
-    const bucket20 = bucketParameters({ moc: _W("1.1") });
-
-    const policyParams = await defaultPolicyParams({ rmAddress: rm.address });
-    await rm.setBucket(_W("0.1"), bucket10.asParams());
-
-    // 10% lossprob uses bucket10, the only bucket
-    expect(await rm.getMinimumPremium(policyParams.payout, _W("0.1"), policyParams.expiration)).to.equal(
-      _A("96.571231")
-    );
-
-    // Removing the bucket makes the same policy use the defaults
-    await rm.removeBucket(_W("0.1"));
-    expect(await rm.getMinimumPremium(policyParams.payout, _W("0.1"), policyParams.expiration)).to.equal(
-      _A("107.397252")
-    );
-
-    // Fill all buckets
-    await rm.setBucket(_W("0.05"), bucket5.asParams());
-    await rm.setBucket(_W("0.10"), bucket10.asParams());
-    await rm.setBucket(_W("0.15"), bucket15.asParams());
-    await rm.setBucket(_W("0.20"), bucket20.asParams());
-
-    // 17% lossprob uses bucket20, the last one
-    expect(await rm.getMinimumPremium(policyParams.payout, _W("0.17"), policyParams.expiration)).to.equal(
-      _A("196.606438")
-    );
-
-    // removing bucket20 makes the same policy use the defaults
-    await rm.removeBucket(_W("0.20"));
-    expect(await rm.getMinimumPremium(policyParams.payout, _W("0.17"), policyParams.expiration)).to.equal(
-      _A("176.821897")
-    );
+    await expect(rm.pushBucket(_W("20"), bucket7.asParams())).to.be.revertedWith("No more than 4 buckets accepted");
   });
 
   it("Allows obtaining bucket parameters", async () => {
     const { rm } = await helpers.loadFixture(deployPoolFixture);
     bucket = bucketParameters({});
-    await rm.setBucket(_W("0.1"), bucket);
+    await rm.pushBucket(_W("0.1"), bucket);
 
     expect(await rm.bucketParams(_W("0.1"))).to.deep.equal(bucket.asParams());
   });
@@ -465,7 +388,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
   it("Validates bucket parameters", async () => {
     const { rm } = await helpers.loadFixture(deployPoolFixture);
 
-    await expect(rm.setBucket(_W("0.1"), bucketParameters({ moc: _W("0.2") }).asParams())).to.be.revertedWith(
+    await expect(rm.pushBucket(_W("0.1"), bucketParameters({ moc: _W("0.2") }).asParams())).to.be.revertedWith(
       "Validation: moc must be [0.5, 4]"
     );
   });

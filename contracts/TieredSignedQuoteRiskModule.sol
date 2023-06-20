@@ -15,7 +15,8 @@ import {Policy} from "./Policy.sol";
  *      It allows different collaterallization levels for different policy types, by defining tiers or buckets of loss
  *      probability.
  *
- *      Each bucket's loss probability represents the upper bound of the bucket (inclusive).
+ *      Each bucket's loss probability represents the upper bound of the bucket (inclusive). The global parameters of
+ *      the contract represent the 100% bucket.
  *
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
@@ -56,7 +57,7 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
    *
    * Requirements:
    *
-   * - The caller must have the LEVEL1_ROLE
+   * - The caller must have the LEVEL1_ROLE or LEVEL2_ROLE
    *
    * @param lossProb The loss probability of the new bucket.
    * @param params_ The parameters of the new bucket.
@@ -65,13 +66,13 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
     public
     onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE)
   {
-    uint256 newBucket;
+    uint256 newBucket = 0;
     if (_buckets.lossProbs[0] != 0) {
       for (
         newBucket = 1;
         newBucket < MAX_BUCKETS && _buckets.lossProbs[newBucket] != 0;
         newBucket++
-      ) {}
+      ) {} // solhint-disable-line no-empty-blocks
       require(newBucket < MAX_BUCKETS, "No more than 4 buckets accepted");
       require(
         lossProb > uint256(_buckets.lossProbs[newBucket - 1]),
@@ -87,10 +88,13 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
       ensuroCocFee: _wadTo4(params_.ensuroCocFee),
       jrRoc: _wadTo4(params_.jrRoc),
       srRoc: _wadTo4(params_.srRoc),
-      maxPayoutPerPolicy: 0, // unused
-      exposureLimit: 0, //unused
-      maxDuration: 0 //unused
+      maxPayoutPerPolicy: type(uint32).max, // unused, but needs to be > 0
+      exposureLimit: type(uint32).max, //unused, but needs to be > 0
+      maxDuration: type(uint16).max //unused
     });
+    if (newBucket < MAX_BUCKETS - 1) {
+      _buckets.lossProbs[newBucket + 1] = 0;
+    }
     _validatePackedParams(_bucketParams[newBucket]);
     emit NewBucket(lossProb, params_);
   }
