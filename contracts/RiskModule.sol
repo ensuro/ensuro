@@ -155,6 +155,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   }
 
   function _validatePackedParams(PackedParams storage params_) internal view {
+    require(params_.jrCollRatio <= HUNDRED_PERCENT, "Validation: jrCollRatio must be <=1");
     require(
       params_.collRatio <= HUNDRED_PERCENT && params_.collRatio > 0,
       "Validation: collRatio must be <=1"

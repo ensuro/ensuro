@@ -30,8 +30,8 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
     uint64[MAX_BUCKETS] lossProbs;
   }
 
-  PackedBuckets private _buckets;
-  PackedParams[MAX_BUCKETS] private _bucketParams;
+  PackedBuckets internal _buckets;
+  PackedParams[MAX_BUCKETS] internal _bucketParams;
 
   /**
    * @dev Emitted when a new risk bucket is created.
@@ -105,9 +105,9 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
   }
 
   /**
-   * @dev Returns the risk bucket parameters for the given lossProb.
+   * @dev returns the risk bucket parameters for the given loss probability
    */
-  function _getBucketParams(uint256 lossProb) internal view returns (Params memory) {
+  function bucketParams(uint256 lossProb) public view returns (Params memory) {
     for (uint256 i = 0; i < MAX_BUCKETS && _buckets.lossProbs[i] != 0; i++) {
       if (lossProb <= _buckets.lossProbs[i]) {
         return _unpackParams(_bucketParams[i]);
@@ -134,7 +134,7 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
         payer,
         onBehalfOf,
         internalId,
-        _getBucketParams(lossProb)
+        bucketParams(lossProb)
       );
   }
 
@@ -143,24 +143,17 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
     uint256 lossProb,
     uint40 expiration
   ) public view virtual override returns (uint256) {
-    return _getMinimumPremium(payout, lossProb, expiration, _getBucketParams(lossProb));
+    return _getMinimumPremium(payout, lossProb, expiration, bucketParams(lossProb));
   }
 
   /**
    * @dev returns the current risk bucket limits
    */
-  function buckets() public view returns (uint256[4] memory result) {
+  function buckets() public view returns (uint256[MAX_BUCKETS] memory result) {
     for (uint256 i = 0; i < MAX_BUCKETS && _buckets.lossProbs[i] > 0; i++) {
       result[i] = _buckets.lossProbs[i];
     }
     return result;
-  }
-
-  /**
-   * @dev returns the risk bucket parameters for the given loss probability
-   */
-  function bucketParams(uint256 lossprob) public view returns (Params memory) {
-    return _getBucketParams(lossprob);
   }
 
   /**
