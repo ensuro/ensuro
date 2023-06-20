@@ -300,6 +300,30 @@ class BucketParams(Model):
     jr_roc = WadField(default=Wad(0))
     sr_roc = WadField(default=Wad(0))
 
+    def as_tuple(self):
+        return (
+            self.moc,
+            self.jr_coll_ratio,
+            self.coll_ratio,
+            self.ensuro_pp_fee,
+            self.ensuro_coc_fee,
+            self.jr_roc,
+            self.sr_roc,
+        )
+
+    @classmethod
+    def from_contract_bucket_params(cls, params: tuple):
+        """Build BucketParams from the tuple returned by the contract """
+        return cls(
+            moc=Wad(params[0]),
+            jr_coll_ratio=Wad(params[1]),
+            coll_ratio=Wad(params[2]),
+            ensuro_pp_fee=Wad(params[3]),
+            ensuro_coc_fee=Wad(params[4]),
+            jr_roc=Wad(params[5]),
+            sr_roc=Wad(params[6]),
+        )
+
 
 class TieredSignedQuoteRiskModule(RiskModule):
 

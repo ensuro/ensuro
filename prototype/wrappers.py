@@ -536,6 +536,12 @@ class SignedQuoteRiskModule(RiskModule):
     eth_contract = "SignedQuoteRiskModule"
     proxy_kind = "uups"
 
+    constructor_args = (
+        ("pool", "address"),
+        ("premiums_account", "address"),
+        ("creation_is_open", "bool"),
+    )
+
     new_policy_ = MethodAdapter(
         (
             ("payout", "amount"),
@@ -565,6 +571,44 @@ class SignedQuoteRiskModule(RiskModule):
         ),
         "receipt",
     )
+
+    def __init__(
+        self,
+        name,
+        policy_pool,
+        premiums_account,
+        creation_is_open,
+        coll_ratio=_W(1),
+        ensuro_pp_fee=_W(0),
+        sr_roc=_W(0),
+        max_payout_per_policy=_W(1000000),
+        exposure_limit=_W(1000000),
+        wallet="RM",
+        owner="owner",
+    ):
+        # FIXME: Improve this classes design so we don't have to repeat the whole RiskModule constructor
+        coll_ratio = _W(coll_ratio)
+        ensuro_pp_fee = _W(ensuro_pp_fee)
+        sr_roc = _W(sr_roc)
+        max_payout_per_policy = _W(max_payout_per_policy)
+        exposure_limit = _W(exposure_limit)
+        ETHWrapper.__init__(
+            self,
+            owner,
+            policy_pool.contract,
+            premiums_account,
+            creation_is_open,
+            name,
+            coll_ratio,
+            ensuro_pp_fee,
+            sr_roc,
+            max_payout_per_policy,
+            exposure_limit,
+            wallet,
+        )
+        self.policy_pool = policy_pool
+        self._premiums_account = premiums_account
+        self._auto_from = self.owner
 
     def new_policy_paid_by_holder(self, *args, **kwargs):
         if "premium" not in kwargs:
@@ -606,7 +650,7 @@ class TieredSignedQuoteRiskModule(SignedQuoteRiskModule):
 
     buckets = MethodAdapter(return_type="tuple")
 
-    bucket_params = MethodAdapter((), "tuple")
+    bucket_params = MethodAdapter((("bucket", "wad"), ), "tuple")
 
 
 class AccessManager(ETHWrapper):
