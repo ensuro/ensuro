@@ -1260,7 +1260,7 @@ class FixedRateVault(ERC20Token):
             kwargs["name"] = "Test Vault"
         if "symbol" not in kwargs:
             kwargs["symbol"] = "TVAULT"
-        kwargs["decimals"] = 18
+        kwargs["decimals"] = kwargs["asset"].decimals
         kwargs["total_assets_"] = ScaledAmount()
         super().__init__(**kwargs)
 
