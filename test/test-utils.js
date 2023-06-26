@@ -75,7 +75,6 @@ const createRiskModule = async function (
     ],
     {
       kind: "uups",
-      unsafeAllow: ["delegatecall"],
       constructorArgs: [pool.address, premiumsAccount.address, ...extraConstructorArgs],
     }
   );
@@ -141,7 +140,7 @@ const createEToken = async function (
     ],
     {
       kind: "uups",
-      unsafeAllow: ["delegatecall"],
+      unsafeAllow: ["delegatecall"],  // This holds, because EToken is a reserve and uses delegatecall
       constructorArgs: [pool.address, ...extraConstructorArgs],
     }
   );
@@ -236,7 +235,6 @@ async function deployPool(hre, options) {
     {
       constructorArgs: [accessManager.address, options.currency],
       kind: "uups",
-      unsafeAllow: ["delegatecall"],
     }
   );
 
@@ -264,7 +262,7 @@ async function deployPremiumsAccount(hre, pool, options, addToPool = true) {
       options.srEtkAddr || hre.ethers.constants.AddressZero,
     ],
     kind: "uups",
-    unsafeAllow: ["delegatecall"],
+    unsafeAllow: ["delegatecall"],  // This holds, because EToken is a reserve and uses delegatecall
   });
 
   await premiumsAccount.deployed();
