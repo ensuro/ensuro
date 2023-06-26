@@ -14,6 +14,10 @@ const WhitelistStatus = {
   blacklisted: 2,
 };
 
+const reservesOpts = {
+  unsafeAllow: ["delegatecall"]
+}
+
 /**
  * Creates a fixed-point conversion function for the desired number of decimals
  * @param decimals The number of decimals. Must be >= 6.
@@ -158,7 +162,7 @@ async function deployContract({ saveAddr, verify, contractClass, constructorArgs
 }
 
 async function deployProxyContract(
-  { saveAddr, verify, contractClass, constructorArgs, initializeArgs, initializer },
+  { saveAddr, verify, contractClass, constructorArgs, initializeArgs, initializer, deployProxyArgs },
   hre
 ) {
   const ContractFactory = await hre.ethers.getContractFactory(contractClass);
@@ -166,7 +170,7 @@ async function deployProxyContract(
     constructorArgs: constructorArgs,
     kind: "uups",
     initializer: initializer,
-    unsafeAllow: ["delegatecall"],
+    ...deployProxyArgs
   });
   if (verify) {
     // From https://ethereum.stackexchange.com/a/119622/79726
@@ -283,6 +287,7 @@ async function deployEToken(
       contractClass: "EToken",
       constructorArgs: [poolAddress],
       initializeArgs: [etkName, etkSymbol, _W(maxUtilizationRate), _W(poolLoanInterestRate)],
+      deployProxyArgs: reservesOpts,
       ...opts,
     },
     hre
@@ -301,6 +306,7 @@ async function deployPremiumsAccount({ poolAddress, juniorEtk, seniorEtk, runAs,
       contractClass: "PremiumsAccount",
       constructorArgs: [poolAddress, juniorEtk, seniorEtk],
       initializeArgs: [],
+      deployProxyArgs: reservesOpts,
       ...opts,
     },
     hre
