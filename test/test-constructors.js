@@ -7,6 +7,11 @@ describe("Constructor validations", function () {
   const rndAddr = "0xd758af6bfc2f0908d7c5f89942be52c36a6b3cab";
   const deployProxyArgs = {
     kind: "uups",
+  };
+
+  // Proxy args when the contract is a Reserve (EToken or PremiumsAccount)
+  const deployReserveArgs= {
+    kind: "uups",
     unsafeAllow: ["delegatecall"],
   };
 
@@ -73,7 +78,7 @@ describe("Constructor validations", function () {
     const EToken = await hre.ethers.getContractFactory("EToken");
     const initArgs = ["foo", "bar", 0, 0];
     await expect(
-      hre.upgrades.deployProxy(EToken, initArgs, { constructorArgs: [zeroAddress], ...deployProxyArgs })
+      hre.upgrades.deployProxy(EToken, initArgs, { constructorArgs: [zeroAddress], ...deployReserveArgs })
     ).to.be.revertedWith("PolicyPoolComponent: policyPool cannot be zero address");
   });
 
@@ -82,7 +87,7 @@ describe("Constructor validations", function () {
     await expect(
       hre.upgrades.deployProxy(PremiumsAccount, [], {
         constructorArgs: [zeroAddress, zeroAddress, zeroAddress],
-        ...deployProxyArgs,
+        ...deployReserveArgs,
       })
     ).to.be.revertedWith("PolicyPoolComponent: policyPool cannot be zero address");
   });

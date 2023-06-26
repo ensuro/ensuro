@@ -639,9 +639,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   function _beforeTokenTransfer(
     address from,
     address to,
-    uint256 tokenId
+    uint256 tokenId,
+    uint256 batchSize
   ) internal override whenNotPaused {
-    super._beforeTokenTransfer(from, to, tokenId);
+    super._beforeTokenTransfer(from, to, tokenId, batchSize);
   }
 
   /**
