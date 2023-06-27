@@ -15,8 +15,8 @@ const WhitelistStatus = {
 };
 
 const reservesOpts = {
-  unsafeAllow: ["delegatecall"]
-}
+  unsafeAllow: ["delegatecall"],
+};
 
 /**
  * Creates a fixed-point conversion function for the desired number of decimals
@@ -137,7 +137,8 @@ async function verifyContract(hre, contract, isProxy, constructorArguments) {
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: params.toString(),
       });
-      if (response.statusCode != 200) throw new Error(`Etherscan replied with ${response.statusCode}: ${await response.body.text()}`);
+      if (response.statusCode != 200)
+        throw new Error(`Etherscan replied with ${response.statusCode}: ${await response.body.text()}`);
       const body = await response.body.json();
       if (body.status != 1) throw new Error(`Etherscan replied with ${body}`);
     }
@@ -170,7 +171,7 @@ async function deployProxyContract(
     constructorArgs: constructorArgs,
     kind: "uups",
     initializer: initializer,
-    ...deployProxyArgs
+    ...deployProxyArgs,
   });
   if (verify) {
     // From https://ethereum.stackexchange.com/a/119622/79726

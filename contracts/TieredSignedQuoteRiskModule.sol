@@ -63,7 +63,7 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
    * @param params_ The parameters of the new bucket.
    */
   function pushBucket(uint256 lossProb, Params calldata params_)
-    public
+    external
     onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE)
   {
     uint256 newBucket = 0;
@@ -99,7 +99,7 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
     emit NewBucket(lossProb, params_);
   }
 
-  function resetBuckets() public onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE) {
+  function resetBuckets() external onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE) {
     _buckets.lossProbs[0] = 0;
     emit BucketsReset();
   }
@@ -149,7 +149,7 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
   /**
    * @dev returns the current risk bucket limits
    */
-  function buckets() public view returns (uint256[MAX_BUCKETS] memory result) {
+  function buckets() external view returns (uint256[MAX_BUCKETS] memory result) {
     for (uint256 i = 0; i < MAX_BUCKETS && _buckets.lossProbs[i] > 0; i++) {
       result[i] = _buckets.lossProbs[i];
     }

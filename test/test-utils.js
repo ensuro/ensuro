@@ -153,7 +153,7 @@ const createEToken = async function (
     ],
     {
       kind: "uups",
-      unsafeAllow: ["delegatecall"],  // This holds, because EToken is a reserve and uses delegatecall
+      unsafeAllow: ["delegatecall"], // This holds, because EToken is a reserve and uses delegatecall
       constructorArgs: [pool.address, ...extraConstructorArgs],
     }
   );
@@ -275,7 +275,7 @@ async function deployPremiumsAccount(hre, pool, options, addToPool = true) {
       options.srEtkAddr || hre.ethers.constants.AddressZero,
     ],
     kind: "uups",
-    unsafeAllow: ["delegatecall"],  // This holds, because EToken is a reserve and uses delegatecall
+    unsafeAllow: ["delegatecall"], // This holds, because EToken is a reserve and uses delegatecall
   });
 
   await premiumsAccount.deployed();
