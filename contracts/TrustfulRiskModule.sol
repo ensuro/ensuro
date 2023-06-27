@@ -78,7 +78,7 @@ contract TrustfulRiskModule is RiskModule {
     uint40 expiration,
     address onBehalfOf,
     uint96 internalId
-  ) external onlyComponentRole(PRICER_ROLE) returns (uint256) {
+  ) external whenNotPaused onlyComponentRole(PRICER_ROLE) returns (uint256) {
     return
       _newPolicy(
         payout,
@@ -115,7 +115,12 @@ contract TrustfulRiskModule is RiskModule {
     uint40 expiration,
     address onBehalfOf,
     uint96 internalId
-  ) external onlyComponentRole(PRICER_ROLE) returns (Policy.PolicyData memory createdPolicy) {
+  )
+    external
+    whenNotPaused
+    onlyComponentRole(PRICER_ROLE)
+    returns (Policy.PolicyData memory createdPolicy)
+  {
     return
       _newPolicy(
         payout,

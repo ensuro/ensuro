@@ -1,7 +1,7 @@
 const upgrades_core = require("@openzeppelin/upgrades-core");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const fs = require("fs");
-
+const { request } = require("undici");
 const ethers = require("ethers");
 
 const _BN = ethers.BigNumber.from;
@@ -15,8 +15,8 @@ const WhitelistStatus = {
 };
 
 const reservesOpts = {
-  unsafeAllow: ["delegatecall"]
-}
+  unsafeAllow: ["delegatecall"],
+};
 
 /**
  * Creates a fixed-point conversion function for the desired number of decimals
@@ -119,10 +119,28 @@ async function verifyContract(hre, contract, isProxy, constructorArguments) {
       constructorArguments: constructorArguments,
     });
     if (isProxy) {
-      console.log(
-        "Contract successfully verified, you should verify the proxy at " +
-          `${etherscanUrl()}/proxyContractChecker?a=${contract.address}`
-      );
+      // the following should work but it fails with the current @openzeppelin/hardhat-upgrades version (1.20.0)
+      // await hre.run("verify:verify", {
+      //   address: contract.address,
+      // });
+
+      // so we use the following workaround
+      const endpoints = await hre.run("verify:get-etherscan-endpoint");
+      const params = new URLSearchParams({
+        module: "contract",
+        action: "verifyproxycontract",
+        apiKey: hre.config.etherscan.apiKey,
+        address: contract.address,
+      });
+      const response = await request(endpoints.urls.apiURL, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: params.toString(),
+      });
+      if (response.statusCode != 200)
+        throw new Error(`Etherscan replied with ${response.statusCode}: ${await response.body.text()}`);
+      const body = await response.body.json();
+      if (body.status != 1) throw new Error(`Etherscan replied with ${body}`);
     }
   } catch (error) {
     console.log("Error verifying contract", error);
@@ -153,7 +171,7 @@ async function deployProxyContract(
     constructorArgs: constructorArgs,
     kind: "uups",
     initializer: initializer,
-    ...deployProxyArgs
+    ...deployProxyArgs,
   });
   if (verify) {
     // From https://ethereum.stackexchange.com/a/119622/79726

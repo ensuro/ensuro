@@ -10,7 +10,7 @@ describe("Constructor validations", function () {
   };
 
   // Proxy args when the contract is a Reserve (EToken or PremiumsAccount)
-  const deployReserveArgs= {
+  const deployReserveArgs = {
     kind: "uups",
     unsafeAllow: ["delegatecall"],
   };

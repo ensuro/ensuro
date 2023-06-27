@@ -26,8 +26,8 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
 
   uint256 internal constant FOUR_DECIMAL_TO_WAD = 1e14;
   uint16 internal constant HUNDRED_PERCENT = 1e4;
-  uint16 internal constant MIN_MOC = 5e3;
-  uint16 internal constant MAX_MOC = 4e4;
+  uint16 internal constant MIN_MOC = 5e3; // 50%
+  uint16 internal constant MAX_MOC = 4e4; // 400%
 
   // For parameters that can be changed by the risk module provider
   bytes32 public constant RM_PROVIDER_ROLE = keccak256("RM_PROVIDER_ROLE");
@@ -339,7 +339,8 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   }
 
   /**
-   * @dev Called from child contracts to create policies (after they validated the pricing)
+   * @dev Called from child contracts to create policies (after they validated the pricing).
+   *      whenNotPaused validation must be done in the external method.
    *
    * @param payout The exposure (maximum payout) of the policy
    * @param premium The premium that will be paid by the policyHolder
@@ -357,7 +358,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     address payer,
     address onBehalfOf,
     uint96 internalId
-  ) internal whenNotPaused returns (Policy.PolicyData memory) {
+  ) internal virtual returns (Policy.PolicyData memory) {
     return
       _newPolicyWithParams(
         payout,
@@ -368,40 +369,6 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
         onBehalfOf,
         internalId,
         params()
-      );
-  }
-
-  /**
-   * @dev Called from child contracts to create policies (after they validated the pricing), receives custom params
-   *
-   * @param payout The exposure (maximum payout) of the policy
-   * @param premium The premium that will be paid by the policyHolder
-   * @param lossProb The probability of having to pay the maximum payout (wad)
-   * @param payer The account that pays for the premium
-   * @param expiration The expiration of the policy (timestamp)
-   * @param onBehalfOf The policy holder
-   * @param internalId An id that's unique within this module and it will be used to identify the policy
-   */
-  function _newPolicyCustomParams(
-    uint256 payout,
-    uint256 premium,
-    uint256 lossProb,
-    uint40 expiration,
-    address payer,
-    address onBehalfOf,
-    uint96 internalId,
-    Params memory params_
-  ) internal whenNotPaused returns (Policy.PolicyData memory) {
-    return
-      _newPolicyWithParams(
-        payout,
-        premium,
-        lossProb,
-        expiration,
-        payer,
-        onBehalfOf,
-        internalId,
-        params_
       );
   }
 

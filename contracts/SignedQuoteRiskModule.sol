@@ -159,7 +159,7 @@ contract SignedQuoteRiskModule is RiskModule {
     bytes32 quoteSignatureR,
     bytes32 quoteSignatureVS,
     uint40 quoteValidUntil
-  ) external returns (Policy.PolicyData memory createdPolicy) {
+  ) external whenNotPaused returns (Policy.PolicyData memory createdPolicy) {
     return
       _newPolicySigned(
         payout,
@@ -207,7 +207,7 @@ contract SignedQuoteRiskModule is RiskModule {
     bytes32 quoteSignatureR,
     bytes32 quoteSignatureVS,
     uint40 quoteValidUntil
-  ) external returns (uint256) {
+  ) external whenNotPaused returns (uint256) {
     return
       _newPolicySigned(
         payout,
@@ -255,7 +255,7 @@ contract SignedQuoteRiskModule is RiskModule {
     bytes32 quoteSignatureR,
     bytes32 quoteSignatureVS,
     uint40 quoteValidUntil
-  ) external returns (uint256) {
+  ) external whenNotPaused returns (uint256) {
     require(
       onBehalfOf == _msgSender() || currency().allowance(onBehalfOf, _msgSender()) > 0,
       "Sender is not authorized to create policies onBehalfOf"
