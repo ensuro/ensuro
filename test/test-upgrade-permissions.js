@@ -84,6 +84,15 @@ describe("Test Upgrade contracts", function () {
     };
   }
 
+  async function setupFixtureWithPoolAndPAWithoutETK() {
+    const ret = await setupFixtureWithPool();
+    const premiumsAccount = await deployPremiumsAccount(hre, ret.pool, {});
+    return {
+      premiumsAccount,
+      ...ret,
+    };
+  }
+
   async function setupFixtureWithPoolAndRM() {
     const ret = await setupFixtureWithPoolAndPA();
     const TrustfulRiskModule = await ethers.getContractFactory("TrustfulRiskModule");
@@ -220,6 +229,33 @@ describe("Test Upgrade contracts", function () {
     newImpl = await PremiumsAccount.deploy(pool.address, zeroAddress, etk.address);
     await expect(premiumsAccount.connect(guardian).upgradeTo(newImpl.address)).to.be.revertedWith(
       "Can't upgrade changing the Junior ETK unless to non-zero"
+    );
+  });
+
+  it("Should be able to deploy PremiumsAccount without eTokens and upgrade to have them", async () => {
+    const { guardian, pool, premiumsAccount, etk, currency, _A } = await helpers.loadFixture(
+      setupFixtureWithPoolAndPAWithoutETK
+    );
+    const PremiumsAccount = await ethers.getContractFactory("PremiumsAccount");
+
+    let newImpl = await PremiumsAccount.deploy(pool.address, zeroAddress, zeroAddress);
+    await expect(premiumsAccount.connect(guardian).upgradeTo(newImpl.address)).not.to.be.reverted;
+
+    // Changing jrEtk from 0 to something is possible
+    const jrEtk = await addEToken(pool, {});
+    newImpl = await PremiumsAccount.deploy(pool.address, jrEtk.address, zeroAddress);
+    await premiumsAccount.connect(guardian).upgradeTo(newImpl.address);
+
+    // Changing srEtk from 0 to something is possible
+    const srEtk = await addEToken(pool, {});
+    newImpl = await PremiumsAccount.deploy(pool.address, jrEtk.address, srEtk.address);
+    await premiumsAccount.connect(guardian).upgradeTo(newImpl.address);
+
+    // Changing srEtk to something else is not possible
+    const otherSrEtk = await addEToken(pool, {});
+    newImpl = await PremiumsAccount.deploy(pool.address, jrEtk.address, otherSrEtk.address);
+    await expect(premiumsAccount.connect(guardian).upgradeTo(newImpl.address)).to.be.revertedWith(
+      "Can't upgrade changing the Senior ETK unless to non-zero"
     );
   });
 

@@ -334,6 +334,19 @@ describe("Test pause, unpause and upgrade contracts", function () {
     await premiumsAccount.unpause();
     // Can resolve Policy
     await expect(rm.connect(cust).resolvePolicy(policy, _A(10))).not.to.be.reverted;
+
+    // Pause PremiumsAccount again
+    await premiumsAccount.connect(guardian).pause();
+
+    await grantComponentRole(hre, accessManager, premiumsAccount, "REPAY_LOANS_ROLE", cust);
+    // Can't resolve repayLoans
+    await expect(premiumsAccount.connect(cust).repayLoans()).to.be.revertedWith("Pausable: paused");
+
+    // UnPause PolicyPool
+    await premiumsAccount.unpause();
+
+    // Can repayLoans
+    await expect(premiumsAccount.connect(cust).repayLoans()).not.to.be.reverted;
   });
 
   it("Pause and Unpause EToken trying to create and expire policies", async function () {
