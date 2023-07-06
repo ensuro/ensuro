@@ -115,6 +115,7 @@ describe("Supports interface implementation", function () {
     expect(await etk.supportsInterface(interfaceIds.IERC165)).to.be.true;
     expect(await etk.supportsInterface(interfaceIds.IERC20)).to.be.true;
     expect(await etk.supportsInterface(interfaceIds.IERC20Metadata)).to.be.true;
+    expect(await etk.supportsInterface(interfaceIds.IPolicyPoolComponent)).to.be.true;
     expect(await etk.supportsInterface(interfaceIds.IEToken)).to.be.true;
     expect(await etk.supportsInterface(interfaceIds.IERC721)).to.be.false;
   });
@@ -122,6 +123,7 @@ describe("Supports interface implementation", function () {
   it("Checks PremiumsAccount supported interfaces", async () => {
     const { interfaceIds, premiumsAccount } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
     expect(await premiumsAccount.supportsInterface(interfaceIds.IERC165)).to.be.true;
+    expect(await premiumsAccount.supportsInterface(interfaceIds.IPolicyPoolComponent)).to.be.true;
     expect(await premiumsAccount.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.true;
     expect(await premiumsAccount.supportsInterface(interfaceIds.IERC721)).to.be.false;
   });
@@ -140,6 +142,7 @@ describe("Supports interface implementation", function () {
     const TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
     const rm = await TrustfulRiskModule.deploy(policyPool.address, premiumsAccount.address);
     expect(await rm.supportsInterface(interfaceIds.IERC165)).to.be.true;
+    expect(await rm.supportsInterface(interfaceIds.IPolicyPoolComponent)).to.be.true;
     expect(await rm.supportsInterface(interfaceIds.IRiskModule)).to.be.true;
     expect(await rm.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.false;
   });
