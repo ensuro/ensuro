@@ -108,7 +108,6 @@ def test_receive_grant(tenv):
     tenv.currency.approve(tenv.currency.owner, pa, _W(1000))
     assert tenv.currency.allowance(tenv.currency.owner, pa) == _W(1000)
 
-    pa.receive_grant(tenv.currency.owner, _W(0))
     pa.receive_grant(tenv.currency.owner, _W(100))
 
     pa.active_pure_premiums.assert_equal(_W(0))

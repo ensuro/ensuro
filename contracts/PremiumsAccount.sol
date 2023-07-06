@@ -190,7 +190,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    *   loans to cover asset losses.
    */
   function _assetEarnings(int256 earningsOrLosses) internal override {
-    if (earningsOrLosses > 0) {
+    if (earningsOrLosses >= 0) {
       _storePurePremiumWon(uint256(earningsOrLosses));
     } else {
       require(_payFromPremiums(-earningsOrLosses) == 0, "Losses can't exceed maxDeficit");
@@ -430,7 +430,6 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * @param purePremiumWon The amount earned
    */
   function _storePurePremiumWon(uint256 purePremiumWon) internal {
-    if (purePremiumWon == 0) return;
     _surplus += int256(purePremiumWon);
   }
 
