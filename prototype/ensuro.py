@@ -96,6 +96,32 @@ def only_component_or_global_role(*roles):
     return decorator
 
 
+def only_component_or_global_or_open_role(*roles):
+    def decorator(method):
+        @wraps(method)
+        def inner(self, *args, **kwargs):
+            contract_id = self.contract_id
+            for role in roles:
+                composed_role = f"{role}-{contract_id}"
+                if self.has_role(composed_role, None):
+                    break
+                if self.has_role(role, None):
+                    break
+                if self.has_role(composed_role, self.running_as):
+                    break
+                if self.has_role(role, self.running_as):
+                    break
+            else:
+                raise RevertError(
+                    f"AccessControl: account {self.running_as} is missing role {role}"
+                )
+            return method(self, *args, **kwargs)
+
+        return inner
+
+    return decorator
+
+
 class RiskModule(AccessControlContract):
     policy_pool = ContractProxyField()
     premiums_account = ContractProxyField()
@@ -1050,6 +1076,7 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
         return self.surplus - self._max_deficit()
 
     @external
+    @only_component_or_global_or_open_role("REPAY_LOANS_ROLE")
     def repay_loans(self):
         funds_available = self.funds_available
         if funds_available and self.senior_etk:

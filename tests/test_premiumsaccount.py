@@ -243,6 +243,11 @@ def test_withdraw_won_premiums_with_borrowed_active_pp(tenv):
 
     assert pa.funds_available == policy.pure_premium
     senior_etk.get_loan(pa).assert_equal(senior_loan)
+
+    with pytest.raises(RevertError, match="AccessControl"):
+        pa.repay_loans()
+    # Grant REPAY_LOANS_ROLE to address(0) as global role
+    tenv.pool_access.grant_role("REPAY_LOANS_ROLE", None)
     pa.repay_loans()
     senior_etk.get_loan(pa).assert_equal(senior_loan - policy.pure_premium)
     assert pa.funds_available == _W(0)
@@ -865,6 +870,8 @@ def test_set_deficit_ratio_without_adjustment(tenv):
         pa.policy_created(policy)
     pa.active_pure_premiums.assert_equal(_W(10))
 
+    pa.funds_available.assert_equal(_W(10))
+
     with pytest.raises(RevertError, match="AccessControl"):
         pa.set_deficit_ratio(_W("0.7"), False)
 
@@ -875,6 +882,7 @@ def test_set_deficit_ratio_without_adjustment(tenv):
 
     pa.set_deficit_ratio(_W("0.7"), False)
     pa.deficit_ratio.assert_equal(_W("0.7"))
+    pa.funds_available.assert_equal(_W(7))  # Funds available to repay loans or cover losses decrease
 
     pa.active_pure_premiums.assert_equal(_W(10))
     pa.borrowed_active_pp.assert_equal(_W(0))
@@ -993,6 +1001,29 @@ def test_ratio_adjustment(tenv):
     senior_etk.balance_of("LP1").assert_equal(_W(500))
     junior_etk.get_loan(pa).assert_equal(_W(4))
     senior_etk.get_loan(pa).assert_equal(_W(0))
+    pa.funds_available.assert_equal(_W(0))
+
+    # Loans can be repaid with new business
+    policy_4 = ensuro.Policy(
+        id=4,
+        risk_module=rm,
+        payout=_W(20),
+        premium=_W(10),
+        loss_prob=_W(1 / 2),
+        start=start,
+        expiration=expiration,
+    )
+
+    with pa.thru_policy_pool():
+        pa.policy_created(policy_4)
+
+    pa.funds_available.assert_equal(_W(3))
+    pa.funds_available.assert_equal(_W("0.3") * policy_4.pure_premium)
+
+    with pytest.raises(RevertError, match="AccessControl"):
+        pa.repay_loans()
+    tenv.pool_access.grant_component_role(pa, "REPAY_LOANS_ROLE", None)
+    pa.repay_loans()
 
 
 def test_set_deficit_ratio_and_create_policy(tenv):

@@ -35,6 +35,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   using SafeCast for uint256;
 
   bytes32 public constant WITHDRAW_WON_PREMIUMS_ROLE = keccak256("WITHDRAW_WON_PREMIUMS_ROLE");
+  bytes32 public constant REPAY_LOANS_ROLE = keccak256("REPAY_LOANS_ROLE");
   uint256 internal constant FOUR_DECIMAL_TO_WAD = 1e14;
   uint16 internal constant HUNDRED_PERCENT = 1e4;
 
@@ -91,6 +92,19 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * @param value The amount of money received or given
    */
   event WonPremiumsInOut(bool moneyIn, uint256 value);
+
+  /**
+   * @dev Modifier to make a function callable only by a certain global or component role.
+   * In addition to checking the sender's role, `address(0)` 's role is also
+   * considered. Granting a role to `address(0)` (at global or component level) is equivalent
+   * to enabling this role for everyone.
+   */
+  modifier onlyGlobalOrComponentOrOpenRole(bytes32 role) {
+    if (!_policyPool.access().hasComponentRole(address(this), role, address(0), true)) {
+      _policyPool.access().checkComponentRole(address(this), role, _msgSender(), true);
+    }
+    _;
+  }
 
   /**
    * @dev Constructor of the contract, sets the immutable fields.
@@ -530,7 +544,12 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    *
    * @return available The funds still available after repayment
    */
-  function repayLoans() external whenNotPaused returns (uint256 available) {
+  function repayLoans()
+    external
+    onlyGlobalOrComponentOrOpenRole(REPAY_LOANS_ROLE)
+    whenNotPaused
+    returns (uint256 available)
+  {
     available = fundsAvailable();
     if (available != 0 && address(_seniorEtk) != address(0))
       available = _repayLoan(available, _seniorEtk);

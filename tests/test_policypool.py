@@ -375,6 +375,8 @@ def test_walkthrough(tenv):
     rm = pool.risk_modules["Roulette"]
     premiums_account = rm.premiums_account
 
+    pool.access.grant_component_role(premiums_account, "REPAY_LOANS_ROLE", premiums_account.owner)
+
     with pytest.raises(RevertError, match="transfer amount exceeds allowance|insufficient allowance"):
         pool.deposit("eUSD1YEAR", "LP1", _W(1000))
 
@@ -2423,6 +2425,7 @@ def test_repay_loan(tenv):
     rm = pool.risk_modules["Roulette"]
     pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
     pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
+    pool.access.grant_role("REPAY_LOANS_ROLE", rm.owner)
     pa = rm.premiums_account
 
     USD = pool.currency
@@ -2551,6 +2554,7 @@ def test_loss_propagation_limits(tenv):
     pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
     pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
     pa = rm.premiums_account
+    pool.access.grant_component_role(pa, "REPAY_LOANS_ROLE", pa.owner)
 
     USD = pool.currency
     etkSr = pool.etokens["eUSDSr"]
