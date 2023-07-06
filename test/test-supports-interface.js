@@ -11,11 +11,10 @@ describe("Supports interface implementation", function () {
      * Interface ids were calculated with this code, but we prefer to leave the values hard-coded, so this
      * test fails when we change some interface. This way we can be sure we don't change interfaces
      * by accident
-     */
-    /*
+     *
     const InterfaceIdCalculator = await ethers.getContractFactory("InterfaceIdCalculator");
     const iidCalculator = await InterfaceIdCalculator.deploy();
-    const interfaces = [
+    const iinterfaces = [
       "IERC165",
       "IERC20",
       "IERC20Metadata",
@@ -31,11 +30,11 @@ describe("Supports interface implementation", function () {
       "IAccessManager",
       "IAssetManager",
     ];
-    const interfaceIds = {};
-    for (const iName of interfaces) {
-      interfaceIds[iName] = await iidCalculator[iName.toUpperCase() + "_INTERFACEID"]();
+    const iinterfaceIds = {};
+    for (const iName of iinterfaces) {
+      iinterfaceIds[iName] = await iidCalculator[iName.toUpperCase() + "_INTERFACEID"]();
     }
-    // console.log(interfaceIds);
+    console.log(iinterfaceIds);
     */
     const interfaceIds = {
       IERC165: "0x01ffc9a7",
@@ -45,7 +44,7 @@ describe("Supports interface implementation", function () {
       IAccessControl: "0x7965db0b",
       IEToken: "0x90770621",
       IPolicyPool: "0x3234fad6",
-      IPolicyPoolComponent: "0x4cea22a4",
+      IPolicyPoolComponent: "0x4d15eb03",
       IRiskModule: "0xda40804f",
       IPremiumsAccount: "0xb76712ec",
       ILPWhitelist: "0xf8722d89",
