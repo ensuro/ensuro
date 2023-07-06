@@ -306,8 +306,6 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     external
     onlyGlobalOrComponentRole(LEVEL2_ROLE)
   {
-    require(newRatio <= 1e18, "Validation: deficitRatio must be <= 1");
-
     uint16 truncatedRatio = (newRatio / FOUR_DECIMAL_TO_WAD).toUint16();
     require(
       uint256(truncatedRatio) * FOUR_DECIMAL_TO_WAD == newRatio,
@@ -316,6 +314,8 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
 
     int256 maxDeficit = _maxDeficit(newRatio);
     require(adjustment || _surplus >= maxDeficit, "Validation: surplus must be >= maxDeficit");
+    _params.deficitRatio = truncatedRatio;
+    _validateParameters();
 
     IAccessManager.GovernanceActions action = IAccessManager.GovernanceActions.setDeficitRatio;
     if (_surplus < maxDeficit) {
@@ -325,7 +325,6 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
       _borrowFromEtk(borrow, address(this), address(_juniorEtk) != address(0));
       action = IAccessManager.GovernanceActions.setDeficitRatioWithAdjustment;
     }
-    _params.deficitRatio = truncatedRatio;
     _parameterChanged(action, newRatio, false);
   }
 
@@ -373,7 +372,6 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     address receiver,
     bool jrEtk
   ) internal {
-    require(receiver != address(0), "PremiumsAccount: receiver cannot be the zero address");
     uint256 left = borrow;
     if (jrEtk) {
       if (_juniorEtk.getLoan(address(this)) + borrow <= jrLoanLimit()) {

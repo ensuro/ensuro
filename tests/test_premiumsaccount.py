@@ -108,6 +108,7 @@ def test_receive_grant(tenv):
     tenv.currency.approve(tenv.currency.owner, pa, _W(1000))
     assert tenv.currency.allowance(tenv.currency.owner, pa) == _W(1000)
 
+    pa.receive_grant(tenv.currency.owner, _W(0))
     pa.receive_grant(tenv.currency.owner, _W(100))
 
     pa.active_pure_premiums.assert_equal(_W(0))
@@ -181,6 +182,10 @@ def test_withdraw_won_premiums_with_borrowed_active_pp(tenv):
         expiration=expiration,
     )
 
+    if tenv.kind == "ethereum":
+        with pytest.raises(RevertError, match="The caller must be the PolicyPool"):
+            pa.policy_created(policy)
+
     with pa.thru_policy_pool():
         pa.policy_created(policy)
     pa.active_pure_premiums.assert_equal(policy.payout * policy.loss_prob * rm.moc)
@@ -200,6 +205,10 @@ def test_withdraw_won_premiums_with_borrowed_active_pp(tenv):
     tenv.currency.approve(tenv.currency.owner, pa, _W(100))
     assert tenv.currency.allowance(tenv.currency.owner, pa) == _W(100)
 
+    if tenv.kind == "ethereum":
+        with pytest.raises(RevertError, match="The caller must be the PolicyPool"):
+            pa.policy_resolved_with_payout(tenv.currency.owner, policy_2, _W(12))
+
     with pa.thru_policy_pool():
         pa.policy_resolved_with_payout(tenv.currency.owner, policy_2, _W(12))
 
@@ -211,7 +220,12 @@ def test_withdraw_won_premiums_with_borrowed_active_pp(tenv):
     pa.won_pure_premiums.assert_equal(_W(0))
 
     tenv.currency.allowance(pa, senior_etk).assert_equal(_W(0))
+
     # Expire policy
+    if tenv.kind == "ethereum":
+        with pytest.raises(RevertError, match="The caller must be the PolicyPool"):
+            pa.policy_expired(policy)
+
     with pa.thru_policy_pool():
         pa.policy_expired(policy)
 
@@ -964,6 +978,10 @@ def test_ratio_adjustment(tenv):
     junior_etk.get_loan(pa).assert_equal(_W(0))
     senior_etk.get_loan(pa).assert_equal(_W(0))
 
+    with pytest.raises(RevertError, match="Validation: surplus must be >= maxDeficit"):
+        pa.set_deficit_ratio(_W("0.3"), False)
+
+    pa.set_deficit_ratio(_W("0.3"), True)
     pa.set_deficit_ratio(_W("0.3"), True)
     pa.deficit_ratio.assert_equal(_W("0.3"))
 
