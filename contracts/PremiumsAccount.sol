@@ -177,12 +177,9 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    */
   function _assetEarnings(int256 earningsOrLosses) internal override {
     if (earningsOrLosses > 0) {
-      uint256 earnings = uint256(earningsOrLosses);
-      if (address(_seniorEtk) != address(0)) earnings = _repayLoan(earnings, _seniorEtk);
-      if (address(_juniorEtk) != address(0)) earnings = _repayLoan(earnings, _juniorEtk);
-      _storePurePremiumWon(earnings);
+      _storePurePremiumWon(uint256(earningsOrLosses));
     } else {
-      require(_payFromPremiums(uint256(-earningsOrLosses)) == 0, "Losses can't exceed maxDeficit");
+      require(_payFromPremiums(-earningsOrLosses) == 0, "Losses can't exceed maxDeficit");
     }
   }
 
@@ -228,6 +225,14 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    */
   function surplus() external view returns (int256) {
     return _surplus;
+  }
+
+  /**
+   * @dev Returns the amount of funds available to cover losses or repay eToken loans.
+   */
+  function fundsAvailable() public view returns (uint256) {
+    // This is guaranteed to be positive because _maxDeficit is negative and always gte _surplus in absolute value
+    return uint256(_surplus - _maxDeficit(deficitRatio()));
   }
 
   function seniorEtk() external view override returns (IEToken) {
@@ -395,8 +400,8 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * @param toPay The amount to pay.
    * @return The amount that couldn't be paid from the premiums account.
    */
-  function _payFromPremiums(uint256 toPay) internal returns (uint256) {
-    int256 newSurplus = _surplus - int256(toPay);
+  function _payFromPremiums(int256 toPay) internal returns (uint256) {
+    int256 newSurplus = _surplus - toPay;
     int256 maxDeficit = _maxDeficit(deficitRatio());
     if (newSurplus >= maxDeficit) {
       _surplus = newSurplus;
@@ -432,15 +437,8 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * @param amount The amount to be transferred.
    */
   function receiveGrant(uint256 amount) external {
-    // I need to receive the money first (without following the Check-Effects-Interactions) pattern because I need
-    // the money to pay the eTokens
+    _storePurePremiumWon(amount);
     currency().safeTransferFrom(_msgSender(), address(this), amount);
-    uint256 purePremiumWon = amount;
-    if (address(_seniorEtk) != address(0)) purePremiumWon = _repayLoan(purePremiumWon, _seniorEtk);
-    if (address(_juniorEtk) != address(0)) purePremiumWon = _repayLoan(purePremiumWon, _juniorEtk);
-
-    // Finally store purePremiumWon
-    _storePurePremiumWon(purePremiumWon);
     emit WonPremiumsInOut(true, amount);
   }
 
@@ -497,23 +495,14 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     uint256 payout
   ) external override onlyPolicyPool whenNotPaused {
     _activePurePremiums -= policy.purePremium;
-    if (policy.purePremium >= payout) {
-      uint256 purePremiumWon = policy.purePremium - payout;
-      if (address(_seniorEtk) != address(0))
-        purePremiumWon = _repayLoan(purePremiumWon, _seniorEtk);
-      if (address(_juniorEtk) != address(0))
-        purePremiumWon = _repayLoan(purePremiumWon, _juniorEtk);
-      _storePurePremiumWon(purePremiumWon);
+    uint256 borrowFromScr = _payFromPremiums(int256(payout) - int256(policy.purePremium));
+    if (borrowFromScr != 0) {
       _unlockScr(policy);
-      _transferTo(policyHolder, payout);
+      _borrowFromEtk(borrowFromScr, policyHolder, policy.jrScr > 0);
     } else {
-      uint256 borrowFromScr = _payFromPremiums(payout - policy.purePremium);
       _unlockScr(policy);
-      if (borrowFromScr > 0) {
-        _borrowFromEtk(borrowFromScr, policyHolder, policy.jrScr > 0);
-      }
-      _transferTo(policyHolder, payout - borrowFromScr);
     }
+    _transferTo(policyHolder, payout - borrowFromScr);
   }
 
   /**
@@ -539,17 +528,31 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   }
 
   /**
+   * @dev Function that repays the loan(s) if fundsAvailable
+   *
+   * @return available The funds still available after repayment
+   */
+  function repayLoans() external whenNotPaused returns (uint256 available) {
+    available = fundsAvailable();
+    if (available != 0 && address(_seniorEtk) != address(0))
+      available = _repayLoan(available, _seniorEtk);
+    if (available != 0 && address(_juniorEtk) != address(0))
+      available = _repayLoan(available, _juniorEtk);
+    return available;
+  }
+
+  /**
    * @dev Internal function that repays a loan taken (if any outstanding) from the an eToken
    *
-   * @param purePremiumWon The amount earned and available for loan repayment.
+   * @param fundsAvailable_ The amount of funds available for the repayment
    * @param etk The eToken with the potential debt
    * @return The excess amount of the purePremiumWon that wasn't used for the loan repayment.
    */
-  function _repayLoan(uint256 purePremiumWon, IEToken etk) internal returns (uint256) {
-    if (purePremiumWon < NEGLIGIBLE_AMOUNT) return purePremiumWon;
+  function _repayLoan(uint256 fundsAvailable_, IEToken etk) internal returns (uint256) {
     uint256 borrowedFromEtk = etk.getLoan(address(this));
-    if (borrowedFromEtk == 0) return purePremiumWon;
-    uint256 repayAmount = Math.min(purePremiumWon, borrowedFromEtk);
+    if (borrowedFromEtk == 0) return fundsAvailable_;
+    uint256 repayAmount = Math.min(fundsAvailable_, borrowedFromEtk);
+    _surplus -= int256(repayAmount);
 
     // If not enough liquidity, it deinvests from the asset manager
     if (currency().balanceOf(address(this)) < repayAmount) {
@@ -567,7 +570,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
       currency().approve(address(etk), borrowedFromEtk);
     }
     etk.repayLoan(repayAmount, address(this));
-    return purePremiumWon - repayAmount;
+    return fundsAvailable_ - repayAmount;
   }
 
   function policyExpired(Policy.PolicyData memory policy)
@@ -576,22 +579,8 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     onlyPolicyPool
     whenNotPaused
   {
-    uint256 purePremiumWon = policy.purePremium;
-    _activePurePremiums -= purePremiumWon;
-
-    // If negative _activePurePremiums, repay this first (shouldn't happen)
-    int256 maxDeficit = _maxDeficit(deficitRatio());
-    if (_surplus < maxDeficit) {
-      // Covers the excess of deficit first
-      purePremiumWon -= uint256(-_surplus + maxDeficit);
-      _surplus = maxDeficit;
-    }
-
-    if (address(_seniorEtk) != address(0)) purePremiumWon = _repayLoan(purePremiumWon, _seniorEtk);
-    if (address(_juniorEtk) != address(0)) purePremiumWon = _repayLoan(purePremiumWon, _juniorEtk);
-
-    // Finally store purePremiumWon
-    _storePurePremiumWon(purePremiumWon);
+    _activePurePremiums -= policy.purePremium;
+    _storePurePremiumWon(policy.purePremium);
     _unlockScr(policy);
   }
 

@@ -550,6 +550,7 @@ def test_walkthrough(tenv):
     ).round(6)  # too much precision
 
     for day in range(65):
+        funds_available = premiums_account.funds_available
         pool_loan = eUSD1YEAR.get_loan(premiums_account)
         new_p = rm.new_policy(
             payout=_W(72), premium=_W(2),
@@ -557,22 +558,25 @@ def test_walkthrough(tenv):
             on_behalf_of="CUST3",
             internal_id=1000 + day
         )
+        funds_available += new_p.pure_premium
         customer_won = day % 37 == 36
         for p in list(policies):
             if p.expiration > (timecontrol.now + DAY):
                 break
             if customer_won:
+                pool_loan += max(p.payout - funds_available, _W(0))
+                funds_available = max(funds_available - p.payout, _W(0))
                 won_count += 1
-                if p.payout < premiums_account.pure_premiums:
-                    change = _W(0)
-                else:
-                    change = (premiums_account.pure_premiums - p.payout)
-            else:
-                change = min(pool_loan, p.pure_premium)
+            # else: funds_available doesn't change on expiration (if deficit_ratio=1) because
+            # surplus increases in the same amount as active_pure_premiums decreases
             rm.resolve_policy(p.id, customer_won)
+            premiums_account.funds_available.assert_equal(funds_available)
             policies.pop(0)
 
-            assert eUSD1YEAR.get_loan(premiums_account).equal(pool_loan - change)
+            change = min(pool_loan, funds_available)
+            premiums_account.repay_loans()
+
+            eUSD1YEAR.get_loan(premiums_account).assert_equal(pool_loan - change)
             pool_loan = eUSD1YEAR.get_loan(premiums_account)
 
         timecontrol.fast_forward(DAY)
@@ -604,7 +608,7 @@ def test_walkthrough(tenv):
 
     assert eUSD1YEAR.get_loan(premiums_account) == _W(0)
     premiums_account.pure_premiums.assert_equal(
-        _W("21.296283705442503107"), decimals=2
+        _W("21.315047620842662122"), decimals=2
     )  # from jypiter prints
 
     USD.balance_of(eUSD1YEAR).assert_equal(
@@ -618,10 +622,10 @@ def test_walkthrough(tenv):
         _W("1005.638186186546873425"), decimals=2
     )
     pool.withdraw("eUSD1YEAR", "LP3", None).assert_equal(
-        _W("2011.266018358631673932"), decimals=2
+        _W("2011.253509103164142865"), decimals=2
     )
     USD.balance_of(premiums_account.contract_id).assert_equal(
-        _W("21.296283705442503146"), decimals=2
+        _W("21.315047620842662122"), decimals=2
     )
 
     USD.balance_of(pool.contract_id).assert_equal(_W(0))
@@ -630,7 +634,7 @@ def test_walkthrough(tenv):
         _W("1005.638186186546873425"), decimals=2
     )
     USD.balance_of("LP3").assert_equal(
-        _W("2011.266018358631673932"), decimals=2
+        _W("2011.253509103164142865"), decimals=2
     )
     USD.balance_of("CUST3").assert_equal(_W(72))
 
@@ -2488,6 +2492,8 @@ def test_repay_loan(tenv):
     USD.balance_of(pa).assert_equal(_W(100))
 
     rm.resolve_policy(policy_2.id, _W(0))
+    pa.pure_premiums.assert_equal(policy_2.pure_premium)
+    pa.repay_loans()
     pa.pure_premiums.assert_equal(_W(0))
     USD.balance_of(pa).assert_equal(_W(0))
     etk.get_loan(pa).assert_equal(_W(150))
@@ -2613,6 +2619,7 @@ def test_loss_propagation_limits(tenv):
 
     # Expire 5th Policy - Sr Loan = 400 - 20 - 20 = 360
     pool.expire_policy(policies[4].id)
+    pa.repay_loans()
     assert pa.pure_premiums == _W(0)
     etkJr.get_loan(pa).assert_equal(jrLoan)  # Unchanged
     etkSr.get_loan(pa).assert_equal(srLoan - _W(20))  # 20 of debt paid, to the senior first
@@ -2622,5 +2629,6 @@ def test_loss_propagation_limits(tenv):
     USD.approve("CHARITY", pa, _W(600))
     pa.receive_grant("CHARITY", _W(600))
 
+    pa.repay_loans()
     etkSr.get_loan(pa).assert_equal(_W(0))
     etkJr.get_loan(pa).assert_equal(jrLoan - (_W(600) - srLoan))

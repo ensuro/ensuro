@@ -879,6 +879,7 @@ class PremiumsAccount(ReserveMixin, ETHWrapper):
     junior_etk = MethodAdapter((), "address", is_property=True)
     senior_etk = MethodAdapter((), "address", is_property=True)
     pure_premiums = MethodAdapter((), "amount", is_property=True)
+    funds_available = MethodAdapter((), "amount", is_property=True)
     surplus = MethodAdapter((), "amount", is_property=True)
     won_pure_premiums = MethodAdapter((), "amount", is_property=True)
     active_pure_premiums = MethodAdapter((), "amount", is_property=True)
@@ -911,17 +912,7 @@ class PremiumsAccount(ReserveMixin, ETHWrapper):
             return Wad(0)
 
     receive_grant = MethodAdapter((("sender", "msg.sender"), ("amount", "amount")))
-    repay_etoken_loan_ = MethodAdapter(
-        (("etoken", "contract"),), eth_method="repayETokenLoan"
-    )
-
-    def repay_etoken_loan(self, etoken_name):
-        etoken = self.etokens[etoken_name]
-        receipt = self.repay_etoken_loan_(etoken)
-        if "InternalLoanRepaid" in receipt.events:
-            return Wad(receipt.events["InternalLoanRepaid"]["value"])
-        else:
-            return Wad(0)
+    repay_loans = MethodAdapter(())
 
     def policy_created(self, policy):
         p = Policy.from_prototype_policy(policy, self.provider.address_book)

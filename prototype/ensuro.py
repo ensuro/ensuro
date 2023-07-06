@@ -979,10 +979,6 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
 
     def asset_earnings(self, amount):
         if amount >= 0:
-            if self.senior_etk:
-                amount = self._repay_loan(amount, self.senior_etk)
-            if self.junior_etk:
-                amount = self._repay_loan(amount, self.junior_etk)
             self._store_pure_premium_won(amount)
         else:
             left = self._pay_from_premiums(-amount)
@@ -991,12 +987,7 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
     @external
     def receive_grant(self, sender, amount):
         self.currency.transfer_from(self.contract_id, sender, self.contract_id, amount)
-        pure_premium_won = amount
-        if self.senior_etk:
-            pure_premium_won = self._repay_loan(pure_premium_won, self.senior_etk)
-        if self.junior_etk:
-            pure_premium_won = self._repay_loan(pure_premium_won, self.junior_etk)
-        self._store_pure_premium_won(pure_premium_won)
+        self._store_pure_premium_won(amount)
 
     @external
     @only_component_role("WITHDRAW_WON_PREMIUMS_ROLE")
@@ -1041,14 +1032,31 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
                 "Don't know where to source the rest of the money",
             )
 
+    def _max_deficit(self):
+        return -self.active_pure_premiums * self.deficit_ratio
+
     def _pay_from_premiums(self, to_pay):
         s = self.surplus - to_pay
-        max_deficit = -self.active_pure_premiums * self.deficit_ratio
+        max_deficit = self._max_deficit()
         if s >= max_deficit:
             self.surplus = s
             return Wad(0)
         self.surplus = max_deficit
         return -s + max_deficit
+
+    @property
+    @view
+    def funds_available(self):
+        return self.surplus - self._max_deficit()
+
+    @external
+    def repay_loans(self):
+        funds_available = self.funds_available
+        if funds_available and self.senior_etk:
+            funds_available = self._repay_loan(funds_available, self.senior_etk)
+        if self.junior_etk:
+            funds_available = self._repay_loan(funds_available, self.junior_etk)
+        return funds_available
 
     @external
     def policy_created(self, policy):
@@ -1063,32 +1071,24 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
     @external
     def policy_resolved_with_payout(self, customer, policy, payout):
         self.active_pure_premiums -= policy.pure_premium
+        borrow_from_scr = self._pay_from_premiums(payout - policy.pure_premium)
 
-        borrow_from_scr = Wad(0)
-        if policy.pure_premium >= payout:
-            pure_premium_won = policy.pure_premium - payout
-            if self.senior_etk:
-                pure_premium_won = self._repay_loan(pure_premium_won, self.senior_etk)
-            if self.junior_etk:
-                pure_premium_won = self._repay_loan(pure_premium_won, self.junior_etk)
-            self._store_pure_premium_won(pure_premium_won)
+        if borrow_from_scr:
             self._unlock_scr(policy)
+            self._borrow_from_etk(borrow_from_scr, customer, policy.jr_scr > Wad(0))
         else:
-            borrow_from_scr = self._pay_from_premiums(payout - policy.pure_premium)
             self._unlock_scr(policy)
-            if borrow_from_scr > 0:
-                self._borrow_from_etk(borrow_from_scr, customer, policy.jr_scr > Wad(0))
 
         self._transfer_to(customer, payout - borrow_from_scr)
         return borrow_from_scr
 
-    def _repay_loan(self, pure_premium_won, etk):
-        if pure_premium_won < self.NEGLIGIBLE_AMOUNT:
-            return pure_premium_won
+    def _repay_loan(self, funds_available, etk):
+        if funds_available < self.NEGLIGIBLE_AMOUNT:
+            return funds_available
         borrowed_from_etk = etk.get_loan(self)
         if not borrowed_from_etk:
-            return pure_premium_won
-        repay_amount = min(borrowed_from_etk, pure_premium_won)
+            return funds_available
+        repay_amount = min(borrowed_from_etk, funds_available)
 
         # If not enough liquidity, it deinvests from the asset manager
         if self.currency.balance_of(self) < repay_amount:
@@ -1098,24 +1098,14 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
             self.currency.approve(self, etk.contract_id, borrowed_from_etk)
 
         etk.repay_loan(self, repay_amount, self)
-        return pure_premium_won - repay_amount
+        self.surplus -= repay_amount
+        assert self.surplus >= self._max_deficit(), "Error, this shouldn't happen"
+        return funds_available - repay_amount
 
     @external
     def policy_expired(self, policy):
         self.active_pure_premiums -= policy.pure_premium
-        # Pay Ensuro and RM
-        pure_premium_won = policy.pure_premium
-        max_deficit = -self.active_pure_premiums * self.deficit_ratio
-        if self.surplus < max_deficit:
-            pure_premium_won -= -self.surplus + max_deficit
-            self.surplus = max_deficit
-
-        if self.senior_etk:
-            pure_premium_won = self._repay_loan(pure_premium_won, self.senior_etk)
-        if self.junior_etk:
-            pure_premium_won = self._repay_loan(pure_premium_won, self.junior_etk)
-
-        self._store_pure_premium_won(pure_premium_won)
+        self._store_pure_premium_won(policy.pure_premium)
         self._unlock_scr(policy)
 
     def _unlock_scr(self, policy):

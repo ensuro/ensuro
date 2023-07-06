@@ -227,12 +227,18 @@ def test_withdraw_won_premiums_with_borrowed_active_pp(tenv):
     with pa.thru_policy_pool():
         pa.policy_expired(policy)
 
-    # Check repayment made
+    assert pa.funds_available == policy.pure_premium
+    senior_etk.get_loan(pa).assert_equal(senior_loan)
+    pa.repay_loans()
     senior_etk.get_loan(pa).assert_equal(senior_loan - policy.pure_premium)
+    assert pa.funds_available == _W(0)
+
     tenv.currency.allowance(pa, senior_etk).assert_equal(senior_loan - policy.pure_premium)
     senior_loan = senior_etk.get_loan(pa)
 
     pa.receive_grant(tenv.currency.owner, _W(100))
+    assert pa.funds_available == _W(100)
+    pa.repay_loans()
     pa.won_pure_premiums.assert_equal(_W(100) - senior_loan)
 
     senior_etk.get_loan(pa).assert_equal(_W(0))
@@ -664,6 +670,71 @@ def test_pay_from_premium(tenv):
     # with pytest.raises(RevertError, match="ERC20: transfer amount exceeds balance"):
     with pa.thru_policy_pool():
         pa.policy_resolved_with_payout(tenv.currency.owner, policy, _W(20))
+
+
+def test_payout_equal_pure_premium(tenv):
+    senior_etk = tenv.etk(name="eUSD1YEAR", symbol="ETK1")
+    pa = tenv.pa_class(senior_etk=senior_etk)
+    start = tenv.time_control.now
+    expiration = tenv.time_control.now + WEEK
+
+    tenv.currency.transfer(tenv.currency.owner, senior_etk, _W(1000))
+    with senior_etk.thru_policy_pool():
+        assert senior_etk.deposit("LP1", _W(1000)) == _W(1000)
+        senior_etk.add_borrower(pa)
+
+    rm = RiskModule(
+        premiums_account="dummy",
+        name="Roulette",
+        policy_pool="dummy",
+        coll_ratio=_W("1"),
+    )
+
+    policy = ensuro.Policy(
+        id=1,
+        risk_module=rm,
+        payout=_W(20),
+        premium=_W(12),
+        loss_prob=_W(1 / 2),
+        start=start,
+        expiration=expiration,
+    )
+
+    with pa.thru_policy_pool():
+        pa.policy_created(policy)
+    pa.active_pure_premiums.assert_equal(_W(10))
+
+    policy_2 = ensuro.Policy(
+        id=2,
+        risk_module=rm,
+        payout=_W(20),
+        premium=_W(12),
+        loss_prob=_W(1 / 2),
+        start=start,
+        expiration=expiration,
+    )
+
+    with pa.thru_policy_pool():
+        pa.policy_created(policy_2)
+
+    pa.active_pure_premiums.assert_equal(_W(20))
+    pa.borrowed_active_pp.assert_equal(_W(0))
+    pa.won_pure_premiums.assert_equal(_W(0))
+
+    # Replicate premium transfers
+    tenv.currency.transfer(tenv.currency.owner, pa, policy.pure_premium + policy_2.pure_premium)
+    tenv.currency.transfer(tenv.currency.owner, senior_etk, policy.sr_coc + policy_2.sr_coc)
+
+    # Resolve 1st policy
+    with pa.thru_policy_pool():
+        pa.policy_resolved_with_payout(tenv.currency.owner, policy_2, _W(20))
+
+    pa.active_pure_premiums.assert_equal(_W(10))
+    pa.borrowed_active_pp.assert_equal(_W(10))
+    pa.won_pure_premiums.assert_equal(_W(0))
+
+    with pa.thru_policy_pool():
+        pa.policy_resolved_with_payout(tenv.currency.owner, policy, _W(10))
 
 
 def test_set_loan_limits(tenv):
