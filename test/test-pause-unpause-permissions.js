@@ -338,6 +338,7 @@ describe("Test pause, unpause and upgrade contracts", function () {
     // Pause PremiumsAccount again
     await premiumsAccount.connect(guardian).pause();
 
+    await grantComponentRole(hre, accessManager, premiumsAccount, "REPAY_LOANS_ROLE", cust);
     // Can't resolve repayLoans
     await expect(premiumsAccount.connect(cust).repayLoans()).to.be.revertedWith("Pausable: paused");
 
