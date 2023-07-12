@@ -6,5 +6,6 @@ compiler:
       runs: 200
     remappings:
       - "@openzeppelin=node_modules/@openzeppelin"
+      - "hardhat=node_modules/hardhat"
 networks:
   default: hardhat

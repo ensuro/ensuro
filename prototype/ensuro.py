@@ -1408,7 +1408,8 @@ class FixedRateVault(ERC20Token):
             self.asset.mint(self.contract_id, assets - balance)
         require(caller == owner, "Only owner can withdraw for now")  # TODO: allowance
         self.burn(owner, shares)
-        self.asset.transfer(self, receiver, assets)
+        if assets:
+            self.asset.transfer(self, receiver, assets)
 
     @external
     def discrete_earning(self, assets):
