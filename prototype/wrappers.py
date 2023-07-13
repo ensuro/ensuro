@@ -83,7 +83,7 @@ class ReserveMixin:
     forward_to_asset_manager_ = MethodAdapter((("functionCall", "bytes"),))
 
     set_asset_manager = MethodAdapter((("assetManager", "address"), ("force", "bool")))
-    asset_manager = MethodAdapter((), is_property=True)
+    asset_manager = MethodAdapter((), "address", is_property=True)
     checkpoint = MethodAdapter(())
     record_earnings = MethodAdapter(())
     rebalance = MethodAdapter(())

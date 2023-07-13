@@ -687,9 +687,16 @@ def test_etk_asset_manager_without_movements(tenv):
     with etk.as_("ADMIN"):
         etk.set_asset_manager(asset_manager, False)
 
+    if tenv.kind == "prototype":
+        assert etk.asset_manager == asset_manager.contract_id
+    else:
+        assert etk.asset_manager == asset_manager.contract.address
+
     # Unset asset manager
     with etk.as_("ADMIN"):
         etk.set_asset_manager(None, False)
+
+    assert etk.asset_manager is None or etk.asset_manager == "0x0000000000000000000000000000000000000000"
 
 
 @skip_if_coverage_activated

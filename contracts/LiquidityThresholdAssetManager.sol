@@ -71,6 +71,13 @@ abstract contract LiquidityThresholdAssetManager is IAssetManager {
       IPolicyPoolComponent(address(this)).policyPool().currency() == _asset,
       "Asset mismatch"
     );
+    DiamondStorage storage ds = diamondStorage();
+    // When connecting I make sure the storage is clean, to avoid reusing data from previous AM that left
+    // the data in a wrong state.
+    ds.liquidityMin = 0;
+    ds.liquidityMiddle = 0;
+    ds.liquidityMax = 0;
+    ds.lastInvestmentValue = 0;
   }
 
   function recordEarnings() external virtual override returns (int256) {
