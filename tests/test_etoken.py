@@ -606,6 +606,100 @@ def test_etk_asset_manager(tenv):
 
 
 @skip_if_coverage_activated
+def test_etk_change_asset_manager(tenv):
+    etk = tenv.etoken_class(name="eUSD1WEEK")
+
+    # Initial setup
+    tenv.currency.transfer(tenv.currency.owner, etk, _W(3000))
+    with etk.thru_policy_pool():
+        etk.deposit("LP1", _W(1000))
+        etk.deposit("LP2", _W(2000))
+    assert etk.total_supply() == _W(3000)
+    assert etk.get_current_scale(True) == _R(1)
+    assert etk.get_current_scale(False) == _R(1)
+    tenv.currency.balance_of(etk).assert_equal(_W(3000))
+
+    # Create vault
+    vault = tenv.module.FixedRateVault(asset=tenv.currency)
+    asset_manager = tenv.module.ERC4626AssetManager(
+        vault=vault, reserve=etk,
+    )
+
+    tenv.pool_access.grant_role("LEVEL1_ROLE", "ADMIN")
+
+    # Set asset manager
+    with etk.as_("ADMIN"):
+        etk.set_asset_manager(asset_manager, False)
+
+    tenv.pool_access.grant_component_role(etk, "LEVEL2_ROLE", "ADMIN")
+
+    with etk.as_("ADMIN"):
+        etk.forward_to_asset_manager("set_liquidity_thresholds", _W(100), _W(160), _W(200))
+
+    # Rebalance
+    vault.total_assets().assert_equal(_W(0))
+    # After checkpoint the cash should be rebalanced
+    etk.rebalance()
+    vault.total_assets().assert_equal(_W(2840))
+    tenv.currency.balance_of(etk).assert_equal(_W(160))
+
+    etk.record_earnings()
+    etk.total_supply().assert_equal(_W(3000))  # Nothing earned yet
+
+    vault_2 = tenv.module.FixedRateVault(asset=tenv.currency)
+    asset_manager_2 = tenv.module.ERC4626AssetManager(
+        vault=vault_2, reserve=etk,
+    )
+
+    with etk.as_("ADMIN"):
+        etk.set_asset_manager(asset_manager_2, False)
+
+    if tenv.kind == "prototype":
+        assert etk.asset_manager == asset_manager_2.contract_id
+    else:
+        assert etk.asset_manager == asset_manager_2.contract.address
+
+    with etk.as_("ADMIN"):
+        etk.forward_to_asset_manager("set_liquidity_thresholds", _W(100), _W(160), _W(200))
+
+    vault.total_assets().assert_equal(_W(0))  # All deinvested
+    tenv.currency.balance_of(etk).assert_equal(_W(3000))
+    etk.rebalance()
+
+    etk.record_earnings()
+    tenv.currency.balance_of(etk).assert_equal(_W(160))
+    etk.total_supply().assert_equal(_W(3000))  # Nothing earned yet
+
+
+@skip_if_coverage_activated
+def test_etk_asset_manager_without_movements(tenv):
+    etk = tenv.etoken_class(name="eUSD1WEEK")
+
+    # Create vault
+    vault = tenv.module.FixedRateVault(asset=tenv.currency)
+    asset_manager = tenv.module.ERC4626AssetManager(
+        vault=vault, reserve=etk,
+    )
+
+    tenv.pool_access.grant_role("LEVEL1_ROLE", "ADMIN")
+
+    # Set asset manager
+    with etk.as_("ADMIN"):
+        etk.set_asset_manager(asset_manager, False)
+
+    if tenv.kind == "prototype":
+        assert etk.asset_manager == asset_manager.contract_id
+    else:
+        assert etk.asset_manager == asset_manager.contract.address
+
+    # Unset asset manager
+    with etk.as_("ADMIN"):
+        etk.set_asset_manager(None, False)
+
+    assert etk.asset_manager is None or etk.asset_manager == "0x0000000000000000000000000000000000000000"
+
+
+@skip_if_coverage_activated
 def test_etk_asset_manager_liquidity_under_minimum(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK")
 

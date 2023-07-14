@@ -38,6 +38,11 @@ interface IAssetManager is IERC165 {
 
   /**
    * @dev Function called when an asset manager is plugged into a reserve. Useful for initialization tasks
+   *
+   * Since the asset manager for a reserve can be changed and they use the stoage of the reserve contract, you
+   * can't assume the storage starts clean (all zeros). This is because a previous AM, using the same hash for the
+   * diamondStorage might have left some data. So, in the connect method you should initialize the state setting to
+   * zero what's expected to be zero.
    */
   function connect() external;
 

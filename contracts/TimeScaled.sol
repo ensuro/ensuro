@@ -116,6 +116,10 @@ library TimeScaled {
     int256 amount,
     uint256 interestRate
   ) internal {
+    if (scaledAmount.amount == 0) {
+      add(scaledAmount, uint256(amount), interestRate);
+      return;
+    }
     updateScale(scaledAmount, interestRate);
     uint256 newScaledAmount = uint256(int256(getScaledAmount(scaledAmount, interestRate)) + amount);
     scaledAmount.scale = newScaledAmount

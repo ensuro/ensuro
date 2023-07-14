@@ -43,7 +43,7 @@ contract ERC4626AssetManager is LiquidityThresholdAssetManager {
     DiamondStorage storage ds = diamondStorage();
     uint256 assets = _vault.redeem(_vault.balanceOf(address(this)), address(this), address(this));
     earnings = int256(assets) - int256(uint256(ds.lastInvestmentValue));
-    ds.lastInvestmentValue = assets.toUint128();
+    ds.lastInvestmentValue = 0;
     emit MoneyDeinvested(assets);
     emit EarningsRecorded(earnings);
     return earnings;

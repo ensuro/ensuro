@@ -152,6 +152,11 @@ abstract contract Reserve is PolicyPoolComponent {
         } else {
           _assetEarnings(abi.decode(result, (int256)));
         }
+        /**
+         * WARNING: if you are doing a forced replacement of the AM and you want the new AM
+         * to inherit the storage (just fixing the code), make sure the code of the new AM doesn't clean
+         * the storage in the connect() method (as it is the recommended practice in normal changes of AM).
+         */
       } else {
         bytes memory result = am.functionDelegateCall(
           abi.encodeWithSelector(IAssetManager.deinvestAll.selector)
