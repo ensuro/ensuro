@@ -11,20 +11,103 @@ const {
   getTransactionEvent,
   accessControlMessage,
   makeSignedQuote,
-  makeQuoteMessage,
+  makeBucketQuoteMessage,
 } = require("./test-utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
-["SignedQuoteRiskModule", "TieredSignedQuoteRiskModule"].forEach((contractName) => {
-  describe(`${contractName} contract tests`, function () {
-    let _A;
+const _A = amountFunction(6);
+
+async function defaultPolicyParams({ rmAddress, payout, premium, lossProb, expiration, policyData, validUntil }) {
+  const now = await helpers.time.latest();
+  return {
+    rmAddress,
+    payout: payout || _A(1000),
+    premium: premium || ethers.constants.MaxUint256,
+    lossProb: lossProb || _W(0.1),
+    expiration: expiration || now + 3600 * 24 * 30,
+    policyData: policyData || "0xb494869573b0a0ce9caac5394e1d0d255d146ec7e2d30d643a4e1d78980f3235",
+    validUntil: validUntil || now + 3600 * 24 * 30,
+  };
+}
+
+async function defaultPolicyParamsWithBucket(opts) {
+  const ret = await defaultPolicyParams(opts);
+  return {
+    bucketId: opts.bucketId || 0,
+    ...ret,
+  };
+}
+
+async function makeBucketSignedQuote(signer, policyParams) {
+  return await makeSignedQuote(signer, policyParams, makeBucketQuoteMessage);
+}
+
+function newPolicy(rm, sender, policyParams, onBehalfOf, signature, method) {
+  if (sender !== undefined) rm = rm.connect(sender);
+  return rm[method || "newPolicy"](
+    policyParams.payout,
+    policyParams.premium,
+    policyParams.lossProb,
+    policyParams.expiration,
+    onBehalfOf.address,
+    policyParams.policyData,
+    signature.r,
+    signature._vs,
+    policyParams.validUntil
+  );
+}
+
+function newPolicyWithBucket(rm, sender, policyParams, onBehalfOf, signature, method) {
+  if (sender !== undefined) rm = rm.connect(sender);
+  return rm[method || "newPolicy"](
+    policyParams.payout,
+    policyParams.premium,
+    policyParams.lossProb,
+    policyParams.expiration,
+    onBehalfOf.address,
+    policyParams.policyData,
+    policyParams.bucketId,
+    signature.r,
+    signature._vs,
+    policyParams.validUntil
+  );
+}
+
+function resolvePolicyFullPayout(rm, policy, customerWon) {
+  return rm.resolvePolicyFullPayout(policy, customerWon);
+}
+
+function resolvePolicyMaxPayout(rm, policy, customerWon) {
+  const payout = customerWon ? policy.payout : _A(0);
+  return rm.resolvePolicy(policy, payout);
+}
+
+const defaults = {
+  makeSignedQuote: makeSignedQuote,
+  defaultPolicyParams: defaultPolicyParams,
+  newPolicy: newPolicy,
+  resolvePolicyFullPayout: resolvePolicyFullPayout,
+};
+
+const variants = [
+  { contract: "SignedQuoteRiskModule", ...defaults },
+  { contract: "TieredSignedQuoteRiskModule", ...defaults },
+  {
+    contract: "SignedBucketRiskModule",
+    makeSignedQuote: makeBucketSignedQuote,
+    defaultPolicyParams: defaultPolicyParamsWithBucket,
+    newPolicy: newPolicyWithBucket,
+    resolvePolicyFullPayout: resolvePolicyMaxPayout,
+  },
+];
+
+variants.forEach((variant) => {
+  describe(`${variant.contract} contract tests`, function () {
     let lp, cust, signer, resolver, anon;
 
     beforeEach(async () => {
       [__, lp, cust, signer, resolver, anon] = await hre.ethers.getSigners();
-
-      _A = amountFunction(6);
     });
 
     async function deployPoolFixture(creationIsOpen) {
@@ -56,7 +139,7 @@ const helpers = require("@nomicfoundation/hardhat-network-helpers");
       await currency.connect(cust).approve(pool.address, _A(500));
 
       // Setup the risk module
-      const RiskModuleContract = await hre.ethers.getContractFactory(contractName);
+      const RiskModuleContract = await hre.ethers.getContractFactory(variant.contract);
       const rm = await addRiskModule(pool, premiumsAccount, RiskModuleContract, {
         ensuroFee: 0.03,
         extraConstructorArgs: [creationIsOpen],
@@ -67,39 +150,11 @@ const helpers = require("@nomicfoundation/hardhat-network-helpers");
       return { etk, premiumsAccount, rm, pool, accessManager, currency };
     }
 
-    async function defaultPolicyParams({ rmAddress, payout, premium, lossProb, expiration, policyData, validUntil }) {
-      const now = await helpers.time.latest();
-      return {
-        rmAddress,
-        payout: payout || _A(1000),
-        premium: premium || ethers.constants.MaxUint256,
-        lossProb: lossProb || _W(0.1),
-        expiration: expiration || now + 3600 * 24 * 30,
-        policyData: policyData || "0xb494869573b0a0ce9caac5394e1d0d255d146ec7e2d30d643a4e1d78980f3235",
-        validUntil: validUntil || now + 3600 * 24 * 30,
-      };
-    }
-
-    function newPolicy(rm, sender, policyParams, onBehalfOf, signature, method) {
-      if (sender !== undefined) rm = rm.connect(sender);
-      return rm[method || "newPolicy"](
-        policyParams.payout,
-        policyParams.premium,
-        policyParams.lossProb,
-        policyParams.expiration,
-        onBehalfOf.address,
-        policyParams.policyData,
-        signature.r,
-        signature._vs,
-        policyParams.validUntil
-      );
-    }
-
     it("Creates a policy if the right signature is provided", async () => {
       const { rm, pool, currency } = await helpers.loadFixture(deployPoolFixture);
-      const policyParams = await defaultPolicyParams({ rmAddress: rm.address });
-      const signature = await makeSignedQuote(signer, policyParams);
-      const tx = await newPolicy(rm, cust, policyParams, cust, signature);
+      const policyParams = await variant.defaultPolicyParams({ rmAddress: rm.address });
+      const signature = await variant.makeSignedQuote(signer, policyParams);
+      const tx = await variant.newPolicy(rm, cust, policyParams, cust, signature);
       const receipt = await tx.wait();
       const newSignedPolicyEvt = getTransactionEvent(rm.interface, receipt, "NewSignedPolicy");
       const policyData = policyParams.policyData;
@@ -127,90 +182,94 @@ const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
     it("Rejects a policy if signed by unauthorized user", async () => {
       const { rm } = await helpers.loadFixture(deployPoolFixture);
-      const policyParams = await defaultPolicyParams({ rmAddress: rm.address });
-      const signature = await makeSignedQuote(anon, policyParams);
-      await expect(newPolicy(rm, cust, policyParams, cust, signature)).to.be.revertedWith(
+      const policyParams = await variant.defaultPolicyParams({ rmAddress: rm.address });
+      const signature = await variant.makeSignedQuote(anon, policyParams);
+      await expect(variant.newPolicy(rm, cust, policyParams, cust, signature)).to.be.revertedWith(
         accessControlMessage(anon.address, rm.address, "PRICER_ROLE")
       );
     });
 
     it("Rejects a policy if receives an invalid signature", async () => {
       const { rm } = await helpers.loadFixture(deployPoolFixture);
-      const policyParams = await defaultPolicyParams({ rmAddress: rm.address });
+      const policyParams = await variant.defaultPolicyParams({ rmAddress: rm.address });
       const signature = {
         // random values
         r: "0xbf372ca3ebecfe59ac256f17697941bbe63302aced610e8b0e3646f743c7beb2",
         _vs: "0xa82e22387fca439f316d78ca566f383218ab8ae1b3e830178c9c82cbd16749c0",
       };
-      await expect(newPolicy(rm, cust, policyParams, cust, signature)).to.be.revertedWith("ECDSA: invalid signature");
+      await expect(variant.newPolicy(rm, cust, policyParams, cust, signature)).to.be.revertedWith(
+        "ECDSA: invalid signature"
+      );
     });
 
     it("Rejects a policy if quote expired or validUntil changed", async () => {
       const { rm } = await helpers.loadFixture(deployPoolFixture);
       const now = await helpers.time.latest();
-      const policyParams = await defaultPolicyParams({ rmAddress: rm.address, validUntil: now - 1000 });
-      const signature = await makeSignedQuote(signer, policyParams);
-      await expect(newPolicy(rm, cust, policyParams, cust, signature)).to.be.revertedWith("Quote expired");
+      const policyParams = await variant.defaultPolicyParams({ rmAddress: rm.address, validUntil: now - 1000 });
+      const signature = await variant.makeSignedQuote(signer, policyParams);
+      await expect(variant.newPolicy(rm, cust, policyParams, cust, signature)).to.be.revertedWith("Quote expired");
 
       // If we change the policyParams, a different address is derived from the signature and it won't have
       // the required permission with a probability of (1 - 1/2**160)
       policyParams.validUntil = now + 2000;
-      await expect(newPolicy(rm, cust, policyParams, cust, signature)).to.be.revertedWith("AccessControl: account ");
+      await expect(variant.newPolicy(rm, cust, policyParams, cust, signature)).to.be.revertedWith(
+        "AccessControl: account "
+      );
     });
 
     it("Creates a policy where using newPolicyFull", async () => {
       const { rm, pool, currency } = await helpers.loadFixture(deployPoolFixture);
-      const policyParams = await defaultPolicyParams({ rmAddress: rm.address, premium: _A(200) });
-      const signature = await makeSignedQuote(signer, policyParams);
+      const policyParams = await variant.defaultPolicyParams({ rmAddress: rm.address, premium: _A(200) });
+      const signature = await variant.makeSignedQuote(signer, policyParams);
 
-      const tx = await newPolicy(rm, cust, policyParams, anon, signature, "newPolicyFull");
+      const tx = await variant.newPolicy(rm, cust, policyParams, anon, signature, "newPolicyFull");
       const receipt = await tx.wait();
       const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
 
       // Tests resolution, only by an authorized role
-      await expect(rm.connect(anon).resolvePolicyFullPayout(newPolicyEvt.args[1], true)).to.be.revertedWith(
+      await expect(variant.resolvePolicyFullPayout(rm.connect(anon), newPolicyEvt.args[1], true)).to.be.revertedWith(
         accessControlMessage(anon.address, rm.address, "RESOLVER_ROLE")
       );
 
       await expect(() =>
-        rm.connect(resolver).resolvePolicyFullPayout(newPolicyEvt.args[1], true)
+        variant.resolvePolicyFullPayout(rm.connect(resolver), newPolicyEvt.args[1], true)
       ).to.changeTokenBalance(currency, anon, policyParams.payout);
     });
 
     it("Creates a policy where payer != msg.sender using newPolicyPaidByHolder", async () => {
       const { rm, pool, currency } = await helpers.loadFixture(deployPoolFixture);
-      const policyParams = await defaultPolicyParams({ rmAddress: rm.address, premium: _A(200) });
-      const signature = await makeSignedQuote(signer, policyParams);
-      await expect(newPolicy(rm, anon, policyParams, cust, signature, "newPolicyPaidByHolder")).to.be.revertedWith(
-        "Sender is not authorized to create policies onBehalfOf"
-      );
+      const policyParams = await variant.defaultPolicyParams({ rmAddress: rm.address, premium: _A(200) });
+      const signature = await variant.makeSignedQuote(signer, policyParams);
+      await expect(
+        variant.newPolicy(rm, anon, policyParams, cust, signature, "newPolicyPaidByHolder")
+      ).to.be.revertedWith("Sender is not authorized to create policies onBehalfOf");
 
       await currency.connect(cust).approve(anon.address, _A(200));
 
-      const tx = await newPolicy(rm, anon, policyParams, cust, signature, "newPolicyPaidByHolder");
+      const tx = await variant.newPolicy(rm, anon, policyParams, cust, signature, "newPolicyPaidByHolder");
       const receipt = await tx.wait();
       const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
 
       // Tests resolution, only by an authorized role
-      await expect(rm.connect(anon).resolvePolicyFullPayout(newPolicyEvt.args[1], true)).to.be.revertedWith(
+      await expect(variant.resolvePolicyFullPayout(rm.connect(anon), newPolicyEvt.args[1], true)).to.be.revertedWith(
         accessControlMessage(anon.address, rm.address, "RESOLVER_ROLE")
       );
 
       await expect(() =>
-        rm.connect(resolver).resolvePolicyFullPayout(newPolicyEvt.args[1], true)
+        variant.resolvePolicyFullPayout(rm.connect(resolver), newPolicyEvt.args[1], true)
       ).to.changeTokenBalance(currency, cust, policyParams.payout);
     });
 
     it("If creation is not open, only authorized users can create policies", async () => {
       const { rm, accessManager } = await helpers.loadFixture(_.partial(deployPoolFixture, false));
-      const policyParams = await defaultPolicyParams({ rmAddress: rm.address });
-      const signature = await makeSignedQuote(signer, policyParams);
-      await expect(newPolicy(rm, cust, policyParams, cust, signature)).to.be.revertedWith(
+      const policyParams = await variant.defaultPolicyParams({ rmAddress: rm.address });
+      const signature = await variant.makeSignedQuote(signer, policyParams);
+      await expect(variant.newPolicy(rm, cust, policyParams, cust, signature)).to.be.revertedWith(
         accessControlMessage(cust.address, rm.address, "POLICY_CREATOR_ROLE")
       );
       await accessManager.grantComponentRole(rm.address, await rm.POLICY_CREATOR_ROLE(), cust.address);
 
-      await expect(newPolicy(rm, cust, policyParams, cust, signature)).not.to.be.reverted;
+      await expect(variant.newPolicy(rm, cust, policyParams, cust, signature)).not.to.be.reverted;
     });
   });
 });
