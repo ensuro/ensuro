@@ -142,14 +142,6 @@ contract SignedBucketRiskModule is RiskModule {
     address onBehalfOf
   ) internal returns (Policy.PolicyData memory createdPolicy) {
     uint96 internalId = uint96(uint256(policyData) % 2**96);
-    Params memory params_;
-    if (bucketId != 0) {
-      PackedParams storage bucketParams = _buckets[bucketId];
-      require(bucketParams.moc != 0, "SignedBucketRiskModule: bucket not found!");
-      params_ = _unpackParams(bucketParams);
-    } else {
-      params_ = params();
-    }
     createdPolicy = _newPolicyWithParams(
       payout,
       premium,
@@ -158,7 +150,7 @@ contract SignedBucketRiskModule is RiskModule {
       payer,
       onBehalfOf,
       internalId,
-      params_
+      bucketParams(bucketId)
     );
     emit NewSignedPolicy(createdPolicy.id, policyData);
     return createdPolicy;
@@ -416,6 +408,38 @@ contract SignedBucketRiskModule is RiskModule {
     );
     delete _buckets[bucketId];
     emit BucketDeleted(bucketId);
+  }
+
+  /**
+   * @dev returns the risk bucket parameters for the given bucketId
+   *
+   * @param bucketId Id of the bucket of 0 if you want the default params
+   */
+  function bucketParams(uint256 bucketId) public view returns (Params memory params_) {
+    if (bucketId != 0) {
+      PackedParams storage bucketParams_ = _buckets[bucketId];
+      require(bucketParams_.moc != 0, "SignedBucketRiskModule: bucket not found!");
+      params_ = _unpackParams(bucketParams_);
+    } else {
+      params_ = params();
+    }
+  }
+
+  /**
+   * @dev Returns the minimum premium for a given bucket
+   *
+   * @param payout Maximum payout of the policy
+   * @param lossProb Probability of having a loss equal to the maximum payout
+   * @param expiration Expiration date of the policy
+   * @param bucketId Id of the bucket of 0 if you want the default params
+   */
+  function getMinimumPremiumForBucket(
+    uint256 payout,
+    uint256 lossProb,
+    uint40 expiration,
+    uint256 bucketId
+  ) public view virtual returns (uint256) {
+    return _getMinimumPremium(payout, lossProb, expiration, bucketParams(bucketId));
   }
 
   /**
