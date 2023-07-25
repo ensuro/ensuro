@@ -132,7 +132,7 @@ describe("SignedBucketRiskModule contract tests", function () {
     expect(policyData.srCoc).to.equal(_A("5.753422"));
   });
 
-  it("Only allows LEVEL1 and LEVEL2 to add/reset buckets", async () => {
+  it("Only allows LEVEL1 and LEVEL2 to add/delete buckets", async () => {
     const { rm, accessManager } = await helpers.loadFixture(deployPoolFixture);
 
     // level1
