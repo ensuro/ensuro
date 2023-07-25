@@ -230,7 +230,6 @@ variants.forEach((variant) => {
       await expect(
         variant.newPolicy(rm, cust, policyParams, cust, signature, "newPolicyPaidByHolder")
       ).to.be.revertedWith("Pausable: paused");
-      console.log("Hola");
 
       // Unpause and create a policy
       await expect(rm.connect(guardian).unpause()).to.emit(rm, "Unpaused");
@@ -238,8 +237,6 @@ variants.forEach((variant) => {
       const tx = await variant.newPolicy(rm, cust, policyParams, anon, signature, "newPolicyFull");
       const receipt = await tx.wait();
       const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
-
-      console.log("Chau");
 
       // Pause again and check it can resolve
       await expect(rm.connect(guardian).pause()).to.emit(rm, "Paused");
