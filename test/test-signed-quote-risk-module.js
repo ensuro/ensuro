@@ -107,7 +107,7 @@ variants.forEach((variant) => {
     let lp, cust, signer, resolver, anon;
 
     beforeEach(async () => {
-      [__, lp, cust, signer, resolver, anon] = await hre.ethers.getSigners();
+      [__, lp, cust, signer, resolver, anon, guardian] = await hre.ethers.getSigners();
     });
 
     async function deployPoolFixture(creationIsOpen) {
@@ -217,6 +217,45 @@ variants.forEach((variant) => {
       );
     });
 
+    it("Rejects policy creation and resolution if it's paused", async () => {
+      const { rm, accessManager, pool } = await helpers.loadFixture(deployPoolFixture);
+      await accessManager.grantComponentRole(rm.address, await rm.GUARDIAN_ROLE(), guardian.address);
+      await expect(rm.connect(guardian).pause()).to.emit(rm, "Paused");
+      const policyParams = await variant.defaultPolicyParams({ rmAddress: rm.address });
+      const signature = await variant.makeSignedQuote(anon, policyParams);
+      await expect(variant.newPolicy(rm, cust, policyParams, cust, signature)).to.be.revertedWith("Pausable: paused");
+      await expect(variant.newPolicy(rm, cust, policyParams, cust, signature, "newPolicyFull")).to.be.revertedWith(
+        "Pausable: paused"
+      );
+      await expect(
+        variant.newPolicy(rm, cust, policyParams, cust, signature, "newPolicyPaidByHolder")
+      ).to.be.revertedWith("Pausable: paused");
+      console.log("Hola");
+
+      // Unpause and create a policy
+      await expect(rm.connect(guardian).unpause()).to.emit(rm, "Unpaused");
+      await accessManager.grantComponentRole(rm.address, await rm.PRICER_ROLE(), anon.address);
+      const tx = await variant.newPolicy(rm, cust, policyParams, anon, signature, "newPolicyFull");
+      const receipt = await tx.wait();
+      const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
+
+      console.log("Chau");
+
+      // Pause again and check it can resolve
+      await expect(rm.connect(guardian).pause()).to.emit(rm, "Paused");
+
+      await expect(
+        variant.resolvePolicyFullPayout(rm.connect(resolver), newPolicyEvt.args[1], true)
+      ).to.be.revertedWith("Pausable: paused");
+
+      await expect(rm.connect(resolver).resolvePolicy(newPolicyEvt.args[1], _A(10))).to.be.revertedWith(
+        "Pausable: paused"
+      );
+
+      await expect(rm.connect(guardian).unpause()).to.emit(rm, "Unpaused");
+      await expect(rm.connect(resolver).resolvePolicy(newPolicyEvt.args[1], _A(10))).to.emit(pool, "PolicyResolved");
+    });
+
     it("Creates a policy where using newPolicyFull", async () => {
       const { rm, pool, currency } = await helpers.loadFixture(deployPoolFixture);
       const policyParams = await variant.defaultPolicyParams({ rmAddress: rm.address, premium: _A(200) });
@@ -234,6 +273,20 @@ variants.forEach((variant) => {
       await expect(() =>
         variant.resolvePolicyFullPayout(rm.connect(resolver), newPolicyEvt.args[1], true)
       ).to.changeTokenBalance(currency, anon, policyParams.payout);
+    });
+
+    it("Creates a policy where using newPolicyPaidByHolder where payer == msg.sender", async () => {
+      const { rm, pool, currency } = await helpers.loadFixture(deployPoolFixture);
+      const policyParams = await variant.defaultPolicyParams({ rmAddress: rm.address, premium: _A(200) });
+      const signature = await variant.makeSignedQuote(signer, policyParams);
+
+      const tx = await variant.newPolicy(rm, cust, policyParams, cust, signature, "newPolicyPaidByHolder");
+      const receipt = await tx.wait();
+      const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
+
+      await expect(() =>
+        variant.resolvePolicyFullPayout(rm.connect(resolver), newPolicyEvt.args[1], true)
+      ).to.changeTokenBalance(currency, cust, policyParams.payout);
     });
 
     it("Creates a policy where payer != msg.sender using newPolicyPaidByHolder", async () => {

@@ -158,6 +158,18 @@ describe("SignedBucketRiskModule contract tests", function () {
     await expect(rm.connect(level2).deleteBucket(2)).not.to.be.reverted;
   });
 
+  it("Can't set of delete bucketId = 0", async () => {
+    const { rm, accessManager } = await helpers.loadFixture(deployPoolFixture);
+
+    await grantRole(hre, accessManager, "LEVEL1_ROLE", level1.address);
+    await expect(rm.connect(level1).setBucketParams(0, bucketParameters({}))).to.be.revertedWith(
+      "SignedBucketRiskModule: bucketId can't be zero, set default RM parameters"
+    );
+    await expect(rm.connect(level1).deleteBucket(0)).to.be.revertedWith(
+      "SignedBucketRiskModule: bucketId can't be zero, set default RM parameters"
+    );
+  });
+
   it("Single bucket: uses correct bucket", async () => {
     const { rm, pool } = await helpers.loadFixture(deployPoolFixture);
     const rmParams = await rm.params();
