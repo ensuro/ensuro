@@ -39,6 +39,14 @@ contract SignedBucketRiskModule is RiskModule {
    */
   event BucketDeleted(uint256 indexed bucketId);
 
+  /**
+   * @dev Event emitted every time a new policy is created. It allows to link the policyData with a particular policy
+   *
+   * @param policyId The id of the policy
+   * @param policyData The value sent in `policyData` parameter that's the hash of the off-chain stored data.
+   */
+  event NewSignedPolicy(uint256 indexed policyId, bytes32 policyData);
+
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(
     IPolicyPool policyPool_,
@@ -144,6 +152,7 @@ contract SignedBucketRiskModule is RiskModule {
       internalId,
       bucketParams(bucketId)
     );
+    emit NewSignedPolicy(createdPolicy.id, policyData);
     return createdPolicy;
   }
 
@@ -156,6 +165,7 @@ contract SignedBucketRiskModule is RiskModule {
    *
    *  Emits:
    * - {PolicyPool.NewPolicy}
+   *  - {NewSignedPolicy}
    *
    * @param payout The exposure (maximum payout) of the policy
    * @param premium The premium that will be paid by the payer
@@ -214,6 +224,7 @@ contract SignedBucketRiskModule is RiskModule {
    *
    * Emits:
    * - {PolicyPool.NewPolicy}
+   * - {NewSignedPolicy}
    *
    * @param payout The exposure (maximum payout) of the policy
    * @param premium The premium that will be paid by the payer
@@ -272,6 +283,7 @@ contract SignedBucketRiskModule is RiskModule {
    *
    * Emits:
    * - {PolicyPool.NewPolicy}
+   * - {NewSignedPolicy}
    *
    * @param payout The exposure (maximum payout) of the policy
    * @param premium The premium that will be paid by the payer

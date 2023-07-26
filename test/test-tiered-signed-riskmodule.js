@@ -1,5 +1,4 @@
 const { expect } = require("chai");
-const _ = require("lodash");
 const {
   initCurrency,
   deployPool,
@@ -11,7 +10,6 @@ const {
   getTransactionEvent,
   accessControlMessage,
   makeSignedQuote,
-  makeQuoteMessage,
   RiskModuleParameter,
   grantRole,
 } = require("./test-utils");
@@ -20,10 +18,10 @@ const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
 describe("TieredSignedQuoteRiskModule contract tests", function () {
   let _A;
-  let lp, cust, signer, resolver, anon, level1, level2;
+  let lp, cust, signer, resolver, level1, level2;
 
   beforeEach(async () => {
-    [__, lp, cust, signer, resolver, anon, level1, level2] = await hre.ethers.getSigners();
+    [__, lp, cust, signer, resolver, level1, level2] = await hre.ethers.getSigners();
 
     _A = amountFunction(6);
   });
@@ -122,7 +120,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
   });
 
   it("Only allows LEVEL1 and LEVEL2 to set/reset buckets", async () => {
-    const { rm, pool, accessManager } = await helpers.loadFixture(deployPoolFixture);
+    const { rm, accessManager } = await helpers.loadFixture(deployPoolFixture);
 
     // level1
     await expect(rm.connect(level1).pushBucket(_W("0.15"), bucketParameters({}))).to.be.revertedWith(

@@ -1,5 +1,4 @@
 const { expect } = require("chai");
-const _ = require("lodash");
 const {
   initCurrency,
   deployPool,
@@ -20,10 +19,10 @@ const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
 describe("SignedBucketRiskModule contract tests", function () {
   let _A;
-  let lp, cust, signer, resolver, anon, level1, level2;
+  let lp, cust, signer, resolver, level1, level2;
 
   beforeEach(async () => {
-    [__, lp, cust, signer, resolver, anon, level1, level2] = await hre.ethers.getSigners();
+    [__, lp, cust, signer, resolver, level1, level2] = await hre.ethers.getSigners();
 
     _A = amountFunction(6);
   });

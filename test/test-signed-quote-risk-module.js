@@ -317,6 +317,12 @@ variants.forEach((variant) => {
       await expect(variant.newPolicy(rm, cust, policyParams, cust, signature)).to.be.revertedWith(
         accessControlMessage(cust.address, rm.address, "POLICY_CREATOR_ROLE")
       );
+      await expect(variant.newPolicy(rm, cust, policyParams, cust, signature, "newPolicyPaidByHolder")).to.be.revertedWith(
+        accessControlMessage(cust.address, rm.address, "POLICY_CREATOR_ROLE")
+      );
+      await expect(variant.newPolicy(rm, cust, policyParams, cust, signature, "newPolicyFull")).to.be.revertedWith(
+        accessControlMessage(cust.address, rm.address, "POLICY_CREATOR_ROLE")
+      );
       await accessManager.grantComponentRole(rm.address, await rm.POLICY_CREATOR_ROLE(), cust.address);
 
       await expect(variant.newPolicy(rm, cust, policyParams, cust, signature)).not.to.be.reverted;
