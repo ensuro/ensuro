@@ -427,8 +427,24 @@ function makeQuoteMessage({ rmAddress, payout, premium, lossProb, expiration, po
   );
 }
 
-async function makeSignedQuote(signer, policyParams) {
-  const quoteMessage = makeQuoteMessage(policyParams);
+function makeBucketQuoteMessage({
+  rmAddress,
+  payout,
+  premium,
+  lossProb,
+  expiration,
+  policyData,
+  bucketId,
+  validUntil,
+}) {
+  return ethers.utils.solidityPack(
+    ["address", "uint256", "uint256", "uint256", "uint40", "bytes32", "uint256", "uint40"],
+    [rmAddress, payout, premium, lossProb, expiration, policyData, bucketId, validUntil]
+  );
+}
+
+async function makeSignedQuote(signer, policyParams, makeQuoteMessageFn = makeQuoteMessage) {
+  const quoteMessage = makeQuoteMessageFn(policyParams);
   return ethers.utils.splitSignature(await signer.signMessage(ethers.utils.arrayify(quoteMessage)));
 }
 
@@ -461,6 +477,7 @@ module.exports = {
   makePolicy,
   makePolicyId,
   makeQuoteMessage,
+  makeBucketQuoteMessage,
   makeSignedQuote,
   RAY,
   RiskModuleParameter,

@@ -386,7 +386,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     Params memory params_
   ) internal returns (Policy.PolicyData memory) {
     if (premium == type(uint256).max) {
-      premium = getMinimumPremium(payout, lossProb, expiration);
+      premium = _getMinimumPremium(payout, lossProb, expiration, params_);
     }
     require(premium < payout, "Premium must be less than payout");
     uint40 now_ = uint40(block.timestamp);

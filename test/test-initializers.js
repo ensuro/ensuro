@@ -9,7 +9,7 @@ const {
   addRiskModule,
   amountFunction,
   grantRole,
-  grantComponentRole,
+  createRiskModule,
   addEToken,
 } = require("./test-utils");
 
@@ -96,6 +96,16 @@ describe("Test Initialize contracts", function () {
     await expect(rm.initialize("RM", 0, 0, 0, 0, 0, hre.ethers.constants.AddressZero)).to.be.revertedWith(
       "contract is already initialized"
     );
+  });
+
+  ["SignedQuoteRiskModule", "SignedBucketRiskModule", "TieredSignedQuoteRiskModule"].forEach((contract) => {
+    it(`Does not allow reinitializing ${contract}`, async () => {
+      const Factory = await hre.ethers.getContractFactory(contract);
+      const rm = await createRiskModule(pool, premiumsAccount, Factory, { extraConstructorArgs: [false] });
+      await expect(rm.initialize("RM", 0, 0, 0, 0, 0, hre.ethers.constants.AddressZero)).to.be.revertedWith(
+        "contract is already initialized"
+      );
+    });
   });
 
   it("Does not allow reinitializing Whitelist", async () => {
