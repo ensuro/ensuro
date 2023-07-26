@@ -1,38 +1,21 @@
 const { expect } = require("chai");
 const _ = require("lodash");
 const {
-  initCurrency,
-  deployPool,
-  deployPremiumsAccount,
-  _W,
-  addRiskModule,
-  amountFunction,
-  addEToken,
-  getTransactionEvent,
   accessControlMessage,
-  makeSignedQuote,
+  amountFunction,
+  defaultPolicyParams,
+  getTransactionEvent,
   makeBucketQuoteMessage,
-} = require("./test-utils");
+  makeSignedQuote,
+} = require("../js/utils");
+const { initCurrency, deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
 const _A = amountFunction(6);
 
-async function defaultPolicyParams({ rmAddress, payout, premium, lossProb, expiration, policyData, validUntil }) {
-  const now = await helpers.time.latest();
-  return {
-    rmAddress,
-    payout: payout || _A(1000),
-    premium: premium || ethers.constants.MaxUint256,
-    lossProb: lossProb || _W(0.1),
-    expiration: expiration || now + 3600 * 24 * 30,
-    policyData: policyData || "0xb494869573b0a0ce9caac5394e1d0d255d146ec7e2d30d643a4e1d78980f3235",
-    validUntil: validUntil || now + 3600 * 24 * 30,
-  };
-}
-
 async function defaultPolicyParamsWithBucket(opts) {
-  const ret = await defaultPolicyParams(opts);
+  const ret = await defaultPolicyParams(opts, _A);
   return {
     bucketId: opts.bucketId || 0,
     ...ret,
@@ -40,7 +23,7 @@ async function defaultPolicyParamsWithBucket(opts) {
 }
 
 async function makeBucketSignedQuote(signer, policyParams) {
-  return await makeSignedQuote(signer, policyParams, makeBucketQuoteMessage);
+  return makeSignedQuote(signer, policyParams, makeBucketQuoteMessage);
 }
 
 function newPolicy(rm, sender, policyParams, onBehalfOf, signature, method) {
@@ -104,10 +87,10 @@ const variants = [
 
 variants.forEach((variant) => {
   describe(`${variant.contract} contract tests`, function () {
-    let lp, cust, signer, resolver, anon;
+    let anon, cust, guardian, lp, resolver, signer;
 
     beforeEach(async () => {
-      [__, lp, cust, signer, resolver, anon, guardian] = await hre.ethers.getSigners();
+      [, lp, cust, signer, resolver, anon, guardian] = await hre.ethers.getSigners();
     });
 
     async function deployPoolFixture(creationIsOpen) {
@@ -118,7 +101,7 @@ variants.forEach((variant) => {
         [_A(5000), _A(500)]
       );
 
-      const pool = await deployPool(hre, {
+      const pool = await deployPool({
         currency: currency.address,
         grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
         treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
@@ -129,7 +112,7 @@ variants.forEach((variant) => {
 
       // Setup the liquidity sources
       const etk = await addEToken(pool, {});
-      const premiumsAccount = await deployPremiumsAccount(hre, pool, { srEtkAddr: etk.address });
+      const premiumsAccount = await deployPremiumsAccount(pool, { srEtkAddr: etk.address });
 
       // Provide some liquidity
       await currency.connect(lp).approve(pool.address, _A(5000));
@@ -160,11 +143,11 @@ variants.forEach((variant) => {
       const policyData = policyParams.policyData;
       // Verify the event is emited and the last 96 bits of the policyData are used as internalId
       const policyId = newSignedPolicyEvt.args[0];
-      const twoPow96 = ethers.BigNumber.from(2).pow(96);
+      const twoPow96 = hre.ethers.BigNumber.from(2).pow(96);
       const internalId = policyId.mod(twoPow96);
-      expect(internalId).to.be.equal(ethers.BigNumber.from(policyData).mod(twoPow96));
+      expect(internalId).to.be.equal(hre.ethers.BigNumber.from(policyData).mod(twoPow96));
       // The first 160 bits of policyId is the module address
-      expect(policyId.div(twoPow96)).to.be.equal(ethers.BigNumber.from(rm.address));
+      expect(policyId.div(twoPow96)).to.be.equal(hre.ethers.BigNumber.from(rm.address));
       // The second parameter is the policyData itself
       expect(newSignedPolicyEvt.args[1]).to.be.equal(policyData);
 
@@ -317,9 +300,9 @@ variants.forEach((variant) => {
       await expect(variant.newPolicy(rm, cust, policyParams, cust, signature)).to.be.revertedWith(
         accessControlMessage(cust.address, rm.address, "POLICY_CREATOR_ROLE")
       );
-      await expect(variant.newPolicy(rm, cust, policyParams, cust, signature, "newPolicyPaidByHolder")).to.be.revertedWith(
-        accessControlMessage(cust.address, rm.address, "POLICY_CREATOR_ROLE")
-      );
+      await expect(
+        variant.newPolicy(rm, cust, policyParams, cust, signature, "newPolicyPaidByHolder")
+      ).to.be.revertedWith(accessControlMessage(cust.address, rm.address, "POLICY_CREATOR_ROLE"));
       await expect(variant.newPolicy(rm, cust, policyParams, cust, signature, "newPolicyFull")).to.be.revertedWith(
         accessControlMessage(cust.address, rm.address, "POLICY_CREATOR_ROLE")
       );

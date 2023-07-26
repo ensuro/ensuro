@@ -1,16 +1,13 @@
 const { expect } = require("chai");
+const { amountFunction, grantComponentRole, grantRole, _W } = require("../js/utils");
 const {
   initCurrency,
   deployPool,
   deployPremiumsAccount,
   addRiskModule,
-  amountFunction,
-  grantComponentRole,
-  grantRole,
   makePolicy,
   addEToken,
-  _W,
-} = require("./test-utils");
+} = require("../js/test-utils");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
 describe("Test pause, unpause and upgrade contracts", function () {
@@ -18,14 +15,14 @@ describe("Test pause, unpause and upgrade contracts", function () {
   let pool;
   let premiumsAccount;
   let TrustfulRiskModule;
-  let owner, lp, cust, guardian, level1;
+  let cust, guardian, level1, lp, owner;
   let _A;
   let etk;
   let accessManager;
   let rm;
 
   beforeEach(async () => {
-    [owner, lp, cust, guardian, level1] = await ethers.getSigners();
+    [owner, lp, cust, guardian, level1] = await hre.ethers.getSigners();
 
     _A = amountFunction(6);
 
@@ -35,7 +32,7 @@ describe("Test pause, unpause and upgrade contracts", function () {
       [_A(5000), _A(500)]
     );
 
-    pool = await deployPool(hre, {
+    pool = await deployPool({
       currency: currency.address,
       grantRoles: [],
       treasuryAddress: "0x87c47c9a5a2aa74ae714857d64911d9a091c25b1", // Random address
@@ -44,9 +41,9 @@ describe("Test pause, unpause and upgrade contracts", function () {
 
     etk = await addEToken(pool, {});
 
-    premiumsAccount = await deployPremiumsAccount(hre, pool, { srEtkAddr: etk.address });
-    accessManager = await ethers.getContractAt("AccessManager", await pool.access());
-    TrustfulRiskModule = await ethers.getContractFactory("TrustfulRiskModule");
+    premiumsAccount = await deployPremiumsAccount(pool, { srEtkAddr: etk.address });
+    accessManager = await hre.ethers.getContractAt("AccessManager", await pool.access());
+    TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
     rm = await addRiskModule(pool, premiumsAccount, TrustfulRiskModule, {});
 
     await grantRole(hre, accessManager, "GUARDIAN_ROLE", guardian.address);

@@ -2,16 +2,15 @@ const { expect } = require("chai");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
-const { amountFunction, initCurrency, deployPool, addEToken, grantRole } = require("./test-utils");
+const { amountFunction, grantRole } = require("../js/utils");
+const { initCurrency, deployPool, addEToken } = require("../js/test-utils");
 
 describe("Etoken", () => {
   const _A = amountFunction(6);
-  let owner, lp, lp2;
-
-  const someComponent = "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199";
+  let lp, lp2;
 
   beforeEach(async () => {
-    [owner, lp, lp2] = await hre.ethers.getSigners();
+    [, lp, lp2] = await hre.ethers.getSigners();
   });
 
   it("Refuses transfers to null address", async () => {
@@ -63,8 +62,8 @@ describe("Etoken", () => {
   it("Can't create etoken without name or symbol", async () => {
     const { pool } = await helpers.loadFixture(etokenFixture);
 
-    let etk = await expect(addEToken(pool, { etkName: "" })).to.be.revertedWith("EToken: name cannot be empty");
-    etk = await expect(addEToken(pool, { etkSymbol: "" })).to.be.revertedWith("EToken: symbol cannot be empty");
+    await expect(addEToken(pool, { etkName: "" })).to.be.revertedWith("EToken: name cannot be empty");
+    await expect(addEToken(pool, { etkSymbol: "" })).to.be.revertedWith("EToken: symbol cannot be empty");
   });
 
   async function etokenFixture() {
@@ -74,7 +73,7 @@ describe("Etoken", () => {
       [_A(5000)]
     );
 
-    const pool = await deployPool(hre, {
+    const pool = await deployPool({
       currency: currency.address,
       grantRoles: [],
       treasuryAddress: "0x87c47c9a5a2aa74ae714857d64911d9a091c25b1", // Random address

@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
-const { initCurrency, deployPool, deployPremiumsAccount, amountFunction } = require("./test-utils");
+const { amountFunction } = require("../js/utils");
+const { initCurrency, deployPool, deployPremiumsAccount } = require("../js/test-utils");
 
 describe("Constructor validations", function () {
   const zeroAddress = hre.ethers.constants.AddressZero;
@@ -39,7 +40,7 @@ describe("Constructor validations", function () {
 
   async function setupFixtureWithPool() {
     const ret = await setupFixture();
-    const policyPool = await deployPool(hre, { currency: ret.currency.address, access: ret.access.address });
+    const policyPool = await deployPool({ currency: ret.currency.address, access: ret.access.address });
     return {
       policyPool,
       ...ret,
@@ -48,7 +49,7 @@ describe("Constructor validations", function () {
 
   async function setupFixtureWithPoolAndPA() {
     const ret = await setupFixtureWithPool();
-    const premiumsAccount = await deployPremiumsAccount(hre, ret.policyPool, {});
+    const premiumsAccount = await deployPremiumsAccount(ret.policyPool, {});
     return {
       premiumsAccount,
       ...ret,
@@ -108,12 +109,12 @@ describe("Constructor validations", function () {
         ...deployProxyArgs,
       })
     ).to.be.reverted;
-    const anotherPool = await deployPool(hre, {
+    const anotherPool = await deployPool({
       currency: currency.address,
       access: access.address,
       dontGrantL123Roles: true,
     });
-    const anotherPA = await deployPremiumsAccount(hre, anotherPool, {});
+    const anotherPA = await deployPremiumsAccount(anotherPool, {});
     await expect(
       hre.upgrades.deployProxy(TrustfulRiskModule, initArgs, {
         constructorArgs: [policyPool.address, anotherPA.address],
@@ -138,12 +139,12 @@ describe("Constructor validations", function () {
         ...deployProxyArgs,
       })
     ).to.be.reverted;
-    const anotherPool = await deployPool(hre, {
+    const anotherPool = await deployPool({
       currency: currency.address,
       access: access.address,
       dontGrantL123Roles: true,
     });
-    const anotherPA = await deployPremiumsAccount(hre, anotherPool, {});
+    const anotherPA = await deployPremiumsAccount(anotherPool, {});
     await expect(
       hre.upgrades.deployProxy(SignedQuoteRiskModule, initArgs, {
         constructorArgs: [policyPool.address, anotherPA.address, false],

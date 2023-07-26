@@ -1,15 +1,6 @@
 const { expect } = require("chai");
-const {
-  initCurrency,
-  deployPool,
-  deployPremiumsAccount,
-  addRiskModule,
-  amountFunction,
-  addEToken,
-  grantComponentRole,
-  getTransactionEvent,
-  _W,
-} = require("./test-utils");
+const { initCurrency, deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
+const { amountFunction, _W, grantComponentRole, getTransactionEvent } = require("../js/utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { BigNumber } = require("ethers");
@@ -18,8 +9,6 @@ const _A = amountFunction(6);
 
 describe("Multiple policy expirations", function () {
   // this.timeout(300000); // Mocha timeout, some of this tests can take quite long to run
-
-  beforeEach(async () => {});
 
   it("Measure the gas cost of single policy expiration", async () => {
     const { pool, backend, policies } = await helpers.loadFixture(poolWithPolicies);
@@ -137,7 +126,7 @@ async function poolWithPolicies() {
     [_A(100000), _A(500), _A(100000)]
   );
 
-  const pool = await deployPool(hre, {
+  const pool = await deployPool({
     currency: currency.address,
     grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
     treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
@@ -145,7 +134,7 @@ async function poolWithPolicies() {
   pool._A = _A;
 
   const etk = await addEToken(pool, {});
-  const premiumsAccount = await deployPremiumsAccount(hre, pool, { srEtkAddr: etk.address });
+  const premiumsAccount = await deployPremiumsAccount(pool, { srEtkAddr: etk.address });
   const accessManager = await hre.ethers.getContractAt("AccessManager", await pool.access());
 
   const RiskModule = await hre.ethers.getContractFactory("RiskModuleMock");

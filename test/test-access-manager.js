@@ -2,15 +2,15 @@ const { expect } = require("chai");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
-const { accessControlMessage, getRole, getComponentRole, grantComponentRole } = require("./test-utils");
+const { getRole, getComponentRole, accessControlMessage } = require("../js/utils");
 
 describe("AccessManager", () => {
-  let owner, backend, user, signers;
+  let backend, signers, user;
 
   const someComponent = "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199";
 
   beforeEach(async () => {
-    [owner, backend, user, ...signers] = await hre.ethers.getSigners();
+    [, backend, user, ...signers] = await hre.ethers.getSigners();
   });
 
   it("Allows DEFAULT_ADMIN_ROLE to grant component roles by default", async () => {

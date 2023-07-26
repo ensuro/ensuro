@@ -2,7 +2,8 @@ const { expect } = require("chai");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
-const { initCurrency, amountFunction, _W, deployPremiumsAccount, deployPool } = require("./test-utils");
+const { initCurrency, deployPremiumsAccount, deployPool } = require("../js/test-utils");
+const { amountFunction, _W } = require("../js/utils");
 
 describe("Test Implementation contracts can't be initialized", function () {
   const rndAddr = "0xd758af6bfc2f0908d7c5f89942be52c36a6b3cab";
@@ -34,7 +35,7 @@ describe("Test Implementation contracts can't be initialized", function () {
 
   async function setupFixtureWithPool() {
     const ret = await setupFixture();
-    const policyPool = await deployPool(hre, { currency: ret.currency.address });
+    const policyPool = await deployPool({ currency: ret.currency.address });
     return {
       policyPool,
       ...ret,
@@ -43,7 +44,7 @@ describe("Test Implementation contracts can't be initialized", function () {
 
   async function setupFixtureWithPoolAndPA() {
     const ret = await setupFixtureWithPool();
-    const premiumsAccount = await deployPremiumsAccount(hre, ret.policyPool, {});
+    const premiumsAccount = await deployPremiumsAccount(ret.policyPool, {});
     return {
       premiumsAccount,
       ...ret,

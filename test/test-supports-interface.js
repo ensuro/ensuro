@@ -1,12 +1,14 @@
 const { expect } = require("chai");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
-const { initCurrency, deployPool, deployPremiumsAccount, amountFunction } = require("./test-utils");
+const { amountFunction } = require("../js/utils");
+const { initCurrency, deployPool, deployPremiumsAccount } = require("../js/test-utils");
 
 describe("Supports interface implementation", function () {
   const invalidInterfaceId = "0x12345678";
 
   async function setupFixture() {
     const [owner] = await hre.ethers.getSigners();
+
     /**
      * Interface ids were calculated with this code, but we prefer to leave the values hard-coded, so this
      * test fails when we change some interface. This way we can be sure we don't change interfaces
@@ -75,7 +77,7 @@ describe("Supports interface implementation", function () {
 
   async function setupFixtureWithPool() {
     const ret = await setupFixture();
-    const policyPool = await deployPool(hre, { currency: ret.currency.address, access: ret.access.address });
+    const policyPool = await deployPool({ currency: ret.currency.address, access: ret.access.address });
     return {
       policyPool,
       ...ret,
@@ -84,7 +86,7 @@ describe("Supports interface implementation", function () {
 
   async function setupFixtureWithPoolAndPA() {
     const ret = await setupFixtureWithPool();
-    const premiumsAccount = await deployPremiumsAccount(hre, ret.policyPool, {});
+    const premiumsAccount = await deployPremiumsAccount(ret.policyPool, {});
     return {
       premiumsAccount,
       ...ret,
