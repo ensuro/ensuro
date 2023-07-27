@@ -1,25 +1,23 @@
 const { expect } = require("chai");
+const { amountFunction, _W, grantComponentRole, grantRole, getTransactionEvent } = require("../js/utils");
 const {
   initCurrency,
   deployPool,
   deployPremiumsAccount,
   addRiskModule,
-  amountFunction,
-  grantComponentRole,
-  grantRole,
   makePolicy,
   addEToken,
-  getTransactionEvent,
-  _W,
-} = require("./test-utils");
+} = require("../js/test-utils");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
+
+const { MaxUint256 } = hre.ethers.constants;
 
 describe("Test add, remove and change status of PolicyPool components", function () {
   let currency;
   let pool;
   let premiumsAccount;
   let TrustfulRiskModule;
-  let owner, lp, cust, guardian, level1, johndoe;
+  let cust, guardian, johndoe, level1, lp;
   let _A;
   let etk;
   let accessManager;
@@ -31,7 +29,7 @@ describe("Test add, remove and change status of PolicyPool components", function
   const ST_SUSPENDED = 3;
 
   beforeEach(async () => {
-    [owner, lp, cust, guardian, level1, johndoe] = await ethers.getSigners();
+    [, lp, cust, guardian, level1, johndoe] = await hre.ethers.getSigners();
 
     _A = amountFunction(6);
 
@@ -41,7 +39,7 @@ describe("Test add, remove and change status of PolicyPool components", function
       [_A(5000), _A(500)]
     );
 
-    pool = await deployPool(hre, {
+    pool = await deployPool({
       currency: currency.address,
       grantRoles: [],
       treasuryAddress: "0x87c47c9a5a2aa74ae714857d64911d9a091c25b1", // Random address
@@ -50,9 +48,9 @@ describe("Test add, remove and change status of PolicyPool components", function
 
     etk = await addEToken(pool, {});
 
-    premiumsAccount = await deployPremiumsAccount(hre, pool, { srEtkAddr: etk.address });
-    accessManager = await ethers.getContractAt("AccessManager", await pool.access());
-    TrustfulRiskModule = await ethers.getContractFactory("TrustfulRiskModule");
+    premiumsAccount = await deployPremiumsAccount(pool, { srEtkAddr: etk.address });
+    accessManager = await hre.ethers.getContractAt("AccessManager", await pool.access());
+    TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
     rm = await addRiskModule(pool, premiumsAccount, TrustfulRiskModule, {});
 
     await grantRole(hre, accessManager, "GUARDIAN_ROLE", guardian.address);
@@ -112,7 +110,7 @@ describe("Test add, remove and change status of PolicyPool components", function
       "EToken has liquidity, can't be removed"
     );
 
-    await expect(pool.connect(lp).withdraw(etk.address, ethers.constants.MaxUint256)).not.to.be.reverted;
+    await expect(pool.connect(lp).withdraw(etk.address, MaxUint256)).not.to.be.reverted;
 
     await expect(pool.connect(guardian).removeComponent(etk.address)).to.be.revertedWith(
       "AccessControl: " // Only LEVEL1 can remove

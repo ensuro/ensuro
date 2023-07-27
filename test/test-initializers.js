@@ -2,28 +2,20 @@ const { expect } = require("chai");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
+const { grantRole, amountFunction } = require("../js/utils");
 const {
   initCurrency,
   deployPool,
   deployPremiumsAccount,
   addRiskModule,
-  amountFunction,
-  grantRole,
+
   createRiskModule,
   addEToken,
-} = require("./test-utils");
+} = require("../js/test-utils");
+
+const { AddressZero } = hre.ethers.constants;
 
 describe("Test Initialize contracts", function () {
-  let currency;
-  let pool;
-  let premiumsAccount;
-  let TrustfulRiskModule;
-  let lp, cust, guardian;
-  let _A;
-  let etk;
-  let accessManager;
-  let rm;
-
   async function protocolFixture() {
     const [lp, cust, guardian] = await hre.ethers.getSigners();
 
@@ -35,7 +27,7 @@ describe("Test Initialize contracts", function () {
       [_A(5000), _A(500)]
     );
 
-    const pool = await deployPool(hre, {
+    const pool = await deployPool({
       currency: currency.address,
       grantRoles: [],
       treasuryAddress: "0x87c47c9a5a2aa74ae714857d64911d9a091c25b1", // Random address
@@ -44,7 +36,7 @@ describe("Test Initialize contracts", function () {
 
     const etk = await addEToken(pool, {});
 
-    const premiumsAccount = await deployPremiumsAccount(hre, pool, { srEtkAddr: etk.address });
+    const premiumsAccount = await deployPremiumsAccount(pool, { srEtkAddr: etk.address });
     const accessManager = await hre.ethers.getContractAt("AccessManager", await pool.access());
     const TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
     const rm = await addRiskModule(pool, premiumsAccount, TrustfulRiskModule, {});
@@ -69,15 +61,18 @@ describe("Test Initialize contracts", function () {
     };
   }
 
+  let pool;
+  let accessManager;
+  let premiumsAccount;
+  let etk;
+  let rm;
+
   beforeEach(async () => {
-    ({ currency, pool, premiumsAccount, TrustfulRiskModule, lp, cust, guardian, _A, etk, accessManager, rm } =
-      await helpers.loadFixture(protocolFixture));
+    ({ pool, premiumsAccount, etk, accessManager, rm } = await helpers.loadFixture(protocolFixture));
   });
 
   it("Does not allow reinitializing PolicyPool", async () => {
-    await expect(pool.initialize("PP", "PP", hre.ethers.constants.AddressZero)).to.be.revertedWith(
-      "contract is already initialized"
-    );
+    await expect(pool.initialize("PP", "PP", AddressZero)).to.be.revertedWith("contract is already initialized");
   });
 
   it("Does not allow reinitializing Etoken", async () => {
@@ -93,16 +88,14 @@ describe("Test Initialize contracts", function () {
   });
 
   it("Does not allow reinitializing RiskModule", async () => {
-    await expect(rm.initialize("RM", 0, 0, 0, 0, 0, hre.ethers.constants.AddressZero)).to.be.revertedWith(
-      "contract is already initialized"
-    );
+    await expect(rm.initialize("RM", 0, 0, 0, 0, 0, AddressZero)).to.be.revertedWith("contract is already initialized");
   });
 
   ["SignedQuoteRiskModule", "SignedBucketRiskModule", "TieredSignedQuoteRiskModule"].forEach((contract) => {
     it(`Does not allow reinitializing ${contract}`, async () => {
       const Factory = await hre.ethers.getContractFactory(contract);
-      const rm = await createRiskModule(pool, premiumsAccount, Factory, { extraConstructorArgs: [false] });
-      await expect(rm.initialize("RM", 0, 0, 0, 0, 0, hre.ethers.constants.AddressZero)).to.be.revertedWith(
+      const initRm = await createRiskModule(pool, premiumsAccount, Factory, { extraConstructorArgs: [false] });
+      await expect(initRm.initialize("RM", 0, 0, 0, 0, 0, AddressZero)).to.be.revertedWith(
         "contract is already initialized"
       );
     });

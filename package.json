@@ -4,7 +4,8 @@
   "description": "Ensuro - Decentralized insurance protocol",
   "scripts": {
     "prettier": "prettier --write 'contracts/**/*.sol' --write 'test/**/*.js' --write 'tasks/**/*.js'",
-    "solhint": "solhint 'contracts/**/*.sol'"
+    "solhint": "solhint 'contracts/**/*.sol'",
+    "test": "hardhat test"
   },
   "author": "",
   "license": "Apache-2.0",
@@ -15,6 +16,8 @@
     "@nomiclabs/hardhat-waffle": "^2.0.3",
     "@openzeppelin/hardhat-upgrades": "^1.28.0",
     "chai": "^4.3.6",
+    "eslint": "^8.45.0",
+    "eslint-config-prettier": "^8.8.0",
     "ethereum-waffle": "^3.4.4",
     "ethers": "~5.7.1",
     "hardhat": "^2.11.2",

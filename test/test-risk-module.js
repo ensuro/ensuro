@@ -1,24 +1,14 @@
 const { expect } = require("chai");
-const {
-  initCurrency,
-  deployPool,
-  deployPremiumsAccount,
-  _W,
-  addRiskModule,
-  amountFunction,
-  addEToken,
-  grantRole,
-} = require("./test-utils");
+const { grantRole, amountFunction, _W } = require("../js/utils");
+const { initCurrency, deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
 const { ethers } = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
-/*
- * NOTICE: This tests only cover the bits not already covered by the python tests in the `tests`
- * directory.
- *
- * Namely, the RiskModule internals that are not reachable through TrustfulRiskModule are tested
- * here through a mock contract.
- */
+// NOTICE: This tests only cover the bits not already covered by the python tests in the `tests`
+// directory.
+//
+// Namely, the RiskModule internals that are not reachable through TrustfulRiskModule are tested
+// here through a mock contract.
 
 describe("RiskModule contract", function () {
   let currency;
@@ -26,12 +16,12 @@ describe("RiskModule contract", function () {
   let accessManager;
   let premiumsAccount;
   let _A;
-  let owner, lp, cust, backend;
+  let backend, cust, lp;
   let RiskModule;
   let rm;
 
   beforeEach(async () => {
-    [owner, lp, cust, backend] = await ethers.getSigners();
+    [, lp, cust, backend] = await ethers.getSigners();
 
     _A = amountFunction(6);
 
@@ -41,16 +31,16 @@ describe("RiskModule contract", function () {
       [_A(5000), _A(500), _A(1000)]
     );
 
-    pool = await deployPool(hre, {
+    pool = await deployPool({
       currency: currency.address,
       grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
       treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
     });
     pool._A = _A;
 
-    etk = await addEToken(pool, {});
+    const etk = await addEToken(pool, {});
 
-    premiumsAccount = await deployPremiumsAccount(hre, pool, { srEtkAddr: etk.address });
+    premiumsAccount = await deployPremiumsAccount(pool, { srEtkAddr: etk.address });
 
     accessManager = await ethers.getContractAt("AccessManager", await pool.access());
 

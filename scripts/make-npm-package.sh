@@ -31,7 +31,7 @@ mkdir $TARGET_DIR/build
 cp -r artifacts/contracts $TARGET_DIR/build
 
 mkdir $TARGET_DIR/js
-cp test/test-utils.js $TARGET_DIR/js/
+cp js/*.js $TARGET_DIR/js/
 cp tasks/deploy.js $TARGET_DIR/js/
 
 mkdir $TARGET_DIR/scripts

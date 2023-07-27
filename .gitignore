@@ -20,6 +20,7 @@ reports/
 trash/
 data/
 venv/
+.venv/
 docs/
 site/
 .addresses.json

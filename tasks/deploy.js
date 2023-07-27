@@ -3,44 +3,13 @@ const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const fs = require("fs");
 const { request } = require("undici");
 const ethers = require("ethers");
-
-const _BN = ethers.BigNumber.from;
-const WAD = _BN(1e10).mul(_BN(1e8)); // 1e10*1e8=1e18
-const RAY = WAD.mul(_BN(1e9)); // 1e18*1e9=1e27
-
-const WhitelistStatus = {
-  notdefined: 0,
-  whitelisted: 1,
-  blacklisted: 2,
-};
+const { task, types } = require("hardhat/config");
+const { WhitelistStatus } = require("../js/enums");
+const { amountFunction, _W, grantRole, grantComponentRole, getDefaultSigner } = require("../js/utils");
 
 const reservesOpts = {
   unsafeAllow: ["delegatecall"],
 };
-
-/**
- * Creates a fixed-point conversion function for the desired number of decimals
- * @param decimals The number of decimals. Must be >= 6.
- * @returns The amount function created. The function can receive strings (recommended),
- *          floats/doubles (not recommended) and integers.
- *
- *          Floats will be rounded to 6 decimal before scaling.
- */
-function amountFunction(decimals) {
-  return function (value) {
-    if (value === undefined) return undefined;
-
-    if (typeof value === "string" || value instanceof String) {
-      return hre.ethers.utils.parseUnits(value, decimals);
-    }
-
-    if (!Number.isInteger(value)) {
-      return _BN(Math.round(value * 1e6)).mul(_BN(Math.pow(10, decimals - 6)));
-    }
-
-    return _BN(value).mul(_BN(10).pow(decimals));
-  };
-}
 
 function amountDecimals() {
   let decimals = Number.parseInt(process.env.DEPLOY_AMOUNT_DECIMALS);
@@ -49,8 +18,6 @@ function amountDecimals() {
 }
 
 const GWei = amountFunction(9);
-const _W = amountFunction(18);
-const _R = amountFunction(27);
 const _A = amountFunction(amountDecimals());
 
 /**
@@ -185,48 +152,6 @@ async function deployProxyContract(
   return { ContractFactory, contract };
 }
 
-function parseRole(role) {
-  if (role.startsWith("0x")) return role;
-  if (role === "DEFAULT_ADMIN_ROLE") return ethers.constants.HashZero;
-  return ethers.utils.keccak256(ethers.utils.toUtf8Bytes(role));
-}
-
-async function grantComponentRole(hre, contract, component, role, user) {
-  let userAddress;
-  if (user === undefined) {
-    user = await _getDefaultSigner(hre);
-    userAddress = user.address;
-  } else {
-    userAddress = user;
-  }
-  const roleHex = parseRole(role);
-  const componentAddress = component.address || component;
-  const componentRole = await contract.getComponentRole(componentAddress, roleHex);
-  if (!(await contract.hasRole(componentRole, userAddress))) {
-    await contract.grantComponentRole(componentAddress, roleHex, userAddress, txOverrides());
-    console.log(`Role ${role} (${roleHex}) Component ${componentAddress} granted to ${userAddress}`);
-  } else {
-    console.log(`Role ${role} (${roleHex}) Component ${componentAddress} already granted to ${userAddress}`);
-  }
-}
-
-async function grantRole(hre, contract, role, user) {
-  let userAddress;
-  if (user === undefined) {
-    user = await _getDefaultSigner(hre);
-    userAddress = user.address;
-  } else {
-    userAddress = user;
-  }
-  const roleHex = parseRole(role);
-  if (!(await contract.hasRole(roleHex, userAddress))) {
-    await contract.grantRole(roleHex, userAddress, txOverrides());
-    console.log(`Role ${role} (${roleHex}) granted to ${userAddress}`);
-  } else {
-    console.log(`Role ${role} (${roleHex}) already granted to ${userAddress}`);
-  }
-}
-
 async function grantRoleTask({ contractAddress, role, account, component, impersonate, impersonateBalance }, hre) {
   let contract = await hre.ethers.getContractAt("AccessManager", contractAddress);
   if (impersonate !== undefined) {
@@ -237,9 +162,9 @@ async function grantRoleTask({ contractAddress, role, account, component, impers
     contract = contract.connect(signer);
   }
   if (component === ethers.constants.AddressZero) {
-    await grantRole(hre, contract, role, account);
+    await grantRole(hre, contract, role, account, txOverrides(), console.log);
   } else {
-    await grantComponentRole(hre, contract, component, role, account);
+    await grantComponentRole(hre, contract, component, role, account, txOverrides(), console.log);
   }
 }
 
@@ -258,11 +183,6 @@ async function deployTestCurrency({ currName, currSymbol, initialSupply, ...opts
 
 async function deployAccessManager(opts, hre) {
   return (await deployProxyContract({ contractClass: "AccessManager", ...opts }, hre)).contract.address;
-}
-
-async function _getDefaultSigner(hre) {
-  const signers = await hre.ethers.getSigners();
-  return signers[0];
 }
 
 async function deployPolicyPool({ accessAddress, currencyAddress, nftName, nftSymbol, treasuryAddress, ...opts }, hre) {
@@ -447,7 +367,7 @@ async function deployAaveAssetManager({ asset, aave, amClass, ...opts }, hre) {
 }
 
 async function deployWhitelist(
-  { wlClass, poolAddress, extraConstructorArgs, extraArgs, eToken, eToken2, eToken3, defaultStatus, runAs, ...opts },
+  { wlClass, poolAddress, extraConstructorArgs, extraArgs, eToken, eToken2, eToken3, defaultStatus, ...opts },
   hre
 ) {
   extraArgs = extraArgs || [];
@@ -490,7 +410,7 @@ async function trustfullPolicy({ rmAddress, payout, premium, lossProb, expiratio
   const currency = await hre.ethers.getContractAt("IERC20Metadata", await policyPool.currency());
   await grantComponentRole(hre, access, rm, "PRICER_ROLE");
 
-  customer = customer || (await _getDefaultSigner(hre));
+  customer = customer || (await getDefaultSigner(hre));
   premium = _A(premium);
 
   await currency.approve(policyPool.address, premium);
@@ -534,7 +454,7 @@ async function flightDelayPolicy(
   const currency = await hre.ethers.getContractAt("IERC20Metadata", await policyPool.currency());
 
   await grantComponentRole(hre, access, rm, "PRICER_ROLE");
-  customer = customer || (await _getDefaultSigner(hre));
+  customer = customer || (await getDefaultSigner(hre));
   premium = _A(premium);
 
   await currency.approve(policyPool.address, premium);
@@ -561,7 +481,7 @@ async function listETokens({ poolAddress }, hre) {
 
   console.log(`Pool has ${etkCount} tokens`);
 
-  for (i = 0; i < etkCount; i++) {
+  for (let i = 0; i < etkCount; i++) {
     const etk = await hre.ethers.getContractAt("EToken", await policyPool.getETokenAt(i));
     const etkName = await etk.name();
     console.log(`eToken at ${etk.address}: ${etkName}`);
@@ -599,7 +519,7 @@ function add_task() {
         taskArgs.accessAddress = await deployAccessManager(taskArgs, hre);
       }
       taskArgs.saveAddr = "POOL";
-      let policyPoolAddress = await deployPolicyPool(taskArgs, hre);
+      await deployPolicyPool(taskArgs, hre);
     });
 
   task("deploy:testCurrency", "Deploys the Test Currency")
@@ -786,15 +706,12 @@ module.exports = {
   logContractCreated,
   deployContract,
   deployProxyContract,
-  grantRole,
-  grantComponentRole,
   deployEToken,
   deployPremiumsAccount,
   deployRiskModule,
   deploySignedQuoteRM,
   setAssetManager,
   deployWhitelist,
-  WhitelistStatus,
   txOverrides,
   amountFunction,
   _W,

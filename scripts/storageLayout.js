@@ -1,7 +1,5 @@
 const hre = require("hardhat");
-const { artifacts } = require("hardhat");
-const { findAll } = require("solidity-ast/utils");
-const { getStorageLayout } = require("../test/test-utils");
+const { getStorageLayout } = require("../js/utils");
 
 /**
  * Script to print a contracts storage layout as a table.
@@ -9,11 +7,9 @@ const { getStorageLayout } = require("../test/test-utils");
  * Example usage: node scripts/storageLayout.js EToken
  */
 
-//
-
 async function main(contractSrc, contractName) {
   await hre.run("compile");
-  const layout = await getStorageLayout(contractSrc, contractName);
+  const layout = await getStorageLayout(hre, contractSrc, contractName);
 
   const summary = layout.storage.map((item) => ({
     slot: parseInt(item.slot),
@@ -29,5 +25,6 @@ const [contractSrc, contractName] = [`contracts/${process.argv[2]}.sol`, process
 
 console.log(`Storage layout for ${contractSrc}:${contractName}`);
 main(contractSrc, contractName).then(() => {
+  // eslint-disable-next-line no-process-exit
   process.exit(0);
 });

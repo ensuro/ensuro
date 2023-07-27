@@ -1,8 +1,7 @@
 require("mocha");
 const { expect } = require("chai");
-const hre = require("hardhat");
 
-const { getStorageLayout } = require("./test-utils");
+const { getStorageLayout } = require("../js/utils");
 
 describe("Storage Gaps", () => {
   const contracts = [
@@ -21,7 +20,7 @@ describe("Storage Gaps", () => {
 
   for (const contract of contracts) {
     it(`${contract} has a proper storage gap`, async () => {
-      const { storage, types } = await getStorageLayout(`contracts/${contract}.sol`, contract);
+      const { storage, types } = await getStorageLayout(hre, `contracts/${contract}.sol`, contract);
 
       const gap = storage[storage.length - 1];
 

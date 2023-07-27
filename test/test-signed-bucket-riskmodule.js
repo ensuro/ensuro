@@ -1,28 +1,25 @@
 const { expect } = require("chai");
 const {
-  initCurrency,
-  deployPool,
-  deployPremiumsAccount,
   _W,
-  addRiskModule,
-  amountFunction,
-  addEToken,
-  getTransactionEvent,
   accessControlMessage,
-  makeSignedQuote,
-  makeBucketQuoteMessage,
-  RiskModuleParameter,
+  amountFunction,
+  defaultPolicyParams,
+  getTransactionEvent,
   grantRole,
-} = require("./test-utils");
+  makeBucketQuoteMessage,
+  makeSignedQuote,
+} = require("../js/utils");
+const { RiskModuleParameter } = require("../js/enums");
+const { initCurrency, deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
 describe("SignedBucketRiskModule contract tests", function () {
   let _A;
-  let lp, cust, signer, resolver, level1, level2;
+  let cust, level1, level2, lp, resolver, signer;
 
   beforeEach(async () => {
-    [__, lp, cust, signer, resolver, level1, level2] = await hre.ethers.getSigners();
+    [, lp, cust, signer, resolver, level1, level2] = await hre.ethers.getSigners();
 
     _A = amountFunction(6);
   });
@@ -34,7 +31,7 @@ describe("SignedBucketRiskModule contract tests", function () {
       [_A(20000), _A(500)]
     );
 
-    const pool = await deployPool(hre, {
+    const pool = await deployPool({
       currency: currency.address,
       grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
       treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
@@ -46,7 +43,7 @@ describe("SignedBucketRiskModule contract tests", function () {
     // Setup the liquidity sources
     const srEtk = await addEToken(pool, {});
     const jrEtk = await addEToken(pool, {});
-    const premiumsAccount = await deployPremiumsAccount(hre, pool, {
+    const premiumsAccount = await deployPremiumsAccount(pool, {
       srEtkAddr: srEtk.address,
       jrEtkAddr: jrEtk.address,
     });
@@ -73,27 +70,10 @@ describe("SignedBucketRiskModule contract tests", function () {
     return { srEtk, jrEtk, premiumsAccount, rm, pool, accessManager, currency };
   }
 
-  async function defaultPolicyParams({
-    rmAddress,
-    payout,
-    premium,
-    lossProb,
-    expiration,
-    policyData,
-    bucketId,
-    validUntil,
-  }) {
-    const now = await helpers.time.latest();
-    return {
-      rmAddress,
-      payout: payout || _A(1000),
-      premium: premium || ethers.constants.MaxUint256,
-      lossProb: lossProb || _W(0.1),
-      expiration: expiration || now + 3600 * 24 * 30,
-      policyData: policyData || hre.ethers.utils.hexlify(hre.ethers.utils.randomBytes(32)),
-      bucketId: bucketId || 0,
-      validUntil: validUntil || now + 3600 * 24 * 30,
-    };
+  async function defaultPolicyParamsWithBucket(opts) {
+    const policyParams = await defaultPolicyParams(opts, _A);
+    policyParams.bucketId = opts.bucketId || 0;
+    return policyParams;
   }
 
   function newPolicy(rm, sender, policyParams, onBehalfOf, signature, method) {
@@ -114,7 +94,7 @@ describe("SignedBucketRiskModule contract tests", function () {
 
   it("Uses the default parameters when no buckets are set up", async () => {
     const { rm, pool } = await helpers.loadFixture(deployPoolFixture);
-    const policyParams = await defaultPolicyParams({ rmAddress: rm.address });
+    const policyParams = await defaultPolicyParamsWithBucket({ rmAddress: rm.address });
     const signature = await makeSignedQuote(signer, policyParams, makeBucketQuoteMessage);
     const tx = await newPolicy(rm, cust, policyParams, cust, signature);
 
@@ -187,7 +167,7 @@ describe("SignedBucketRiskModule contract tests", function () {
       .withArgs(1234, bucket.asParams());
 
     // Policy with bucketId = 1234 uses bucket parameters
-    const policy1Params = await defaultPolicyParams({
+    const policy1Params = await defaultPolicyParamsWithBucket({
       rmAddress: rm.address,
       bucketId: 1234,
       lossProb: _W("0.055"),
@@ -206,7 +186,11 @@ describe("SignedBucketRiskModule contract tests", function () {
     expect(policy1Data.ensuroCommission).to.equal(_W("0"));
 
     // Policy with non existent bucket reverts
-    const policy2Params = await defaultPolicyParams({ rmAddress: rm.address, bucketId: 4321, lossProb: _W("0.15") });
+    const policy2Params = await defaultPolicyParamsWithBucket({
+      rmAddress: rm.address,
+      bucketId: 4321,
+      lossProb: _W("0.15"),
+    });
 
     const signature2 = await makeSignedQuote(signer, policy2Params, makeBucketQuoteMessage);
 
@@ -215,7 +199,11 @@ describe("SignedBucketRiskModule contract tests", function () {
     );
 
     // Policy with bucketId = 0 uses default
-    const policy3Params = await defaultPolicyParams({ rmAddress: rm.address, bucketId: 0, lossProb: _W("0.2") });
+    const policy3Params = await defaultPolicyParamsWithBucket({
+      rmAddress: rm.address,
+      bucketId: 0,
+      lossProb: _W("0.2"),
+    });
 
     const signature3 = await makeSignedQuote(signer, policy3Params, makeBucketQuoteMessage);
     const policy3Tx = await newPolicy(rm, cust, policy3Params, cust, signature3);
@@ -262,7 +250,7 @@ describe("SignedBucketRiskModule contract tests", function () {
       .withArgs(15, bucket15.asParams());
 
     // Policy with bucketId = 10
-    const policy1Params = await defaultPolicyParams({
+    const policy1Params = await defaultPolicyParamsWithBucket({
       rmAddress: rm.address,
       bucketId: 10,
       lossProb: _W("0.055"),
@@ -285,7 +273,7 @@ describe("SignedBucketRiskModule contract tests", function () {
     ).to.equal(_A("49.345172"));
 
     // Policy with bucketId = 10
-    const policy2Params = await defaultPolicyParams({
+    const policy2Params = await defaultPolicyParamsWithBucket({
       rmAddress: rm.address,
       lossProb: _W("0.1"),
       bucketId: 10,
@@ -308,7 +296,7 @@ describe("SignedBucketRiskModule contract tests", function () {
     ).to.equal(_A("100.18296"));
 
     // Policy with bucketId = 15
-    const policy3Params = await defaultPolicyParams({
+    const policy3Params = await defaultPolicyParamsWithBucket({
       rmAddress: rm.address,
       bucketId: 15,
       lossProb: _W("0.101"),
@@ -330,7 +318,7 @@ describe("SignedBucketRiskModule contract tests", function () {
     ).to.equal(_A("120.176024"));
 
     // Policy with bucketId = 0 uses defaults
-    const policy4Params = await defaultPolicyParams({ rmAddress: rm.address, lossProb: _W("0.2") });
+    const policy4Params = await defaultPolicyParamsWithBucket({ rmAddress: rm.address, lossProb: _W("0.2") });
 
     const signature4 = await makeSignedQuote(signer, policy4Params, makeBucketQuoteMessage);
     const policy4Tx = await newPolicy(rm, cust, policy4Params, cust, signature4);
@@ -350,7 +338,7 @@ describe("SignedBucketRiskModule contract tests", function () {
 
   it("Allows obtaining bucket parameters", async () => {
     const { rm } = await helpers.loadFixture(deployPoolFixture);
-    bucket = bucketParameters({});
+    const bucket = bucketParameters({});
     await rm.setBucketParams(1, bucket);
 
     expect(await rm.bucketParams(1)).to.deep.equal(bucket.asParams());

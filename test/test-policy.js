@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
-const { amountFunction, _W, getTransactionEvent } = require("./test-utils");
+const { amountFunction, _W, getTransactionEvent } = require("../js/utils");
 
 const _A = amountFunction(6);
 

@@ -1,19 +1,11 @@
 const { expect } = require("chai");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
-const {
-  initCurrency,
-  deployPool,
-  deployPremiumsAccount,
-  addRiskModule,
-  amountFunction,
-  grantRole,
-  grantComponentRole,
-  addEToken,
-} = require("./test-utils");
+const { grantRole, grantComponentRole, amountFunction } = require("../js/utils");
+const { initCurrency, deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
+
+const { AddressZero } = hre.ethers.constants;
 
 describe("Test Upgrade contracts", function () {
-  const zeroAddress = ethers.constants.AddressZero;
-
   async function setupFixture() {
     const [owner, cust, lp, guardian, level1] = await hre.ethers.getSigners();
     const _A = amountFunction(6);
@@ -50,7 +42,7 @@ describe("Test Upgrade contracts", function () {
 
   async function setupFixtureWithPool() {
     const ret = await setupFixture();
-    const pool = await deployPool(hre, { currency: ret.currency.address, access: ret.access.address });
+    const pool = await deployPool({ currency: ret.currency.address, access: ret.access.address });
     pool._A = ret._A;
     return {
       pool,
@@ -76,7 +68,7 @@ describe("Test Upgrade contracts", function () {
   async function setupFixtureWithPoolAndPA() {
     const ret = await setupFixtureWithPool();
     const etk = await addEToken(ret.pool, {});
-    const premiumsAccount = await deployPremiumsAccount(hre, ret.pool, { srEtkAddr: etk.address });
+    const premiumsAccount = await deployPremiumsAccount(ret.pool, { srEtkAddr: etk.address });
     return {
       premiumsAccount,
       etk,
@@ -86,7 +78,7 @@ describe("Test Upgrade contracts", function () {
 
   async function setupFixtureWithPoolAndPAWithoutETK() {
     const ret = await setupFixtureWithPool();
-    const premiumsAccount = await deployPremiumsAccount(hre, ret.pool, {});
+    const premiumsAccount = await deployPremiumsAccount(ret.pool, {});
     return {
       premiumsAccount,
       ...ret,
@@ -95,7 +87,7 @@ describe("Test Upgrade contracts", function () {
 
   async function setupFixtureWithPoolAndRM() {
     const ret = await setupFixtureWithPoolAndPA();
-    const TrustfulRiskModule = await ethers.getContractFactory("TrustfulRiskModule");
+    const TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
     const rm = await addRiskModule(ret.pool, ret.premiumsAccount, TrustfulRiskModule, {});
     return {
       rm,
@@ -106,7 +98,7 @@ describe("Test Upgrade contracts", function () {
 
   it("Should be able to upgrade PolicyPool", async () => {
     const { pool, cust, guardian, currency, access } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
-    const PolicyPool = await ethers.getContractFactory("PolicyPool");
+    const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
     const newImpl = await PolicyPool.deploy(access.address, currency.address);
 
     // Cust cant upgrade
@@ -117,7 +109,7 @@ describe("Test Upgrade contracts", function () {
 
   it("Shouldn't be able to upgrade PolicyPool changing the AccessManager", async () => {
     const { pool, level1, currency, access } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
-    const PolicyPool = await ethers.getContractFactory("PolicyPool");
+    const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
     const newImpl = await PolicyPool.deploy(currency.address, access.address); // Inverted addresses
 
     await expect(pool.connect(level1).upgradeTo(newImpl.address)).to.be.revertedWith(
@@ -127,7 +119,7 @@ describe("Test Upgrade contracts", function () {
 
   it("Shouldn't be able to upgrade PolicyPool changing the Currency", async () => {
     const { pool, level1, access } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
-    const PolicyPool = await ethers.getContractFactory("PolicyPool");
+    const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
     const newImpl = await PolicyPool.deploy(access.address, access.address); // 2nd should be currency.address
 
     await expect(pool.connect(level1).upgradeTo(newImpl.address)).to.be.revertedWith(
@@ -137,7 +129,7 @@ describe("Test Upgrade contracts", function () {
 
   it("Should be able to upgrade EToken", async () => {
     const { pool, cust, guardian, etk } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
-    const EToken = await ethers.getContractFactory("EToken");
+    const EToken = await hre.ethers.getContractFactory("EToken");
     const newImpl = await EToken.deploy(pool.address);
 
     // Cust cant upgrade
@@ -148,7 +140,7 @@ describe("Test Upgrade contracts", function () {
 
   it("Can upgrade EToken with componentRole", async () => {
     const { pool, cust, etk, access } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
-    const EToken = await ethers.getContractFactory("EToken");
+    const EToken = await hre.ethers.getContractFactory("EToken");
     const newEToken = await EToken.deploy(pool.address);
 
     // Cust cant upgrade
@@ -160,14 +152,14 @@ describe("Test Upgrade contracts", function () {
 
   it("Should not be able to upgrade EToken with different pool", async () => {
     const { guardian, etk, currency, _A } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
-    const newPool = await deployPool(hre, {
+    const newPool = await deployPool({
       currency: currency.address,
       grantRoles: [],
       treasuryAddress: "0x7291Ba1DC551b666c49Da22dE76eC7ceEB51AeDC", // Random address
     });
     newPool._A = _A;
 
-    const EToken = await ethers.getContractFactory("EToken");
+    const EToken = await hre.ethers.getContractFactory("EToken");
     const newImpl = await EToken.deploy(newPool.address);
 
     await expect(etk.connect(guardian).upgradeTo(newImpl.address)).to.be.revertedWith(
@@ -177,8 +169,8 @@ describe("Test Upgrade contracts", function () {
 
   it("Should be able to upgrade PremiumsAccount contract", async () => {
     const { guardian, cust, pool, premiumsAccount, etk } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
-    const PremiumsAccount = await ethers.getContractFactory("PremiumsAccount");
-    const newImpl = await PremiumsAccount.deploy(pool.address, zeroAddress, etk.address);
+    const PremiumsAccount = await hre.ethers.getContractFactory("PremiumsAccount");
+    const newImpl = await PremiumsAccount.deploy(pool.address, AddressZero, etk.address);
 
     // Cust cant upgrade
     await expect(premiumsAccount.connect(cust).upgradeTo(newImpl.address)).to.be.revertedWith("AccessControl:");
@@ -188,8 +180,8 @@ describe("Test Upgrade contracts", function () {
 
   it("Can upgrade PremiumsAccount with componentRole", async () => {
     const { cust, pool, premiumsAccount, etk, access } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
-    const PremiumsAccount = await ethers.getContractFactory("PremiumsAccount");
-    const newPremiumsAccount = await PremiumsAccount.deploy(pool.address, zeroAddress, etk.address);
+    const PremiumsAccount = await hre.ethers.getContractFactory("PremiumsAccount");
+    const newPremiumsAccount = await PremiumsAccount.deploy(pool.address, AddressZero, etk.address);
 
     // Cust cant upgrade
     await expect(premiumsAccount.connect(cust).upgradeTo(newPremiumsAccount.address)).to.be.revertedWith(
@@ -202,21 +194,21 @@ describe("Test Upgrade contracts", function () {
 
   it("Should not be able to upgrade PremiumsAccount with different pool or jrEtk", async () => {
     const { guardian, pool, premiumsAccount, etk, currency, _A } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
-    const newPool = await deployPool(hre, {
+    const newPool = await deployPool({
       currency: currency.address,
       grantRoles: [],
       treasuryAddress: "0x7291Ba1DC551b666c49Da22dE76eC7ceEB51AeDC", // Random address
     });
     newPool._A = _A;
 
-    const PremiumsAccount = await ethers.getContractFactory("PremiumsAccount");
-    let newImpl = await PremiumsAccount.deploy(newPool.address, zeroAddress, etk.address);
+    const PremiumsAccount = await hre.ethers.getContractFactory("PremiumsAccount");
+    let newImpl = await PremiumsAccount.deploy(newPool.address, AddressZero, etk.address);
 
     await expect(premiumsAccount.connect(guardian).upgradeTo(newImpl.address)).to.be.revertedWith(
       "Can't upgrade changing the PolicyPool!"
     );
 
-    newImpl = await PremiumsAccount.deploy(pool.address, zeroAddress, zeroAddress);
+    newImpl = await PremiumsAccount.deploy(pool.address, AddressZero, AddressZero);
     await expect(premiumsAccount.connect(guardian).upgradeTo(newImpl.address)).to.be.revertedWith(
       "Can't upgrade changing the Senior ETK unless to non-zero"
     );
@@ -226,24 +218,22 @@ describe("Test Upgrade contracts", function () {
     newImpl = await PremiumsAccount.deploy(pool.address, jrEtk.address, etk.address);
     await premiumsAccount.connect(guardian).upgradeTo(newImpl.address);
 
-    newImpl = await PremiumsAccount.deploy(pool.address, zeroAddress, etk.address);
+    newImpl = await PremiumsAccount.deploy(pool.address, AddressZero, etk.address);
     await expect(premiumsAccount.connect(guardian).upgradeTo(newImpl.address)).to.be.revertedWith(
       "Can't upgrade changing the Junior ETK unless to non-zero"
     );
   });
 
   it("Should be able to deploy PremiumsAccount without eTokens and upgrade to have them", async () => {
-    const { guardian, pool, premiumsAccount, etk, currency, _A } = await helpers.loadFixture(
-      setupFixtureWithPoolAndPAWithoutETK
-    );
-    const PremiumsAccount = await ethers.getContractFactory("PremiumsAccount");
+    const { guardian, pool, premiumsAccount } = await helpers.loadFixture(setupFixtureWithPoolAndPAWithoutETK);
+    const PremiumsAccount = await hre.ethers.getContractFactory("PremiumsAccount");
 
-    let newImpl = await PremiumsAccount.deploy(pool.address, zeroAddress, zeroAddress);
+    let newImpl = await PremiumsAccount.deploy(pool.address, AddressZero, AddressZero);
     await expect(premiumsAccount.connect(guardian).upgradeTo(newImpl.address)).not.to.be.reverted;
 
     // Changing jrEtk from 0 to something is possible
     const jrEtk = await addEToken(pool, {});
-    newImpl = await PremiumsAccount.deploy(pool.address, jrEtk.address, zeroAddress);
+    newImpl = await PremiumsAccount.deploy(pool.address, jrEtk.address, AddressZero);
     await premiumsAccount.connect(guardian).upgradeTo(newImpl.address);
 
     // Changing srEtk from 0 to something is possible
@@ -287,20 +277,20 @@ describe("Test Upgrade contracts", function () {
     const { guardian, pool, rm, currency, _A, TrustfulRiskModule } = await helpers.loadFixture(
       setupFixtureWithPoolAndRM
     );
-    const newPool = await deployPool(hre, {
+    const newPool = await deployPool({
       currency: currency.address,
       grantRoles: [],
       treasuryAddress: "0x7291Ba1DC551b666c49Da22dE76eC7ceEB51AeDC", // Random address
     });
     newPool._A = _A;
-    const newPA = await deployPremiumsAccount(hre, newPool, {});
+    const newPA = await deployPremiumsAccount(newPool, {});
 
     let newImpl = await TrustfulRiskModule.deploy(newPool.address, newPA.address);
 
     await expect(rm.connect(guardian).upgradeTo(newImpl.address)).to.be.revertedWith(
       "Can't upgrade changing the PolicyPool!"
     );
-    const newPAOrigPool = await deployPremiumsAccount(hre, pool, {});
+    const newPAOrigPool = await deployPremiumsAccount(pool, {});
 
     newImpl = await TrustfulRiskModule.deploy(pool.address, newPAOrigPool.address);
     await expect(rm.connect(guardian).upgradeTo(newImpl.address)).to.be.revertedWith(
@@ -331,7 +321,7 @@ describe("Test Upgrade contracts", function () {
 
   it("Should be able to upgrade AccessManager contract", async () => {
     const { guardian, cust, access } = await helpers.loadFixture(setupFixtureWithPool);
-    const AccessManager = await ethers.getContractFactory("AccessManager");
+    const AccessManager = await hre.ethers.getContractFactory("AccessManager");
     const newAM = await AccessManager.deploy();
 
     // Cust cant upgrade

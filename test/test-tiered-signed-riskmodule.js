@@ -1,27 +1,24 @@
 const { expect } = require("chai");
 const {
-  initCurrency,
-  deployPool,
-  deployPremiumsAccount,
   _W,
-  addRiskModule,
-  amountFunction,
-  addEToken,
-  getTransactionEvent,
   accessControlMessage,
-  makeSignedQuote,
-  RiskModuleParameter,
+  amountFunction,
+  defaultPolicyParams,
+  getTransactionEvent,
   grantRole,
-} = require("./test-utils");
+  makeSignedQuote,
+} = require("../js/utils");
+const { RiskModuleParameter } = require("../js/enums");
 const hre = require("hardhat");
+const { initCurrency, deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
 describe("TieredSignedQuoteRiskModule contract tests", function () {
   let _A;
-  let lp, cust, signer, resolver, level1, level2;
+  let cust, level1, level2, lp, resolver, signer;
 
   beforeEach(async () => {
-    [__, lp, cust, signer, resolver, level1, level2] = await hre.ethers.getSigners();
+    [, lp, cust, signer, resolver, level1, level2] = await hre.ethers.getSigners();
 
     _A = amountFunction(6);
   });
@@ -33,7 +30,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
       [_A(20000), _A(500)]
     );
 
-    const pool = await deployPool(hre, {
+    const pool = await deployPool({
       currency: currency.address,
       grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
       treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
@@ -45,7 +42,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
     // Setup the liquidity sources
     const srEtk = await addEToken(pool, {});
     const jrEtk = await addEToken(pool, {});
-    const premiumsAccount = await deployPremiumsAccount(hre, pool, {
+    const premiumsAccount = await deployPremiumsAccount(pool, {
       srEtkAddr: srEtk.address,
       jrEtkAddr: jrEtk.address,
     });
@@ -70,19 +67,6 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
     await accessManager.grantComponentRole(rm.address, await rm.PRICER_ROLE(), signer.address);
     await accessManager.grantComponentRole(rm.address, await rm.RESOLVER_ROLE(), resolver.address);
     return { srEtk, jrEtk, premiumsAccount, rm, pool, accessManager, currency };
-  }
-
-  async function defaultPolicyParams({ rmAddress, payout, premium, lossProb, expiration, policyData, validUntil }) {
-    const now = await helpers.time.latest();
-    return {
-      rmAddress,
-      payout: payout || _A(1000),
-      premium: premium || ethers.constants.MaxUint256,
-      lossProb: lossProb || _W(0.1),
-      expiration: expiration || now + 3600 * 24 * 30,
-      policyData: policyData || hre.ethers.utils.hexlify(hre.ethers.utils.randomBytes(32)),
-      validUntil: validUntil || now + 3600 * 24 * 30,
-    };
   }
 
   function newPolicy(rm, sender, policyParams, onBehalfOf, signature, method) {
@@ -360,7 +344,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
 
   it("Allows obtaining bucket parameters", async () => {
     const { rm } = await helpers.loadFixture(deployPoolFixture);
-    bucket = bucketParameters({});
+    const bucket = bucketParameters({});
     await rm.pushBucket(_W("0.1"), bucket);
 
     expect(await rm.bucketParams(_W("0.1"))).to.deep.equal(bucket.asParams());
