@@ -35,8 +35,9 @@ cp js/*.js $TARGET_DIR/js/
 cp tasks/deploy.js $TARGET_DIR/js/
 
 mkdir $TARGET_DIR/scripts
-cp scripts/change-pragma.sh scripts/storageLayout.js \
-    $TARGET_DIR/scripts/
+cp scripts/change-pragma.sh scripts/utils.sh \
+    scripts/deploySmokeTest.sh scripts/deploySmokeTest-fork.sh \
+    scripts/storageLayout.js $TARGET_DIR/scripts/
 
 find $TARGET_DIR -name "*.dbg.json" -delete
 sed "s/%%VERSION%%/$VERSION/" npm-package/package.json > "$TARGET_DIR/package.json"
