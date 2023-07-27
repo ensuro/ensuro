@@ -3,9 +3,9 @@ const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { grantRole, grantComponentRole, amountFunction } = require("../js/utils");
 const { initCurrency, deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
 
-describe("Test Upgrade contracts", function () {
-  const zeroAddress = hre.ethers.constants.AddressZero;
+const { AddressZero } = hre.ethers.constants;
 
+describe("Test Upgrade contracts", function () {
   async function setupFixture() {
     const [owner, cust, lp, guardian, level1] = await hre.ethers.getSigners();
     const _A = amountFunction(6);
@@ -170,7 +170,7 @@ describe("Test Upgrade contracts", function () {
   it("Should be able to upgrade PremiumsAccount contract", async () => {
     const { guardian, cust, pool, premiumsAccount, etk } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
     const PremiumsAccount = await hre.ethers.getContractFactory("PremiumsAccount");
-    const newImpl = await PremiumsAccount.deploy(pool.address, zeroAddress, etk.address);
+    const newImpl = await PremiumsAccount.deploy(pool.address, AddressZero, etk.address);
 
     // Cust cant upgrade
     await expect(premiumsAccount.connect(cust).upgradeTo(newImpl.address)).to.be.revertedWith("AccessControl:");
@@ -181,7 +181,7 @@ describe("Test Upgrade contracts", function () {
   it("Can upgrade PremiumsAccount with componentRole", async () => {
     const { cust, pool, premiumsAccount, etk, access } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
     const PremiumsAccount = await hre.ethers.getContractFactory("PremiumsAccount");
-    const newPremiumsAccount = await PremiumsAccount.deploy(pool.address, zeroAddress, etk.address);
+    const newPremiumsAccount = await PremiumsAccount.deploy(pool.address, AddressZero, etk.address);
 
     // Cust cant upgrade
     await expect(premiumsAccount.connect(cust).upgradeTo(newPremiumsAccount.address)).to.be.revertedWith(
@@ -202,13 +202,13 @@ describe("Test Upgrade contracts", function () {
     newPool._A = _A;
 
     const PremiumsAccount = await hre.ethers.getContractFactory("PremiumsAccount");
-    let newImpl = await PremiumsAccount.deploy(newPool.address, zeroAddress, etk.address);
+    let newImpl = await PremiumsAccount.deploy(newPool.address, AddressZero, etk.address);
 
     await expect(premiumsAccount.connect(guardian).upgradeTo(newImpl.address)).to.be.revertedWith(
       "Can't upgrade changing the PolicyPool!"
     );
 
-    newImpl = await PremiumsAccount.deploy(pool.address, zeroAddress, zeroAddress);
+    newImpl = await PremiumsAccount.deploy(pool.address, AddressZero, AddressZero);
     await expect(premiumsAccount.connect(guardian).upgradeTo(newImpl.address)).to.be.revertedWith(
       "Can't upgrade changing the Senior ETK unless to non-zero"
     );
@@ -218,7 +218,7 @@ describe("Test Upgrade contracts", function () {
     newImpl = await PremiumsAccount.deploy(pool.address, jrEtk.address, etk.address);
     await premiumsAccount.connect(guardian).upgradeTo(newImpl.address);
 
-    newImpl = await PremiumsAccount.deploy(pool.address, zeroAddress, etk.address);
+    newImpl = await PremiumsAccount.deploy(pool.address, AddressZero, etk.address);
     await expect(premiumsAccount.connect(guardian).upgradeTo(newImpl.address)).to.be.revertedWith(
       "Can't upgrade changing the Junior ETK unless to non-zero"
     );
@@ -228,12 +228,12 @@ describe("Test Upgrade contracts", function () {
     const { guardian, pool, premiumsAccount } = await helpers.loadFixture(setupFixtureWithPoolAndPAWithoutETK);
     const PremiumsAccount = await hre.ethers.getContractFactory("PremiumsAccount");
 
-    let newImpl = await PremiumsAccount.deploy(pool.address, zeroAddress, zeroAddress);
+    let newImpl = await PremiumsAccount.deploy(pool.address, AddressZero, AddressZero);
     await expect(premiumsAccount.connect(guardian).upgradeTo(newImpl.address)).not.to.be.reverted;
 
     // Changing jrEtk from 0 to something is possible
     const jrEtk = await addEToken(pool, {});
-    newImpl = await PremiumsAccount.deploy(pool.address, jrEtk.address, zeroAddress);
+    newImpl = await PremiumsAccount.deploy(pool.address, jrEtk.address, AddressZero);
     await premiumsAccount.connect(guardian).upgradeTo(newImpl.address);
 
     // Changing srEtk from 0 to something is possible

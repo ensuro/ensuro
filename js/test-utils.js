@@ -2,6 +2,8 @@ const hre = require("hardhat");
 const { _W, grantRole, getTransactionEvent } = require("../js/utils");
 const { RiskModuleParameter } = require("../js/enums");
 
+const { AddressZero } = hre.ethers.constants;
+
 async function initCurrency(options, initial_targets, initial_balances) {
   const Currency = await hre.ethers.getContractFactory("TestCurrency");
   let currency = await Currency.deploy(
@@ -204,11 +206,7 @@ async function deployPool(options) {
 async function deployPremiumsAccount(pool, options, addToPool = true) {
   const PremiumsAccount = await hre.ethers.getContractFactory("PremiumsAccount");
   const premiumsAccount = await hre.upgrades.deployProxy(PremiumsAccount, [], {
-    constructorArgs: [
-      pool.address,
-      options.jrEtkAddr || hre.ethers.constants.AddressZero,
-      options.srEtkAddr || hre.ethers.constants.AddressZero,
-    ],
+    constructorArgs: [pool.address, options.jrEtkAddr || AddressZero, options.srEtkAddr || AddressZero],
     kind: "uups",
     unsafeAllow: ["delegatecall"], // This holds, because EToken is a reserve and uses delegatecall
   });

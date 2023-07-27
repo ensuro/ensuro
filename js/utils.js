@@ -7,7 +7,7 @@ const _BN = ethers.BigNumber.from;
 const WAD = _BN(10).pow(18); // 1e18
 const RAY = _BN(10).pow(27); // 1e27
 
-async function getStorageLayout(contractSrc, contractName, hre) {
+async function getStorageLayout(hre, contractSrc, contractName) {
   const buildInfo = await hre.artifacts.getBuildInfo(`${contractSrc}:${contractName}`);
   if (buildInfo === undefined) throw new Error(`Contract ${contractSrc}:${contractName} not in artifacts`);
 

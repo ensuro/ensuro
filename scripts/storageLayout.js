@@ -9,7 +9,7 @@ const { getStorageLayout } = require("../js/utils");
 
 async function main(contractSrc, contractName) {
   await hre.run("compile");
-  const layout = await getStorageLayout(contractSrc, contractName, hre);
+  const layout = await getStorageLayout(hre, contractSrc, contractName);
 
   const summary = layout.storage.map((item) => ({
     slot: parseInt(item.slot),

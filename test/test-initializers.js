@@ -13,6 +13,8 @@ const {
   addEToken,
 } = require("../js/test-utils");
 
+const { AddressZero } = hre.ethers.constants;
+
 describe("Test Initialize contracts", function () {
   async function protocolFixture() {
     const [lp, cust, guardian] = await hre.ethers.getSigners();
@@ -70,9 +72,7 @@ describe("Test Initialize contracts", function () {
   });
 
   it("Does not allow reinitializing PolicyPool", async () => {
-    await expect(pool.initialize("PP", "PP", hre.ethers.constants.AddressZero)).to.be.revertedWith(
-      "contract is already initialized"
-    );
+    await expect(pool.initialize("PP", "PP", AddressZero)).to.be.revertedWith("contract is already initialized");
   });
 
   it("Does not allow reinitializing Etoken", async () => {
@@ -88,16 +88,14 @@ describe("Test Initialize contracts", function () {
   });
 
   it("Does not allow reinitializing RiskModule", async () => {
-    await expect(rm.initialize("RM", 0, 0, 0, 0, 0, hre.ethers.constants.AddressZero)).to.be.revertedWith(
-      "contract is already initialized"
-    );
+    await expect(rm.initialize("RM", 0, 0, 0, 0, 0, AddressZero)).to.be.revertedWith("contract is already initialized");
   });
 
   ["SignedQuoteRiskModule", "SignedBucketRiskModule", "TieredSignedQuoteRiskModule"].forEach((contract) => {
     it(`Does not allow reinitializing ${contract}`, async () => {
       const Factory = await hre.ethers.getContractFactory(contract);
       const initRm = await createRiskModule(pool, premiumsAccount, Factory, { extraConstructorArgs: [false] });
-      await expect(initRm.initialize("RM", 0, 0, 0, 0, 0, hre.ethers.constants.AddressZero)).to.be.revertedWith(
+      await expect(initRm.initialize("RM", 0, 0, 0, 0, 0, AddressZero)).to.be.revertedWith(
         "contract is already initialized"
       );
     });

@@ -10,6 +10,8 @@ const {
 } = require("../js/test-utils");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
+const { MaxUint256 } = hre.ethers.constants;
+
 describe("Test add, remove and change status of PolicyPool components", function () {
   let currency;
   let pool;
@@ -108,7 +110,7 @@ describe("Test add, remove and change status of PolicyPool components", function
       "EToken has liquidity, can't be removed"
     );
 
-    await expect(pool.connect(lp).withdraw(etk.address, hre.ethers.constants.MaxUint256)).not.to.be.reverted;
+    await expect(pool.connect(lp).withdraw(etk.address, MaxUint256)).not.to.be.reverted;
 
     await expect(pool.connect(guardian).removeComponent(etk.address)).to.be.revertedWith(
       "AccessControl: " // Only LEVEL1 can remove

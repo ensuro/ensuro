@@ -20,7 +20,7 @@ describe("Storage Gaps", () => {
 
   for (const contract of contracts) {
     it(`${contract} has a proper storage gap`, async () => {
-      const { storage, types } = await getStorageLayout(`contracts/${contract}.sol`, contract, hre);
+      const { storage, types } = await getStorageLayout(hre, `contracts/${contract}.sol`, contract);
 
       const gap = storage[storage.length - 1];
 
