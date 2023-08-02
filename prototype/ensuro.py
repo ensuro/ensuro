@@ -1,27 +1,35 @@
+import time
 from collections import namedtuple
 from contextlib import contextmanager
-from hashlib import md5
 from functools import wraps
-from m9g import Model
-from m9g.fields import StringField, IntField, DictField, CompositeField, ListField, TupleField
+from hashlib import md5
+
 from ethproto.contracts import (
     AccessControlContract,
-    ERC20Token,
-    external,
-    view,
-    RayField,
-    WadField,
     AddressField,
-    ContractProxyField,
-    ContractProxy,
-    require,
-    only_role,
     Contract,
+    ContractProxy,
+    ContractProxyField,
+    ERC20Token,
+    ERC721Token,
+    RayField,
     RevertError,
+    WadField,
+    external,
+    only_role,
+    require,
+    view,
 )
-from ethproto.contracts import ERC721Token
-from ethproto.wadray import RAY, Ray, Wad, _W, _R
-import time
+from ethproto.wadray import _R, _W, RAY, Ray, Wad
+from m9g import Model
+from m9g.fields import (
+    CompositeField,
+    DictField,
+    IntField,
+    ListField,
+    StringField,
+    TupleField,
+)
 
 DAYS_PER_YEAR = 365
 HOURS_PER_DAY = 24
@@ -64,9 +72,7 @@ def only_component_role(*roles):
                 if self.has_role(composed_role, self.running_as):
                     break
             else:
-                raise RevertError(
-                    f"AccessControl: account {self.running_as} is missing role {role}"
-                )
+                raise RevertError(f"AccessControl: account {self.running_as} is missing role {role}")
             return method(self, *args, **kwargs)
 
         return inner
@@ -86,9 +92,7 @@ def only_component_or_global_role(*roles):
                 if self.has_role(role, self.running_as):
                     break
             else:
-                raise RevertError(
-                    f"AccessControl: account {self.running_as} is missing role {role}"
-                )
+                raise RevertError(f"AccessControl: account {self.running_as} is missing role {role}")
             return method(self, *args, **kwargs)
 
         return inner
@@ -112,9 +116,7 @@ def only_component_or_global_or_open_role(*roles):
                 if self.has_role(role, self.running_as):
                     break
             else:
-                raise RevertError(
-                    f"AccessControl: account {self.running_as} is missing role {role}"
-                )
+                raise RevertError(f"AccessControl: account {self.running_as} is missing role {role}")
             return method(self, *args, **kwargs)
 
         return inner
@@ -193,16 +195,12 @@ class RiskModule(AccessControlContract):
     def _validate_setattr(self, attr_name, value):
         if attr_name in self.pool_set_attr_roles:
             require(
-                self.policy_pool.access.has_role(
-                    self.pool_set_attr_roles[attr_name], self._running_as
-                ),
+                self.policy_pool.access.has_role(self.pool_set_attr_roles[attr_name], self._running_as),
                 f"AccessControl: AccessControl: account {self._running_as} is missing role "
                 f"'{self.pool_set_attr_roles[attr_name]}'",
             )
         if attr_name in self.pool_component_set_attr_roles:
-            composed_role = (
-                f"{self.pool_component_set_attr_roles[attr_name]}-{self.contract_id}"
-            )
+            composed_role = f"{self.pool_component_set_attr_roles[attr_name]}-{self.contract_id}"
             require(
                 self.policy_pool.access.has_role(composed_role, self._running_as),
                 f"AccessControl: AccessControl: account {self._running_as} is missing role "
@@ -215,9 +213,7 @@ class RiskModule(AccessControlContract):
         return (int(prefix, 16) << 96) + internal_id
 
     @external
-    def new_policy(
-        self, payout, premium, loss_prob, expiration, payer, on_behalf_of, internal_id
-    ):
+    def new_policy(self, payout, premium, loss_prob, expiration, payer, on_behalf_of, internal_id):
         assert type(loss_prob) == Wad, "Loss prob MUST be wad"
         start = time_control.now
         if premium is None:
@@ -225,14 +221,10 @@ class RiskModule(AccessControlContract):
 
         require(premium < payout, "Premium must be less than payout")
         require(expiration > start, "Expiration must be in the future")
-        require(
-            ((expiration - start) / SECONDS_IN_HOUR) < self.max_duration,
-            "Policy exceeds max duration"
-        )
+        require(((expiration - start) / SECONDS_IN_HOUR) < self.max_duration, "Policy exceeds max duration")
         require(on_behalf_of is not None, "Customer can't be zero address")
         require(
-            self.policy_pool.currency.allowance(payer, self.policy_pool.contract_id)
-            >= premium,
+            self.policy_pool.currency.allowance(payer, self.policy_pool.contract_id) >= premium,
             "You must allow ENSURO to transfer the premium",
         )
         require(
@@ -262,9 +254,7 @@ class RiskModule(AccessControlContract):
         )
         self.active_exposure = active_exposure
 
-        policy.id = self.policy_pool.new_policy(
-            policy, payer, on_behalf_of, internal_id
-        )
+        policy.id = self.policy_pool.new_policy(policy, payer, on_behalf_of, internal_id)
         assert policy.id > 0
         return policy
 
@@ -275,21 +265,9 @@ class RiskModule(AccessControlContract):
         pure_premium = payout * loss_prob * self.moc
         jr_scr = max(payout * self.jr_coll_ratio - pure_premium, _W(0))
         sr_scr = max(payout * self.coll_ratio - pure_premium - jr_scr, _W(0))
-        jr_coc = (
-            jr_scr
-            * self.jr_roc
-            * _W(expiration - time_control.now)
-            // _W(SECONDS_IN_YEAR)
-        )
-        sr_coc = (
-            sr_scr
-            * self.sr_roc
-            * _W(expiration - time_control.now)
-            // _W(SECONDS_IN_YEAR)
-        )
-        ensuro_commission = (
-            pure_premium * self.ensuro_pp_fee + (jr_coc + sr_coc) * self.ensuro_coc_fee
-        )
+        jr_coc = jr_scr * self.jr_roc * _W(expiration - time_control.now) // _W(SECONDS_IN_YEAR)
+        sr_coc = sr_scr * self.sr_roc * _W(expiration - time_control.now) // _W(SECONDS_IN_YEAR)
+        ensuro_commission = pure_premium * self.ensuro_pp_fee + (jr_coc + sr_coc) * self.ensuro_coc_fee
         total = pure_premium + ensuro_commission + jr_coc + sr_coc
         return PremiumComposition(pure_premium, ensuro_commission, jr_coc, sr_coc, total)
 
@@ -302,9 +280,9 @@ class TrustfulRiskModule(RiskModule):
     @only_component_role("PRICER_ROLE")
     def new_policy(self, *args, **kwargs):
         payer = kwargs.get("on_behalf_of")
-        if self._running_as != payer and self.policy_pool.currency.allowance(
-            payer, self._running_as
-        ) < (kwargs.get("premium") or MAX_UINT):
+        if self._running_as != payer and self.policy_pool.currency.allowance(payer, self._running_as) < (
+            kwargs.get("premium") or MAX_UINT
+        ):
             payer = self._running_as
         kwargs["payer"] = payer
 
@@ -339,7 +317,7 @@ class BucketParams(Model):
 
     @classmethod
     def from_contract_bucket_params(cls, params: tuple):
-        """Build BucketParams from the tuple returned by the contract """
+        """Build BucketParams from the tuple returned by the contract"""
         return cls(
             moc=Wad(params[0]),
             jr_coll_ratio=Wad(params[1]),
@@ -352,7 +330,6 @@ class BucketParams(Model):
 
 
 class TieredSignedQuoteRiskModule(RiskModule):
-
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._buckets = {}
@@ -382,21 +359,9 @@ class TieredSignedQuoteRiskModule(RiskModule):
         pure_premium = payout * loss_prob * bucket.moc
         jr_scr = max(payout * bucket.jr_coll_ratio - pure_premium, _W(0))
         sr_scr = max(payout * bucket.coll_ratio - pure_premium - jr_scr, _W(0))
-        jr_coc = (
-            jr_scr
-            * bucket.jr_roc
-            * _W(expiration - time_control.now)
-            // _W(SECONDS_IN_YEAR)
-        )
-        sr_coc = (
-            sr_scr
-            * bucket.sr_roc
-            * _W(expiration - time_control.now)
-            // _W(SECONDS_IN_YEAR)
-        )
-        ensuro_commission = (
-            pure_premium * bucket.ensuro_pp_fee + (jr_coc + sr_coc) * bucket.ensuro_coc_fee
-        )
+        jr_coc = jr_scr * bucket.jr_roc * _W(expiration - time_control.now) // _W(SECONDS_IN_YEAR)
+        sr_coc = sr_scr * bucket.sr_roc * _W(expiration - time_control.now) // _W(SECONDS_IN_YEAR)
+        ensuro_commission = pure_premium * bucket.ensuro_pp_fee + (jr_coc + sr_coc) * bucket.ensuro_coc_fee
         total = pure_premium + ensuro_commission + jr_coc + sr_coc
         return PremiumComposition(pure_premium, ensuro_commission, jr_coc, sr_coc, total)
 
@@ -428,71 +393,42 @@ class Policy(Model):
         elif self.payout * self.risk_module.jr_coll_ratio < self.pure_premium:
             self.jr_scr = _W(0)
         else:
-            self.jr_scr = (
-                self.payout * self.risk_module.jr_coll_ratio - self.pure_premium
-            )
+            self.jr_scr = self.payout * self.risk_module.jr_coll_ratio - self.pure_premium
         self.sr_scr = max(
             self.payout * self.risk_module.coll_ratio - self.pure_premium - self.jr_scr,
             _W(0),
         )
         self.sr_coc = self.sr_scr * (
-            self.risk_module.sr_roc
-            * _W(self.expiration - self.start)
-            // _W(SECONDS_IN_YEAR)
+            self.risk_module.sr_roc * _W(self.expiration - self.start) // _W(SECONDS_IN_YEAR)
         )
         self.jr_coc = self.jr_scr * (
-            self.risk_module.jr_roc
-            * _W(self.expiration - self.start)
-            // _W(SECONDS_IN_YEAR)
+            self.risk_module.jr_roc * _W(self.expiration - self.start) // _W(SECONDS_IN_YEAR)
         )
         self.ensuro_commission = (
             self.pure_premium * self.risk_module.ensuro_pp_fee
             + (self.sr_coc + self.jr_coc) * self.risk_module.ensuro_coc_fee
         )
         require(
-            self.premium
-            >= (self.pure_premium + self.jr_coc + self.sr_coc + self.ensuro_commission),
+            self.premium >= (self.pure_premium + self.jr_coc + self.sr_coc + self.ensuro_commission),
             "Premium less than minimum",
         )
         self.partner_commission = (
-            self.premium
-            - self.pure_premium
-            - self.jr_coc
-            - self.sr_coc
-            - self.ensuro_commission
+            self.premium - self.pure_premium - self.jr_coc - self.sr_coc - self.ensuro_commission
         )
 
     @property
     def sr_interest_rate(self):
-        return (
-            self.sr_coc
-            * _W(SECONDS_IN_YEAR)
-            // (_W(self.expiration - self.start) * self.sr_scr)
-        )
+        return self.sr_coc * _W(SECONDS_IN_YEAR) // (_W(self.expiration - self.start) * self.sr_scr)
 
     @property
     def jr_interest_rate(self):
-        return (
-            self.jr_coc
-            * _W(SECONDS_IN_YEAR)
-            // (_W(self.expiration - self.start) * self.jr_scr)
-        )
+        return self.jr_coc * _W(SECONDS_IN_YEAR) // (_W(self.expiration - self.start) * self.jr_scr)
 
     def sr_accrued_interest(self):
-        return (
-            self.sr_scr
-            * _W(time_control.now - self.start)
-            * self.sr_interest_rate
-            // _W(SECONDS_IN_YEAR)
-        )
+        return self.sr_scr * _W(time_control.now - self.start) * self.sr_interest_rate // _W(SECONDS_IN_YEAR)
 
     def jr_accrued_interest(self):
-        return (
-            self.jr_scr
-            * _W(time_control.now - self.start)
-            * self.jr_interest_rate
-            // _W(SECONDS_IN_YEAR)
-        )
+        return self.jr_scr * _W(time_control.now - self.start) * self.jr_interest_rate // _W(SECONDS_IN_YEAR)
 
 
 def non_negative(value):
@@ -568,11 +504,7 @@ class ScaledAmount(Model):
         seconds = time_control.now - self.last_update
         if seconds <= 0:
             return self.scale
-        increment = (
-            Ray.from_value(seconds)
-            * interest_rate.to_ray()
-            // Ray.from_value(SECONDS_IN_YEAR)
-        )
+        increment = Ray.from_value(seconds) * interest_rate.to_ray() // Ray.from_value(SECONDS_IN_YEAR)
         return self.scale * (Ray(RAY) + increment)
 
     def get_scaled_amount(self, interest_rate):
@@ -587,8 +519,7 @@ class ScaledAmount(Model):
     def sub(self, scaled_amount, interest_rate):
         self._update_scale(interest_rate)
         self.amount = (
-            (self.get_scaled_amount(interest_rate) - scaled_amount).to_ray()
-            // self.scale
+            (self.get_scaled_amount(interest_rate) - scaled_amount).to_ray() // self.scale
         ).to_wad()
 
 
@@ -654,9 +585,7 @@ class EToken(ReserveMixin, ERC20Token):
         if seconds <= 0:
             return self.scale_factor
         increment = (
-            Ray.from_value(seconds)
-            * self.token_interest_rate.to_ray()
-            // Ray.from_value(SECONDS_IN_YEAR)
+            Ray.from_value(seconds) * self.token_interest_rate.to_ray() // Ray.from_value(SECONDS_IN_YEAR)
         )
         return self.scale_factor * (Ray(RAY) + increment)
 
@@ -680,9 +609,7 @@ class EToken(ReserveMixin, ERC20Token):
 
     @view
     def total_supply(self):
-        return (
-            super().total_supply().to_ray() * self._calculate_current_scale()
-        ).to_wad()
+        return (super().total_supply().to_ray() * self._calculate_current_scale()).to_wad()
 
     # Methods following AAVE's IScaledBalanceToken, to simplify future integrations
     @view
@@ -775,8 +702,7 @@ class EToken(ReserveMixin, ERC20Token):
     def deposit(self, provider, amount):
         # Pre condition: the pool needs to transfer the amount
         require(
-            self.whitelist is None
-            or self.whitelist.accepts_deposit(self, provider, amount),
+            self.whitelist is None or self.whitelist.accepts_deposit(self, provider, amount),
             "Liquidity Provider not whitelisted",
         )
         self._update_current_scale()
@@ -799,8 +725,7 @@ class EToken(ReserveMixin, ERC20Token):
 
     def _transfer(self, sender, recipient, amount):
         require(
-            self.whitelist is None
-            or self.whitelist.accepts_transfer(self, sender, recipient, amount),
+            self.whitelist is None or self.whitelist.accepts_transfer(self, sender, recipient, amount),
             "Transfer not allowed - Liquidity Provider not whitelisted",
         )
         scaled_amount = (amount.to_ray() // self._calculate_current_scale()).to_wad()
@@ -823,8 +748,7 @@ class EToken(ReserveMixin, ERC20Token):
         require(amount <= max_withdraw, "amount > max withdrawable")
 
         require(
-            self.whitelist is None
-            or self.whitelist.accepts_withdrawal(self, provider, amount),
+            self.whitelist is None or self.whitelist.accepts_withdrawal(self, provider, amount),
             "Liquidity Provider not whitelisted",
         )
 
@@ -1032,27 +956,17 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
         amount_left = borrow
         if jr_etk:
             if self.junior_etk.get_loan(self) + borrow <= self.jr_loan_limit:
-                amount_left = self.junior_etk.internal_loan(
-                    self,
-                    borrow,
-                    receiver
-                )
+                amount_left = self.junior_etk.internal_loan(self, borrow, receiver)
             elif self.junior_etk.get_loan(self) < self.jr_loan_limit:
                 loan_excess = self.junior_etk.get_loan(self) + borrow - self.jr_loan_limit
                 # Partial loan
                 amount_left = loan_excess + self.junior_etk.internal_loan(
-                    self,
-                    borrow - loan_excess,
-                    receiver
+                    self, borrow - loan_excess, receiver
                 )
         if amount_left > self.NEGLIGIBLE_AMOUNT:
             if self.senior_etk.get_loan(self) + amount_left <= self.sr_loan_limit:
                 # In the senior doesn't make sense to handle partial loan
-                amount_left = self.senior_etk.internal_loan(
-                    self,
-                    amount_left,
-                    receiver
-                )
+                amount_left = self.senior_etk.internal_loan(self, amount_left, receiver)
             require(
                 amount_left <= self.NEGLIGIBLE_AMOUNT,
                 "Don't know where to source the rest of the money",
@@ -1089,9 +1003,7 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
     def policy_created(self, policy):
         self.active_pure_premiums += policy.pure_premium
         if policy.sr_scr:
-            self.senior_etk.lock_scr(
-                policy.sr_scr, policy.sr_interest_rate
-            )  # TODO take roc from RM
+            self.senior_etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)  # TODO take roc from RM
         if policy.jr_scr:
             self.junior_etk.lock_scr(policy.jr_scr, policy.jr_interest_rate)
 
@@ -1139,15 +1051,11 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
         # Unlock SCR and adjust eToken
         if policy.sr_scr:
             adjustment = policy.sr_coc - policy.sr_accrued_interest()
-            self.senior_etk.unlock_scr(
-                policy.sr_scr, policy.sr_interest_rate, adjustment
-            )
+            self.senior_etk.unlock_scr(policy.sr_scr, policy.sr_interest_rate, adjustment)
 
         if policy.jr_scr:
             adjustment = policy.jr_coc - policy.jr_accrued_interest()
-            self.junior_etk.unlock_scr(
-                policy.jr_scr, policy.jr_interest_rate, adjustment
-            )
+            self.junior_etk.unlock_scr(policy.jr_scr, policy.jr_interest_rate, adjustment)
 
     @contextmanager
     def thru_policy_pool(self):
@@ -1191,9 +1099,7 @@ class PolicyPool(ERC721Token):
     @external
     def deposit(self, etoken, provider, amount):
         token = self.etokens[etoken]
-        self.currency.transfer_from(
-            self.contract_id, provider, token.contract_id, amount
-        )
+        self.currency.transfer_from(self.contract_id, provider, token.contract_id, amount)
         return token.deposit(provider, amount)
 
     @external
@@ -1219,15 +1125,9 @@ class PolicyPool(ERC721Token):
 
         self.policies[policy.id] = policy
         self.currency.transfer_from(self.contract_id, payer, pa, policy.pure_premium)
-        policy.sr_coc and self.currency.transfer_from(
-            self.contract_id, payer, pa.senior_etk, policy.sr_coc
-        )
-        policy.jr_coc and self.currency.transfer_from(
-            self.contract_id, payer, pa.junior_etk, policy.jr_coc
-        )
-        self.currency.transfer_from(
-            self.contract_id, payer, self.treasury, policy.ensuro_commission
-        )
+        policy.sr_coc and self.currency.transfer_from(self.contract_id, payer, pa.senior_etk, policy.sr_coc)
+        policy.jr_coc and self.currency.transfer_from(self.contract_id, payer, pa.junior_etk, policy.jr_coc)
+        self.currency.transfer_from(self.contract_id, payer, self.treasury, policy.ensuro_commission)
         if policy.partner_commission and policy.risk_module.wallet != policy_holder:
             self.currency.transfer_from(
                 self.contract_id,
@@ -1265,9 +1165,7 @@ class PolicyPool(ERC721Token):
 
         if customer_won:
             policy_owner = self.owner_of(policy.id)
-            policy.risk_module.premiums_account.policy_resolved_with_payout(
-                policy_owner, policy, payout
-            )
+            policy.risk_module.premiums_account.policy_resolved_with_payout(policy_owner, policy, payout)
         else:
             policy.risk_module.premiums_account.policy_expired(policy)
 
@@ -1278,9 +1176,7 @@ class PolicyPool(ERC721Token):
 class LPManualWhitelist(Contract):
     pool = ContractProxyField()
     wl_status = DictField(
-        AddressField(),
-        TupleField((StringField(), StringField(), StringField(), StringField())),
-        default={}
+        AddressField(), TupleField((StringField(), StringField(), StringField(), StringField())), default={}
     )
 
     ST_BLACKLISTED = "blacklisted"
@@ -1289,7 +1185,7 @@ class LPManualWhitelist(Contract):
 
     default_status = TupleField(
         (StringField(), StringField(), StringField(), StringField()),
-        default=(ST_BLACKLISTED, ST_BLACKLISTED, ST_BLACKLISTED, ST_BLACKLISTED)
+        default=(ST_BLACKLISTED, ST_BLACKLISTED, ST_BLACKLISTED, ST_BLACKLISTED),
     )
 
     OP_DEPOSIT = 0
@@ -1311,7 +1207,7 @@ class LPManualWhitelist(Contract):
     def _check_defaults(self, default_status):
         require(
             all(st != self.ST_UNDEFINED for st in default_status),
-            "You need to define the default status for all the operations"
+            "You need to define the default status for all the operations",
         )
 
     def has_role(self, role, account):
@@ -1343,8 +1239,8 @@ class LPManualWhitelist(Contract):
 
     def accepts_transfer(self, etoken, from_, to_, amount):
         return (
-            self._get_status(from_, self.OP_SEND_TRANSFER) == self.ST_WHITELISTED and
-            self._get_status(to_, self.OP_RECEIVE_TRANSFER) == self.ST_WHITELISTED
+            self._get_status(from_, self.OP_SEND_TRANSFER) == self.ST_WHITELISTED
+            and self._get_status(to_, self.OP_RECEIVE_TRANSFER) == self.ST_WHITELISTED
         )
 
 
@@ -1374,9 +1270,7 @@ class FixedRateVault(ERC20Token):
     def convert_to_shares(self, assets):
         supply = self.total_supply()
         if supply == 0 or assets == 0:
-            return Wad(
-                int(assets) * (10**self.decimals) // (10**self.asset.decimals)
-            )
+            return Wad(int(assets) * (10**self.decimals) // (10**self.asset.decimals))
         else:
             return Wad(int(assets) * int(supply) // int(self.total_assets()))
 
@@ -1384,9 +1278,7 @@ class FixedRateVault(ERC20Token):
     def convert_to_assets(self, shares):
         supply = self.total_supply()
         if supply == 0:
-            return Wad(
-                int(shares) * (10**self.asset.decimals) // (10**self.decimals)
-            )
+            return Wad(int(shares) * (10**self.asset.decimals) // (10**self.decimals))
         else:
             return Wad(int(shares) * self.total_assets() // int(supply))
 
@@ -1467,8 +1359,7 @@ class LiquidityThresholdAssetManager(AssetManager):
 
     def _validate_params(self):
         require(
-            self.liquidity_min <= self.liquidity_middle
-            and self.liquidity_middle <= self.liquidity_max,
+            self.liquidity_min <= self.liquidity_middle and self.liquidity_middle <= self.liquidity_max,
             "Validation: Liquidity limits are invalid",
         )
 
@@ -1497,9 +1388,7 @@ class LiquidityThresholdAssetManager(AssetManager):
         if cash > self.liquidity_max:
             self._invest(cash - self.liquidity_middle)
         elif cash < self.liquidity_min:
-            deinvest_amount = min(
-                self.liquidity_middle - cash, self.get_investment_value()
-            )
+            deinvest_amount = min(self.liquidity_middle - cash, self.get_investment_value())
             if deinvest_amount > 0:
                 self._deinvest(deinvest_amount)
         # else:

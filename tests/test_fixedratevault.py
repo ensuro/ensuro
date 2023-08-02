@@ -1,10 +1,12 @@
-import pytest
 from collections import namedtuple
-from ethproto.wadray import _W, make_integer_float, Wad
+
+import pytest
 from ethproto.contracts import RevertError
-from prototype import ensuro
-from prototype import wrappers
+from ethproto.wadray import _W, Wad, make_integer_float
+
+from prototype import ensuro, wrappers
 from prototype.utils import MONTH
+
 from . import TEST_VARIANTS
 
 TEnv = namedtuple("TEnv", "time_control currency FixedRateVault")
@@ -23,18 +25,13 @@ def USDCWAD(x):
 def tenv(request):
     if request.param == "prototype":
         currency = ensuro.ERC20Token(name="Test", symbol="TEST", initial_supply=Wad(_D(10000)), decimals=6)
-        return TEnv(
-            time_control=ensuro.time_control,
-            currency=currency,
-            FixedRateVault=ensuro.FixedRateVault
-        )
+        return TEnv(time_control=ensuro.time_control, currency=currency, FixedRateVault=ensuro.FixedRateVault)
     elif request.param == "ethereum":
-        currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST",
-                                         initial_supply=Wad(_D(10000)), decimals=6)
+        currency = wrappers.TestCurrency(
+            owner="owner", name="TEST", symbol="TEST", initial_supply=Wad(_D(10000)), decimals=6
+        )
         return TEnv(
-            wrappers.get_provider().time_control,
-            currency=currency,
-            FixedRateVault=wrappers.FixedRateVault
+            wrappers.get_provider().time_control, currency=currency, FixedRateVault=wrappers.FixedRateVault
         )
 
 
