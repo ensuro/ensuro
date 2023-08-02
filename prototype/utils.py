@@ -1,8 +1,9 @@
-import re
 import importlib
+import re
+
 import yaml
 from environs import Env
-from ethproto.wadray import _W, make_integer_float, Wad
+from ethproto.wadray import _W, Wad, make_integer_float
 
 env = Env()
 
@@ -30,23 +31,23 @@ def parse_period(period):
         return count * multiplier
 
 
-envvar_matcher = re.compile(r'\$\{([A-Za-z0-9_]+)(:-[^\}]*)?\}')
+envvar_matcher = re.compile(r"\$\{([A-Za-z0-9_]+)(:-[^\}]*)?\}")
 
 
 def envvar_constructor(loader, node):
-    '''
+    """
     Extract the matched value, expand env variable, and replace the match
     ${REQUIRED_ENV_VARIABLE} or ${ENV_VARIABLE:-default}
-    '''
+    """
     global env
     value = node.value
     match = envvar_matcher.match(value)
     env_var = match.group(1)
     default_value = match.group(2)
     if default_value is not None:
-        return env.str(env_var, default_value[2:]) + value[match.end():]
+        return env.str(env_var, default_value[2:]) + value[match.end() :]
     else:
-        return env.str(env_var) + value[match.end():]
+        return env.str(env_var) + value[match.end() :]
 
 
 def load_config(yaml_config=None, module=None):
@@ -58,8 +59,8 @@ def load_config(yaml_config=None, module=None):
         yaml_config_filename = env.path("SETUP_FILE")
         yaml_config = open(yaml_config_filename)
 
-    yaml.add_implicit_resolver('!envvar', envvar_matcher, Loader=yaml.FullLoader)
-    yaml.add_constructor('!envvar', envvar_constructor, Loader=yaml.FullLoader)
+    yaml.add_implicit_resolver("!envvar", envvar_matcher, Loader=yaml.FullLoader)
+    yaml.add_constructor("!envvar", envvar_constructor, Loader=yaml.FullLoader)
     config = yaml.load(yaml_config, Loader=yaml.FullLoader)
 
     if module is None:
@@ -69,8 +70,10 @@ def load_config(yaml_config=None, module=None):
     if currency_params.get("decimals", 18) == 18:
         to_wad = _W
     else:
+
         def to_wad(x):
             return Wad(make_integer_float(currency_params["decimals"]).from_value(x))
+
     currency_params["owner"] = currency_params.get("owner", "owner")
     if "initial_supply" in currency_params:
         currency_params["initial_supply"] = to_wad(currency_params["initial_supply"])
