@@ -12,8 +12,6 @@ from prototype.utils import WEEK
 
 TEnv = namedtuple("TEnv", ["time_control", "currency", "rm_class", "pool_access", "kind", "A"])
 
-# TODO: these are some quick and dirty tests of the prototype to launch the quote API.
-# To be fixed after launch.
 
 USDC = make_integer_float(6, "USDC")
 _D = USDC.from_value
@@ -53,9 +51,7 @@ def tenv_prototype():
         time_control=ensuro.time_control,
         pool_access=pool_access,
         kind="prototype",
-        rm_class=partial(
-            ensuro.TieredSignedQuoteRiskModule, policy_pool=pool, premiums_account=premiums_account
-        ),
+        rm_class=partial(ensuro.SignedBucketRiskModule, policy_pool=pool, premiums_account=premiums_account),
         A=_A,
     )
 
@@ -79,7 +75,7 @@ def tenv_ethereum():
         pool_access=access,
         kind="ethereum",
         rm_class=partial(
-            wrappers.TieredSignedQuoteRiskModule,
+            wrappers.SignedBucketRiskModule,
             policy_pool=wrappers.PolicyPool.connect(pool, currency.owner),
             premiums_account=premiums_account,
             creation_is_open=True,
@@ -90,7 +86,7 @@ def tenv_ethereum():
 
 def test_prototype_calculates_minimum_premium(tenv_prototype: TEnv):
     rm = tenv_prototype.rm_class(
-        name="Tiered",
+        name="Bucket",
         coll_ratio=_W(1),
         ensuro_pp_fee=_W("0.03"),
         sr_roc=_W("0.02"),
@@ -99,19 +95,17 @@ def test_prototype_calculates_minimum_premium(tenv_prototype: TEnv):
         wallet="CASINO",
     )
 
-    rm.set_buckets(
-        {
-            _W("0.05"): ensuro.BucketParams(
-                moc=_W("0.9"),
-                jr_coll_ratio=_W("0"),
-                coll_ratio=_W("0.8"),
-                ensuro_pp_fee=_W("0"),
-                ensuro_coc_fee=_W("0"),
-                jr_roc=_W("0"),
-                sr_roc=_W("0.01"),
-            )
-        }
+    bucket_params = ensuro.BucketParams(
+        moc=_W("0.9"),
+        jr_coll_ratio=_W("0"),
+        coll_ratio=_W("0.8"),
+        ensuro_pp_fee=_W("0"),
+        ensuro_coc_fee=_W("0"),
+        jr_roc=_W("0"),
+        sr_roc=_W("0.01"),
     )
+
+    rm.set_bucket_params(_W(20), bucket_params)
 
     expiration = tenv_prototype.time_control.now + WEEK
 
@@ -124,7 +118,13 @@ def test_prototype_calculates_minimum_premium(tenv_prototype: TEnv):
     assert premium_composition.total == _A("103.345205")
 
     # Policy with first risk bucket
-    premium_composition = rm.get_minimum_premium_composition(_A(1500), _W("0.05"), expiration)
+    premium_composition = rm.get_minimum_premium_composition(
+        _A(1500), _W("0.05"), expiration, rm.bucket_params(_W(20))
+    )
+    assert (
+        rm.get_minimum_premium_for_bucket(_A(1500), _W("0.05"), expiration, _W(20))
+        == premium_composition.total
+    )
     assert premium_composition.pure_premium == _A("67.5")
     assert premium_composition.jr_coc == _A("0")
     assert premium_composition.sr_coc == _A("0.217191")
@@ -134,7 +134,7 @@ def test_prototype_calculates_minimum_premium(tenv_prototype: TEnv):
 
 def test_wrapper_allows_obtaining_buckets(tenv_ethereum: TEnv):
     rm = tenv_ethereum.rm_class(
-        name="Tiered",
+        name="Bucket",
         coll_ratio=_W(1),
         ensuro_pp_fee=_W("0.03"),
         sr_roc=_W("0.02"),
@@ -144,8 +144,8 @@ def test_wrapper_allows_obtaining_buckets(tenv_ethereum: TEnv):
     )
     tenv_ethereum.pool_access.grant_role("LEVEL1_ROLE", "owner")
 
-    rm.push_bucket(
-        _W("0.05"),
+    rm.set_bucket_params(
+        _W(20),
         ensuro.BucketParams(
             moc=_W("0.9"),
             jr_coll_ratio=_W("0"),
@@ -177,10 +177,10 @@ def test_wrapper_allows_obtaining_buckets(tenv_ethereum: TEnv):
     premiums_account = ensuro.PremiumsAccount(
         pool=pool, senior_etk=ensuro.EToken(policy_pool=pool, name="eUSD1YEAR")
     )
-    proto_rm = ensuro.TieredSignedQuoteRiskModule(
+    proto_rm = ensuro.SignedBucketRiskModule(
         policy_pool=pool,
         premiums_account=premiums_account,
-        name="Tiered Proto",
+        name="Bucket Proto",
         coll_ratio=rm.coll_ratio,
         ensuro_pp_fee=rm.ensuro_pp_fee,
         sr_roc=rm.sr_roc,
@@ -189,13 +189,8 @@ def test_wrapper_allows_obtaining_buckets(tenv_ethereum: TEnv):
         wallet=rm.wallet,
     )
 
-    buckets = dict()
-    for bucket in rm.buckets():
-        # import ipdb; ipdb.set_trace()
-        bucket_params = rm.bucket_params(bucket)
-        buckets[Wad(bucket)] = ensuro.BucketParams.from_contract_bucket_params(bucket_params)
-
-    proto_rm.set_buckets(buckets)
+    for bucket_id, params in rm.fetch_buckets().items():
+        proto_rm.set_bucket_params(bucket_id, ensuro.BucketParams.from_contract_bucket_params(params))
 
     expiration = ensuro.time_control.now + WEEK
 
@@ -208,7 +203,13 @@ def test_wrapper_allows_obtaining_buckets(tenv_ethereum: TEnv):
     assert premium_composition.total == _A("103.345205")
 
     # Policy with first risk bucket
-    premium_composition = proto_rm.get_minimum_premium_composition(_A(1500), _W("0.05"), expiration)
+    premium_composition = proto_rm.get_minimum_premium_composition(
+        _A(1500), _W("0.05"), expiration, proto_rm.bucket_params(_W(20))
+    )
+    assert (
+        proto_rm.get_minimum_premium_for_bucket(_A(1500), _W("0.05"), expiration, _W(20))
+        == premium_composition.total
+    )
     assert premium_composition.pure_premium == _A("67.5")
     assert premium_composition.jr_coc == _A("0")
     assert premium_composition.sr_coc == _A("0.217191")
