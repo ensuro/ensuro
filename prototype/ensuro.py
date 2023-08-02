@@ -1,27 +1,35 @@
+import time
 from collections import namedtuple
 from contextlib import contextmanager
-from hashlib import md5
 from functools import wraps
-from m9g import Model
-from m9g.fields import StringField, IntField, DictField, CompositeField, ListField, TupleField
+from hashlib import md5
+
 from ethproto.contracts import (
     AccessControlContract,
-    ERC20Token,
-    external,
-    view,
-    RayField,
-    WadField,
     AddressField,
-    ContractProxyField,
-    ContractProxy,
-    require,
-    only_role,
     Contract,
+    ContractProxy,
+    ContractProxyField,
+    ERC20Token,
+    ERC721Token,
+    RayField,
     RevertError,
+    WadField,
+    external,
+    only_role,
+    require,
+    view,
 )
-from ethproto.contracts import ERC721Token
-from ethproto.wadray import RAY, Ray, Wad, _W, _R
-import time
+from ethproto.wadray import _R, _W, RAY, Ray, Wad
+from m9g import Model
+from m9g.fields import (
+    CompositeField,
+    DictField,
+    IntField,
+    ListField,
+    StringField,
+    TupleField,
+)
 
 DAYS_PER_YEAR = 365
 HOURS_PER_DAY = 24

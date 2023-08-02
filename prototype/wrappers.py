@@ -1,16 +1,10 @@
 from contextlib import contextmanager
-from eth_utils import keccak
-from eth_abi import encode
-from ethproto.wadray import Wad, _W
-from ethproto.wrappers import (  # noqa: F401
-    AddressBook,
-    IERC20,
-    IERC721,
-    ETHWrapper,
-    MethodAdapter,
-    get_provider,
-)
 
+from eth_abi import encode
+from eth_utils import keccak
+from ethproto.wadray import _W, Wad
+from ethproto.wrappers import AddressBook  # noqa: F401
+from ethproto.wrappers import IERC20, IERC721, ETHWrapper, MethodAdapter, get_provider
 
 SECONDS_IN_YEAR = 365 * 24 * 3600
 MAX_UINT = 2**256 - 1

@@ -1,15 +1,15 @@
-import pytest
-from functools import partial
 from collections import namedtuple
+from functools import partial
 from itertools import product
 
-from ethproto.contracts import RevertError, Contract, ERC20Token, ContractProxyField
+import pytest
+from ethproto.contracts import Contract, ContractProxyField, ERC20Token, RevertError
+from ethproto.wadray import _W, Wad, make_integer_float
 from ethproto.wrappers import get_provider
-from ethproto.wadray import _W, make_integer_float, Wad
 
-from prototype import ensuro
-from prototype import wrappers
-from prototype.utils import WEEK, DAY, YEAR, DAYS_IN_YEAR
+from prototype import ensuro, wrappers
+from prototype.utils import DAY, DAYS_IN_YEAR, WEEK, YEAR
+
 from . import TEST_VARIANTS
 
 TEnv = namedtuple("TEnv", "time_control currency rm_class pool_access kind A")
@@ -29,8 +29,10 @@ def tenv(request):
     decimals = int(request.param.split("-")[1][3:])
 
     if decimals == 6:
+
         def _A(x):
             return Wad(_D(x))
+
     else:
         _A = _W
 
@@ -61,7 +63,7 @@ def tenv(request):
             pool_access=pool_access,
             kind="prototype",
             rm_class=partial(ensuro.TrustfulRiskModule, policy_pool=pool, premiums_account=premiums_account),
-            A=_A
+            A=_A,
         )
     elif test_variant == "ethereum":
         PolicyPoolMock = get_provider().get_contract_factory("PolicyPoolMock")
@@ -85,7 +87,7 @@ def tenv(request):
                 policy_pool=wrappers.PolicyPool.connect(pool, currency.owner),
                 premiums_account=premiums_account,
             ),
-            A=_A
+            A=_A,
         )
 
 
@@ -311,10 +313,13 @@ def test_set_rm_parameter_overflow(tenv):
     if tenv.kind != "ethereum":
         pytest.skip("Python doesn't have int limits 😎")
     rm = tenv.rm_class(
-        name="Roulette", coll_ratio=_W(1), ensuro_pp_fee=_W("0.03"),
+        name="Roulette",
+        coll_ratio=_W(1),
+        ensuro_pp_fee=_W("0.03"),
         sr_roc=_W("0.02"),
-        max_payout_per_policy=tenv.A(1000), exposure_limit=tenv.A(1000000),
-        wallet="CASINO"
+        max_payout_per_policy=tenv.A(1000),
+        exposure_limit=tenv.A(1000000),
+        wallet="CASINO",
     )
     tenv.pool_access.grant_role("LEVEL2_ROLE", "ADMIN")
     tenv.pool_access.grant_role("LEVEL1_ROLE", "ADMIN")
