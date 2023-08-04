@@ -1,19 +1,18 @@
-import pytest
-from functools import partial
 from collections import namedtuple
+from functools import partial
 
-from ethproto.contracts import Contract, ERC20Token, ContractProxyField
+import pytest
+from ethproto.contracts import Contract, ContractProxyField, ERC20Token
+from ethproto.wadray import _W, Wad, make_integer_float
 from ethproto.wrappers import get_provider
-from ethproto.wadray import _W, make_integer_float, Wad
 
-from prototype import ensuro
-from prototype import wrappers
+from prototype import ensuro, wrappers
 from prototype.utils import WEEK
+
+from . import TEST_VARIANTS
 
 TEnv = namedtuple("TEnv", ["time_control", "currency", "rm_class", "pool_access", "kind", "A"])
 
-# TODO: these are some quick and dirty tests of the prototype to launch the quote API.
-# To be fixed after launch.
 
 USDC = make_integer_float(6, "USDC")
 _D = USDC.from_value
@@ -88,6 +87,7 @@ def tenv_ethereum():
     )
 
 
+@pytest.mark.skipif("prototype" not in TEST_VARIANTS, reason="Prototype tests disabled")
 def test_prototype_calculates_minimum_premium(tenv_prototype: TEnv):
     rm = tenv_prototype.rm_class(
         name="Tiered",
@@ -132,6 +132,7 @@ def test_prototype_calculates_minimum_premium(tenv_prototype: TEnv):
     assert premium_composition.total == _A("67.717191")
 
 
+@pytest.mark.skipif("ethereum" not in TEST_VARIANTS, reason="Ethereum tests disabled")
 def test_wrapper_allows_obtaining_buckets(tenv_ethereum: TEnv):
     rm = tenv_ethereum.rm_class(
         name="Tiered",
