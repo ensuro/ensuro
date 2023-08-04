@@ -124,6 +124,58 @@ def only_component_or_global_or_open_role(*roles):
     return decorator
 
 
+class BucketParams(Model):
+    moc = WadField(default=_W(1))
+    jr_coll_ratio = WadField(default=Wad(0))
+    coll_ratio = WadField(default=_W(0))
+    ensuro_pp_fee = WadField(default=Wad(0))
+    ensuro_coc_fee = WadField(default=Wad(0))
+    jr_roc = WadField(default=Wad(0))
+    sr_roc = WadField(default=Wad(0))
+
+    def __str__(self):
+        return (
+            "BucketParams(moc={}, jr_coll_ratio={}, coll_ratio={}, ensuro_pp_fee={}, "
+            "ensuro_coc_fee={}, jr_roc={}, sr_roc={})"
+        ).format(*self.as_tuple())
+
+    def as_tuple(self):
+        return (
+            self.moc,
+            self.jr_coll_ratio,
+            self.coll_ratio,
+            self.ensuro_pp_fee,
+            self.ensuro_coc_fee,
+            self.jr_roc,
+            self.sr_roc,
+        )
+
+    @classmethod
+    def from_contract_bucket_params(cls, params: tuple):
+        """Build BucketParams from the tuple returned by the contract"""
+        return cls(
+            moc=Wad(params[0]),
+            jr_coll_ratio=Wad(params[1]),
+            coll_ratio=Wad(params[2]),
+            ensuro_pp_fee=Wad(params[3]),
+            ensuro_coc_fee=Wad(params[4]),
+            jr_roc=Wad(params[5]),
+            sr_roc=Wad(params[6]),
+        )
+
+    @classmethod
+    def from_rm(cls, rm):
+        return cls(
+            moc=rm.moc,
+            jr_coll_ratio=rm.jr_coll_ratio,
+            coll_ratio=rm.coll_ratio,
+            ensuro_pp_fee=rm.ensuro_pp_fee,
+            ensuro_coc_fee=rm.ensuro_coc_fee,
+            jr_roc=rm.jr_roc,
+            sr_roc=rm.sr_roc,
+        )
+
+
 class RiskModule(AccessControlContract):
     policy_pool = ContractProxyField()
     premiums_account = ContractProxyField()
@@ -261,13 +313,16 @@ class RiskModule(AccessControlContract):
     def get_minimum_premium(self, payout, loss_prob, expiration):
         return self.get_minimum_premium_composition(payout, loss_prob, expiration).total
 
-    def get_minimum_premium_composition(self, payout, loss_prob, expiration):
-        pure_premium = payout * loss_prob * self.moc
-        jr_scr = max(payout * self.jr_coll_ratio - pure_premium, _W(0))
-        sr_scr = max(payout * self.coll_ratio - pure_premium - jr_scr, _W(0))
-        jr_coc = jr_scr * self.jr_roc * _W(expiration - time_control.now) // _W(SECONDS_IN_YEAR)
-        sr_coc = sr_scr * self.sr_roc * _W(expiration - time_control.now) // _W(SECONDS_IN_YEAR)
-        ensuro_commission = pure_premium * self.ensuro_pp_fee + (jr_coc + sr_coc) * self.ensuro_coc_fee
+    def get_minimum_premium_composition(self, payout, loss_prob, expiration, params: BucketParams = None):
+        if params is None:
+            params = BucketParams.from_rm(self)
+
+        pure_premium = payout * loss_prob * params.moc
+        jr_scr = max(payout * params.jr_coll_ratio - pure_premium, _W(0))
+        sr_scr = max(payout * params.coll_ratio - pure_premium - jr_scr, _W(0))
+        jr_coc = jr_scr * params.jr_roc * _W(expiration - time_control.now) // _W(SECONDS_IN_YEAR)
+        sr_coc = sr_scr * params.sr_roc * _W(expiration - time_control.now) // _W(SECONDS_IN_YEAR)
+        ensuro_commission = pure_premium * params.ensuro_pp_fee + (jr_coc + sr_coc) * params.ensuro_coc_fee
         total = pure_premium + ensuro_commission + jr_coc + sr_coc
         return PremiumComposition(pure_premium, ensuro_commission, jr_coc, sr_coc, total)
 
@@ -293,40 +348,6 @@ class TrustfulRiskModule(RiskModule):
     def resolve_policy(self, policy_id, customer_won):
         with self.policy_pool.as_(self.contract_id):
             return self.policy_pool.resolve_policy(policy_id, customer_won)
-
-
-class BucketParams(Model):
-    moc = WadField(default=_W(1))
-    jr_coll_ratio = WadField(default=Wad(0))
-    coll_ratio = WadField(default=_W(0))
-    ensuro_pp_fee = WadField(default=Wad(0))
-    ensuro_coc_fee = WadField(default=Wad(0))
-    jr_roc = WadField(default=Wad(0))
-    sr_roc = WadField(default=Wad(0))
-
-    def as_tuple(self):
-        return (
-            self.moc,
-            self.jr_coll_ratio,
-            self.coll_ratio,
-            self.ensuro_pp_fee,
-            self.ensuro_coc_fee,
-            self.jr_roc,
-            self.sr_roc,
-        )
-
-    @classmethod
-    def from_contract_bucket_params(cls, params: tuple):
-        """Build BucketParams from the tuple returned by the contract"""
-        return cls(
-            moc=Wad(params[0]),
-            jr_coll_ratio=Wad(params[1]),
-            coll_ratio=Wad(params[2]),
-            ensuro_pp_fee=Wad(params[3]),
-            ensuro_coc_fee=Wad(params[4]),
-            jr_roc=Wad(params[5]),
-            sr_roc=Wad(params[6]),
-        )
 
 
 class TieredSignedQuoteRiskModule(RiskModule):
@@ -356,14 +377,30 @@ class TieredSignedQuoteRiskModule(RiskModule):
 
     def get_minimum_premium_composition(self, payout, loss_prob, expiration) -> PremiumComposition:
         bucket = self.get_bucket(loss_prob)
-        pure_premium = payout * loss_prob * bucket.moc
-        jr_scr = max(payout * bucket.jr_coll_ratio - pure_premium, _W(0))
-        sr_scr = max(payout * bucket.coll_ratio - pure_premium - jr_scr, _W(0))
-        jr_coc = jr_scr * bucket.jr_roc * _W(expiration - time_control.now) // _W(SECONDS_IN_YEAR)
-        sr_coc = sr_scr * bucket.sr_roc * _W(expiration - time_control.now) // _W(SECONDS_IN_YEAR)
-        ensuro_commission = pure_premium * bucket.ensuro_pp_fee + (jr_coc + sr_coc) * bucket.ensuro_coc_fee
-        total = pure_premium + ensuro_commission + jr_coc + sr_coc
-        return PremiumComposition(pure_premium, ensuro_commission, jr_coc, sr_coc, total)
+        return super().get_minimum_premium_composition(payout, loss_prob, expiration, bucket)
+
+
+class SignedBucketRiskModule(RiskModule):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._buckets = {}
+
+    def set_bucket_params(self, bucket_id: Wad, params: BucketParams):
+        self._buckets[bucket_id] = params
+
+    def delete_bucket(self, bucket_id: Wad):
+        del self._buckets[bucket_id]
+
+    def bucket_params(self, bucket_id: Wad) -> BucketParams:
+        try:
+            return self._buckets[bucket_id]
+        except KeyError:
+            return BucketParams.from_rm(self)
+
+    def get_minimum_premium_for_bucket(self, payout, loss_prob, expiration, bucket_id):
+        return self.get_minimum_premium_composition(
+            payout, loss_prob, expiration, self.bucket_params(bucket_id)
+        ).total
 
 
 class Policy(Model):

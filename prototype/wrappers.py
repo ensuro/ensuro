@@ -618,7 +618,38 @@ class TieredSignedQuoteRiskModule(SignedQuoteRiskModule):
 
     buckets = MethodAdapter(return_type="tuple")
 
-    bucket_params = MethodAdapter((("bucket", "wad"),), "tuple")
+    bucket_params = MethodAdapter((("loss_prob", "wad"),), "tuple")
+
+
+class SignedBucketRiskModule(SignedQuoteRiskModule):
+    eth_contract = "SignedBucketRiskModule"
+    proxy_kind = "uups"
+
+    set_bucket_params = MethodAdapter((("bucket_id", "wad"), ("params", "tuple")))
+
+    delete_bucket = MethodAdapter((("bucket_id", "wad"),))
+
+    bucket_params = MethodAdapter((("bucket_id", "wad"),), return_type="tuple")
+
+    get_minimum_premium_for_bucket = MethodAdapter(
+        (("payout", "amount"), ("loss_prob", "wad"), ("expiration", "int", "bucket_id", "wad")),
+        return_type="amount",
+    )
+
+    def fetch_buckets(self):
+        new_bucket_events = self.provider.get_events(self, "NewBucket")
+        delete_bucket_events = self.provider.get_events(self, "BucketDeleted")
+        all_events = sorted(
+            new_bucket_events + delete_bucket_events, key=lambda evt: (evt.blockNumber, evt.transactionIndex)
+        )
+        buckets = {}
+        for evt in all_events:
+            if evt.event == "NewBucket":
+                buckets[evt.args.bucketId] = evt.args.params
+            elif evt.event == "BucketDeleted":
+                buckets.pop(evt.args.bucketId)
+
+        return buckets
 
 
 class AccessManager(ETHWrapper):
