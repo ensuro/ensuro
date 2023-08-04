@@ -133,6 +133,12 @@ class BucketParams(Model):
     jr_roc = WadField(default=Wad(0))
     sr_roc = WadField(default=Wad(0))
 
+    def __str__(self):
+        return (
+            "BucketParams(moc={}, jr_coll_ratio={}, coll_ratio={}, ensuro_pp_fee={}, "
+            "ensuro_coc_fee={}, jr_roc={}, sr_roc={})"
+        ).format(*self.as_tuple())
+
     def as_tuple(self):
         return (
             self.moc,
