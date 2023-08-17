@@ -689,7 +689,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     );
     _burn(provider, amount);
     _updateTokenInterestRate();
-    _transferTo(provider, amount);
+    amount = _transferTo(provider, amount);
     return amount;
   }
 
@@ -730,7 +730,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     TimeScaled.ScaledAmount storage loan = _loans[_msgSender()];
     loan.add(amount, internalLoanInterestRate());
     _discreteChange(-int256(amount));
-    _transferTo(receiver, amount);
+    amount = _transferTo(receiver, amount);
     emit InternalLoan(_msgSender(), amount, amountAsked);
     return amountAsked - amount;
   }

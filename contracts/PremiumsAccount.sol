@@ -484,7 +484,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     }
     require(amount > 0, "No premiums to withdraw");
     _surplus -= int256(amount);
-    _transferTo(destination, amount);
+    amount = _transferTo(destination, amount);
     emit WonPremiumsInOut(false, amount);
     return amount;
   }
