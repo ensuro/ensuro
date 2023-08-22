@@ -12,8 +12,7 @@ from ethproto.wrappers import (  # noqa: F401
 )
 
 
-HOUR = 3600
-SECONDS_IN_YEAR = 365 * 24 * HOUR
+SECONDS_IN_YEAR = 365 * 24 * 3600
 MAX_UINT = 2**256 - 1
 
 
