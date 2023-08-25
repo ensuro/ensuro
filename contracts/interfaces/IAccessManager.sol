@@ -19,7 +19,7 @@ interface IAccessManager is IAccessControlUpgradeable {
     setTreasury, // Changes PolicyPool treasury address
     setAssetManager, // Change in the asset manager strategy of a reserve
     setAssetManagerForced, // Change in the asset manager strategy of a reserve, forced (deinvest failed)
-    ppFiller1, // Reserve space for future PolicyPool or AccessManager actions
+    setBaseURI, // Change in the base URI for policy NFTs
     ppFiller2, // Reserve space for future PolicyPool or AccessManager actions
     ppFiller3, // Reserve space for future PolicyPool or AccessManager actions
     ppFiller4, // Reserve space for future PolicyPool or AccessManager actions

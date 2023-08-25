@@ -285,6 +285,28 @@ describe("PolicyPool contract", function () {
     );
   });
 
+  it("Only LEVEL2_ROLE can change the baseURI and after the change the tokenURI works", async () => {
+    const { policy, pool, accessManager } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    // User with no roles fails
+    await expect(pool.connect(backend).setBaseURI("foobar")).to.be.revertedWith(
+      accessControlMessage(backend.address, null, "LEVEL2_ROLE")
+    );
+
+    // User with LEVEL2_ROLE passes
+    await grantRole(hre, accessManager, "LEVEL2_ROLE", backend.address);
+
+    expect(await pool.tokenURI(policy.id)).to.be.equal("");
+
+    // User with no roles fails
+    await expect(pool.connect(backend).setBaseURI("https://offchain-v2.ensuro.co/api/policies/nft/"))
+      .to.be.emit(pool, "ComponentChanged")
+      .withArgs(4, backend.address);
+
+    expect(await pool.tokenURI(policy.id)).to.be.equal(`https://offchain-v2.ensuro.co/api/policies/nft/${policy.id}`);
+    await expect(pool.tokenURI(1233)).to.be.revertedWith("ERC721: invalid token ID");
+  });
+
   it("Initialize PolicyPool without name and symbol fails", async () => {
     const currency = await initCurrency(
       { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(10000) },

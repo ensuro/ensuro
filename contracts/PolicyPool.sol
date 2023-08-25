@@ -118,6 +118,11 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   mapping(uint256 => bytes32) internal _policies;
 
   /**
+   * @dev Base URI for the minted policy NFTs.
+   */
+  string internal _nftBaseURI;
+
+  /**
    * @dev Event emitted every time a new policy is added to the pool. Contains all the data about the policy that is
    * later required for doing operations with the policy like resolution or expiration.
    *
@@ -139,8 +144,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   /**
    * @dev Event emitted when the treasury changes
    *
-   * @param action The type of governance action (just setTreasury in this contract for now)
-   * @param value  The address of the new treasury
+   * @param action The type of governance action (setTreasury or setBaseURI for now)
+   * @param value  The address of the new treasury or the address of the caller (for setBaseURI)
    */
   event ComponentChanged(IAccessManager.GovernanceActions indexed action, address value);
 
@@ -636,6 +641,29 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     }
   }
 
+  /**
+   * @dev Base URI for computing {tokenURI}. If set, the resulting URI for each
+   * token will be the concatenation of the `baseURI` and the `tokenId`. Empty
+   * by default, can be modified calling {setBaseURI}.
+   */
+  function _baseURI() internal view virtual override returns (string memory) {
+    return _nftBaseURI;
+  }
+
+  /**
+   * @dev Changes the baseURI of the minted policy NFTs
+   *
+   * Requirements:
+   * - Must be called by a user with the {LEVEL2_ROLE}.
+   *
+   * Events:
+   * - Emits {ComponentChanged} with action = setBaseURI and the address of the caller.
+   */
+  function setBaseURI(string memory nftBaseURI_) external onlyRole(LEVEL2_ROLE) {
+    _nftBaseURI = nftBaseURI_;
+    emit ComponentChanged(IAccessManager.GovernanceActions.setBaseURI, _msgSender());
+  }
+
   function _beforeTokenTransfer(
     address from,
     address to,
@@ -650,5 +678,5 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * variables without shifting down storage in the inheritance chain.
    * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
    */
-  uint256[47] private __gap;
+  uint256[46] private __gap;
 }
