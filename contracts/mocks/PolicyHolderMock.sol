@@ -8,6 +8,7 @@ contract PolicyHolderMock is IPolicyHolder {
   uint256 public policyId;
   uint256 public payout;
   bool public fail;
+  bool public emptyRevert;
   bool public notImplemented;
   bool public badlyImplemented;
   bool public noERC165;
@@ -29,6 +30,8 @@ contract PolicyHolderMock is IPolicyHolder {
     fail = false;
     notImplemented = false;
     badlyImplemented = false;
+    emptyRevert = false;
+    noERC165 = false;
     payout = type(uint256).max;
   }
 
@@ -46,6 +49,10 @@ contract PolicyHolderMock is IPolicyHolder {
 
   function setNoERC165(bool noERC165_) external {
     noERC165 = noERC165_;
+  }
+
+  function setEmptyRevert(bool emptyRevert_) external {
+    emptyRevert = emptyRevert_;
   }
 
   /**
@@ -66,7 +73,12 @@ contract PolicyHolderMock is IPolicyHolder {
     uint256 policyId_,
     bytes calldata
   ) external override returns (bytes4) {
-    if (fail) revert("onERC721Received: They told me I have to fail");
+    if (fail)
+      if (emptyRevert)
+        assembly {
+          revert(0, 0)
+        }
+      else revert("onERC721Received: They told me I have to fail");
 
     policyId = policyId_;
     payout = type(uint256).max;
@@ -82,7 +94,12 @@ contract PolicyHolderMock is IPolicyHolder {
     address from,
     uint256 policyId_
   ) external override returns (bytes4) {
-    if (fail) revert("onPolicyExpired: They told me I have to fail");
+    if (fail)
+      if (emptyRevert)
+        assembly {
+          revert(0, 0)
+        }
+      else revert("onPolicyExpired: They told me I have to fail");
     policyId = policyId_;
     payout = 0;
     emit NotificationReceived(NotificationKind.PolicyExpired, policyId_, operator, from);
@@ -107,7 +124,12 @@ contract PolicyHolderMock is IPolicyHolder {
     uint256 policyId_,
     uint256 amount
   ) external override returns (bytes4) {
-    if (fail) revert("onPayoutReceived: They told me I have to fail");
+    if (fail)
+      if (emptyRevert)
+        assembly {
+          revert(0, 0)
+        }
+      else revert("onPayoutReceived: They told me I have to fail");
     policyId = policyId_;
     payout = amount;
     emit NotificationReceived(NotificationKind.PayoutReceived, policyId_, operator, from);
