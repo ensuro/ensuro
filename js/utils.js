@@ -1,6 +1,7 @@
 const { findAll } = require("solidity-ast/utils");
 const ethers = require("ethers");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
+const { DAY, IMPLEMENTATION_SLOT } = require("./constants");
 
 const _E = ethers.utils.parseEther;
 const _BN = ethers.BigNumber.from;
@@ -234,10 +235,15 @@ async function defaultPolicyParams(
     payout: payout || _A(1000),
     premium: premium || ethers.constants.MaxUint256,
     lossProb: lossProb || _W(0.1),
-    expiration: expiration || now + 3600 * 24 * 30,
+    expiration: expiration || now + DAY * 30,
     policyData: policyData || ethers.utils.hexlify(ethers.utils.randomBytes(32)),
-    validUntil: validUntil || now + 3600 * 24 * 30,
+    validUntil: validUntil || now + DAY * 30,
   };
+}
+
+async function readImplementationAddress(contractAddress) {
+  const implStorage = await ethers.provider.getStorageAt(contractAddress, IMPLEMENTATION_SLOT);
+  return ethers.utils.getAddress(ethers.utils.hexDataSlice(implStorage, 12));
 }
 
 module.exports = {
@@ -260,5 +266,6 @@ module.exports = {
   makeQuoteMessage,
   makeSignedQuote,
   RAY,
+  readImplementationAddress,
   WAD,
 };
