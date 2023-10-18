@@ -1,20 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.16;
 
-import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {AddressUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {ERC721Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IAccessManager} from "./interfaces/IAccessManager.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
-import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
-import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
-import {IRiskModule} from "./interfaces/IRiskModule.sol";
-import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+
+import {IAccessManager} from "./interfaces/IAccessManager.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
 import {IPolicyHolder} from "./interfaces/IPolicyHolder.sol";
+import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
+import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
+import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
+import {IRiskModule} from "./interfaces/IRiskModule.sol";
 import {Policy} from "./Policy.sol";
+
 import {WadRayMath} from "./dependencies/WadRayMath.sol";
 
 /**
@@ -607,20 +610,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   function _notifyPayout(uint256 policyId, uint256 payout) internal {
     address customer = ownerOf(policyId);
     if (!AddressUpgradeable.isContract(customer)) return;
-    try IPolicyHolder(customer).supportsInterface(type(IPolicyHolder).interfaceId) returns (
-      bool _supportsInterface
-    ) {
-      if (!_supportsInterface) return; // Not implemented, it's fine
-    } catch (bytes memory reason) {
-      if (reason.length == 0) {
-        return; // ERC165 not implemented, it's fine
-      } else {
-        // solhint-disable-next-line no-inline-assembly
-        assembly {
-          revert(add(32, reason), mload(reason))
-        }
-      }
-    }
+    if (!ERC165Checker.supportsInterface(customer, type(IPolicyHolder).interfaceId)) return;
 
     bytes4 retval = IPolicyHolder(customer).onPayoutReceived(
       _msgSender(),
@@ -640,13 +630,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   function _notifyExpiration(uint256 policyId) internal {
     address customer = ownerOf(policyId);
     if (!AddressUpgradeable.isContract(customer)) return;
-    try IPolicyHolder(customer).supportsInterface(type(IPolicyHolder).interfaceId) returns (
-      bool _supportsInterface
-    ) {
-      if (!_supportsInterface) return;
-    } catch {
-      return;
-    }
+    if (!ERC165Checker.supportsInterface(customer, type(IPolicyHolder).interfaceId)) return;
 
     try IPolicyHolder(customer).onPolicyExpired(_msgSender(), address(this), policyId) returns (
       bytes4

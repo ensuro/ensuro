@@ -4,7 +4,12 @@ const { amountFunction } = require("../js/utils");
 const { initCurrency, deployPool, deployPremiumsAccount } = require("../js/test-utils");
 
 describe("Supports interface implementation", function () {
-  const invalidInterfaceId = "0x12345678";
+  // eslint-disable-next-line multiline-comment-style
+  /* According to ERC165Checker.sol:
+        // Any contract that implements ERC165 must explicitly indicate support of
+        // InterfaceId_ERC165 and explicitly indicate non-support of InterfaceId_Invalid=0xffffffff
+  */
+  const invalidInterfaceId = "0xffffffff";
 
   async function setupFixture() {
     const [owner] = await hre.ethers.getSigners();
@@ -107,6 +112,7 @@ describe("Supports interface implementation", function () {
     expect(await policyPool.supportsInterface(interfaceIds.IPolicyPool)).to.be.true;
     expect(await policyPool.supportsInterface(interfaceIds.IERC721)).to.be.true;
     expect(await policyPool.supportsInterface(interfaceIds.IAccessManager)).to.be.false;
+    expect(await policyPool.supportsInterface(invalidInterfaceId)).to.be.false;
   });
 
   it("Checks EToken supported interfaces", async () => {
@@ -119,6 +125,7 @@ describe("Supports interface implementation", function () {
     expect(await etk.supportsInterface(interfaceIds.IPolicyPoolComponent)).to.be.true;
     expect(await etk.supportsInterface(interfaceIds.IEToken)).to.be.true;
     expect(await etk.supportsInterface(interfaceIds.IERC721)).to.be.false;
+    expect(await etk.supportsInterface(invalidInterfaceId)).to.be.false;
   });
 
   it("Checks PremiumsAccount supported interfaces", async () => {
@@ -127,6 +134,7 @@ describe("Supports interface implementation", function () {
     expect(await premiumsAccount.supportsInterface(interfaceIds.IPolicyPoolComponent)).to.be.true;
     expect(await premiumsAccount.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.true;
     expect(await premiumsAccount.supportsInterface(interfaceIds.IERC721)).to.be.false;
+    expect(await premiumsAccount.supportsInterface(invalidInterfaceId)).to.be.false;
   });
 
   it("Checks Reserves reject invalid asset manager", async () => {
@@ -146,6 +154,7 @@ describe("Supports interface implementation", function () {
     expect(await rm.supportsInterface(interfaceIds.IPolicyPoolComponent)).to.be.true;
     expect(await rm.supportsInterface(interfaceIds.IRiskModule)).to.be.true;
     expect(await rm.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.false;
+    expect(await rm.supportsInterface(invalidInterfaceId)).to.be.false;
   });
 
   it("Checks SignedQuoteRiskModule supported interfaces", async () => {
@@ -155,6 +164,7 @@ describe("Supports interface implementation", function () {
     expect(await rm.supportsInterface(interfaceIds.IERC165)).to.be.true;
     expect(await rm.supportsInterface(interfaceIds.IRiskModule)).to.be.true;
     expect(await rm.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.false;
+    expect(await rm.supportsInterface(invalidInterfaceId)).to.be.false;
   });
 
   it("Checks TieredSignedQuoteRiskModule supported interfaces", async () => {
@@ -164,6 +174,7 @@ describe("Supports interface implementation", function () {
     expect(await rm.supportsInterface(interfaceIds.IERC165)).to.be.true;
     expect(await rm.supportsInterface(interfaceIds.IRiskModule)).to.be.true;
     expect(await rm.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.false;
+    expect(await rm.supportsInterface(invalidInterfaceId)).to.be.false;
   });
 
   it("Checks LPManualWhitelist supported interfaces", async () => {
@@ -173,6 +184,7 @@ describe("Supports interface implementation", function () {
     expect(await wh.supportsInterface(interfaceIds.IERC165)).to.be.true;
     expect(await wh.supportsInterface(interfaceIds.ILPWhitelist)).to.be.true;
     expect(await wh.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.false;
+    expect(await wh.supportsInterface(invalidInterfaceId)).to.be.false;
   });
 
   it("Checks ERC4626AssetManager supported interfaces", async () => {
@@ -182,5 +194,6 @@ describe("Supports interface implementation", function () {
     expect(await am.supportsInterface(interfaceIds.IERC165)).to.be.true;
     expect(await am.supportsInterface(interfaceIds.IAssetManager)).to.be.true;
     expect(await am.supportsInterface(interfaceIds.IERC20)).to.be.false;
+    expect(await am.supportsInterface(invalidInterfaceId)).to.be.false;
   });
 });

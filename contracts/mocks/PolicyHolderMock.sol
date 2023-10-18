@@ -3,6 +3,7 @@ pragma solidity 0.8.16;
 
 import {IPolicyHolder} from "../interfaces/IPolicyHolder.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 contract PolicyHolderMock is IPolicyHolder {
   uint256 public policyId;
@@ -64,7 +65,8 @@ contract PolicyHolderMock is IPolicyHolder {
         revert(0, 0)
       }
     if (notImplemented) return false;
-    return interfaceId == type(IPolicyHolder).interfaceId;
+    return
+      interfaceId == type(IPolicyHolder).interfaceId || interfaceId == type(IERC165).interfaceId;
   }
 
   function onERC721Received(
