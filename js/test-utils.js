@@ -1,11 +1,13 @@
 const hre = require("hardhat");
 const { _W, grantRole, getTransactionEvent } = require("../js/utils");
 const { RiskModuleParameter } = require("../js/enums");
+const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
-const { AddressZero } = hre.ethers.constants;
+const { ethers } = hre;
+const { AddressZero } = ethers.constants;
 
 async function initCurrency(options, initial_targets, initial_balances) {
-  const Currency = await hre.ethers.getContractFactory("TestCurrency");
+  const Currency = await ethers.getContractFactory("TestCurrency");
   let currency = await Currency.deploy(
     options.name || "Test Currency",
     options.symbol || "TEST",
@@ -16,6 +18,26 @@ async function initCurrency(options, initial_targets, initial_balances) {
   await Promise.all(
     initial_targets.map(async function (user, index) {
       await currency.transfer(user.address, initial_balances[index]);
+    })
+  );
+  return currency;
+}
+
+/**
+ *
+ * @param currencyAddress The currency contract address, for example the USDC address
+ * @param currencyOrigin An account that holds at least sum(initialBalances) of currency tokens
+ * @param initialTargets Array of addresses that will receive the initial balances
+ * @param initialBalances Initial balances for each address
+ */
+async function initForkCurrency(currencyAddress, currencyOrigin, initialTargets, initialBalances) {
+  const currency = await ethers.getContractAt("IERC20", currencyAddress);
+  await helpers.impersonateAccount(currencyOrigin);
+  await helpers.setBalance(currencyOrigin, ethers.utils.parseEther("100"));
+  const whale = await ethers.getSigner(currencyOrigin);
+  await Promise.all(
+    initialTargets.map(async function (user, index) {
+      await currency.connect(whale).transfer(user.address, initialBalances[index]);
     })
   );
   return currency;
@@ -106,7 +128,7 @@ async function createEToken(
   pool,
   { etkName, etkSymbol, maxUtilizationRate, poolLoanInterestRate, extraArgs, extraConstructorArgs }
 ) {
-  const EToken = await hre.ethers.getContractFactory("EToken");
+  const EToken = await ethers.getContractFactory("EToken");
   extraArgs = extraArgs || [];
   extraConstructorArgs = extraConstructorArgs || [];
   const etk = await hre.upgrades.deployProxy(
@@ -162,8 +184,8 @@ const randomAddress = "0x89cDb70Fee571251a66E34caa1673cE40f7549Dc";
  * - .dontGrantL123Roles: if specified, doesn't grants LEVEL1, 2 and 3 roles.
  */
 async function deployPool(options) {
-  const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
-  const AccessManager = await hre.ethers.getContractFactory("AccessManager");
+  const PolicyPool = await ethers.getContractFactory("PolicyPool");
+  const AccessManager = await ethers.getContractFactory("AccessManager");
 
   let accessManager;
 
@@ -172,7 +194,7 @@ async function deployPool(options) {
     accessManager = await hre.upgrades.deployProxy(AccessManager, [], { kind: "uups" });
     await accessManager.deployed();
   } else {
-    accessManager = await hre.ethers.getContractAt("AccessManager", options.access);
+    accessManager = await ethers.getContractAt("AccessManager", options.access);
   }
 
   const policyPool = await hre.upgrades.deployProxy(
@@ -204,7 +226,7 @@ async function deployPool(options) {
 }
 
 async function deployPremiumsAccount(pool, options, addToPool = true) {
-  const PremiumsAccount = await hre.ethers.getContractFactory("PremiumsAccount");
+  const PremiumsAccount = await ethers.getContractFactory("PremiumsAccount");
   const premiumsAccount = await hre.upgrades.deployProxy(PremiumsAccount, [], {
     constructorArgs: [pool.address, options.jrEtkAddr || AddressZero, options.srEtkAddr || AddressZero],
     kind: "uups",
@@ -256,6 +278,7 @@ module.exports = {
   fork,
   forkIt,
   initCurrency,
+  initForkCurrency,
   makePolicy,
   skipForkTests,
 };
