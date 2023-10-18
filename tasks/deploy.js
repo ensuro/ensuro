@@ -264,8 +264,11 @@ async function deployRiskModule(
   },
   hre
 ) {
-  extraArgs = extraArgs || [];
-  extraConstructorArgs = extraConstructorArgs || [];
+  extraArgs = typeof extraArgs === "string" ? JSON.parse(extraArgs) : extraArgs || [];
+
+  extraConstructorArgs =
+    typeof extraConstructorArgs === "string" ? JSON.parse(extraConstructorArgs) : extraConstructorArgs || [];
+
   const { contract } = await deployProxyContract(
     {
       contractClass: rmClass,
@@ -583,6 +586,8 @@ function add_task() {
     .addOptionalParam("exposureLimit", "Exposure (sum of payouts) limit for the RM", 1e6, types.float)
     .addOptionalParam("maxDuration", "Maximum policy duration in hours", 24 * 365, types.int)
     .addOptionalParam("moc", "Margin of Conservativism", 1.0, types.float)
+    .addOptionalParam("extraConstructorArgs", "Additional constructor args", undefined, types.str)
+    .addOptionalParam("extraArgs", "Additional initializer args", undefined, types.str)
     .addParam("wallet", "RM address", types.address)
     .setAction(deployRiskModule);
 
