@@ -607,16 +607,13 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   function _notifyPayout(uint256 policyId, uint256 payout) internal {
     address customer = ownerOf(policyId);
     if (!AddressUpgradeable.isContract(customer)) return;
-    try
-      IPolicyHolder(customer).onPayoutReceived(_msgSender(), address(this), policyId, payout)
-    returns (bytes4 retval) {
-      require(
-        retval == IPolicyHolder.onPayoutReceived.selector,
-        "Invalid return value from Policy Holder"
-      );
+    try IPolicyHolder(customer).supportsInterface(type(IPolicyHolder).interfaceId) returns (
+      bool _supportsInterface
+    ) {
+      if (!_supportsInterface) return; // Not implemented, it's fine
     } catch (bytes memory reason) {
       if (reason.length == 0) {
-        return; // Not implemented, it's fine
+        return; // ERC165 not implemented, it's fine
       } else {
         // solhint-disable-next-line no-inline-assembly
         assembly {
@@ -624,6 +621,17 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
         }
       }
     }
+
+    bytes4 retval = IPolicyHolder(customer).onPayoutReceived(
+      _msgSender(),
+      address(this),
+      policyId,
+      payout
+    );
+    require(
+      retval == IPolicyHolder.onPayoutReceived.selector,
+      "PolicyPool: Invalid return value from IPolicyHolder"
+    );
   }
 
   /**
@@ -632,6 +640,14 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   function _notifyExpiration(uint256 policyId) internal {
     address customer = ownerOf(policyId);
     if (!AddressUpgradeable.isContract(customer)) return;
+    try IPolicyHolder(customer).supportsInterface(type(IPolicyHolder).interfaceId) returns (
+      bool _supportsInterface
+    ) {
+      if (!_supportsInterface) return;
+    } catch {
+      return;
+    }
+
     try IPolicyHolder(customer).onPolicyExpired(_msgSender(), address(this), policyId) returns (
       bytes4
     ) {

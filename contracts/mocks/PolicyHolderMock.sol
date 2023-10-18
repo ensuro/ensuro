@@ -9,12 +9,26 @@ contract PolicyHolderMock is IPolicyHolder {
   uint256 public payout;
   bool public fail;
   bool public notImplemented;
+  bool public badlyImplemented;
+  bool public noERC165;
 
-  event NotificationReceived(uint256 kind, uint256 policyId, address operator, address from);
+  enum NotificationKind {
+    PolicyReceived,
+    PayoutReceived,
+    PolicyExpired
+  }
 
-  constructor(bool fail_) {
-    fail = fail_;
+  event NotificationReceived(
+    NotificationKind kind,
+    uint256 policyId,
+    address operator,
+    address from
+  );
+
+  constructor() {
+    fail = false;
     notImplemented = false;
+    badlyImplemented = false;
     payout = type(uint256).max;
   }
 
@@ -26,20 +40,40 @@ contract PolicyHolderMock is IPolicyHolder {
     notImplemented = notImplemented_;
   }
 
+  function setBadlyImplemented(bool badlyImplemented_) external {
+    badlyImplemented = badlyImplemented_;
+  }
+
+  function setNoERC165(bool noERC165_) external {
+    noERC165 = noERC165_;
+  }
+
+  /**
+   * @dev See {IERC165-supportsInterface}.
+   */
+  function supportsInterface(bytes4 interfaceId) public view virtual returns (bool) {
+    if (noERC165)
+      assembly {
+        revert(0, 0)
+      }
+    if (notImplemented) return false;
+    return interfaceId == type(IPolicyHolder).interfaceId;
+  }
+
   function onERC721Received(
     address operator,
     address from,
     uint256 policyId_,
     bytes calldata
   ) external override returns (bytes4) {
-    if (notImplemented)
-      // solhint-disable-next-line no-inline-assembly
-      assembly {
-        revert(0, 0)
-      }
     if (fail) revert("onERC721Received: They told me I have to fail");
+
     policyId = policyId_;
-    emit NotificationReceived(0, policyId_, operator, from);
+    payout = type(uint256).max;
+    emit NotificationReceived(NotificationKind.PolicyReceived, policyId_, operator, from);
+
+    if (badlyImplemented) return bytes4(0x0badf00d);
+
     return IERC721Receiver.onERC721Received.selector;
   }
 
@@ -48,15 +82,13 @@ contract PolicyHolderMock is IPolicyHolder {
     address from,
     uint256 policyId_
   ) external override returns (bytes4) {
-    if (notImplemented)
-      // solhint-disable-next-line no-inline-assembly
-      assembly {
-        revert(0, 0)
-      }
     if (fail) revert("onPolicyExpired: They told me I have to fail");
     policyId = policyId_;
     payout = 0;
-    emit NotificationReceived(1, policyId_, operator, from);
+    emit NotificationReceived(NotificationKind.PolicyExpired, policyId_, operator, from);
+
+    if (badlyImplemented) return bytes4(0x0badf00d);
+
     return IPolicyHolder.onPolicyExpired.selector;
   }
 
@@ -75,15 +107,13 @@ contract PolicyHolderMock is IPolicyHolder {
     uint256 policyId_,
     uint256 amount
   ) external override returns (bytes4) {
-    if (notImplemented)
-      // solhint-disable-next-line no-inline-assembly
-      assembly {
-        revert(0, 0)
-      }
     if (fail) revert("onPayoutReceived: They told me I have to fail");
     policyId = policyId_;
     payout = amount;
-    emit NotificationReceived(2, policyId_, operator, from);
+    emit NotificationReceived(NotificationKind.PayoutReceived, policyId_, operator, from);
+
+    if (badlyImplemented) return bytes4(0x0badf00d);
+
     return IPolicyHolder.onPayoutReceived.selector;
   }
 }
