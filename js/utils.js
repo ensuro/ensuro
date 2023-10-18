@@ -246,6 +246,15 @@ async function readImplementationAddress(contractAddress) {
   return ethers.utils.getAddress(ethers.utils.hexDataSlice(implStorage, 12));
 }
 
+/**
+ * Converts a string value to uint256(keccak(value))
+ * @param {string} value
+ * @returns {ethers.BigNumber}
+ */
+function uintKeccak(value) {
+  return ethers.BigNumber.from(ethers.utils.keccak256(ethers.utils.toUtf8Bytes(value)));
+}
+
 module.exports = {
   _BN,
   _E,
@@ -267,5 +276,6 @@ module.exports = {
   makeSignedQuote,
   RAY,
   readImplementationAddress,
+  uintKeccak,
   WAD,
 };
