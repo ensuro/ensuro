@@ -604,8 +604,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   /**
-   * @dev Notifies the payout with a callback if the policyholder is a contract. Only reverts if the policyholder
-   * contract explicitly reverts. Doesn't reverts is the callback is not implemented.
+   * @dev Notifies the payout with a callback if the policyholder is a contract and implementes the IPolicyHolder interface.
+   * Only reverts if the policyholder contract explicitly reverts or it doesn't return the IPolicyHolder.onPayoutReceived selector.
    */
   function _notifyPayout(uint256 policyId, uint256 payout) internal {
     address customer = ownerOf(policyId);
