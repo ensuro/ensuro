@@ -1,7 +1,6 @@
 const upgrades_core = require("@openzeppelin/upgrades-core");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const fs = require("fs");
-const { request } = require("undici");
 const ethers = require("ethers");
 const { task, types } = require("hardhat/config");
 const { WhitelistStatus } = require("../js/enums");
@@ -78,39 +77,33 @@ async function logContractCreated(hre, contractName, address) {
 async function verifyContract(hre, contract, isProxy, constructorArguments) {
   if (isProxy === undefined) isProxy = false;
   if (constructorArguments === undefined) constructorArguments = [];
-  let address = contract.address;
-  if (isProxy) address = await upgrades_core.getImplementationAddress(hre.network.provider, address);
+  const address = isProxy
+    ? await upgrades_core.getImplementationAddress(hre.network.provider, contract.address)
+    : contract.address;
   try {
     await hre.run("verify:verify", {
       address: address,
       constructorArguments: constructorArguments,
     });
+  } catch (error) {
+    console.log("Error verifying contract implementation: ", error);
+    console.log("You can retry with:");
+    console.log(
+      `    npx hardhat verify --network '${hre.network.name}' '${address}' ${constructorArguments
+        .map((a) => `'${a.toString()}'`)
+        .join(" ")}`
+    );
+  }
+  try {
     if (isProxy) {
-      // the following should work but it fails with the current @openzeppelin/hardhat-upgrades version (1.20.0)
-      // await hre.run("verify:verify", {
-      //   address: contract.address,
-      // });
-
-      // so we use the following workaround
-      const endpoints = await hre.run("verify:get-etherscan-endpoint");
-      const params = new URLSearchParams({
-        module: "contract",
-        action: "verifyproxycontract",
-        apiKey: hre.config.etherscan.apiKey,
+      await hre.run("verify:verify", {
         address: contract.address,
       });
-      const response = await request(endpoints.urls.apiURL, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: params.toString(),
-      });
-      if (response.statusCode != 200)
-        throw new Error(`Etherscan replied with ${response.statusCode}: ${await response.body.text()}`);
-      const body = await response.body.json();
-      if (body.status != 1) throw new Error(`Etherscan replied with ${body}`);
     }
   } catch (error) {
-    console.log("Error verifying contract", error);
+    console.log("Error verifying contract proxy: ", error);
+    const endpoints = await hre.run("verify:get-etherscan-endpoint");
+    console.log(`You should do it manually at ${endpoints.urls.browserURL}/proxyContractChecker?a=${contract.address}`);
   }
 }
 
@@ -264,8 +257,11 @@ async function deployRiskModule(
   },
   hre
 ) {
-  extraArgs = extraArgs || [];
-  extraConstructorArgs = extraConstructorArgs || [];
+  extraArgs = typeof extraArgs === "string" ? JSON.parse(extraArgs) : extraArgs || [];
+
+  extraConstructorArgs =
+    typeof extraConstructorArgs === "string" ? JSON.parse(extraConstructorArgs) : extraConstructorArgs || [];
+
   const { contract } = await deployProxyContract(
     {
       contractClass: rmClass,
@@ -583,6 +579,8 @@ function add_task() {
     .addOptionalParam("exposureLimit", "Exposure (sum of payouts) limit for the RM", 1e6, types.float)
     .addOptionalParam("maxDuration", "Maximum policy duration in hours", 24 * 365, types.int)
     .addOptionalParam("moc", "Margin of Conservativism", 1.0, types.float)
+    .addOptionalParam("extraConstructorArgs", "Additional constructor args", undefined, types.str)
+    .addOptionalParam("extraArgs", "Additional initializer args", undefined, types.str)
     .addParam("wallet", "RM address", types.address)
     .setAction(deployRiskModule);
 

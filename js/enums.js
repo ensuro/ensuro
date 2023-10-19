@@ -4,7 +4,29 @@ const WhitelistStatus = {
   blacklisted: 2,
 };
 
+const ComponentKind = {
+  eToken: 1,
+  riskModule: 2,
+  premiumsAccount: 3,
+};
+
+const ComponentStatus = {
+  inactive: 0,
+  active: 1,
+  deprecated: 2,
+  suspended: 3,
+};
+
+const ETokenParameter = {
+  // From IEToken.Parameter
+  liquidityRequirement: 0,
+  minUtilizationRate: 1,
+  maxUtilizationRate: 2,
+  internalLoanInterestRate: 3,
+};
+
 const RiskModuleParameter = {
+  // From IRiskModule.Parameter
   moc: 0,
   jrCollRatio: 1,
   collRatio: 2,
@@ -17,14 +39,10 @@ const RiskModuleParameter = {
   maxDuration: 9,
 };
 
-const ComponentKind = {
-  eToken: 1,
-  riskModule: 2,
-  premiumsAccount: 3,
-};
-
 module.exports = {
-  WhitelistStatus,
-  RiskModuleParameter,
   ComponentKind,
+  ComponentStatus,
+  ETokenParameter,
+  RiskModuleParameter,
+  WhitelistStatus,
 };
