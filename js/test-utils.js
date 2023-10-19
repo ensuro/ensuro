@@ -7,7 +7,7 @@ const { ethers } = hre;
 const { AddressZero } = ethers.constants;
 
 async function initCurrency(options, initial_targets, initial_balances) {
-  const Currency = await ethers.getContractFactory("TestCurrency");
+  const Currency = await ethers.getContractFactory(options.contractClass || "TestCurrency");
   let currency = await Currency.deploy(
     options.name || "Test Currency",
     options.symbol || "TEST",
@@ -248,23 +248,50 @@ async function makePolicy(pool, rm, cust, payout, premium, lossProb, expiration,
   return newPolicyEvt;
 }
 
-const skipForkTests = process.env.SKIP_FORK_TESTS === "true";
-const forkIt = skipForkTests ? it.skip : it;
+/**
+ * Resets hardhat network to fork on the specified block and url
+ */
+async function setupChain(block, alchemyUrlEnv = "ALCHEMY_URL") {
+  const alchemyUrl = process.env[alchemyUrlEnv];
+  if (alchemyUrl === undefined) throw new Error(`Define envvar ${alchemyUrlEnv} for this test`);
 
-async function fork(blockNumber) {
-  if (process.env.ALCHEMY_URL === undefined) throw new Error("Define envvar ALCHEMY_URL for this test");
+  if (block === undefined) throw new Error("Block can't be undefined use null for the current block");
+  if (block === null) block = undefined;
   return hre.network.provider.request({
     method: "hardhat_reset",
     params: [
       {
         forking: {
-          jsonRpcUrl: process.env.ALCHEMY_URL,
-          blockNumber: blockNumber,
+          jsonRpcUrl: alchemyUrl,
+          blockNumber: block,
         },
       },
     ],
   });
 }
+
+const skipForkTests = process.env.SKIP_FORK_TESTS === "true";
+
+/**
+ * Chai test case wrapper for tests that require forking a live chain.
+ *
+ * It validates that the chain node URL is set, forks the chain at the specified block and adds the
+ * block number to the test name.
+ */
+const fork = {
+  it: (name, blockNumber, test, alchemyUrlEnv = "ALCHEMY_URL") => {
+    const fullName = `[FORK ${blockNumber}] ${name}`;
+
+    // eslint-disable-next-line func-style
+    const wrapped = async (...args) => {
+      await setupChain(blockNumber, alchemyUrlEnv);
+
+      return test(...args);
+    };
+
+    return (skipForkTests ? it.skip : it)(fullName, wrapped);
+  },
+};
 
 if (process.env.ENABLE_HH_WARNINGS !== "yes") hre.upgrades.silenceWarnings();
 
@@ -276,9 +303,9 @@ module.exports = {
   deployPool,
   deployPremiumsAccount,
   fork,
-  forkIt,
   initCurrency,
   initForkCurrency,
   makePolicy,
+  setupChain,
   skipForkTests,
 };

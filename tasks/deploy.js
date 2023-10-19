@@ -87,7 +87,12 @@ async function verifyContract(hre, contract, isProxy, constructorArguments) {
     });
   } catch (error) {
     console.log("Error verifying contract implementation: ", error);
-    console.log("Constructor args were: ", JSON.stringify(constructorArguments));
+    console.log("You can retry with:");
+    console.log(
+      `    npx hardhat verify --network '${hre.network.name}' '${address}' ${constructorArguments
+        .map((a) => `'${a.toString()}'`)
+        .join(" ")}`
+    );
   }
   try {
     if (isProxy) {
