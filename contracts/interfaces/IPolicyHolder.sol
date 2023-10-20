@@ -2,13 +2,12 @@
 pragma solidity 0.8.16;
 
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
-import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 /**
  * @title Policy holder interface
  * @dev Interface for any contract that wants to be a holder of Ensuro Policies and receive the payouts
  */
-interface IPolicyHolder is IERC721Receiver, IERC165 {
+interface IPolicyHolder is IERC721Receiver {
   /**
    * @dev Whenever an Policy is expired or resolved with payout = 0, this function is called
    *
