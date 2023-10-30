@@ -98,6 +98,7 @@ async function verifyContract(hre, contract, isProxy, constructorArguments) {
     if (isProxy) {
       await hre.run("verify:verify", {
         address: contract.address,
+        constructorArguments: constructorArguments,
       });
     }
   } catch (error) {
