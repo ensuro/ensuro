@@ -241,8 +241,8 @@ async function defaultPolicyParams(
   };
 }
 
-async function readImplementationAddress(contractAddress) {
-  const implStorage = await ethers.provider.getStorageAt(contractAddress, IMPLEMENTATION_SLOT);
+async function readImplementationAddress(hre, contractAddress) {
+  const implStorage = await hre.ethers.provider.getStorageAt(contractAddress, IMPLEMENTATION_SLOT);
   return ethers.utils.getAddress(ethers.utils.hexDataSlice(implStorage, 12));
 }
 
