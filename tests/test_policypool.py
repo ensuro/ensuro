@@ -1880,6 +1880,93 @@ def test_expire_policy_payout(tenv):
     rm.resolve_policy(policy.id, False)
 
 
+def test_replace_policy(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: CFAR
+        jr_coll_ratio: "0.1"
+        coll_ratio: "0.2"
+        ensuro_pp_fee: "0.05"
+        jr_roc: "0.2"
+        sr_roc: "0.1"
+        wallet: "MGA"
+        roles:
+          - user: owner
+            role: PRICER_ROLE
+          - user: owner
+            role: RESOLVER_ROLE
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 6000
+        initial_balances:
+        - user: LP1
+          amount: 1000
+        - user: LP2
+          amount: 1000
+        - user: LP3
+          amount: 1000
+        - user: CUST1
+          amount: 200
+    premiums_accounts:
+    - senior_etk: SR
+      junior_etk: JR
+    etokens:
+      - name: SR
+      - name: JR
+    roles:
+      - user: owner
+        role: LEVEL2_ROLE  # For setting moc
+    """
+
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    etkSR = pool.etokens["SR"]
+    etkJR = pool.etokens["JR"]
+    USD = pool.currency
+    rm = pool.risk_modules["CFAR"]
+    premiums_account = rm.premiums_account
+
+    with rm.as_(rm.owner):
+        rm.moc = _W("1.1")
+        rm.ensuro_coc_fee = _W("0.05")
+
+    _deposit(pool, "SR", "LP1", _W(1000))
+    _deposit(pool, "JR", "LP2", _W(1000))
+
+    pool.currency.approve("CUST1", pool.contract_id, _W(100))
+    pool.currency.approve("CUST1", rm.owner, _W(100))
+    policy = rm.new_policy(
+        payout=_W(2100),
+        premium=_W(100),
+        on_behalf_of="CUST1",
+        loss_prob=_W("0.03"),
+        expiration=timecontrol.now + 10 * DAY,
+        internal_id=122,
+    )
+
+    rm.active_exposure.assert_equal(policy.payout)
+
+    timecontrol.fast_forward(4 * DAY)
+
+    pool.currency.approve("CUST1", pool.contract_id, _W(90))
+    new_policy = rm.replace_policy(
+        old_policy=policy,
+        payout=_W(4200),
+        premium=_W(190),
+        loss_prob=_W("0.03"),
+        expiration=timecontrol.now + 14 * DAY,
+        payer="CUST1",
+        internal_id=123,
+    )
+    rm.active_exposure.assert_equal(_W(4200))
+
+    with pytest.raises(RevertError, match="Policy not found"):
+        rm.resolve_policy(policy.id, True)
+
+    return locals()
+
+
 def test_withdraw_won_premiums(tenv):
     vars = test_expire_policy(tenv)
     pool, premiums_account, USD = extract_vars(vars, "pool,premiums_account,USD")

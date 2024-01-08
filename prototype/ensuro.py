@@ -310,6 +310,56 @@ class RiskModule(AccessControlContract):
         assert policy.id > 0
         return policy
 
+    @external
+    def replace_policy(self, old_policy, payout, premium, loss_prob, expiration, payer, internal_id):
+        assert type(loss_prob) == Wad, "Loss prob MUST be wad"
+        start = old_policy.start
+        require(
+            payout >= old_policy.payout and expiration >= old_policy.expiration,
+            "Policy replacement must be greater or equal than old policy",
+        )
+        if premium is None:
+            premium = self.get_minimum_premium(payout, loss_prob, expiration)
+
+        require(premium < payout, "Premium must be less than payout")
+        require(expiration > start, "Expiration must be in the future")
+        require(((expiration - start) / SECONDS_IN_HOUR) < self.max_duration, "Policy exceeds max duration")
+        require(
+            self.policy_pool.currency.allowance(payer, self.policy_pool.contract_id)
+            >= (old_policy.premium - premium),
+            "You must allow ENSURO to transfer the premium",
+        )
+        require(
+            self._running_as == payer
+            or self.policy_pool.currency.allowance(payer, self._running_as) >= (old_policy.premium - premium),
+            "Payer must allow PRICER to transfer the premium",
+        )
+
+        policy = Policy(
+            id=-1,
+            risk_module=self,
+            payout=payout,
+            premium=premium,
+            loss_prob=loss_prob,
+            start=start,
+            expiration=expiration,
+        )
+
+        require(
+            policy.payout <= self.max_payout_per_policy,
+            f"Policy Payout is more than maximum: {policy.payout} > maximum {self.max_payout_per_policy}",
+        )
+        active_exposure = self.active_exposure + policy.payout - old_policy.payout
+        require(
+            active_exposure <= self.exposure_limit,
+            "RiskModule: Exposure limit exceeded",
+        )
+        self.active_exposure = active_exposure
+
+        policy.id = self.policy_pool.replace_policy(old_policy, policy, payer, internal_id)
+        assert policy.id > 0
+        return policy
+
     def get_minimum_premium(self, payout, loss_prob, expiration):
         return self.get_minimum_premium_composition(payout, loss_prob, expiration).total
 
@@ -1045,6 +1095,22 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
             self.junior_etk.lock_scr(policy.jr_scr, policy.jr_interest_rate)
 
     @external
+    def policy_replaced(self, old_policy, new_policy):
+        require(
+            new_policy.sr_interest_rate.equal(old_policy.sr_interest_rate, 4)
+            and new_policy.jr_interest_rate.equal(old_policy.jr_interest_rate, 4),
+            "Interest rate can't change",
+        )
+        # Supporting interest rate change is possible, but it would require complex computations.
+        # If new IR > old IR, then we must adjust positivelly to accrue the interests not accrued
+        # If new IR < old IR, then we must adjust negativelly to substract the interests accrued in excess
+        self.active_pure_premiums += new_policy.pure_premium - old_policy.pure_premium
+        self.senior_etk.unlock_scr(old_policy.sr_scr, old_policy.sr_interest_rate, Wad(0))
+        self.senior_etk.lock_scr(new_policy.sr_scr, new_policy.sr_interest_rate)
+        self.senior_etk.unlock_scr(old_policy.jr_scr, old_policy.jr_interest_rate, Wad(0))
+        self.senior_etk.lock_scr(new_policy.jr_scr, new_policy.jr_interest_rate)
+
+    @external
     def policy_resolved_with_payout(self, customer, policy, payout):
         self.active_pure_premiums -= policy.pure_premium
         borrow_from_scr = self._pay_from_premiums(payout - policy.pure_premium)
@@ -1175,7 +1241,66 @@ class PolicyPool(ERC721Token):
         return policy.id
 
     @external
+    def replace_policy(self, old_policy, new_policy, payer, internal_id):
+        require(old_policy == self.policies[old_policy.id], "The old policy doesn't exist")
+        require(new_policy.start == old_policy.start, "Both policies must have the same starting date")
+        require(
+            old_policy.payout <= new_policy.payout
+            and old_policy.pure_premium <= new_policy.pure_premium
+            and old_policy.ensuro_commission <= new_policy.ensuro_commission
+            and old_policy.jr_coc <= new_policy.jr_coc
+            and old_policy.sr_coc <= new_policy.sr_coc
+            and old_policy.jr_scr <= new_policy.jr_scr
+            and old_policy.sr_scr <= new_policy.sr_scr
+            and old_policy.partner_commission <= new_policy.partner_commission
+            and old_policy.expiration <= new_policy.expiration
+            and old_policy.risk_module == new_policy.risk_module,
+            "New policy must be greater or equal than old policy",
+        )
+        new_policy.id = new_policy.risk_module.make_policy_id(internal_id)
+        policy_holder = self.owner_of(old_policy.id)
+        self.mint(policy_holder, new_policy.id)
+
+        pa = new_policy.risk_module.premiums_account
+        pa.policy_replaced(old_policy, new_policy)
+
+        self.policies[new_policy.id] = new_policy
+        if new_policy.pure_premium > old_policy.pure_premium:
+            self.currency.transfer_from(
+                self.contract_id, payer, pa, new_policy.pure_premium - old_policy.pure_premium
+            )
+        if new_policy.sr_coc > old_policy.sr_coc:
+            self.currency.transfer_from(
+                self.contract_id, payer, pa.senior_etk, new_policy.sr_coc - old_policy.sr_coc
+            )
+        if new_policy.jr_coc > old_policy.jr_coc:
+            self.currency.transfer_from(
+                self.contract_id, payer, pa.junior_etk, new_policy.jr_coc - old_policy.jr_coc
+            )
+        if new_policy.ensuro_commission > old_policy.ensuro_commission:
+            self.currency.transfer_from(
+                self.contract_id,
+                payer,
+                self.treasury,
+                new_policy.ensuro_commission - old_policy.ensuro_commission,
+            )
+        if (
+            new_policy.partner_commission
+            and new_policy.risk_module.wallet != policy_holder
+            and new_policy.partner_commission > old_policy.partner_commission
+        ):
+            self.currency.transfer_from(
+                self.contract_id,
+                payer,
+                new_policy.risk_module.wallet,
+                new_policy.partner_commission - old_policy.partner_commission,
+            )
+        del self.policies[old_policy.id]
+        return new_policy.id
+
+    @external
     def expire_policy(self, policy_id):
+        require(policy_id in self.policies, "Policy not found")
         policy = self.policies[policy_id]
         require(policy.expiration <= time_control.now, "Policy not expired yet")
         return self.resolve_policy(policy_id, Wad(0))
@@ -1183,12 +1308,14 @@ class PolicyPool(ERC721Token):
     @external
     def expire_policies(self, policy_ids):
         for policy_id in policy_ids:
+            require(policy_id in self.policies, "Policy not found")
             policy = self.policies[policy_id]
             require(policy.expiration <= time_control.now, "Policy not expired yet")
             self.resolve_policy(policy_id, Wad(0))
 
     @external
     def resolve_policy(self, policy_id, payout):
+        require(policy_id in self.policies, "Policy not found")
         policy = self.policies[policy_id]
         if isinstance(payout, bool):
             payout = policy.payout if payout is True else Wad(0)

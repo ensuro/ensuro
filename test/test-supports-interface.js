@@ -36,6 +36,7 @@ describe("Supports interface implementation", function () {
       "ILPWhitelist",
       "IAccessManager",
       "IAssetManager",
+      "IPolicyHolder",
     ];
     const iinterfaceIds = {};
     for (const iName of iinterfaces) {
@@ -57,6 +58,7 @@ describe("Supports interface implementation", function () {
       ILPWhitelist: "0xf8722d89",
       IAccessManager: "0x272b8c47",
       IAssetManager: "0x799c2a5c",
+      IPolicyHolder: "0x3ece0a89",
     };
 
     const _A = amountFunction(6);
