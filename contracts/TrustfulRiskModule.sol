@@ -5,6 +5,7 @@ import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
 import {RiskModule} from "./RiskModule.sol";
 import {Policy} from "./Policy.sol";
+import {IERC721} from "@openzeppelin/contracts/interfaces/IERC721.sol";
 
 /**
  * @title Trustful Risk Module
@@ -17,6 +18,7 @@ import {Policy} from "./Policy.sol";
 contract TrustfulRiskModule is RiskModule {
   bytes32 public constant PRICER_ROLE = keccak256("PRICER_ROLE");
   bytes32 public constant RESOLVER_ROLE = keccak256("RESOLVER_ROLE");
+  bytes32 public constant REPLACER_ROLE = keccak256("REPLACER_ROLE");
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
@@ -98,6 +100,44 @@ contract TrustfulRiskModule is RiskModule {
     uint96 internalId
   ) external whenNotPaused onlyComponentRole(PRICER_ROLE) returns (Policy.PolicyData memory createdPolicy) {
     return _newPolicy(payout, premium, lossProb, expiration, _getPayer(onBehalfOf, premium), onBehalfOf, internalId);
+  }
+
+  /**
+   * @dev Replace a policy with a new one, reusing the premium and the capital locked
+   *
+   * Requirements:
+   * - The caller has been granted componentRole(PRICER_ROLE)
+   *
+   * Emits:
+   * - {PolicyPool.PolicyReplaced}
+   *
+   * @param payout The exposure (maximum payout) of the policy
+   * @param premium The premium that will be paid by the policyHolder
+   * @param lossProb The probability of having to pay the maximum payout (wad)
+   * @param expiration The expiration of the policy (timestamp)
+   * @param internalId An id that's unique within this module and it will be used to identify the policy
+   * @return Returns the id of the created policy
+   */
+  function replacePolicy(
+    Policy.PolicyData calldata oldPolicy,
+    uint256 payout,
+    uint256 premium,
+    uint256 lossProb,
+    uint40 expiration,
+    uint96 internalId
+  ) external whenNotPaused onlyComponentRole(REPLACER_ROLE) returns (uint256) {
+    address onBehalfOf = IERC721(address(_policyPool)).ownerOf(oldPolicy.id);
+    return
+      _replacePolicy(
+        oldPolicy,
+        payout,
+        premium,
+        lossProb,
+        expiration,
+        _getPayer(onBehalfOf, premium),
+        internalId,
+        params()
+      ).id;
   }
 
   function _getPayer(address onBehalfOf, uint256 premium) internal view returns (address payer) {

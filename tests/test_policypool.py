@@ -1908,6 +1908,8 @@ def test_replace_policy(tenv):
           amount: 1000
         - user: CUST1
           amount: 200
+        - user: owner
+          amount: 90
     premiums_accounts:
     - senior_etk: SR
       junior_etk: JR
@@ -1945,21 +1947,33 @@ def test_replace_policy(tenv):
         internal_id=122,
     )
 
+    etkSR.scr.assert_equal(_W("0.1") * _W(2100))
+    etkJR.scr.assert_equal(policy.jr_scr)
+
     rm.active_exposure.assert_equal(policy.payout)
 
     timecontrol.fast_forward(4 * DAY)
 
-    pool.currency.approve("CUST1", pool.contract_id, _W(90))
-    new_policy = rm.replace_policy(
+    pool.currency.approve("owner", pool.contract_id, _W(90))
+    replace_kwargs = dict(
         old_policy=policy,
         payout=_W(4200),
         premium=_W(190),
         loss_prob=_W("0.03"),
         expiration=timecontrol.now + 14 * DAY,
-        payer="CUST1",
+        payer="owner",
         internal_id=123,
     )
+
+    with pytest.raises(RevertError, match="AccessControl"):
+        rm.replace_policy(**replace_kwargs)
+
+    pool.access.grant_component_role(rm, "REPLACER_ROLE", "owner")
+
+    new_policy = rm.replace_policy(**replace_kwargs)
     rm.active_exposure.assert_equal(_W(4200))
+    etkSR.scr.assert_equal(_W("0.1") * _W(4200))
+    etkJR.scr.assert_equal(new_policy.jr_scr)
 
     with pytest.raises(RevertError, match="Policy not found"):
         rm.resolve_policy(policy.id, True)

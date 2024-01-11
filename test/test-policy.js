@@ -29,6 +29,29 @@ describe("Policy initialize", () => {
     expect(policy.jrScr).to.equal(_A("9"));
   });
 
+  it("Correctly computes jr and sr CoC", async () => {
+    // this test mirrors test_get_minimum_premium_with_high_jr_coll_ratio from riskmodule
+
+    const { pool } = await helpers.loadFixture(poolFixture);
+
+    const now = await helpers.time.latest();
+    const secondsInYear = 3600 * 24 * 365;
+    const expiration = now + secondsInYear / 12;
+
+    const policyArgs = await makePolicyArgs(
+      { lossProb: _W("0.01"), payout: _A("100"), start: now, expiration: expiration },
+      { jrCollRatio: _W("0.1"), jrRoc: _W("0.24"), collRatio: _W("0.2"), srRoc: _W("0.12") }
+    );
+
+    const tx = await pool.initializeAndEmitPolicy(...policyArgs);
+    const receipt = await tx.wait();
+
+    const policy = getTransactionEvent(pool.interface, receipt, "NewPolicy").args.policy;
+
+    expect(policy.jrCoc).to.equal(_A(9 * 0.02));
+    expect(policy.srCoc).to.equal(_A(10 * 0.01));
+  });
+
   async function poolFixture() {
     const PolicyPool = await hre.ethers.getContractFactory("PolicyPoolMock");
     const pool = await PolicyPool.deploy(hre.ethers.ZeroAddress, hre.ethers.ZeroAddress);
@@ -53,6 +76,7 @@ describe("Policy initialize", () => {
       options.payout || _A("100"), // payout
       options.lossProb || _W("0.1"), // lossProb
       options.expiration || now + 3600 * 5, // expiration
+      options.start || 0, // start
     ];
   }
 });

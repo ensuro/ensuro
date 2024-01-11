@@ -88,7 +88,9 @@ describe("Test add, remove and change status of PolicyPool components", function
     expect(await pool.getComponentStatus(etk)).to.be.equal(ST_DEPRECATED);
 
     // When deprecated, deposits aren't allowed, but withdrawals are allowed
-    await expect(pool.connect(lp).deposit(etk, _A(200))).to.be.revertedWith("eToken is not active");
+    await expect(pool.connect(lp).deposit(etk, _A(200))).to.be.revertedWith(
+      "Component not found or not active"
+    );
     await expect(pool.connect(lp).withdraw(etk, _A(200))).not.to.be.reverted;
 
     // Only GUARDIAN can suspend
@@ -100,7 +102,7 @@ describe("Test add, remove and change status of PolicyPool components", function
 
     // When suspended, withdrawals are not allowed
     await expect(pool.connect(lp).withdraw(etk, _A(100))).to.be.revertedWith(
-      "eToken not found or withdraws not allowed"
+      "Component must be active or deprecated"
     );
 
     // Only LEVEL1 can reactivate
@@ -126,7 +128,9 @@ describe("Test add, remove and change status of PolicyPool components", function
     await expect(pool.connect(level1).removeComponent(etk)).not.to.be.reverted;
     expect(await pool.getComponentStatus(etk)).to.be.equal(ST_INACTIVE);
 
-    await expect(pool.connect(lp).deposit(etk, _A(200))).to.be.revertedWith("Component is not an eToken");
+    await expect(pool.connect(lp).deposit(etk, _A(200))).to.be.revertedWith(
+      "Component is not of the right kind"
+    );
   });
 
   it("Change status and remove RiskModule", async function () {
@@ -144,9 +148,10 @@ describe("Test add, remove and change status of PolicyPool components", function
     expect(await pool.getComponentStatus(rm)).to.be.equal(ST_DEPRECATED);
 
     // When deprecated can't create policy
-    await expect(rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 2)).to.be.revertedWith(
-      "RM module not found or not active"
-    );
+      rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 2)
+    await expect(
+      rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 2)
+    ).to.be.revertedWith("Component not found or not active");
 
     // But policies can be resolved
     await expect(rm.connect(cust).resolvePolicy([...policy], _A(10))).not.to.be.reverted;
@@ -166,12 +171,12 @@ describe("Test add, remove and change status of PolicyPool components", function
     expect(await pool.getComponentStatus(rm)).to.be.equal(ST_SUSPENDED);
 
     // When suspended, policy creation / resolutions are not allowed
-    await expect(rm.connect(cust).resolvePolicy([...policy], _A(10))).to.be.revertedWith(
-      "Module must be active or deprecated to process resolutions"
+    await expect(rm.connect(cust).resolvePolicy(policy, _A(10))).to.be.revertedWith(
+      "Component must be active or deprecated"
     );
-    await expect(rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 4)).to.be.revertedWith(
-      "RM module not found or not active"
-    );
+    await expect(
+      rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 4)
+    ).to.be.revertedWith("Component not found or not active");
 
     // Can't be removed if not deprecated before, or if has active policies
     await expect(pool.connect(level1).removeComponent(rm)).to.be.revertedWith("Component not deprecated");
@@ -185,9 +190,9 @@ describe("Test add, remove and change status of PolicyPool components", function
     await expect(pool.connect(level1).removeComponent(rm)).not.to.be.reverted;
     expect(await pool.getComponentStatus(rm)).to.be.equal(ST_INACTIVE);
 
-    await expect(rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 5)).to.be.revertedWith(
-      "Component is not a RiskModule"
-    );
+    await expect(
+      rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 5)
+    ).to.be.revertedWith("Component is not of the right kind");
   });
 
   it("Change status and remove PremiumsAccount", async function () {
@@ -205,9 +210,9 @@ describe("Test add, remove and change status of PolicyPool components", function
     expect(await pool.getComponentStatus(premiumsAccount)).to.be.equal(ST_DEPRECATED);
 
     // When deprecated can't create policy
-    await expect(rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 2)).to.be.revertedWith(
-      "PremiumsAccount not found or not active"
-    );
+    await expect(
+      rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 2)
+    ).to.be.revertedWith("Component not found or not active");
 
     // But policies can be resolved
     await expect(rm.connect(cust).resolvePolicy([...policy], _A(10))).not.to.be.reverted;
@@ -224,12 +229,12 @@ describe("Test add, remove and change status of PolicyPool components", function
     expect(await pool.getComponentStatus(premiumsAccount)).to.be.equal(ST_SUSPENDED);
 
     // When suspended, policy creation / resolutions are not allowed
-    await expect(rm.connect(cust).resolvePolicy([...policy], _A(10))).to.be.revertedWith(
-      "PremiumsAccount must be active or deprecated to process resolutions"
+    await expect(rm.connect(cust).resolvePolicy(policy, _A(10))).to.be.revertedWith(
+      "Component must be active or deprecated"
     );
-    await expect(rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 4)).to.be.revertedWith(
-      "PremiumsAccount not found or not active"
-    );
+    await expect(
+      rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 4)
+    ).to.be.revertedWith("Component not found or not active");
 
     // Can't be removed if not deprecated before, or if has active policies
     await expect(pool.connect(level1).removeComponent(premiumsAccount)).to.be.revertedWith("Component not deprecated");
@@ -250,8 +255,8 @@ describe("Test add, remove and change status of PolicyPool components", function
     expect(borrowerRemovedEvt.args.defaultedDebt).to.be.equal(internalLoan);
     expect(await pool.getComponentStatus(premiumsAccount)).to.be.equal(ST_INACTIVE);
 
-    await expect(rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 5)).to.be.revertedWith(
-      "Component is not a PremiumsAccount"
-    );
+    await expect(
+      rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 5)
+    ).to.be.revertedWith("Component is not of the right kind");
   });
 });

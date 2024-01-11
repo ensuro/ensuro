@@ -515,6 +515,18 @@ class TrustfulRiskModule(RiskModule):
         "receipt",
     )
 
+    replace_policy_ = MethodAdapter(
+        (
+            ("old_policy", Policy.FIELDS),
+            ("payout", "amount"),
+            ("premium", "amount"),
+            ("loss_prob", "wad"),
+            ("expiration", "int"),
+            ("payer", "msg.sender"),
+            ("internal_id", "int"),
+        )
+    )
+
     resolve_policy_full_payout = MethodAdapter((("policy", Policy.FIELDS), ("customer_won", "bool")))
     resolve_policy_ = MethodAdapter((("policy", Policy.FIELDS), ("payout", "amount")))
 
@@ -525,6 +537,19 @@ class TrustfulRiskModule(RiskModule):
             return self.resolve_policy_full_payout(policy.as_tuple(), customer_won_or_amount)
         else:
             return self.resolve_policy_(policy.as_tuple(), customer_won_or_amount)
+
+    def replace_policy(self, *args, **kwargs):
+        kwargs["old_policy"] = kwargs["old_policy"].as_tuple()
+        if "premium" not in kwargs:
+            kwargs["premium"] = MAX_UINT
+        receipt = self.replace_policy_(*args, **kwargs)
+        if "PolicyReplaced" in receipt.events:
+            policy_data = receipt.events["PolicyReplaced"]["newPolicy"]
+            policy = Policy(*policy_data, address_book=self.provider.address_book)
+            policy_db.add_policy(self.policy_pool.contract.address, policy)
+            return policy
+        else:
+            return None
 
 
 class SignedQuoteRiskModule(RiskModule):

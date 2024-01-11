@@ -284,6 +284,10 @@ class RiskModule(AccessControlContract):
             or self.policy_pool.currency.allowance(payer, self._running_as) >= premium,
             "Payer must allow PRICER to transfer the premium",
         )
+        require(
+            payout <= self.max_payout_per_policy,
+            f"Policy Payout is more than maximum: {payout} > maximum {self.max_payout_per_policy}",
+        )
 
         policy = Policy(
             id=-1,
@@ -295,10 +299,6 @@ class RiskModule(AccessControlContract):
             expiration=expiration,
         )
 
-        require(
-            policy.payout <= self.max_payout_per_policy,
-            f"Policy Payout is more than maximum: {policy.payout} > maximum {self.max_payout_per_policy}",
-        )
         active_exposure = self.active_exposure + policy.payout
         require(
             active_exposure <= self.exposure_limit,
@@ -311,18 +311,21 @@ class RiskModule(AccessControlContract):
         return policy
 
     @external
+    @only_component_role("REPLACER_ROLE")
     def replace_policy(self, old_policy, payout, premium, loss_prob, expiration, payer, internal_id):
         assert type(loss_prob) == Wad, "Loss prob MUST be wad"
         start = old_policy.start
-        require(
-            payout >= old_policy.payout and expiration >= old_policy.expiration,
-            "Policy replacement must be greater or equal than old policy",
-        )
+        require(old_policy.expiration > time_control.now, "Old policy is expired")
         if premium is None:
             premium = self.get_minimum_premium(payout, loss_prob, expiration)
+        require(
+            payout >= old_policy.payout
+            and expiration >= old_policy.expiration
+            and premium >= old_policy.premium,
+            "Policy replacement must be greater or equal than old policy",
+        )
 
         require(premium < payout, "Premium must be less than payout")
-        require(expiration > start, "Expiration must be in the future")
         require(((expiration - start) / SECONDS_IN_HOUR) < self.max_duration, "Policy exceeds max duration")
         require(
             self.policy_pool.currency.allowance(payer, self.policy_pool.contract_id)
@@ -333,6 +336,10 @@ class RiskModule(AccessControlContract):
             self._running_as == payer
             or self.policy_pool.currency.allowance(payer, self._running_as) >= (old_policy.premium - premium),
             "Payer must allow PRICER to transfer the premium",
+        )
+        require(
+            payout <= self.max_payout_per_policy,
+            f"Policy Payout is more than maximum: {payout} > maximum {self.max_payout_per_policy}",
         )
 
         policy = Policy(
@@ -345,10 +352,6 @@ class RiskModule(AccessControlContract):
             expiration=expiration,
         )
 
-        require(
-            policy.payout <= self.max_payout_per_policy,
-            f"Policy Payout is more than maximum: {policy.payout} > maximum {self.max_payout_per_policy}",
-        )
         active_exposure = self.active_exposure + policy.payout - old_policy.payout
         require(
             active_exposure <= self.exposure_limit,
@@ -1107,8 +1110,8 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
         self.active_pure_premiums += new_policy.pure_premium - old_policy.pure_premium
         self.senior_etk.unlock_scr(old_policy.sr_scr, old_policy.sr_interest_rate, Wad(0))
         self.senior_etk.lock_scr(new_policy.sr_scr, new_policy.sr_interest_rate)
-        self.senior_etk.unlock_scr(old_policy.jr_scr, old_policy.jr_interest_rate, Wad(0))
-        self.senior_etk.lock_scr(new_policy.jr_scr, new_policy.jr_interest_rate)
+        self.junior_etk.unlock_scr(old_policy.jr_scr, old_policy.jr_interest_rate, Wad(0))
+        self.junior_etk.lock_scr(new_policy.jr_scr, new_policy.jr_interest_rate)
 
     @external
     def policy_resolved_with_payout(self, customer, policy, payout):
@@ -1242,7 +1245,8 @@ class PolicyPool(ERC721Token):
 
     @external
     def replace_policy(self, old_policy, new_policy, payer, internal_id):
-        require(old_policy == self.policies[old_policy.id], "The old policy doesn't exist")
+        require(old_policy.id in self.policies, "The old policy doesn't exist")
+        old_policy = self.policies[old_policy.id]  # To make sure is the same, in solidity check with hash
         require(new_policy.start == old_policy.start, "Both policies must have the same starting date")
         require(
             old_policy.payout <= new_policy.payout

@@ -40,8 +40,9 @@ library Policy {
     uint256 premium,
     uint256 payout,
     uint256 lossProb,
-    uint40 expiration
-  ) internal view returns (PolicyData memory newPolicy) {
+    uint40 expiration,
+    uint40 start
+  ) internal pure returns (PolicyData memory newPolicy) {
     require(premium <= payout, "Premium cannot be more than payout");
     PolicyData memory policy;
 
@@ -49,7 +50,7 @@ library Policy {
     policy.premium = premium;
     policy.payout = payout;
     policy.lossProb = lossProb;
-    policy.start = uint40(block.timestamp);
+    policy.start = start;
     policy.expiration = expiration;
     policy.purePremium = payout.wadMul(lossProb.wadMul(rmParams.moc));
     // Calculate Junior and Senior SCR

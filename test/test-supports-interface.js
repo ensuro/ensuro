@@ -51,10 +51,12 @@ describe("Supports interface implementation", function () {
       IERC721: "0x80ac58cd",
       IAccessControl: "0x7965db0b",
       IEToken: "0x90770621",
-      IPolicyPool: "0x3234fad6",
+      // IPolicyPool: "0x3234fad6", - Up to v2.7
+      IPolicyPool: "0x0ce33b78",
       IPolicyPoolComponent: "0x4d15eb03",
       IRiskModule: "0xda40804f",
-      IPremiumsAccount: "0xb76712ec",
+      // IPremiumsAccount: "0xb76712ec", - Up to v2.7
+      IPremiumsAccount: "0x1ce4a652",
       ILPWhitelist: "0xf8722d89",
       IAccessManager: "0x272b8c47",
       IAssetManager: "0x799c2a5c",

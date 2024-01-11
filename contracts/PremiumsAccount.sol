@@ -2,6 +2,7 @@
 pragma solidity 0.8.16;
 
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {SignedMath} from "@openzeppelin/contracts/utils/math/SignedMath.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
@@ -474,6 +475,28 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     _activePurePremiums += policy.purePremium;
     if (policy.jrScr > 0) _juniorEtk.lockScr(policy.jrScr, policy.jrInterestRate());
     if (policy.srScr > 0) _seniorEtk.lockScr(policy.srScr, policy.srInterestRate());
+  }
+
+  function policyReplaced(Policy.PolicyData memory oldPolicy, Policy.PolicyData memory newPolicy)
+    external
+    override
+    onlyPolicyPool
+    whenNotPaused
+  {
+    int256 diff = int256(oldPolicy.srInterestRate()) - int256(newPolicy.srInterestRate());
+    require(SignedMath.abs(diff) < 1e14, "Interest rate can't change");
+    diff = int256(oldPolicy.jrInterestRate()) - int256(newPolicy.jrInterestRate());
+    require(SignedMath.abs(diff) < 1e14, "Interest rate can't change");
+    /*
+     * Supporting interest rate change is possible, but it would require complex computations.
+     * If new IR > old IR, then we must adjust positivelly to accrue the interests not accrued
+     * If new IR < old IR, then we must adjust negativelly to substract the interests accrued in excess
+     */
+    _activePurePremiums += newPolicy.purePremium - oldPolicy.purePremium;
+    if (oldPolicy.jrScr > 0) _juniorEtk.unlockScr(oldPolicy.jrScr, oldPolicy.jrInterestRate(), 0);
+    if (oldPolicy.srScr > 0) _seniorEtk.unlockScr(oldPolicy.srScr, oldPolicy.srInterestRate(), 0);
+    if (newPolicy.jrScr > 0) _juniorEtk.lockScr(newPolicy.jrScr, newPolicy.jrInterestRate());
+    if (newPolicy.srScr > 0) _seniorEtk.lockScr(newPolicy.srScr, newPolicy.srInterestRate());
   }
 
   function policyResolvedWithPayout(
