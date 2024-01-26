@@ -133,7 +133,9 @@ class EToken(ReserveMixin, IERC20):
     def thru_policy_pool(self):
         prev_contract = self.contract
         contract_factory = self.provider.get_contract_factory(self.eth_contract)
-        self.contract = self.provider.build_contract(self._policy_pool, contract_factory, self.eth_contract)
+        self.contract = self.provider.build_contract(
+            self._policy_pool.address, contract_factory, self.eth_contract
+        )
         try:
             yield self
         finally:

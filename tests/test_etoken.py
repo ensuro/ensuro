@@ -57,15 +57,18 @@ def tenv(request):
             module=ensuro,
         )
     elif request.param == "ethereum":
-        PolicyPoolMockForward = wrappers.get_provider().get_contract_factory("PolicyPoolMockForward")
+        PolicyPoolMockForward = wrappers.ETHWrapper.build_from_def(
+            wrappers.get_provider().get_contract_def("PolicyPoolMockForward")
+        )
 
         currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(10000))
         access = wrappers.AccessManager(owner="owner")
 
         def etoken_factory(**kwargs):
-            pool = PolicyPoolMockForward.deploy(
-                wrappers.AddressBook.ZERO, currency.contract, access.contract, {"from": currency.owner}
+            pool = PolicyPoolMockForward(
+                forwardTo=wrappers.AddressBook.ZERO, currency_=currency.contract, access_=access.contract
             )
+
             symbol = kwargs.pop("symbol", "ETK")
             etoken = wrappers.EToken(policy_pool=pool, symbol=symbol, **kwargs)
             pool.setForwardTo(etoken.contract, {"from": currency.owner})

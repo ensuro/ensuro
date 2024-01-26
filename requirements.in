@@ -1,5 +1,4 @@
 m9g
 PyYAML
-eth-brownie
-eth-prototype[brownie]
+# eth-prototype[web3]  # commented while under development
 environs

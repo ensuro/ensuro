@@ -1,11 +1,12 @@
-require("@nomiclabs/hardhat-waffle");
-require("hardhat-gas-reporter");
-require("solidity-coverage");
-require("hardhat-contract-sizer");
-require("@openzeppelin/hardhat-upgrades");
-require("@nomiclabs/hardhat-etherscan");
 require("@nomicfoundation/hardhat-chai-matchers");
+require("@nomiclabs/hardhat-etherscan");
+require("@nomiclabs/hardhat-waffle");
+require("@openzeppelin/hardhat-upgrades");
+require("hardhat-contract-sizer");
+require("hardhat-dependency-compiler");
+require("hardhat-gas-reporter");
 require("hardhat-tracer");
+require("solidity-coverage");
 require("solidity-docgen");
 
 require("./instrumented/plugin/hardhat.plugin");
@@ -118,6 +119,9 @@ module.exports = {
     pages: "files",
     outputDir: "docs",
     exclude: ["mocks", "dependencies", "upgraded"],
+  },
+  dependencyCompiler: {
+    paths: ["@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol"],
   },
   brownieCoverage: {
     nodeConfig: {
