@@ -1947,6 +1947,8 @@ def test_replace_policy(tenv):
         internal_id=122,
     )
 
+    pool.currency.balance_of("CUST1") == _W(100)
+
     etkSR.scr.assert_equal(_W("0.1") * _W(2100))
     etkJR.scr.assert_equal(policy.jr_scr)
 
@@ -1970,13 +1972,34 @@ def test_replace_policy(tenv):
 
     pool.access.grant_component_role(rm, "REPLACER_ROLE", "owner")
 
+    balance_before = {}
+    balance_before["JR"] = pool.currency.balance_of(etkJR)
+    balance_before["SR"] = pool.currency.balance_of(etkSR)
+    balance_before["PA"] = pool.currency.balance_of(premiums_account)
+    balance_before["ENS"] = pool.currency.balance_of("ENS")
+    print(balance_before)
+
     new_policy = rm.replace_policy(**replace_kwargs)
     rm.active_exposure.assert_equal(_W(4200))
     etkSR.scr.assert_equal(_W("0.1") * _W(4200))
     etkJR.scr.assert_equal(new_policy.jr_scr)
 
+    pool.currency.balance_of("CUST1") == _W(100 - 90)
+    pool.currency.balance_of("CUST1") == _W(100 - 90)
+
+    pool.currency.balance_of(etkJR).assert_equal(balance_before["JR"] + new_policy.jr_coc - policy.jr_coc)
+    pool.currency.balance_of(etkSR).assert_equal(balance_before["SR"] + new_policy.sr_coc - policy.sr_coc)
+    pool.currency.balance_of(premiums_account).assert_equal(
+        balance_before["PA"] + new_policy.pure_premium - policy.pure_premium
+    )
+    pool.currency.balance_of("ENS").assert_equal(
+        balance_before["ENS"] + new_policy.ensuro_commission - policy.ensuro_commission
+    )
+
     with pytest.raises(RevertError, match="Policy not found"):
         rm.resolve_policy(policy.id, True)
+
+    assert pool.owner_of(new_policy.id) == "CUST1"
 
     return locals()
 
