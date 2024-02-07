@@ -27,16 +27,17 @@ def tenv(request):
             kind="prototype",
         )
     elif request.param == "ethereum":
+        # TODO?
         # Resets the address book on every test, to avoid some strange errors
         # like EOA addresses recognized as contracts
-        from brownie import accounts
-        from ethproto.brwrappers import AddressBook, BrownieAddressBook
+        # from brownie import accounts
+        # from ethproto.brwrappers import AddressBook, BrownieAddressBook
 
         from prototype import wrappers
 
-        address_book = BrownieAddressBook(accounts)
-        AddressBook.set_instance(address_book)
-        get_provider().address_book = address_book
+        # address_book = BrownieAddressBook(accounts)
+        # AddressBook.set_instance(address_book)
+        # get_provider().address_book = address_book
 
         return TEnv(
             time_control=get_provider().time_control,

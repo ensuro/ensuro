@@ -66,16 +66,18 @@ def tenv(request):
             A=_A,
         )
     elif test_variant == "ethereum":
-        PolicyPoolMock = get_provider().get_contract_factory("PolicyPoolMock")
-        PremiumsAccountMock = get_provider().get_contract_factory("PolicyPoolComponentMock")
+        PolicyPoolMock = wrappers.ETHWrapper.build_from_def(get_provider().get_contract_def("PolicyPoolMock"))
+        PremiumsAccountMock = wrappers.ETHWrapper.build_from_def(
+            get_provider().get_contract_def("PolicyPoolComponentMock")
+        )
 
         currency = wrappers.TestCurrency(
             owner="owner", name="TEST", symbol="TEST", initial_supply=_A(1000), decimals=decimals
         )
         access = wrappers.AccessManager(owner="owner")
 
-        pool = PolicyPoolMock.deploy(currency.contract, access.contract, {"from": currency.owner})
-        premiums_account = PremiumsAccountMock.deploy(pool, {"from": currency.owner})
+        pool = PolicyPoolMock(currency_=currency.contract, access_=access.contract)
+        premiums_account = PremiumsAccountMock(policyPool_=pool)
 
         return TEnv(
             currency=currency,
@@ -84,7 +86,7 @@ def tenv(request):
             kind="ethereum",
             rm_class=partial(
                 wrappers.TrustfulRiskModule,
-                policy_pool=wrappers.PolicyPool.connect(pool, currency.owner),
+                policy_pool=wrappers.PolicyPool.connect(pool.contract, currency.owner),
                 premiums_account=premiums_account,
             ),
             A=_A,

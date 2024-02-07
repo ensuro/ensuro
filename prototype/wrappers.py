@@ -356,6 +356,27 @@ class Policy:
             address_book,
         )
 
+    @classmethod
+    def from_policy_data(cls, policy_data, address_book):
+        """Creates a Policy object from a PolicyData struct (see Policy.sol)"""
+        return cls(
+            policy_data.id,
+            policy_data.payout,
+            policy_data.premium,
+            policy_data.jrScr,
+            policy_data.srScr,
+            policy_data.lossProb,
+            policy_data.purePremium,
+            policy_data.ensuroCommission,
+            policy_data.partnerCommission,
+            policy_data.jrCoc,
+            policy_data.srCoc,
+            policy_data.riskModule,
+            policy_data.start,
+            policy_data.expiration,
+            address_book,
+        )
+
 
 class PolicyDB:
     def __init__(self):
@@ -467,7 +488,7 @@ class RiskModule(ETHWrapper):
         receipt = self.new_policy_(*args, **kwargs)
         if "NewPolicy" in receipt.events:
             policy_data = receipt.events["NewPolicy"]["policy"]
-            policy = Policy(*policy_data, address_book=self.provider.address_book)
+            policy = Policy.from_policy_data(policy_data, address_book=self.provider.address_book)
             policy_db.add_policy(self.policy_pool.contract.address, policy)
             return policy
         else:
@@ -592,7 +613,7 @@ class SignedQuoteRiskModule(RiskModule):
         receipt = self.new_policy_paid_by_holder_(*args, **kwargs)
         if "NewPolicy" in receipt.events:
             policy_data = receipt.events["NewPolicy"]["policy"]
-            policy = Policy(*policy_data, address_book=self.provider.address_book)
+            policy = Policy.from_policy_data(policy_data, address_book=self.provider.address_book)
             policy_db.add_policy(self.policy_pool.contract.address, policy)
             return policy
         else:
@@ -645,9 +666,18 @@ class SignedBucketRiskModule(SignedQuoteRiskModule):
             new_bucket_events + delete_bucket_events, key=lambda evt: (evt.blockNumber, evt.transactionIndex)
         )
         buckets = {}
+        bucket_tuple_fields = (
+            "moc",
+            "jrCollRatio",
+            "collRatio",
+            "ensuroPpFee",
+            "ensuroCocFee",
+            "jrRoc",
+            "srRoc",
+        )
         for evt in all_events:
             if evt.event == "NewBucket":
-                buckets[evt.args.bucketId] = evt.args.params
+                buckets[evt.args.bucketId] = tuple(evt.args.params[field] for field in bucket_tuple_fields)
             elif evt.event == "BucketDeleted":
                 buckets.pop(evt.args.bucketId)
 
@@ -814,7 +844,7 @@ class PolicyPool(IERC721):
     def get_policy(self, policy_id):
         policy_data = eth_call(self, "getPolicy", policy_id)
         if policy_data:
-            return Policy(*policy_data, self.provider.address_book)
+            return Policy.from_policy_data(policy_data, self.provider.address_book)
 
     get_policy_fund_count = MethodAdapter((("policy_id", "int"),), "int")
     get_policy_fund = MethodAdapter((("policy_id", "int"), ("etoken", "contract")), "amount")
@@ -915,7 +945,9 @@ class PremiumsAccount(ReserveMixin, ETHWrapper):
     def thru_policy_pool(self):
         prev_contract = self.contract
         contract_factory = self.provider.get_contract_factory(self.eth_contract)
-        self.contract = self.provider.build_contract(self._policy_pool, contract_factory, self.eth_contract)
+        self.contract = self.provider.build_contract(
+            self._policy_pool.address, contract_factory, self.eth_contract
+        )
         try:
             yield self
         finally:
