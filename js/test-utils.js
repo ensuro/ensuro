@@ -4,7 +4,7 @@ const { RiskModuleParameter } = require("../js/enums");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
 const { ethers } = hre;
-const { AddressZero } = ethers.constants;
+const { ZeroAddress } = ethers;
 
 async function initCurrency(options, initial_targets, initial_balances) {
   const Currency = await ethers.getContractFactory(options.contractClass || "TestCurrency");
@@ -33,7 +33,7 @@ async function initCurrency(options, initial_targets, initial_balances) {
 async function initForkCurrency(currencyAddress, currencyOrigin, initialTargets, initialBalances) {
   const currency = await ethers.getContractAt("IERC20", currencyAddress);
   await helpers.impersonateAccount(currencyOrigin);
-  await helpers.setBalance(currencyOrigin, ethers.utils.parseEther("100"));
+  await helpers.setBalance(currencyOrigin, ethers.parseEther("100"));
   const whale = await ethers.getSigner(currencyOrigin);
   await Promise.all(
     initialTargets.map(async function (user, index) {
@@ -63,6 +63,8 @@ async function createRiskModule(
   extraArgs = extraArgs || [];
   extraConstructorArgs = extraConstructorArgs || [];
   const _A = pool._A || _W;
+  maxPayoutPerPolicy = maxPayoutPerPolicy !== undefined ? _A(maxPayoutPerPolicy) : _A(1000);
+  exposureLimit = exposureLimit !== undefined ? _A(exposureLimit) : _A(1000000);
   const rm = await hre.upgrades.deployProxy(
     contractFactory,
     [
@@ -70,18 +72,18 @@ async function createRiskModule(
       _W(collRatio) || _W(1),
       _W(ensuroPPFee) || _W(0),
       _W(srRoc) || _W("0.1"),
-      _A(maxPayoutPerPolicy) || _A(1000),
-      _A(exposureLimit) || _A(1000000),
+      maxPayoutPerPolicy,
+      exposureLimit,
       wallet || "0xdD2FD4581271e230360230F9337D5c0430Bf44C0", // Random address
       ...extraArgs,
     ],
     {
       kind: "uups",
-      constructorArgs: [pool.address, premiumsAccount.address, ...extraConstructorArgs],
+      constructorArgs: [pool.target, premiumsAccount.target, ...extraConstructorArgs],
     }
   );
 
-  await rm.deployed();
+  await rm.waitForDeployment();
 
   if (moc !== undefined && moc != 1.0) {
     moc = _W(moc);
@@ -120,7 +122,7 @@ async function addRiskModule(
     extraConstructorArgs,
   });
 
-  await pool.addComponent(rm.address, 2);
+  await pool.addComponent(rm.target, 2);
   return rm;
 }
 
@@ -143,11 +145,11 @@ async function createEToken(
     {
       kind: "uups",
       unsafeAllow: ["delegatecall"], // This holds, because EToken is a reserve and uses delegatecall
-      constructorArgs: [pool.address, ...extraConstructorArgs],
+      constructorArgs: [pool.target, ...extraConstructorArgs],
     }
   );
 
-  await etk.deployed();
+  await etk.waitForDeployment();
   return etk;
 }
 
@@ -163,7 +165,7 @@ async function addEToken(
     extraArgs,
     extraConstructorArgs,
   });
-  await pool.addComponent(etk.address, 1);
+  await pool.addComponent(etk.target, 1);
   return etk;
 }
 
@@ -192,7 +194,7 @@ async function deployPool(options) {
   if (options.access === undefined) {
     // Deploy AccessManager
     accessManager = await hre.upgrades.deployProxy(AccessManager, [], { kind: "uups" });
-    await accessManager.deployed();
+    await accessManager.waitForDeployment();
   } else {
     accessManager = await ethers.getContractAt("AccessManager", options.access);
   }
@@ -205,12 +207,12 @@ async function deployPool(options) {
       options.treasuryAddress || randomAddress,
     ],
     {
-      constructorArgs: [accessManager.address, options.currency],
+      constructorArgs: [accessManager.target, options.currency],
       kind: "uups",
     }
   );
 
-  await policyPool.deployed();
+  await policyPool.waitForDeployment();
 
   for (const role of options.grantRoles || []) {
     await grantRole(hre, accessManager, role);
@@ -228,14 +230,14 @@ async function deployPool(options) {
 async function deployPremiumsAccount(pool, options, addToPool = true) {
   const PremiumsAccount = await ethers.getContractFactory("PremiumsAccount");
   const premiumsAccount = await hre.upgrades.deployProxy(PremiumsAccount, [], {
-    constructorArgs: [pool.address, options.jrEtkAddr || AddressZero, options.srEtkAddr || AddressZero],
+    constructorArgs: [pool.target, options.jrEtkAddr || ZeroAddress, options.srEtkAddr || ZeroAddress],
     kind: "uups",
     unsafeAllow: ["delegatecall"], // This holds, because EToken is a reserve and uses delegatecall
   });
 
-  await premiumsAccount.deployed();
+  await premiumsAccount.waitForDeployment();
 
-  if (addToPool) await pool.addComponent(premiumsAccount.address, 3);
+  if (addToPool) await pool.addComponent(premiumsAccount.target, 3);
 
   return premiumsAccount;
 }

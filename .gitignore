@@ -30,3 +30,5 @@ instrumented/build
 instrumented/interfaces
 instrumented/node_modules
 instrumented/scripts
+
+.DS_Store

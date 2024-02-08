@@ -31,7 +31,7 @@ describe("Policy initialize", () => {
 
   async function poolFixture() {
     const PolicyPool = await hre.ethers.getContractFactory("PolicyPoolMock");
-    const pool = await PolicyPool.deploy(hre.ethers.constants.AddressZero, hre.ethers.constants.AddressZero);
+    const pool = await PolicyPool.deploy(hre.ethers.ZeroAddress, hre.ethers.ZeroAddress);
 
     return { pool };
   }

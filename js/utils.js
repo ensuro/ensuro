@@ -3,10 +3,9 @@ const ethers = require("ethers");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { DAY, IMPLEMENTATION_SLOT } = require("./constants");
 
-const _E = ethers.utils.parseEther;
-const _BN = ethers.BigNumber.from;
-const WAD = _BN(10).pow(18); // 1e18
-const RAY = _BN(10).pow(27); // 1e27
+const _E = ethers.parseEther;
+const WAD = 10n ** 18n; // 1e18
+const RAY = 10n ** 27n; // 1e27
 
 async function getStorageLayout(hre, contractSrc, contractName) {
   const buildInfo = await hre.artifacts.getBuildInfo(`${contractSrc}:${contractName}`);
@@ -36,14 +35,14 @@ function amountFunction(decimals) {
     if (value === undefined) return undefined;
 
     if (typeof value === "string" || value instanceof String) {
-      return ethers.utils.parseUnits(value, decimals);
+      return ethers.parseUnits(value, decimals);
     }
 
     if (!Number.isInteger(value)) {
-      return _BN(Math.round(value * 1e6)).mul(_BN(Math.pow(10, decimals - 6)));
+      return BigInt(Math.round(value * 1e6).toString()) * BigInt(Math.pow(10, decimals - 6).toString());
     }
 
-    return _BN(value).mul(_BN(10).pow(decimals));
+    return BigInt(value.toString()) * BigInt("10") ** BigInt(decimals.toString());
   };
 }
 
@@ -58,9 +57,7 @@ const _R = amountFunction(27);
  */
 function getRole(role) {
   if (role.startsWith("0x")) return role;
-  return role === "DEFAULT_ADMIN_ROLE"
-    ? ethers.constants.HashZero
-    : ethers.utils.keccak256(ethers.utils.toUtf8Bytes(role));
+  return role === "DEFAULT_ADMIN_ROLE" ? ethers.ZeroHash : ethers.keccak256(ethers.toUtf8Bytes(role));
 }
 
 /**
@@ -79,14 +76,14 @@ function getComponentRole(componentAddress, role) {
   if (!role.startsWith("0x")) role = getRole(role);
 
   // 32 byte array
-  const bytesRole = ethers.utils.arrayify(role);
+  const bytesRole = ethers.getBytes(role);
 
   // 20 byte array
-  const bytesAddress = ethers.utils.arrayify(componentAddress);
+  const bytesAddress = ethers.getBytes(componentAddress);
 
   // xor each byte, padding bytesAddress with zeros at the end
   // eslint-disable-next-line no-bitwise
-  return ethers.utils.hexlify(bytesRole.map((elem, idx) => elem ^ (bytesAddress[idx] || 0)));
+  return ethers.hexlify(bytesRole.map((elem, idx) => elem ^ (bytesAddress[idx] || 0)));
 }
 
 async function getDefaultSigner(hre) {
@@ -154,7 +151,7 @@ function getTransactionEvent(interface, receipt, eventName) {
     } catch (error) {
       continue;
     }
-    if (parsedLog.name == eventName) {
+    if (parsedLog?.name == eventName) {
       return parsedLog;
     }
   }
@@ -176,7 +173,9 @@ function accessControlMessage(address, component, role) {
  * Mimics the PolicyPool.newPolicy method of building the policy id.
  */
 function makePolicyId(rmAddress, internalId) {
-  return _BN(rmAddress).shl(96).add(internalId);
+  const bigRmAddress = BigInt(rmAddress);
+  const shiftedValue = (bigRmAddress << BigInt(96)) + BigInt(internalId);
+  return shiftedValue;
 }
 
 /**
@@ -185,7 +184,7 @@ function makePolicyId(rmAddress, internalId) {
  * Mimics the behaviour of the SignedQuoteRiskModule._newSignedPolicy method.
  */
 function makeQuoteMessage({ rmAddress, payout, premium, lossProb, expiration, policyData, validUntil }) {
-  return ethers.utils.solidityPack(
+  return ethers.solidityPacked(
     ["address", "uint256", "uint256", "uint256", "uint40", "bytes32", "uint40"],
     [rmAddress, payout, premium, lossProb, expiration, policyData, validUntil]
   );
@@ -206,7 +205,7 @@ function makeBucketQuoteMessage({
   bucketId,
   validUntil,
 }) {
-  return ethers.utils.solidityPack(
+  return ethers.solidityPacked(
     ["address", "uint256", "uint256", "uint256", "uint40", "bytes32", "uint256", "uint40"],
     [rmAddress, payout, premium, lossProb, expiration, policyData, bucketId, validUntil]
   );
@@ -219,7 +218,16 @@ function makeBucketQuoteMessage({
  */
 async function makeSignedQuote(signer, policyParams, makeQuoteMessageFn = makeQuoteMessage) {
   const quoteMessage = makeQuoteMessageFn(policyParams);
-  return ethers.utils.splitSignature(await signer.signMessage(ethers.utils.arrayify(quoteMessage)));
+  return ethers.Signature.from(await signer.signMessage(ethers.getBytes(quoteMessage)));
+}
+
+/**
+ * Recover address from signed quote
+ */
+function recoverAddress(policyParams, signature, makeQuoteMessageFn = makeQuoteMessage) {
+  const quoteMessage = makeQuoteMessageFn(policyParams);
+  const msg = ethers.getBytes(quoteMessage);
+  return ethers.verifyMessage(msg, signature);
 }
 
 /**
@@ -233,10 +241,10 @@ async function defaultPolicyParams(
   return {
     rmAddress,
     payout: payout || _A(1000),
-    premium: premium || ethers.constants.MaxUint256,
+    premium: premium || ethers.MaxUint256,
     lossProb: lossProb || _W(0.1),
     expiration: expiration || now + DAY * 30,
-    policyData: policyData || ethers.utils.hexlify(ethers.utils.randomBytes(32)),
+    policyData: policyData || ethers.hexlify(ethers.randomBytes(32)),
     validUntil: validUntil || now + DAY * 30,
   };
 }
@@ -252,11 +260,10 @@ async function readImplementationAddress(hre, contractAddress) {
  * @returns {ethers.BigNumber}
  */
 function uintKeccak(value) {
-  return ethers.BigNumber.from(ethers.utils.keccak256(ethers.utils.toUtf8Bytes(value)));
+  return ethers.BigNumber.from(ethers.keccak256(ethers.toUtf8Bytes(value)));
 }
 
 module.exports = {
-  _BN,
   _E,
   _R,
   _W,
@@ -276,6 +283,7 @@ module.exports = {
   makeSignedQuote,
   RAY,
   readImplementationAddress,
+  recoverAddress,
   uintKeccak,
   WAD,
 };

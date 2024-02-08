@@ -32,7 +32,7 @@ describe("SignedBucketRiskModule contract tests", function () {
     );
 
     const pool = await deployPool({
-      currency: currency.address,
+      currency: currency.target,
       grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
       treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
     });
@@ -44,17 +44,17 @@ describe("SignedBucketRiskModule contract tests", function () {
     const srEtk = await addEToken(pool, {});
     const jrEtk = await addEToken(pool, {});
     const premiumsAccount = await deployPremiumsAccount(pool, {
-      srEtkAddr: srEtk.address,
-      jrEtkAddr: jrEtk.address,
+      srEtkAddr: srEtk.target,
+      jrEtkAddr: jrEtk.target,
     });
 
     // Provide some liquidity
-    await currency.connect(lp).approve(pool.address, _A(15000));
-    await pool.connect(lp).deposit(srEtk.address, _A(10000));
-    await pool.connect(lp).deposit(jrEtk.address, _A(5000));
+    await currency.connect(lp).approve(pool.target, _A(15000));
+    await pool.connect(lp).deposit(srEtk.target, _A(10000));
+    await pool.connect(lp).deposit(jrEtk.target, _A(5000));
 
     // Customer approval
-    await currency.connect(cust).approve(pool.address, _A(500));
+    await currency.connect(cust).approve(pool.target, _A(500));
 
     // Setup the risk module
     const SignedBucketRiskModule = await hre.ethers.getContractFactory("SignedBucketRiskModule");
@@ -65,8 +65,8 @@ describe("SignedBucketRiskModule contract tests", function () {
     await rm.setParam(RiskModuleParameter.jrCollRatio, _W("0.3"));
     await rm.setParam(RiskModuleParameter.jrRoc, _W("0.1"));
 
-    await accessManager.grantComponentRole(rm.address, await rm.PRICER_ROLE(), signer.address);
-    await accessManager.grantComponentRole(rm.address, await rm.RESOLVER_ROLE(), resolver.address);
+    await accessManager.grantComponentRole(rm.target, await rm.PRICER_ROLE(), signer.address);
+    await accessManager.grantComponentRole(rm.target, await rm.RESOLVER_ROLE(), resolver.address);
     return { srEtk, jrEtk, premiumsAccount, rm, pool, accessManager, currency };
   }
 
@@ -87,14 +87,14 @@ describe("SignedBucketRiskModule contract tests", function () {
       policyParams.policyData,
       policyParams.bucketId,
       signature.r,
-      signature._vs,
+      signature.yParityAndS,
       policyParams.validUntil
     );
   }
 
   it("Uses the default parameters when no buckets are set up", async () => {
     const { rm, pool } = await helpers.loadFixture(deployPoolFixture);
-    const policyParams = await defaultPolicyParamsWithBucket({ rmAddress: rm.address });
+    const policyParams = await defaultPolicyParamsWithBucket({ rmAddress: rm.target });
     const signature = await makeSignedQuote(signer, policyParams, makeBucketQuoteMessage);
     const tx = await newPolicy(rm, cust, policyParams, cust, signature);
 
@@ -116,10 +116,10 @@ describe("SignedBucketRiskModule contract tests", function () {
 
     // level1
     await expect(rm.connect(level1).setBucketParams(1, bucketParameters({}))).to.be.revertedWith(
-      accessControlMessage(level1.address, rm.address, "LEVEL2_ROLE")
+      accessControlMessage(level1.address, rm.target, "LEVEL2_ROLE")
     );
     await expect(rm.connect(level1).deleteBucket(1)).to.be.revertedWith(
-      accessControlMessage(level1.address, rm.address, "LEVEL2_ROLE")
+      accessControlMessage(level1.address, rm.target, "LEVEL2_ROLE")
     );
     await grantRole(hre, accessManager, "LEVEL1_ROLE", level1.address);
     await expect(rm.connect(level1).setBucketParams(1, bucketParameters({}))).not.to.be.reverted;
@@ -127,10 +127,10 @@ describe("SignedBucketRiskModule contract tests", function () {
 
     // level2
     await expect(rm.connect(level2).setBucketParams(2, bucketParameters({}))).to.be.revertedWith(
-      accessControlMessage(level2.address, rm.address, "LEVEL2_ROLE")
+      accessControlMessage(level2.address, rm.target, "LEVEL2_ROLE")
     );
     await expect(rm.connect(level2).deleteBucket(2)).to.be.revertedWith(
-      accessControlMessage(level2.address, rm.address, "LEVEL2_ROLE")
+      accessControlMessage(level2.address, rm.target, "LEVEL2_ROLE")
     );
     await grantRole(hre, accessManager, "LEVEL2_ROLE", level2.address);
     await expect(rm.connect(level2).setBucketParams(2, bucketParameters({}))).not.to.be.reverted;
@@ -168,7 +168,7 @@ describe("SignedBucketRiskModule contract tests", function () {
 
     // Policy with bucketId = 1234 uses bucket parameters
     const policy1Params = await defaultPolicyParamsWithBucket({
-      rmAddress: rm.address,
+      rmAddress: rm.target,
       bucketId: 1234,
       lossProb: _W("0.055"),
     });
@@ -187,7 +187,7 @@ describe("SignedBucketRiskModule contract tests", function () {
 
     // Policy with non existent bucket reverts
     const policy2Params = await defaultPolicyParamsWithBucket({
-      rmAddress: rm.address,
+      rmAddress: rm.target,
       bucketId: 4321,
       lossProb: _W("0.15"),
     });
@@ -200,7 +200,7 @@ describe("SignedBucketRiskModule contract tests", function () {
 
     // Policy with bucketId = 0 uses default
     const policy3Params = await defaultPolicyParamsWithBucket({
-      rmAddress: rm.address,
+      rmAddress: rm.target,
       bucketId: 0,
       lossProb: _W("0.2"),
     });
@@ -251,7 +251,7 @@ describe("SignedBucketRiskModule contract tests", function () {
 
     // Policy with bucketId = 10
     const policy1Params = await defaultPolicyParamsWithBucket({
-      rmAddress: rm.address,
+      rmAddress: rm.target,
       bucketId: 10,
       lossProb: _W("0.055"),
       payout: _A("790"),
@@ -274,7 +274,7 @@ describe("SignedBucketRiskModule contract tests", function () {
 
     // Policy with bucketId = 10
     const policy2Params = await defaultPolicyParamsWithBucket({
-      rmAddress: rm.address,
+      rmAddress: rm.target,
       lossProb: _W("0.1"),
       bucketId: 10,
       payout: _A("930"),
@@ -297,7 +297,7 @@ describe("SignedBucketRiskModule contract tests", function () {
 
     // Policy with bucketId = 15
     const policy3Params = await defaultPolicyParamsWithBucket({
-      rmAddress: rm.address,
+      rmAddress: rm.target,
       bucketId: 15,
       lossProb: _W("0.101"),
     });
@@ -318,7 +318,7 @@ describe("SignedBucketRiskModule contract tests", function () {
     ).to.equal(_A("120.176024"));
 
     // Policy with bucketId = 0 uses defaults
-    const policy4Params = await defaultPolicyParamsWithBucket({ rmAddress: rm.address, lossProb: _W("0.2") });
+    const policy4Params = await defaultPolicyParamsWithBucket({ rmAddress: rm.target, lossProb: _W("0.2") });
 
     const signature4 = await makeSignedQuote(signer, policy4Params, makeBucketQuoteMessage);
     const policy4Tx = await newPolicy(rm, cust, policy4Params, cust, signature4);
@@ -357,13 +357,13 @@ describe("SignedBucketRiskModule contract tests", function () {
 
 function bucketParameters({ moc, jrCollRatio, collRatio, ensuroPpFee, ensuroCocFee, jrRoc, srRoc }) {
   return {
-    moc: moc || _W("1.1"),
-    jrCollRatio: jrCollRatio || _W("0.1"),
-    collRatio: collRatio || _W("0.2"),
-    ensuroPpFee: ensuroPpFee || _W("0.05"),
-    ensuroCocFee: ensuroCocFee || _W("0.2"),
-    jrRoc: jrRoc || _W("0.1"),
-    srRoc: srRoc || _W("0.2"),
+    moc: moc !== undefined ? moc : _W("1.1"),
+    jrCollRatio: jrCollRatio !== undefined ? jrCollRatio : _W("0.1"),
+    collRatio: collRatio !== undefined ? collRatio : _W("0.2"),
+    ensuroPpFee: ensuroPpFee !== undefined ? ensuroPpFee : _W("0.05"),
+    ensuroCocFee: ensuroCocFee !== undefined ? ensuroCocFee : _W("0.2"),
+    jrRoc: jrRoc !== undefined ? jrRoc : _W("0.1"),
+    srRoc: srRoc !== undefined ? srRoc : _W("0.2"),
     asParams: function () {
       return [this.moc, this.jrCollRatio, this.collRatio, this.ensuroPpFee, this.ensuroCocFee, this.jrRoc, this.srRoc];
     },
@@ -396,7 +396,7 @@ async function getPolicyData(pool, tx) {
     start: policyData[12],
     expiration: policyData[13],
   };
-  ret.moc = ret.purePremium.mul(_W("1")).div(ret.payout.mul(ret.lossProb).div(_W("1")));
+  ret.moc = (ret.purePremium * _W("1")) / ((ret.payout * ret.lossProb) / _W("1"));
 
   return ret;
 }

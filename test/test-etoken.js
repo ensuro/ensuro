@@ -15,7 +15,7 @@ describe("Etoken", () => {
 
   it("Refuses transfers to null address", async () => {
     const { etk } = await helpers.loadFixture(etokenFixture);
-    await expect(etk.transfer(hre.ethers.constants.AddressZero, _A(10))).to.be.revertedWith(
+    await expect(etk.transfer(hre.ethers.ZeroAddress, _A(10))).to.be.revertedWith(
       "EToken: transfer to the zero address"
     );
   });
@@ -32,7 +32,7 @@ describe("Etoken", () => {
     const { etk, pool } = await helpers.loadFixture(etokenFixture);
     expect(await etk.fundsAvailable()).to.equal(_A(3000));
 
-    await pool.connect(lp).withdraw(etk.address, _A(3000));
+    await pool.connect(lp).withdraw(etk.target, _A(3000));
 
     expect(await etk.fundsAvailable()).to.equal(_A(0));
   });
@@ -54,9 +54,9 @@ describe("Etoken", () => {
 
     grantRole(hre, await pool.access(), "GUARDIAN_ROLE");
 
-    expect(await etk.setWhitelist(hre.ethers.constants.AddressZero)).to.emit(await pool.access(), "ComponentChanged");
+    expect(await etk.setWhitelist(hre.ethers.ZeroAddress)).to.emit(await pool.access(), "ComponentChanged");
 
-    expect(await etk.whitelist()).to.equal(hre.ethers.constants.AddressZero);
+    expect(await etk.whitelist()).to.equal(hre.ethers.ZeroAddress);
   });
 
   it("Can't create etoken without name or symbol", async () => {
@@ -74,7 +74,7 @@ describe("Etoken", () => {
     );
 
     const pool = await deployPool({
-      currency: currency.address,
+      currency: currency.target,
       grantRoles: [],
       treasuryAddress: "0x87c47c9a5a2aa74ae714857d64911d9a091c25b1", // Random address
     });
@@ -82,8 +82,8 @@ describe("Etoken", () => {
 
     const etk = await addEToken(pool, {});
 
-    await currency.connect(lp).approve(pool.address, _A(5000));
-    await pool.connect(lp).deposit(etk.address, _A(3000));
+    await currency.connect(lp).approve(pool.target, _A(5000));
+    await pool.connect(lp).deposit(etk.target, _A(3000));
 
     return { currency, pool, etk };
   }

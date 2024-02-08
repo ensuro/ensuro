@@ -1,7 +1,7 @@
 /* global task, ethers */
 require("@nomicfoundation/hardhat-chai-matchers");
 require("@nomiclabs/hardhat-etherscan");
-require("@nomiclabs/hardhat-waffle");
+// require("@nomiclabs/hardhat-waffle");
 require("@openzeppelin/hardhat-upgrades");
 require("hardhat-contract-sizer");
 require("hardhat-dependency-compiler");

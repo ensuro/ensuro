@@ -115,7 +115,7 @@ async function deployContract({ saveAddr, verify, contractClass, constructorArgs
     // From https://ethereum.stackexchange.com/a/119622/79726
     await contract.deployTransaction.wait(6);
   } else {
-    await contract.deployed();
+    await contract.waitForDeployment();
   }
   await logContractCreated(hre, contractClass, contract.address);
   saveAddress(saveAddr, contract.address);
@@ -138,7 +138,7 @@ async function deployProxyContract(
     // From https://ethereum.stackexchange.com/a/119622/79726
     await contract.deployTransaction.wait(6);
   } else {
-    await contract.deployed();
+    await contract.waitForDeployment();
   }
   await logContractCreated(hre, contractClass, contract.address);
   saveAddress(saveAddr, contract.address);
@@ -155,7 +155,7 @@ async function grantRoleTask({ contractAddress, role, account, component, impers
     }
     contract = contract.connect(signer);
   }
-  if (component === ethers.constants.AddressZero) {
+  if (component === ethers.ZeroAddress) {
     await grantRole(hre, contract, role, account, txOverrides(), console.log);
   } else {
     await grantComponentRole(hre, contract, component, role, account, txOverrides(), console.log);
@@ -320,9 +320,9 @@ async function setAssetManager({ reserve, amAddress, liquidityMin, liquidityMidd
   const tx = await reserveContract.setAssetManager(amAddress, false);
   console.log(`Asset Manager ${amAddress} set to reserve ${reserve}`);
   if (liquidityMin !== undefined || liquidityMiddle !== undefined || liquidityMax !== undefined) {
-    liquidityMin = liquidityMin === undefined ? ethers.constants.MaxUint256 : _A(liquidityMin);
-    liquidityMiddle = liquidityMiddle === undefined ? ethers.constants.MaxUint256 : _A(liquidityMiddle);
-    liquidityMax = liquidityMax === undefined ? ethers.constants.MaxUint256 : _A(liquidityMax);
+    liquidityMin = liquidityMin === undefined ? ethers.MaxUint256 : _A(liquidityMin);
+    liquidityMiddle = liquidityMiddle === undefined ? ethers.MaxUint256 : _A(liquidityMiddle);
+    liquidityMax = liquidityMax === undefined ? ethers.MaxUint256 : _A(liquidityMax);
     const amContract = await hre.ethers.getContractAt(
       "ERC4626AssetManager", // Not relevant if it's ERC4626AssetManager, only need setLiquidityThresholds
       amAddress
@@ -537,7 +537,7 @@ function add_task() {
     .addOptionalParam("saveAddr", "Save created contract address", "POOL", types.str)
     .addOptionalParam("nftName", "Name of Policies NFT Token", "Ensuro Policies NFT", types.str)
     .addOptionalParam("nftSymbol", "Symbol of Policies NFT Token", "EPOL", types.str)
-    .addOptionalParam("treasuryAddress", "Treasury Address", ethers.constants.AddressZero, types.address)
+    .addOptionalParam("treasuryAddress", "Treasury Address", ethers.ZeroAddress, types.address)
     .addParam("currencyAddress", "Currency Address", types.address)
     .addParam("accessAddress", "AccessManager Address", types.address)
     .setAction(deployPolicyPool);
@@ -693,7 +693,7 @@ function add_task() {
     .addOptionalParam(
       "component",
       "Address of the component if it's a component role",
-      ethers.constants.AddressZero,
+      ethers.ZeroAddress,
       types.address
     )
     .setAction(grantRoleTask);

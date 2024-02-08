@@ -99,14 +99,14 @@ describe("AccessManager", () => {
 
     await expect(
       accessManager.setComponentRoleAdmin(
-        hre.ethers.constants.AddressZero,
+        hre.ethers.ZeroAddress,
         getRole("SOME_ROLE"),
         getRole("SOME_ROLE_ADMIN_ROLE")
       )
     ).to.be.revertedWith("AccessManager: invalid address for component");
 
     await expect(
-      accessManager.grantComponentRole(hre.ethers.constants.AddressZero, getRole("SOME_ROLE"), user.address)
+      accessManager.grantComponentRole(hre.ethers.ZeroAddress, getRole("SOME_ROLE"), user.address)
     ).to.be.revertedWith("AccessManager: invalid address for component");
   });
 

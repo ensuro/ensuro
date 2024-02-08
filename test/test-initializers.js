@@ -13,7 +13,7 @@ const {
   addEToken,
 } = require("../js/test-utils");
 
-const { AddressZero } = hre.ethers.constants;
+const { ZeroAddress } = hre.ethers;
 
 describe("Test Initialize contracts", function () {
   async function protocolFixture() {
@@ -28,7 +28,7 @@ describe("Test Initialize contracts", function () {
     );
 
     const pool = await deployPool({
-      currency: currency.address,
+      currency: currency.target,
       grantRoles: [],
       treasuryAddress: "0x87c47c9a5a2aa74ae714857d64911d9a091c25b1", // Random address
     });
@@ -36,15 +36,15 @@ describe("Test Initialize contracts", function () {
 
     const etk = await addEToken(pool, {});
 
-    const premiumsAccount = await deployPremiumsAccount(pool, { srEtkAddr: etk.address });
+    const premiumsAccount = await deployPremiumsAccount(pool, { srEtkAddr: etk.target });
     const accessManager = await hre.ethers.getContractAt("AccessManager", await pool.access());
     const TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
     const rm = await addRiskModule(pool, premiumsAccount, TrustfulRiskModule, {});
 
     await grantRole(hre, accessManager, "GUARDIAN_ROLE", guardian.address);
 
-    await currency.connect(lp).approve(pool.address, _A(5000));
-    await pool.connect(lp).deposit(etk.address, _A(3000));
+    await currency.connect(lp).approve(pool.target, _A(5000));
+    await pool.connect(lp).deposit(etk.target, _A(3000));
 
     return {
       currency,
@@ -72,31 +72,37 @@ describe("Test Initialize contracts", function () {
   });
 
   it("Does not allow reinitializing PolicyPool", async () => {
-    await expect(pool.initialize("PP", "PP", AddressZero)).to.be.revertedWith("contract is already initialized");
+    await expect(pool.initialize("PP", "PP", ZeroAddress)).to.be.revertedWith(
+      "Initializable: contract is already initialized"
+    );
   });
 
   it("Does not allow reinitializing Etoken", async () => {
-    await expect(etk.initialize("ETK", "ETK", 0, 0)).to.be.revertedWith("contract is already initialized");
+    await expect(etk.initialize("ETK", "ETK", 0, 0)).to.be.revertedWith(
+      "Initializable: contract is already initialized"
+    );
   });
 
   it("Does not allow reinitializing AccessManager", async () => {
-    await expect(accessManager.initialize()).to.be.revertedWith("contract is already initialized");
+    await expect(accessManager.initialize()).to.be.revertedWith("Initializable: contract is already initialized");
   });
 
   it("Does not allow reinitializing PremiumsAccount", async () => {
-    await expect(premiumsAccount.initialize()).to.be.revertedWith("contract is already initialized");
+    await expect(premiumsAccount.initialize()).to.be.revertedWith("Initializable: contract is already initialized");
   });
 
   it("Does not allow reinitializing RiskModule", async () => {
-    await expect(rm.initialize("RM", 0, 0, 0, 0, 0, AddressZero)).to.be.revertedWith("contract is already initialized");
+    await expect(rm.initialize("RM", 0, 0, 0, 0, 0, ZeroAddress)).to.be.revertedWith(
+      "Initializable: contract is already initialized"
+    );
   });
 
   ["SignedQuoteRiskModule", "SignedBucketRiskModule", "TieredSignedQuoteRiskModule"].forEach((contract) => {
     it(`Does not allow reinitializing ${contract}`, async () => {
       const Factory = await hre.ethers.getContractFactory(contract);
       const initRm = await createRiskModule(pool, premiumsAccount, Factory, { extraConstructorArgs: [false] });
-      await expect(initRm.initialize("RM", 0, 0, 0, 0, 0, AddressZero)).to.be.revertedWith(
-        "contract is already initialized"
+      await expect(initRm.initialize("RM", 0, 0, 0, 0, 0, ZeroAddress)).to.be.revertedWith(
+        "Initializable: contract is already initialized"
       );
     });
   });
@@ -105,8 +111,8 @@ describe("Test Initialize contracts", function () {
     const Whitelist = await hre.ethers.getContractFactory("LPManualWhitelist");
     const wl = await hre.upgrades.deployProxy(Whitelist, [[2, 1, 1, 2]], {
       kind: "uups",
-      constructorArgs: [pool.address],
+      constructorArgs: [pool.target],
     });
-    await expect(wl.initialize([2, 1, 1, 2])).to.be.revertedWith("contract is already initialized");
+    await expect(wl.initialize([2, 1, 1, 2])).to.be.revertedWith("Initializable: contract is already initialized");
   });
 });
