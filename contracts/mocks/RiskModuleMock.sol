@@ -20,9 +20,10 @@ contract RiskModuleMock is RiskModule {
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
-  constructor(IPolicyPool policyPool_, IPremiumsAccount premiumsAccount_)
-    RiskModule(policyPool_, premiumsAccount_)
-  {} // solhint-disable-line no-empty-blocks
+  constructor(
+    IPolicyPool policyPool_,
+    IPremiumsAccount premiumsAccount_
+  ) RiskModule(policyPool_, premiumsAccount_) {} // solhint-disable-line no-empty-blocks
 
   /**
    * @dev Initializes the RiskModule
@@ -66,10 +67,10 @@ contract RiskModuleMock is RiskModule {
     return _newPolicy(payout, premium, lossProb, expiration, payer, onBehalfOf, internalId).id;
   }
 
-  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout)
-    external
-    onlyComponentRole(RESOLVER_ROLE)
-  {
+  function resolvePolicy(
+    Policy.PolicyData calldata policy,
+    uint256 payout
+  ) external onlyComponentRole(RESOLVER_ROLE) {
     _policyPool.resolvePolicy(policy, payout);
   }
 }

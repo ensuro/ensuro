@@ -36,7 +36,7 @@ abstract contract Reserve is PolicyPoolComponent {
    */
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(IPolicyPool policyPool_) PolicyPoolComponent(policyPool_) {
-    NEGLIGIBLE_AMOUNT = 10**(policyPool_.currency().decimals() / 2);
+    NEGLIGIBLE_AMOUNT = 10 ** (policyPool_.currency().decimals() / 2);
   }
 
   /**
@@ -130,10 +130,10 @@ abstract contract Reserve is PolicyPoolComponent {
    * `force` is true, an error in the deinvestAll() operation is ignored. When `force` is false, if `deinvestAll()`
    * fails, it reverts.
    */
-  function setAssetManager(IAssetManager newAM, bool force)
-    external
-    onlyGlobalOrComponentRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
-  {
+  function setAssetManager(
+    IAssetManager newAM,
+    bool force
+  ) external onlyGlobalOrComponentRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {
     require(
       address(newAM) == address(0) || newAM.supportsInterface(type(IAssetManager).interfaceId),
       "Reserve: asset manager doesn't implements the required interface"
@@ -217,11 +217,9 @@ abstract contract Reserve is PolicyPoolComponent {
    * @param functionCall Abi encoded function call to make.
    * @return Returns the return value of the function called, to be decoded by the receiver.
    */
-  function forwardToAssetManager(bytes memory functionCall)
-    external
-    onlyGlobalOrComponentRole(LEVEL2_ROLE)
-    returns (bytes memory)
-  {
+  function forwardToAssetManager(
+    bytes memory functionCall
+  ) external onlyGlobalOrComponentRole(LEVEL2_ROLE) returns (bytes memory) {
     return address(assetManager()).functionDelegateCall(functionCall);
   }
 

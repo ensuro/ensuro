@@ -35,11 +35,10 @@ library TimeScaled {
     }
   }
 
-  function getScale(ScaledAmount storage scaledAmount, uint256 interestRate)
-    internal
-    view
-    returns (uint256)
-  {
+  function getScale(
+    ScaledAmount storage scaledAmount,
+    uint256 interestRate
+  ) internal view returns (uint256) {
     uint32 now_ = uint32(block.timestamp);
     if (scaledAmount.lastUpdate >= now_) {
       return scaledAmount.scale;
@@ -51,11 +50,10 @@ library TimeScaled {
       );
   }
 
-  function getScaledAmount(ScaledAmount storage scaledAmount, uint256 interestRate)
-    internal
-    view
-    returns (uint256)
-  {
+  function getScaledAmount(
+    ScaledAmount storage scaledAmount,
+    uint256 interestRate
+  ) internal view returns (uint256) {
     return
       uint256(scaledAmount.amount)
         .wadToRay()
@@ -69,11 +67,10 @@ library TimeScaled {
     scaledAmount.lastUpdate = uint32(block.timestamp);
   }
 
-  function scaleAmount(ScaledAmount storage scaledAmount, uint256 toScale)
-    internal
-    view
-    returns (uint256)
-  {
+  function scaleAmount(
+    ScaledAmount storage scaledAmount,
+    uint256 toScale
+  ) internal view returns (uint256) {
     return toScale.wadToRay().rayDiv(uint256(scaledAmount.scale)).rayToWad();
   }
 

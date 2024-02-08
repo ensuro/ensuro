@@ -94,12 +94,9 @@ abstract contract PolicyPoolComponent is
     __Pausable_init();
   }
 
-  function _authorizeUpgrade(address newImpl)
-    internal
-    view
-    override
-    onlyGlobalOrComponentRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
-  {
+  function _authorizeUpgrade(
+    address newImpl
+  ) internal view override onlyGlobalOrComponentRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {
     _upgradeValidations(newImpl);
   }
 

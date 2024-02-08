@@ -62,10 +62,10 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
    * @param lossProb The loss probability of the new bucket.
    * @param params_ The parameters of the new bucket.
    */
-  function pushBucket(uint256 lossProb, Params calldata params_)
-    external
-    onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE)
-  {
+  function pushBucket(
+    uint256 lossProb,
+    Params calldata params_
+  ) external onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE) {
     uint256 newBucket = 0;
     if (_buckets.lossProbs[0] != 0) {
       for (

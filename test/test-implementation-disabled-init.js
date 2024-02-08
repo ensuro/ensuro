@@ -60,7 +60,9 @@ describe("Test Implementation contracts can't be initialized", function () {
   it("Does not allow initialize PolicyPool implementation", async () => {
     const { currency, access, PolicyPool } = await helpers.loadFixture(setupFixture);
     const pool = await PolicyPool.deploy(access.target, currency.target);
-    await expect(pool.initialize("Ensuro", "EPOL", rndAddr)).to.be.revertedWith("Initializable: contract is already initialized");
+    await expect(pool.initialize("Ensuro", "EPOL", rndAddr)).to.be.revertedWith(
+      "Initializable: contract is already initialized"
+    );
   });
 
   it("Does not allow initialize EToken implementation", async () => {

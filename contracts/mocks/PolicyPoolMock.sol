@@ -44,8 +44,8 @@ contract PolicyPoolMock is IPolicyPool {
 
   function newPolicy(
     Policy.PolicyData memory policy,
-    address, /* caller */
-    address, /* policyHolder */
+    address /* caller */,
+    address /* policyHolder */,
     uint96 internalId
   ) external override returns (uint256) {
     policy.id = (uint256(uint160(address(policy.riskModule))) << 96) + internalId;
@@ -74,10 +74,10 @@ contract PolicyPoolMock is IPolicyPool {
     _resolvePolicy(policy, 0);
   }
 
-  function resolvePolicyFullPayout(Policy.PolicyData calldata policy, bool customerWon)
-    external
-    override
-  {
+  function resolvePolicyFullPayout(
+    Policy.PolicyData calldata policy,
+    bool customerWon
+  ) external override {
     return _resolvePolicy(policy, customerWon ? policy.payout : 0);
   }
 

@@ -30,10 +30,10 @@ abstract contract LPManualWhitelistV20 is ILPWhitelist, PolicyPoolComponent {
     __PolicyPoolComponent_init();
   }
 
-  function whitelistAddress(address provider, bool whitelisted)
-    external
-    onlyComponentRole(LP_WHITELIST_ROLE)
-  {
+  function whitelistAddress(
+    address provider,
+    bool whitelisted
+  ) external onlyComponentRole(LP_WHITELIST_ROLE) {
     if (_whitelisted[provider] != whitelisted) {
       _whitelisted[provider] = whitelisted;
       emit LPWhitelisted(provider, whitelisted);

@@ -229,12 +229,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     _setTreasury(treasury_);
   }
 
-  function _authorizeUpgrade(address newImpl)
-    internal
-    view
-    override
-    onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
-  {
+  function _authorizeUpgrade(
+    address newImpl
+  ) internal view override onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {
     IPolicyPool newPool = IPolicyPool(newImpl);
     require(newPool.access() == _access, "Can't upgrade changing the access manager");
     require(newPool.currency() == _currency, "Can't upgrade changing the currency");
@@ -310,10 +307,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * to this specific {PolicyPool} and matching the `kind` specified in the next paramter.
    * @param kind The type of component to be added.
    */
-  function addComponent(IPolicyPoolComponent component, ComponentKind kind)
-    external
-    onlyRole(LEVEL1_ROLE)
-  {
+  function addComponent(
+    IPolicyPoolComponent component,
+    ComponentKind kind
+  ) external onlyRole(LEVEL1_ROLE) {
     Component storage comp = _components[component];
     require(comp.status == ComponentStatus.inactive, "Component already in the pool");
     require(component.policyPool() == this, "Component not linked to this pool");
@@ -398,10 +395,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * @param component The address of component contract. Must be a component added before.
    * @param newStatus The new status, must be either `active`, `deprecated` or `suspended`.
    */
-  function changeComponentStatus(IPolicyPoolComponent component, ComponentStatus newStatus)
-    external
-    onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
-  {
+  function changeComponentStatus(
+    IPolicyPoolComponent component,
+    ComponentStatus newStatus
+  ) external onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {
     Component storage comp = _components[component];
     require(comp.status != ComponentStatus.inactive, "Component not found");
     require(
@@ -420,11 +417,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * @param component The address of the component
    * @return The status of the component. See {ComponentStatus}
    */
-  function getComponentStatus(IPolicyPoolComponent component)
-    external
-    view
-    returns (ComponentStatus)
-  {
+  function getComponentStatus(
+    IPolicyPoolComponent component
+  ) external view returns (ComponentStatus) {
     return _components[component].status;
   }
 
@@ -453,12 +448,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     eToken.deposit(_msgSender(), _currency.balanceOf(address(eToken)) - balanceBefore);
   }
 
-  function withdraw(IEToken eToken, uint256 amount)
-    external
-    override
-    whenNotPaused
-    returns (uint256)
-  {
+  function withdraw(
+    IEToken eToken,
+    uint256 amount
+  ) external override whenNotPaused returns (uint256) {
     ComponentStatus etkStatus = _etkStatus(eToken);
     require(
       etkStatus == ComponentStatus.active || etkStatus == ComponentStatus.deprecated,
@@ -523,19 +516,17 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     }
   }
 
-  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout)
-    external
-    override
-    whenNotPaused
-  {
+  function resolvePolicy(
+    Policy.PolicyData calldata policy,
+    uint256 payout
+  ) external override whenNotPaused {
     return _resolvePolicy(policy, payout, false);
   }
 
-  function resolvePolicyFullPayout(Policy.PolicyData calldata policy, bool customerWon)
-    external
-    override
-    whenNotPaused
-  {
+  function resolvePolicyFullPayout(
+    Policy.PolicyData calldata policy,
+    bool customerWon
+  ) external override whenNotPaused {
     return _resolvePolicy(policy, customerWon ? policy.payout : 0, false);
   }
 
@@ -558,11 +549,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * @param payout The amount to paid to the policyholder
    * @param expired True for expiration resolution (`payout` must be 0)
    */
-  function _resolvePolicy(
-    Policy.PolicyData memory policy,
-    uint256 payout,
-    bool expired
-  ) internal {
+  function _resolvePolicy(Policy.PolicyData memory policy, uint256 payout, bool expired) internal {
     // Checks
     _validatePolicy(policy);
     IRiskModule rm = policy.riskModule;

@@ -266,13 +266,10 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   /**
    * @dev See {IERC20-allowance}.
    */
-  function allowance(address owner, address spender)
-    public
-    view
-    virtual
-    override
-    returns (uint256)
-  {
+  function allowance(
+    address owner,
+    address spender
+  ) public view virtual override returns (uint256) {
     return _allowances[owner][spender];
   }
 
@@ -320,11 +317,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
    *
    * Might emit an {Approval} event.
    */
-  function _spendAllowance(
-    address owner,
-    address spender,
-    uint256 amount
-  ) internal virtual {
+  function _spendAllowance(address owner, address spender, uint256 amount) internal virtual {
     uint256 currentAllowance = allowance(owner, spender);
     if (currentAllowance != type(uint256).max) {
       require(currentAllowance >= amount, "EToken: insufficient allowance");
@@ -365,11 +358,10 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
    * - `spender` must have allowance for the caller of at least
    * `subtractedValue`.
    */
-  function decreaseAllowance(address spender, uint256 subtractedValue)
-    public
-    virtual
-    returns (bool)
-  {
+  function decreaseAllowance(
+    address spender,
+    uint256 subtractedValue
+  ) public virtual returns (bool) {
     uint256 currentAllowance = _allowances[_msgSender()][spender];
     require(currentAllowance >= subtractedValue, "EToken: decreased allowance below zero");
     _approve(_msgSender(), spender, currentAllowance - subtractedValue);
@@ -391,11 +383,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
    * - `recipient` cannot be the zero address.
    * - `sender` must have a balance of at least `amount`.
    */
-  function _transfer(
-    address sender,
-    address recipient,
-    uint256 amount
-  ) internal virtual {
+  function _transfer(address sender, address recipient, uint256 amount) internal virtual {
     require(sender != address(0), "EToken: transfer from the zero address");
     require(recipient != address(0), "EToken: transfer to the zero address");
 
@@ -465,11 +453,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
    * - `owner` cannot be the zero address.
    * - `spender` cannot be the zero address.
    */
-  function _approve(
-    address owner,
-    address spender,
-    uint256 amount
-  ) internal virtual {
+  function _approve(address owner, address spender, uint256 amount) internal virtual {
     require(owner != address(0), "EToken: approve from the zero address");
     require(spender != address(0), "EToken: approve to the zero address");
 
@@ -586,12 +570,10 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     return uint256(_scr.scr).wadDiv(this.totalSupply());
   }
 
-  function lockScr(uint256 scrAmount, uint256 policyInterestRate)
-    external
-    override
-    onlyBorrower
-    whenNotPaused
-  {
+  function lockScr(
+    uint256 scrAmount,
+    uint256 policyInterestRate
+  ) external override onlyBorrower whenNotPaused {
     require(
       scrAmount <= this.fundsAvailableToLock(),
       "Not enough funds available to cover the SCR"
@@ -642,12 +624,10 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     _updateTokenInterestRate();
   }
 
-  function deposit(address provider, uint256 amount)
-    external
-    override
-    onlyPolicyPool
-    returns (uint256)
-  {
+  function deposit(
+    address provider,
+    uint256 amount
+  ) external override onlyPolicyPool returns (uint256) {
     require(
       address(_params.whitelist) == address(0) ||
         _params.whitelist.acceptsDeposit(this, provider, amount),
@@ -666,12 +646,10 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     else return 0;
   }
 
-  function withdraw(address provider, uint256 amount)
-    external
-    override
-    onlyPolicyPool
-    returns (uint256)
-  {
+  function withdraw(
+    address provider,
+    uint256 amount
+  ) external override onlyPolicyPool returns (uint256) {
     /**
      * Here we don't check for maxUtilizationRate because that limit only affects locking more capital (`lockScr`), but
      * doesn't affects the right of liquidity providers to withdraw their funds.
@@ -717,13 +695,10 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     return totalSupply() - _tsScaled.minValue(); // Min value accepted by _tsScaled
   }
 
-  function internalLoan(uint256 amount, address receiver)
-    external
-    override
-    onlyBorrower
-    whenNotPaused
-    returns (uint256)
-  {
+  function internalLoan(
+    uint256 amount,
+    address receiver
+  ) external override onlyBorrower whenNotPaused returns (uint256) {
     uint256 amountAsked = amount;
     amount = Math.min(amount, maxNegativeAdjustment());
     if (amount == 0) return amountAsked;
@@ -756,10 +731,10 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     return _4toWad(_params.internalLoanInterestRate);
   }
 
-  function setParam(Parameter param, uint256 newValue)
-    external
-    onlyGlobalOrComponentRole2(LEVEL2_ROLE, LEVEL3_ROLE)
-  {
+  function setParam(
+    Parameter param,
+    uint256 newValue
+  ) external onlyGlobalOrComponentRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     if (param == Parameter.liquidityRequirement) {
       require(
@@ -799,10 +774,9 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     );
   }
 
-  function setWhitelist(ILPWhitelist lpWhitelist_)
-    external
-    onlyGlobalOrComponentRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
-  {
+  function setWhitelist(
+    ILPWhitelist lpWhitelist_
+  ) external onlyGlobalOrComponentRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {
     require(
       address(lpWhitelist_) == address(0) ||
         IPolicyPoolComponent(address(lpWhitelist_)).policyPool() == _policyPool,

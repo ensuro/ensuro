@@ -141,15 +141,15 @@ abstract contract LiquidityThresholdAssetManager is IAssetManager {
   }
 
   function liquidityMin() public view returns (uint256) {
-    return diamondStorage().liquidityMin * 10**_asset.decimals();
+    return diamondStorage().liquidityMin * 10 ** _asset.decimals();
   }
 
   function liquidityMiddle() public view returns (uint256) {
-    return diamondStorage().liquidityMiddle * 10**_asset.decimals();
+    return diamondStorage().liquidityMiddle * 10 ** _asset.decimals();
   }
 
   function liquidityMax() public view returns (uint256) {
-    return diamondStorage().liquidityMax * 10**_asset.decimals();
+    return diamondStorage().liquidityMax * 10 ** _asset.decimals();
   }
 
   function setLiquidityThresholds(
@@ -159,15 +159,15 @@ abstract contract LiquidityThresholdAssetManager is IAssetManager {
   ) external validateParamsAfterChange {
     DiamondStorage storage ds = diamondStorage();
     if (min != type(uint256).max) {
-      ds.liquidityMin = (min / 10**_asset.decimals()).toUint32();
+      ds.liquidityMin = (min / 10 ** _asset.decimals()).toUint32();
       emit GovernanceAction(IAccessManager.GovernanceActions.setLiquidityMin, min);
     }
     if (middle != type(uint256).max) {
-      ds.liquidityMiddle = (middle / 10**_asset.decimals()).toUint32();
+      ds.liquidityMiddle = (middle / 10 ** _asset.decimals()).toUint32();
       emit GovernanceAction(IAccessManager.GovernanceActions.setLiquidityMiddle, middle);
     }
     if (max != type(uint256).max) {
-      ds.liquidityMax = (max / 10**_asset.decimals()).toUint32();
+      ds.liquidityMax = (max / 10 ** _asset.decimals()).toUint32();
       emit GovernanceAction(IAccessManager.GovernanceActions.setLiquidityMax, max);
     }
   }

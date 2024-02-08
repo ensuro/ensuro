@@ -141,7 +141,7 @@ contract SignedBucketRiskModule is RiskModule {
     address payer,
     address onBehalfOf
   ) internal returns (Policy.PolicyData memory createdPolicy) {
-    uint96 internalId = uint96(uint256(policyData) % 2**96);
+    uint96 internalId = uint96(uint256(policyData) % 2 ** 96);
     createdPolicy = _newPolicyWithParams(
       payout,
       premium,
@@ -347,11 +347,10 @@ contract SignedBucketRiskModule is RiskModule {
       ).id;
   }
 
-  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout)
-    external
-    onlyComponentRole(RESOLVER_ROLE)
-    whenNotPaused
-  {
+  function resolvePolicy(
+    Policy.PolicyData calldata policy,
+    uint256 payout
+  ) external onlyComponentRole(RESOLVER_ROLE) whenNotPaused {
     _policyPool.resolvePolicy(policy, payout);
   }
 
@@ -365,10 +364,10 @@ contract SignedBucketRiskModule is RiskModule {
    * @param bucketId Group identifier for the policies that will have these parameters
    * @param params_ The parameters of the new bucket.
    */
-  function setBucketParams(uint256 bucketId, Params calldata params_)
-    external
-    onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE)
-  {
+  function setBucketParams(
+    uint256 bucketId,
+    Params calldata params_
+  ) external onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE) {
     require(
       bucketId != 0,
       "SignedBucketRiskModule: bucketId can't be zero, set default RM parameters"
@@ -398,10 +397,9 @@ contract SignedBucketRiskModule is RiskModule {
    *
    * @param bucketId Group identifier for the policies that will have these parameters
    */
-  function deleteBucket(uint256 bucketId)
-    external
-    onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE)
-  {
+  function deleteBucket(
+    uint256 bucketId
+  ) external onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE) {
     require(
       bucketId != 0,
       "SignedBucketRiskModule: bucketId can't be zero, set default RM parameters"

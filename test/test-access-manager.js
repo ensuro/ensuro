@@ -98,11 +98,7 @@ describe("AccessManager", () => {
     const { accessManager } = await helpers.loadFixture(accessManagerFixture);
 
     await expect(
-      accessManager.setComponentRoleAdmin(
-        hre.ethers.ZeroAddress,
-        getRole("SOME_ROLE"),
-        getRole("SOME_ROLE_ADMIN_ROLE")
-      )
+      accessManager.setComponentRoleAdmin(hre.ethers.ZeroAddress, getRole("SOME_ROLE"), getRole("SOME_ROLE_ADMIN_ROLE"))
     ).to.be.revertedWith("AccessManager: invalid address for component");
 
     await expect(

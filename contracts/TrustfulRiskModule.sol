@@ -20,9 +20,10 @@ contract TrustfulRiskModule is RiskModule {
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
-  constructor(IPolicyPool policyPool_, IPremiumsAccount premiumsAccount_)
-    RiskModule(policyPool_, premiumsAccount_)
-  {} // solhint-disable-line no-empty-blocks
+  constructor(
+    IPolicyPool policyPool_,
+    IPremiumsAccount premiumsAccount_
+  ) RiskModule(policyPool_, premiumsAccount_) {} // solhint-disable-line no-empty-blocks
 
   /**
    * @dev Initializes the RiskModule
@@ -165,11 +166,10 @@ contract TrustfulRiskModule is RiskModule {
    * @param policy The policy previously created (from {NewPolicy} event)
    * @param payout The payout to transfer to the policy holder
    */
-  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout)
-    external
-    onlyComponentRole(RESOLVER_ROLE)
-    whenNotPaused
-  {
+  function resolvePolicy(
+    Policy.PolicyData calldata policy,
+    uint256 payout
+  ) external onlyComponentRole(RESOLVER_ROLE) whenNotPaused {
     _policyPool.resolvePolicy(policy, payout);
   }
 
@@ -187,11 +187,10 @@ contract TrustfulRiskModule is RiskModule {
    * @param customerWon If true, policy.payout is transferred to the policy holder. If false, the policy is resolved
    * without payout and can't be longer claimed.
    */
-  function resolvePolicyFullPayout(Policy.PolicyData calldata policy, bool customerWon)
-    external
-    onlyComponentRole(RESOLVER_ROLE)
-    whenNotPaused
-  {
+  function resolvePolicyFullPayout(
+    Policy.PolicyData calldata policy,
+    bool customerWon
+  ) external onlyComponentRole(RESOLVER_ROLE) whenNotPaused {
     _policyPool.resolvePolicyFullPayout(policy, customerWon);
   }
 

@@ -112,7 +112,7 @@ contract SignedQuoteRiskModule is RiskModule {
     );
     address signer = ECDSA.recover(quoteHash, quoteSignatureR, quoteSignatureVS);
     _policyPool.access().checkComponentRole(address(this), PRICER_ROLE, signer, false);
-    uint96 internalId = uint96(uint256(policyData) % 2**96);
+    uint96 internalId = uint96(uint256(policyData) % 2 ** 96);
 
     createdPolicy = _newPolicy(
       payout,
@@ -285,19 +285,17 @@ contract SignedQuoteRiskModule is RiskModule {
       ).id;
   }
 
-  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout)
-    external
-    onlyComponentRole(RESOLVER_ROLE)
-    whenNotPaused
-  {
+  function resolvePolicy(
+    Policy.PolicyData calldata policy,
+    uint256 payout
+  ) external onlyComponentRole(RESOLVER_ROLE) whenNotPaused {
     _policyPool.resolvePolicy(policy, payout);
   }
 
-  function resolvePolicyFullPayout(Policy.PolicyData calldata policy, bool customerWon)
-    external
-    onlyComponentRole(RESOLVER_ROLE)
-    whenNotPaused
-  {
+  function resolvePolicyFullPayout(
+    Policy.PolicyData calldata policy,
+    bool customerWon
+  ) external onlyComponentRole(RESOLVER_ROLE) whenNotPaused {
     _policyPool.resolvePolicyFullPayout(policy, customerWon);
   }
 

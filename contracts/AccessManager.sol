@@ -102,12 +102,10 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
    * @param role The role to get
    * @return The component role
    */
-  function getComponentRole(address component, bytes32 role)
-    public
-    pure
-    override
-    returns (bytes32)
-  {
+  function getComponentRole(
+    address component,
+    bytes32 role
+  ) public pure override returns (bytes32) {
     return bytes32(bytes20(component)) ^ role;
   }
 
@@ -183,11 +181,7 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
    * @param role2 The second role to check.
    * @param account The account to check for the role.
    */
-  function checkRole2(
-    bytes32 role1,
-    bytes32 role2,
-    address account
-  ) external view override {
+  function checkRole2(bytes32 role1, bytes32 role2, address account) external view override {
     if (!hasRole(role1, account)) _checkRole(role2, account);
   }
 
