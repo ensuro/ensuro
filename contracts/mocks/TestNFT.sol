@@ -2,7 +2,7 @@
 pragma solidity 0.8.16;
 pragma experimental ABIEncoderV2;
 
-import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
 contract TestNFT is ERC721 {
   address private _owner;

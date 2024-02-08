@@ -5,7 +5,6 @@ import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {IRiskModule} from "../interfaces/IRiskModule.sol";
 import {IEToken} from "../interfaces/IEToken.sol";
 import {IAccessManager} from "../interfaces/IAccessManager.sol";
-import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {Policy} from "../Policy.sol";
 import {ForwardProxy} from "./ForwardProxy.sol";
