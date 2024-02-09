@@ -260,7 +260,7 @@ async function readImplementationAddress(hre, contractAddress) {
  * @returns {ethers.BigNumber}
  */
 function uintKeccak(value) {
-  return ethers.BigNumber.from(ethers.keccak256(ethers.toUtf8Bytes(value)));
+  return BigInt(ethers.keccak256(ethers.toUtf8Bytes(value)));
 }
 
 module.exports = {
