@@ -24,7 +24,7 @@ exports.execAsync = async function execAsync(command, options = {}) {
 };
 
 exports.setupNode = async function setupNode(env, api, ui) {
-  const network = nomiclabsUtils.setupHardhatNetwork(env, api, ui);
+  const network = await nomiclabsUtils.setupHardhatNetwork(env, api, ui);
 
   const localhostNetworkURL = new URL(env.config.networks.localhost.url);
   const nodeConfig = { hostname: localhostNetworkURL.hostname, port: parseInt(localhostNetworkURL.port) };
