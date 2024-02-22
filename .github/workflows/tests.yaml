@@ -22,12 +22,12 @@ jobs:
       - run: npm run solhint
       - name: Run python tests
         run: |
-          npx hardhat node > /dev/null &
-          NODE_PID=$!
-          scripts/wait-node.sh http://localhost:8545
+          . scripts/utils.sh
+          startHHNode
+
           pytest
-          kill -- -${NODE_PID} || true
-          wait $NODE_PID || true
+
+          kill -- $(getHHNodePID) || true
       - run: scripts/deploySmokeTest.sh
       - run: scripts/deploySmokeTest-fork.sh
         env:

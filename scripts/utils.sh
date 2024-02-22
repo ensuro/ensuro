@@ -13,23 +13,34 @@ export DEPLOY_AMOUNT_DECIMALS=6
 
 NETWORK=${NETWORK:-localhost}
 
+getHHNodePID() {
+    ps ax | grep "/.bin/hardhat node" | grep -v grep  | awk '{print $1}'
+}
+
+waitHHNode() {
+    if [ -z "$1" ]; then
+        echo "Usage: $0 <node_url>"
+        exit 1
+    fi
+    while ! curl $1 --fail -X POST -H "Content-Type: application/json" -d '{"method":"eth_blockNumber","params":[],"id":1,"jsonrpc":"2.0"}' > /dev/null 2>&1; do
+        echo "Waiting for node start"
+        sleep 1
+    done
+}
+
 startHHNode() {
     if [ $NETWORK == "localhost" ]; then
-        HHNODE_RUNNING=`ps aux | grep "/.bin/hardhat node" | grep -v grep  | cut -c10-15`
-        if [ -z $HHNODE_RUNNING ]; then
-            START_HHNODE=1
+        HHNODE_RUNNING=$(getHHNodePID)
+        if [ -n "$HHNODE_RUNNING" ]; then
+            echo "Terminating existing hardhat node at PID $HHNODE_RUNNING"
+            kill -- $HHNODE_RUNNING
         fi
     fi
 
-    if [ ! -z $START_HHNODE ]; then
-        echo "Starting hardhat node"
-        # npx hardhat node $* >/dev/null &
-        node_modules/.bin/hardhat node $* >/dev/null &
+    echo "Starting hardhat node"
+    node_modules/.bin/hardhat node "$@" > /dev/null &
 
-        HHNODE_PID=$!
-        sleep 5
-        kill -0 $HHNODE_PID || die "Error launching hardhat node localhost"
-    fi
+    waitHHNode http://localhost:8545
 }
 
 readAddress() {
