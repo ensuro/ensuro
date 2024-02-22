@@ -70,7 +70,7 @@ readPK() {
 }
 
 killPID() {
-    if [ ! -z $1 ]; then
+    if [ -n "$1" ]; then
         kill $1
     fi
 }

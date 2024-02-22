@@ -27,7 +27,7 @@ jobs:
 
           pytest
 
-          kill -- $(getHHNodePID) || true
+          killPID $(getHHNodePID) || true
       - run: scripts/deploySmokeTest.sh
       - run: scripts/deploySmokeTest-fork.sh
         env:
@@ -36,7 +36,11 @@ jobs:
         env:
           REPORT_GAS: "1"
           ALCHEMY_URL: ${{ secrets.ALCHEMY_URL }}
-      - run: npx hardhat python-coverage
+      - name: Coverage measurement
+        run: |
+          . scripts/utils.sh
+          killPID $(getHHNodePID) || true
+          npx hardhat python-coverage
       - name: Create coverage badge
         if: github.ref == 'refs/heads/main'
         run: |
