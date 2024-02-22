@@ -11,6 +11,7 @@ from prototype import ensuro, wrappers
 from prototype.utils import DAY, DAYS_IN_YEAR, WEEK, YEAR
 
 from . import TEST_VARIANTS
+from .contracts import PolicyPoolMock, PremiumsAccountMock
 
 TEnv = namedtuple("TEnv", "time_control currency rm_class pool_access kind A")
 
@@ -42,7 +43,7 @@ def tenv(request):
         )
         pool_access = ensuro.AccessManager()
 
-        class PolicyPoolMock(Contract):
+        class PolicyPoolMockProto(Contract):
             currency = ContractProxyField()
             access = pool_access
 
@@ -52,7 +53,7 @@ def tenv(request):
             def resolve_policy(self, policy_id, customer_won):
                 pass
 
-        pool = PolicyPoolMock(currency=currency)
+        pool = PolicyPoolMockProto(currency=currency)
         premiums_account = ensuro.PremiumsAccount(
             pool=pool, senior_etk=ensuro.EToken(policy_pool=pool, name="eUSD1YEAR")
         )
@@ -66,11 +67,6 @@ def tenv(request):
             A=_A,
         )
     elif test_variant == "ethereum":
-        PolicyPoolMock = wrappers.ETHWrapper.build_from_def(get_provider().get_contract_def("PolicyPoolMock"))
-        PremiumsAccountMock = wrappers.ETHWrapper.build_from_def(
-            get_provider().get_contract_def("PolicyPoolComponentMock")
-        )
-
         currency = wrappers.TestCurrency(
             owner="owner", name="TEST", symbol="TEST", initial_supply=_A(1000), decimals=decimals
         )

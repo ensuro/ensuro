@@ -11,6 +11,7 @@ from prototype import ensuro, wrappers
 from prototype.utils import DAY, MONTH, WEEK
 
 from . import TEST_VARIANTS
+from .contracts import ForwardProxy, PolicyPoolMockForward
 
 TEnv = namedtuple(
     "TEnv", "time_control etoken_class policy_factory kind currency fw_proxy_factory module pool_access"
@@ -57,10 +58,6 @@ def tenv(request):
             module=ensuro,
         )
     elif request.param == "ethereum":
-        PolicyPoolMockForward = wrappers.ETHWrapper.build_from_def(
-            wrappers.get_provider().get_contract_def("PolicyPoolMockForward")
-        )
-
         currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(10000))
         access = wrappers.AccessManager(owner="owner")
 
@@ -76,7 +73,6 @@ def tenv(request):
 
         def fw_proxy_factory(name, etk):
             provider = wrappers.get_provider()
-            ForwardProxy = wrappers.ETHWrapper.build_from_def(provider.get_contract_def("ForwardProxy"))
             fw_proxy = ForwardProxy(forwardTo=etk.contract)
             # Unlock the proxy's address on the node to be able to do the approval
             provider.unlock_account(fw_proxy.contract.address)

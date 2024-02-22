@@ -13,6 +13,7 @@ from prototype.ensuro import RiskModule
 from prototype.utils import DAY, MONTH, WEEK
 
 from . import TEST_VARIANTS
+from .contracts import PolicyPoolMockForward
 
 MAX_UINT = Wad(2**256 - 1)
 TEnv = namedtuple("TEnv", "currency time_control pool_access kind pa_class etk module")
@@ -46,9 +47,6 @@ def tenv(request):
             module=ensuro,
         )
     elif request.param == "ethereum":
-        PolicyPoolMockForward = wrappers.ETHWrapper.build_from_def(
-            wrappers.get_provider().get_contract_def("PolicyPoolMockForward")
-        )
         currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(10000))
         pa_access = wrappers.AccessManager(owner="owner")
 
