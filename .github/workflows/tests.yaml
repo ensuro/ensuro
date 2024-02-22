@@ -14,9 +14,11 @@ jobs:
         with:
           node-version: "16"
           cache: "npm"
-      - run: npm ci
-      - run: pip install -r requirements.txt
-      - run: pip install -r requirements-dev.txt
+      - name: Setup
+        run: &setup |
+          npm ci
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
       - run: npx hardhat compile
       - run: npx hardhat size-contracts
       - run: npm run solhint
@@ -43,6 +45,15 @@ jobs:
     timeout-minutes: 45
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - uses: actions/setup-node@v3
+        with:
+          node-version: "16"
+          cache: "npm"
+      - name: Setup
+        run: *setup
+
       - run: npx hardhat python-coverage
       - name: Create coverage badge
         if: github.ref == 'refs/heads/main'
