@@ -1,8 +1,7 @@
 """Unitary tests for eToken contract"""
 
-import sys
 from collections import namedtuple
-from functools import partial, wraps
+from functools import partial
 
 import pytest
 from ethproto.contracts import RevertError
@@ -115,20 +114,6 @@ def test_only_policy_pool_validation(tenv):
         etk.unlock_scr(_W(600), _W("0.0365"), _W(0))
 
 
-def skip_if_coverage_activated(f):
-    @wraps(f)
-    def wrapped(tenv, *args, **kwargs):
-        if "brownie" in sys.modules:
-            from brownie._config import CONFIG
-
-            if CONFIG.argv.get("coverage", False) and tenv.kind == "ethereum":
-                return pytest.skip("Coverage activated")
-        return f(tenv, *args, **kwargs)
-
-    return wrapped
-
-
-@skip_if_coverage_activated
 def test_deposit_withdraw(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK")
     tenv.currency.transfer(tenv.currency.owner, etk, _W(1000))
@@ -152,7 +137,6 @@ def test_deposit_withdraw(tenv):
         assert tenv.currency.balance_of("LP1") == _W(1000)
 
 
-@skip_if_coverage_activated
 def test_lock_unlock_scr(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK")
     pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account
@@ -208,7 +192,6 @@ def test_lock_unlock_scr(tenv):
     etk.balance_of("LP1").assert_equal(_W(0))
 
 
-@skip_if_coverage_activated
 def test_etoken_erc20(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK")
     pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account
@@ -271,7 +254,6 @@ def test_etoken_erc20(tenv):
         etk.withdraw("LP2", None).assert_equal(expected_balance // _W(2) - _W(100))
 
 
-@skip_if_coverage_activated
 def test_multiple_policies(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK")
     pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account
@@ -335,7 +317,6 @@ def test_multiple_policies(tenv):
     etk.total_supply().assert_equal(expected_balance)
 
 
-@skip_if_coverage_activated
 def test_multiple_lps(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK")
     pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account
@@ -378,7 +359,6 @@ def test_multiple_lps(tenv):
         etk.withdraw("LP2", None).assert_equal(lp2_balance + _W("0.06"))
 
 
-@skip_if_coverage_activated
 def test_lock_scr_validation(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK")
     pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account
@@ -405,7 +385,6 @@ def test_lock_scr_validation(tenv):
             etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
 
 
-@skip_if_coverage_activated
 def test_internal_loan(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK", internal_loan_interest_rate=_W("0.073"))
     tenv.currency.transfer(tenv.currency.owner, etk, _W(1000))
@@ -500,7 +479,6 @@ def test_internal_loan(tenv):
         etk.get_loan(pa).assert_equal(_W(0))
 
 
-@skip_if_coverage_activated
 def test_etk_asset_manager(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK")
 
@@ -624,7 +602,6 @@ def test_etk_asset_manager(tenv):
         etk.set_asset_manager(asset_manager_2, True)
 
 
-@skip_if_coverage_activated
 def test_etk_change_asset_manager(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK")
 
@@ -692,7 +669,6 @@ def test_etk_change_asset_manager(tenv):
     etk.total_supply().assert_equal(_W(3000))  # Nothing earned yet
 
 
-@skip_if_coverage_activated
 def test_etk_asset_manager_without_movements(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK")
 
@@ -721,7 +697,6 @@ def test_etk_asset_manager_without_movements(tenv):
     assert etk.asset_manager is None or etk.asset_manager == "0x0000000000000000000000000000000000000000"
 
 
-@skip_if_coverage_activated
 def test_etk_asset_manager_liquidity_under_minimum(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK")
 
@@ -797,7 +772,6 @@ def test_name_and_others(tenv):
     assert etk.decimals == 18
 
 
-@skip_if_coverage_activated
 def test_max_utilization_rate(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK", max_utilization_rate=_W("0.9"))
     pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account

@@ -1,3 +1,4 @@
+/* global task, ethers */
 require("@nomicfoundation/hardhat-chai-matchers");
 require("@nomiclabs/hardhat-etherscan");
 require("@nomiclabs/hardhat-waffle");
@@ -10,8 +11,6 @@ require("solidity-coverage");
 require("solidity-docgen");
 
 require("./instrumented/plugin/hardhat.plugin");
-
-const path = require("path");
 
 const deploy = require("./tasks/deploy");
 
@@ -33,9 +32,9 @@ function readEnvAccounts(network) {
   network = network.toUpperCase();
   let accounts = [];
   let index = 1;
-  while (process.env[network + "_ACCOUNTPK_" + index]) {
-    accounts.push(process.env[network + "_ACCOUNTPK_" + index]);
-    index++;
+  while (process.env[`${network}_ACCOUNTPK_${index}`]) {
+    accounts.push(process.env[`${network}_ACCOUNTPK_${index}`]);
+    index += 1;
   }
   return accounts;
 }
@@ -73,9 +72,6 @@ module.exports = {
       hardfork: "london",
       // base fee of 0 allows use of 0 gas price when testing
       initialBaseFeePerGas: 0,
-      // brownie expects calls and transactions to throw on revert
-      throwOnTransactionFailures: true,
-      throwOnCallFailures: true,
     },
     bsctestnet: {
       url: "https://data-seed-prebsc-1-s3.binance.org:8545/",
@@ -83,24 +79,24 @@ module.exports = {
       gasPrice: 20000000000,
     },
     rinkeby: {
-      url: "https://rinkeby.infura.io/v3/" + process.env.WEB3_INFURA_PROJECT_ID,
+      url: `https://rinkeby.infura.io/v3/${process.env.WEB3_INFURA_PROJECT_ID}`,
       accounts: readEnvAccounts("rinkeby"),
     },
     polygon: {
-      url: "https://polygon-mainnet.infura.io/v3/" + process.env.WEB3_INFURA_PROJECT_ID,
+      url: `https://polygon-mainnet.infura.io/v3/${process.env.WEB3_INFURA_PROJECT_ID}`,
       chainId: 137,
       accounts: readEnvAccounts("polygon"),
       gasPrice: "auto",
       gasMultiplier: 1.3,
     },
     polytest: {
-      url: "https://polygon-mumbai.infura.io/v3/" + process.env.WEB3_INFURA_PROJECT_ID,
+      url: `https://polygon-mumbai.infura.io/v3/${process.env.WEB3_INFURA_PROJECT_ID}`,
       chainId: 80001,
       accounts: readEnvAccounts("polytest"),
       gasPrice: "auto",
     },
     mainnet: {
-      url: "https://mainnet.infura.io/v3/" + process.env.WEB3_INFURA_PROJECT_ID,
+      url: `https://mainnet.infura.io/v3/${process.env.WEB3_INFURA_PROJECT_ID}`,
       accounts: readEnvAccounts("mainnet"),
     },
   },
@@ -110,7 +106,7 @@ module.exports = {
   gasReporter: {
     currency: "USD",
     coinmarketcap: "1b0c87b0-c123-48d1-86f9-1544ef487220",
-    enabled: process.env.REPORT_GAS ? true : false,
+    enabled: Boolean(process.env.REPORT_GAS),
   },
   mocha: {
     timeout: 120000,
@@ -122,15 +118,5 @@ module.exports = {
   },
   dependencyCompiler: {
     paths: ["@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol"],
-  },
-  brownieCoverage: {
-    nodeConfig: {
-      hostname: "127.0.0.1",
-      port: 8545,
-    },
-    // TODO: probably should get this from brownie-config
-    copyDependencies: ["@openzeppelin"],
-    instrumentedDir: path.join(process.cwd(), "instrumented"),
-    workingDir: process.cwd(),
   },
 };
