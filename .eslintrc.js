@@ -4,6 +4,7 @@ module.exports = {
     es6: true,
     node: true,
     mocha: true,
+    es2020: true,
   },
   extends: ["eslint:recommended", "prettier"],
   globals: {
