@@ -5,3 +5,8 @@ line-length = 110
 testpaths = [
     "tests",
 ]
+
+filterwarnings = [
+    # Disable MismatchedABI warnings for event parsing, they're not relevant for our tests
+    'ignore:.*MismatchedABI\(The event signature did not match the provided ABI\).*',
+]
