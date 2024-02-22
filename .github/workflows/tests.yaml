@@ -15,7 +15,7 @@ jobs:
           node-version: "16"
           cache: "npm"
       - name: Setup
-        run: &setup |
+        run: |
           npm ci
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
@@ -52,7 +52,10 @@ jobs:
           node-version: "16"
           cache: "npm"
       - name: Setup
-        run: *setup
+        run: |
+          npm ci
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
 
       - run: npx hardhat python-coverage
       - name: Create coverage badge
