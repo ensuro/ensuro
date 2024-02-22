@@ -20,7 +20,12 @@ jobs:
       - run: npx hardhat compile
       - run: npx hardhat size-contracts
       - run: npm run solhint
-      - run: pytest
+      - run: |
+          npx hardhat node &
+          NODE_PID=$!
+          pytest
+          kill $NODE_PID
+          wait $NODE_PID
       - run: scripts/deploySmokeTest.sh
       - run: scripts/deploySmokeTest-fork.sh
         env:
