@@ -26,8 +26,8 @@ jobs:
           NODE_PID=$!
           scripts/wait-node.sh http://localhost:8545
           pytest
-          kill $NODE_PID
-          wait $NODE_PID
+          kill $NODE_PID || true
+          wait $NODE_PID || true
       - run: scripts/deploySmokeTest.sh
       - run: scripts/deploySmokeTest-fork.sh
         env:
