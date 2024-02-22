@@ -24,7 +24,7 @@ jobs:
         run: |
           npx hardhat node > /dev/null &
           NODE_PID=$!
-          scripts/wait-node.sh
+          scripts/wait-node.sh http://localhost:8545
           pytest
           kill $NODE_PID
           wait $NODE_PID
