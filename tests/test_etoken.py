@@ -177,7 +177,7 @@ def test_lock_unlock_scr(tenv):
     etk.funds_available.assert_equal(_W(400))
 
     tenv.time_control.fast_forward(2 * DAY)
-    # etk.balance_of("LP1").assert_equal(_W(1000) + _W("0.06") * _W(2))
+    etk.balance_of("LP1").assert_equal(_W(1000) + _W("0.06") * _W(2))
     tenv.time_control.fast_forward(3 * DAY)
     etk.balance_of("LP1").assert_equal(_W(1000) + _W("0.06") * _W(5))
 
