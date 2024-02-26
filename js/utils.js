@@ -250,6 +250,21 @@ async function defaultPolicyParams(
   };
 }
 
+function defaultBucketParams({ moc, jrCollRatio, collRatio, ensuroPpFee, ensuroCocFee, jrRoc, srRoc }) {
+  return {
+    moc: moc !== undefined ? moc : _W("1.1"),
+    jrCollRatio: jrCollRatio !== undefined ? jrCollRatio : _W("0.1"),
+    collRatio: collRatio !== undefined ? collRatio : _W("0.2"),
+    ensuroPpFee: ensuroPpFee !== undefined ? ensuroPpFee : _W("0.05"),
+    ensuroCocFee: ensuroCocFee !== undefined ? ensuroCocFee : _W("0.2"),
+    jrRoc: jrRoc !== undefined ? jrRoc : _W("0.1"),
+    srRoc: srRoc !== undefined ? srRoc : _W("0.2"),
+    asParams: function () {
+      return [this.moc, this.jrCollRatio, this.collRatio, this.ensuroPpFee, this.ensuroCocFee, this.jrRoc, this.srRoc];
+    },
+  };
+}
+
 async function readImplementationAddress(hre, contractAddress) {
   const implStorage = await hre.ethers.provider.getStorageAt(contractAddress, IMPLEMENTATION_SLOT);
   return ethers.utils.getAddress(ethers.utils.hexDataSlice(implStorage, 12));
@@ -271,6 +286,7 @@ module.exports = {
   accessControlMessage,
   amountFunction,
   defaultPolicyParams,
+  defaultBucketParams,
   getComponentRole,
   getDefaultSigner,
   getRole,

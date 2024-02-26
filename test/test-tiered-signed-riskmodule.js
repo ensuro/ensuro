@@ -7,6 +7,7 @@ const {
   getTransactionEvent,
   grantRole,
   makeSignedQuote,
+  defaultBucketParams,
 } = require("../js/utils");
 const { RiskModuleParameter } = require("../js/enums");
 const hre = require("hardhat");
@@ -107,32 +108,32 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
     const { rm, accessManager } = await helpers.loadFixture(deployPoolFixture);
 
     // level1
-    await expect(rm.connect(level1).pushBucket(_W("0.15"), bucketParameters({}))).to.be.revertedWith(
+    await expect(rm.connect(level1).pushBucket(_W("0.15"), defaultBucketParams({}))).to.be.revertedWith(
       accessControlMessage(level1.address, rm.target, "LEVEL2_ROLE")
     );
     await expect(rm.connect(level1).resetBuckets()).to.be.revertedWith(
       accessControlMessage(level1.address, rm.target, "LEVEL2_ROLE")
     );
     await grantRole(hre, accessManager, "LEVEL1_ROLE", level1.address);
-    await expect(rm.connect(level1).pushBucket(_W("0.15"), bucketParameters({}))).not.to.be.reverted;
+    await expect(rm.connect(level1).pushBucket(_W("0.15"), defaultBucketParams({}))).not.to.be.reverted;
     await expect(rm.connect(level1).resetBuckets()).not.to.be.reverted;
 
     // level2
-    await expect(rm.connect(level2).pushBucket(_W("0.15"), bucketParameters({}))).to.be.revertedWith(
+    await expect(rm.connect(level2).pushBucket(_W("0.15"), defaultBucketParams({}))).to.be.revertedWith(
       accessControlMessage(level2.address, rm.target, "LEVEL2_ROLE")
     );
     await expect(rm.connect(level2).resetBuckets()).to.be.revertedWith(
       accessControlMessage(level2.address, rm.target, "LEVEL2_ROLE")
     );
     await grantRole(hre, accessManager, "LEVEL2_ROLE", level2.address);
-    await expect(rm.connect(level2).pushBucket(_W("0.15"), bucketParameters({}))).not.to.be.reverted;
+    await expect(rm.connect(level2).pushBucket(_W("0.15"), defaultBucketParams({}))).not.to.be.reverted;
     await expect(rm.connect(level2).resetBuckets()).not.to.be.reverted;
   });
 
   it("Single bucket: uses correct bucket", async () => {
     const { rm, pool } = await helpers.loadFixture(deployPoolFixture);
     const rmParams = await rm.params();
-    const bucket = bucketParameters({
+    const bucket = defaultBucketParams({
       moc: _W("1.1"),
       jrCollRatio: _W("0.17"),
       collRatio: _W("0.5"),
@@ -195,7 +196,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
   it("Two buckets: uses correct bucket", async () => {
     const { rm, pool } = await helpers.loadFixture(deployPoolFixture);
     const rmParams = await rm.params();
-    const bucket15 = bucketParameters({
+    const bucket15 = defaultBucketParams({
       moc: _W("1.1"),
       jrCollRatio: _W("0.17"),
       collRatio: _W("0.5"),
@@ -205,7 +206,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
       srRoc: _W("0.29"),
     });
 
-    const bucket10 = bucketParameters({
+    const bucket10 = defaultBucketParams({
       moc: _W("1"),
       jrCollRatio: _W("0.12"),
       collRatio: _W("1.0"),
@@ -310,10 +311,10 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
   it("Only allows bucket insertion in the right order", async () => {
     const { rm } = await helpers.loadFixture(deployPoolFixture);
 
-    const bucket5 = bucketParameters({});
-    const bucket7 = bucketParameters({});
-    const bucket10 = bucketParameters({});
-    const bucket15 = bucketParameters({});
+    const bucket5 = defaultBucketParams({});
+    const bucket7 = defaultBucketParams({});
+    const bucket10 = defaultBucketParams({});
+    const bucket15 = defaultBucketParams({});
 
     await rm.pushBucket(_W("10"), bucket10.asParams());
     expect(await rm.buckets()).to.deep.equal([_W("10"), _W("0"), _W("0"), _W("0")]);
@@ -344,7 +345,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
 
   it("Allows obtaining bucket parameters", async () => {
     const { rm } = await helpers.loadFixture(deployPoolFixture);
-    const bucket = bucketParameters({});
+    const bucket = defaultBucketParams({});
     await rm.pushBucket(_W("0.1"), bucket);
 
     expect(await rm.bucketParams(_W("0.1"))).to.deep.equal(bucket.asParams());
@@ -353,26 +354,11 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
   it("Validates bucket parameters", async () => {
     const { rm } = await helpers.loadFixture(deployPoolFixture);
 
-    await expect(rm.pushBucket(_W("0.1"), bucketParameters({ moc: _W("0.2") }).asParams())).to.be.revertedWith(
+    await expect(rm.pushBucket(_W("0.1"), defaultBucketParams({ moc: _W("0.2") }).asParams())).to.be.revertedWith(
       "Validation: moc must be [0.5, 4]"
     );
   });
 });
-
-function bucketParameters({ moc, jrCollRatio, collRatio, ensuroPpFee, ensuroCocFee, jrRoc, srRoc }) {
-  return {
-    moc: moc !== undefined ? moc : _W("1.1"),
-    jrCollRatio: jrCollRatio !== undefined ? jrCollRatio : _W("0.1"),
-    collRatio: collRatio !== undefined ? collRatio : _W("0.2"),
-    ensuroPpFee: ensuroPpFee !== undefined ? ensuroPpFee : _W("0.05"),
-    ensuroCocFee: ensuroCocFee !== undefined ? ensuroCocFee : _W("0.2"),
-    jrRoc: jrRoc !== undefined ? jrRoc : _W("0.1"),
-    srRoc: srRoc !== undefined ? srRoc : _W("0.2"),
-    asParams: function () {
-      return [this.moc, this.jrCollRatio, this.collRatio, this.ensuroPpFee, this.ensuroCocFee, this.jrRoc, this.srRoc];
-    },
-  };
-}
 
 /**
  * Extract the policy data from the NewPolicy event of the transaction tx.
