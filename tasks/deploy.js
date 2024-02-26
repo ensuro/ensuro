@@ -117,7 +117,7 @@ async function deployContract({ saveAddr, verify, contractClass, constructorArgs
   } else {
     await contract.waitForDeployment();
   }
-  await logContractCreated(hre, contractClass, contract.targegt);
+  await logContractCreated(hre, contractClass, contract.target);
   saveAddress(saveAddr, contract.target);
   if (verify) await verifyContract(hre, contract, false, constructorArgs);
   return { ContractFactory, contract };

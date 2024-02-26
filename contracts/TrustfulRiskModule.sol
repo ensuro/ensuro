@@ -20,7 +20,7 @@ contract TrustfulRiskModule is RiskModule {
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
-  constructor(IPolicyPool policyPool_, IPremiumsAccount premiumsAccount_) RiskModule(policyPool_, premiumsAccount_) {} // solhint-disable-line no-empty-blocks
+  constructor(IPolicyPool policyPool_, IPremiumsAccount premiumsAccount_) RiskModule(policyPool_, premiumsAccount_) {}
 
   /**
    * @dev Initializes the RiskModule

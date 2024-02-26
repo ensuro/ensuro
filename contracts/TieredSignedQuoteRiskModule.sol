@@ -68,7 +68,8 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
   ) external onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE) {
     uint256 newBucket = 0;
     if (_buckets.lossProbs[0] != 0) {
-      for (newBucket = 1; newBucket < MAX_BUCKETS && _buckets.lossProbs[newBucket] != 0; newBucket++) {} // solhint-disable-line no-empty-blocks
+      // solhint-disable-next-line no-empty-blocks
+      for (newBucket = 1; newBucket < MAX_BUCKETS && _buckets.lossProbs[newBucket] != 0; newBucket++) {}
       require(newBucket < MAX_BUCKETS, "No more than 4 buckets accepted");
       require(lossProb > uint256(_buckets.lossProbs[newBucket - 1]), "lossProb <= last lossProb - reset instead");
     }
