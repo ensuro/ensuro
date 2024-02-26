@@ -151,10 +151,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
       _params.maxUtilizationRate >= MAX_UR_MIN && _params.maxUtilizationRate <= HUNDRED_PERCENT,
       "Validation: maxUtilizationRate must be [0.5, 1]"
     );
-    require(
-      _params.minUtilizationRate <= HUNDRED_PERCENT,
-      "Validation: minUtilizationRate must be [0, 1]"
-    );
+    require(_params.minUtilizationRate <= HUNDRED_PERCENT, "Validation: minUtilizationRate must be [0, 1]");
     /*
      * We don't validate minUtilizationRate < maxUtilizationRate because the opposite is valid too.
      * These limits aren't strong limits on the values the utilization rate can take, but instead they are
@@ -164,10 +161,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
      * `maxUtilizationRate` is used to prevent selling more coverage when UR is too high, only checked on `lockScr`
      * operations, but not in withdrawals or other operations.
      */
-    require(
-      _params.internalLoanInterestRate <= INT_LOAN_IR_MAX,
-      "Validation: internalLoanInterestRate must be <= 50%"
-    );
+    require(_params.internalLoanInterestRate <= INT_LOAN_IR_MAX, "Validation: internalLoanInterestRate must be <= 50%");
   }
 
   /*** BEGIN ERC20 methods - mainly copied from OpenZeppelin but changes in events and scaledAmount */
@@ -266,10 +260,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   /**
    * @dev See {IERC20-allowance}.
    */
-  function allowance(
-    address owner,
-    address spender
-  ) public view virtual override returns (uint256) {
+  function allowance(address owner, address spender) public view virtual override returns (uint256) {
     return _allowances[owner][spender];
   }
 
@@ -298,11 +289,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
    * - the caller must have allowance for ``sender``'s tokens of at least
    * `amount`.
    */
-  function transferFrom(
-    address sender,
-    address recipient,
-    uint256 amount
-  ) public virtual override returns (bool) {
+  function transferFrom(address sender, address recipient, uint256 amount) public virtual override returns (bool) {
     address spender = _msgSender();
     _spendAllowance(sender, spender, amount);
     _transfer(sender, recipient, amount);
@@ -358,10 +345,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
    * - `spender` must have allowance for the caller of at least
    * `subtractedValue`.
    */
-  function decreaseAllowance(
-    address spender,
-    uint256 subtractedValue
-  ) public virtual returns (bool) {
+  function decreaseAllowance(address spender, uint256 subtractedValue) public virtual returns (bool) {
     uint256 currentAllowance = _allowances[_msgSender()][spender];
     require(currentAllowance >= subtractedValue, "EToken: decreased allowance below zero");
     _approve(_msgSender(), spender, currentAllowance - subtractedValue);
@@ -475,11 +459,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
    *
    * To learn more about hooks, head to xref:ROOT:extending-contracts.adoc#using-hooks[Using Hooks].
    */
-  function _beforeTokenTransfer(
-    address from,
-    address to,
-    uint256 amount
-  ) internal virtual whenNotPaused {
+  function _beforeTokenTransfer(address from, address to, uint256 amount) internal virtual whenNotPaused {
     require(
       from == address(0) ||
         to == address(0) ||
@@ -495,9 +475,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     uint256 totalSupply_ = this.totalSupply();
     if (totalSupply_ == 0) _scr.tokenInterestRate = 0;
     else {
-      uint256 newTokenInterestRate = uint256(_scr.interestRate).wadMul(uint256(_scr.scr)).wadDiv(
-        totalSupply_
-      );
+      uint256 newTokenInterestRate = uint256(_scr.interestRate).wadMul(uint256(_scr.scr)).wadDiv(totalSupply_);
       _scr.tokenInterestRate = (newTokenInterestRate > type(uint64).max)
         ? type(uint64).max
         : newTokenInterestRate.toUint64();
@@ -570,14 +548,8 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     return uint256(_scr.scr).wadDiv(this.totalSupply());
   }
 
-  function lockScr(
-    uint256 scrAmount,
-    uint256 policyInterestRate
-  ) external override onlyBorrower whenNotPaused {
-    require(
-      scrAmount <= this.fundsAvailableToLock(),
-      "Not enough funds available to cover the SCR"
-    );
+  function lockScr(uint256 scrAmount, uint256 policyInterestRate) external override onlyBorrower whenNotPaused {
+    require(scrAmount <= this.fundsAvailableToLock(), "Not enough funds available to cover the SCR");
     _tsScaled.updateScale(tokenInterestRate());
     if (_scr.scr == 0) {
       _scr.scr = scrAmount.toUint128();
@@ -585,8 +557,9 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     } else {
       uint256 origScr = uint256(_scr.scr);
       uint256 newScr = origScr + scrAmount;
-      _scr.interestRate = (uint256(_scr.interestRate).wadMul(origScr) +
-        policyInterestRate.wadMul(scrAmount)).wadDiv(newScr).toUint64();
+      _scr.interestRate = (uint256(_scr.interestRate).wadMul(origScr) + policyInterestRate.wadMul(scrAmount))
+        .wadDiv(newScr)
+        .toUint64();
       _scr.scr = newScr.toUint128();
     }
     emit SCRLocked(policyInterestRate, scrAmount);
@@ -607,8 +580,9 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     } else {
       uint256 origScr = uint256(_scr.scr);
       uint256 newScr = origScr - scrAmount;
-      _scr.interestRate = (uint256(_scr.interestRate).wadMul(origScr) -
-        policyInterestRate.wadMul(scrAmount)).wadDiv(newScr).toUint64();
+      _scr.interestRate = (uint256(_scr.interestRate).wadMul(origScr) - policyInterestRate.wadMul(scrAmount))
+        .wadDiv(newScr)
+        .toUint64();
       _scr.scr = newScr.toUint128();
     }
     emit SCRUnlocked(policyInterestRate, scrAmount);
@@ -624,13 +598,9 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     _updateTokenInterestRate();
   }
 
-  function deposit(
-    address provider,
-    uint256 amount
-  ) external override onlyPolicyPool returns (uint256) {
+  function deposit(address provider, uint256 amount) external override onlyPolicyPool returns (uint256) {
     require(
-      address(_params.whitelist) == address(0) ||
-        _params.whitelist.acceptsDeposit(this, provider, amount),
+      address(_params.whitelist) == address(0) || _params.whitelist.acceptsDeposit(this, provider, amount),
       "Liquidity Provider not whitelisted"
     );
     _mint(provider, amount);
@@ -646,10 +616,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     else return 0;
   }
 
-  function withdraw(
-    address provider,
-    uint256 amount
-  ) external override onlyPolicyPool returns (uint256) {
+  function withdraw(address provider, uint256 amount) external override onlyPolicyPool returns (uint256) {
     /**
      * Here we don't check for maxUtilizationRate because that limit only affects locking more capital (`lockScr`), but
      * doesn't affects the right of liquidity providers to withdraw their funds.
@@ -661,8 +628,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     if (amount == 0) return 0;
     require(amount <= maxWithdraw, "amount > max withdrawable");
     require(
-      address(_params.whitelist) == address(0) ||
-        _params.whitelist.acceptsWithdrawal(this, provider, amount),
+      address(_params.whitelist) == address(0) || _params.whitelist.acceptsWithdrawal(this, provider, amount),
       "Liquidity Provider not whitelisted"
     );
     _burn(provider, amount);
@@ -731,10 +697,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     return _4toWad(_params.internalLoanInterestRate);
   }
 
-  function setParam(
-    Parameter param,
-    uint256 newValue
-  ) external onlyGlobalOrComponentRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
+  function setParam(Parameter param, uint256 newValue) external onlyGlobalOrComponentRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
     bool tweak = !hasPoolRole(LEVEL2_ROLE);
     if (param == Parameter.liquidityRequirement) {
       require(
@@ -774,12 +737,9 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     );
   }
 
-  function setWhitelist(
-    ILPWhitelist lpWhitelist_
-  ) external onlyGlobalOrComponentRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {
+  function setWhitelist(ILPWhitelist lpWhitelist_) external onlyGlobalOrComponentRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {
     require(
-      address(lpWhitelist_) == address(0) ||
-        IPolicyPoolComponent(address(lpWhitelist_)).policyPool() == _policyPool,
+      address(lpWhitelist_) == address(0) || IPolicyPoolComponent(address(lpWhitelist_)).policyPool() == _policyPool,
       "Component not linked to this PolicyPool"
     );
     _params.whitelist = lpWhitelist_;

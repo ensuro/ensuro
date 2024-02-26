@@ -14,23 +14,18 @@ let configureYulOptimizer = false;
 let optimizerDetails;
 
 module.exports.setInstrumentedSources = function setInstrumentedSources(sources) {
-  instrumentedSources = {};
-  sources.map((target) => {
-    instrumentedSources[target.canonicalPath] = target.source;
-  });
+  instrumentedSources = Object.fromEntries(sources.map((target) => [target.canonicalPath, target.source]));
 };
 
 module.exports.setMeasureCoverage = function setMeasureCoverage(measure) {
   measureCoverage = measure;
 };
 
-/*
-The following subtasks are copy-pasted verbatim from solidity-coverage.
-
-They are simply adapted to run in a different environment by the code above.
-
-TODO: propose a change in solidity-coverage so their subtasks can be reused directly
-*/
+// The following subtasks are copy-pasted verbatim from solidity-coverage.
+//
+// They are simply adapted to run in a different environment by the code above.
+//
+// When possible: propose a change in solidity-coverage so their subtasks can be reused directly
 subtask(TASK_COMPILE_SOLIDITY_GET_COMPILER_INPUT).setAction(async (_, { config }, runSuper) => {
   const solcInput = await runSuper();
   if (measureCoverage) {
@@ -92,6 +87,7 @@ subtask(TASK_COMPILE_SOLIDITY_LOG_COMPILATION_ERRORS).setAction(async (_, __, ru
   const defaultWarn = console.warn;
 
   if (measureCoverage) {
+    // eslint-disable-next-line no-empty-function
     console.warn = () => {};
   }
   await runSuper();

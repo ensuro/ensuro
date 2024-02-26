@@ -854,7 +854,7 @@ class PolicyPool(IERC721):
     expire_policies_ = MethodAdapter((("policies", "list"),))
 
     def expire_policy(self, policy_id):
-        if type(policy_id) == tuple:
+        if isinstance(policy_id, tuple):
             return self.expire_policy_(policy_id)
         global policy_db
         policy = policy_db.get_policy(self.contract.address, policy_id)
@@ -862,7 +862,7 @@ class PolicyPool(IERC721):
 
     def expire_policies(self, policies):
         assert policies, "Empty list not accepted"
-        if type(policies[0]) == tuple:
+        if isinstance(policies[0], tuple):
             return self.expire_policies(policies)
         global policy_db
         policies = [

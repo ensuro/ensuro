@@ -30,10 +30,7 @@ abstract contract LPManualWhitelistV20 is ILPWhitelist, PolicyPoolComponent {
     __PolicyPoolComponent_init();
   }
 
-  function whitelistAddress(
-    address provider,
-    bool whitelisted
-  ) external onlyComponentRole(LP_WHITELIST_ROLE) {
+  function whitelistAddress(address provider, bool whitelisted) external onlyComponentRole(LP_WHITELIST_ROLE) {
     if (_whitelisted[provider] != whitelisted) {
       _whitelisted[provider] = whitelisted;
       emit LPWhitelisted(provider, whitelisted);
@@ -47,20 +44,11 @@ abstract contract LPManualWhitelistV20 is ILPWhitelist, PolicyPoolComponent {
     return super.supportsInterface(interfaceId) || interfaceId == type(ILPWhitelist).interfaceId;
   }
 
-  function acceptsDeposit(
-    IEToken,
-    address provider,
-    uint256
-  ) external view override returns (bool) {
+  function acceptsDeposit(IEToken, address provider, uint256) external view override returns (bool) {
     return _whitelisted[provider];
   }
 
-  function acceptsTransfer(
-    IEToken,
-    address,
-    address providerTo,
-    uint256
-  ) external view override returns (bool) {
+  function acceptsTransfer(IEToken, address, address providerTo, uint256) external view override returns (bool) {
     return _whitelisted[providerTo];
   }
 

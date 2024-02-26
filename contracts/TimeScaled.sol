@@ -35,10 +35,7 @@ library TimeScaled {
     }
   }
 
-  function getScale(
-    ScaledAmount storage scaledAmount,
-    uint256 interestRate
-  ) internal view returns (uint256) {
+  function getScale(ScaledAmount storage scaledAmount, uint256 interestRate) internal view returns (uint256) {
     uint32 now_ = uint32(block.timestamp);
     if (scaledAmount.lastUpdate >= now_) {
       return scaledAmount.scale;
@@ -50,15 +47,8 @@ library TimeScaled {
       );
   }
 
-  function getScaledAmount(
-    ScaledAmount storage scaledAmount,
-    uint256 interestRate
-  ) internal view returns (uint256) {
-    return
-      uint256(scaledAmount.amount)
-        .wadToRay()
-        .rayMul(getScale(scaledAmount, interestRate))
-        .rayToWad();
+  function getScaledAmount(ScaledAmount storage scaledAmount, uint256 interestRate) internal view returns (uint256) {
+    return uint256(scaledAmount.amount).wadToRay().rayMul(getScale(scaledAmount, interestRate)).rayToWad();
   }
 
   function init(ScaledAmount storage scaledAmount) internal {
@@ -67,10 +57,7 @@ library TimeScaled {
     scaledAmount.lastUpdate = uint32(block.timestamp);
   }
 
-  function scaleAmount(
-    ScaledAmount storage scaledAmount,
-    uint256 toScale
-  ) internal view returns (uint256) {
+  function scaleAmount(ScaledAmount storage scaledAmount, uint256 toScale) internal view returns (uint256) {
     return toScale.wadToRay().rayDiv(uint256(scaledAmount.scale)).rayToWad();
   }
 
@@ -82,22 +69,14 @@ library TimeScaled {
     return toScale.wadToRay().rayDiv(getScale(scaledAmount, interestRate)).rayToWad();
   }
 
-  function add(
-    ScaledAmount storage scaledAmount,
-    uint256 amount,
-    uint256 interestRate
-  ) internal returns (uint256) {
+  function add(ScaledAmount storage scaledAmount, uint256 amount, uint256 interestRate) internal returns (uint256) {
     updateScale(scaledAmount, interestRate);
     uint256 scaledAdd = scaleAmount(scaledAmount, amount);
     scaledAmount.amount += scaledAdd.toUint96();
     return scaledAdd;
   }
 
-  function sub(
-    ScaledAmount storage scaledAmount,
-    uint256 amount,
-    uint256 interestRate
-  ) internal returns (uint256) {
+  function sub(ScaledAmount storage scaledAmount, uint256 amount, uint256 interestRate) internal returns (uint256) {
     updateScale(scaledAmount, interestRate);
     uint256 scaledSub = scaleAmount(scaledAmount, amount);
     scaledAmount.amount -= scaledSub.toUint96();
@@ -108,21 +87,14 @@ library TimeScaled {
     return scaledSub;
   }
 
-  function discreteChange(
-    ScaledAmount storage scaledAmount,
-    int256 amount,
-    uint256 interestRate
-  ) internal {
+  function discreteChange(ScaledAmount storage scaledAmount, int256 amount, uint256 interestRate) internal {
     if (scaledAmount.amount == 0) {
       add(scaledAmount, uint256(amount), interestRate);
       return;
     }
     updateScale(scaledAmount, interestRate);
     uint256 newScaledAmount = uint256(int256(getScaledAmount(scaledAmount, interestRate)) + amount);
-    scaledAmount.scale = newScaledAmount
-      .wadToRay()
-      .rayDiv(uint256(scaledAmount.amount).wadToRay())
-      .toUint112();
+    scaledAmount.scale = newScaledAmount.wadToRay().rayDiv(uint256(scaledAmount.amount).wadToRay()).toUint112();
     require(scaledAmount.scale >= MIN_SCALE, "Scale too small, can lead to rounding errors");
   }
 

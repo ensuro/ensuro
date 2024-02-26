@@ -18,11 +18,7 @@ interface IPolicyHolder is IERC721Receiver {
    *
    * The selector can be obtained in Solidity with `IPolicyPool.onPolicyExpired.selector`.
    */
-  function onPolicyExpired(
-    address operator,
-    address from,
-    uint256 policyId
-  ) external returns (bytes4);
+  function onPolicyExpired(address operator, address from, uint256 policyId) external returns (bytes4);
 
   /**
    * @dev Whenever an Policy is resolved with payout > 0, this function is called
@@ -33,10 +29,5 @@ interface IPolicyHolder is IERC721Receiver {
    *
    * The selector can be obtained in Solidity with `IPolicyPool.onPayoutReceived.selector`.
    */
-  function onPayoutReceived(
-    address operator,
-    address from,
-    uint256 policyId,
-    uint256 amount
-  ) external returns (bytes4);
+  function onPayoutReceived(address operator, address from, uint256 policyId, uint256 amount) external returns (bytes4);
 }

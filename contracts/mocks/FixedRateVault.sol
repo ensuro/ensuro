@@ -33,12 +33,7 @@ contract FixedRateVault is ERC4626 {
   /**
    * @dev Deposit/mint common workflow.
    */
-  function _deposit(
-    address caller,
-    address receiver,
-    uint256 assets,
-    uint256 shares
-  ) internal virtual override {
+  function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal virtual override {
     require(!_broken, "Vault is broken");
     _totalAssets.add(assets, _interestRate);
     super._deposit(caller, receiver, assets, shares);

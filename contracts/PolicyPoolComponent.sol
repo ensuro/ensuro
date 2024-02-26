@@ -24,11 +24,7 @@ import {WadRayMath} from "./dependencies/WadRayMath.sol";
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
-abstract contract PolicyPoolComponent is
-  UUPSUpgradeable,
-  PausableUpgradeable,
-  IPolicyPoolComponent
-{
+abstract contract PolicyPoolComponent is UUPSUpgradeable, PausableUpgradeable, IPolicyPoolComponent {
   using WadRayMath for uint256;
 
   bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
@@ -80,10 +76,7 @@ abstract contract PolicyPoolComponent is
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(IPolicyPool policyPool_) {
-    require(
-      address(policyPool_) != address(0),
-      "PolicyPoolComponent: policyPool cannot be zero address"
-    );
+    require(address(policyPool_) != address(0), "PolicyPoolComponent: policyPool cannot be zero address");
     _disableInitializers();
     _policyPool = policyPool_;
   }
@@ -101,19 +94,14 @@ abstract contract PolicyPoolComponent is
   }
 
   function _upgradeValidations(address newImpl) internal view virtual {
-    require(
-      IPolicyPoolComponent(newImpl).policyPool() == _policyPool,
-      "Can't upgrade changing the PolicyPool!"
-    );
+    require(IPolicyPoolComponent(newImpl).policyPool() == _policyPool, "Can't upgrade changing the PolicyPool!");
   }
 
   /**
    * @dev See {IERC165-supportsInterface}.
    */
   function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
-    return
-      interfaceId == type(IERC165).interfaceId ||
-      interfaceId == type(IPolicyPoolComponent).interfaceId;
+    return interfaceId == type(IERC165).interfaceId || interfaceId == type(IPolicyPoolComponent).interfaceId;
   }
 
   function pause() public onlyGlobalOrComponentRole(GUARDIAN_ROLE) {
@@ -136,11 +124,7 @@ abstract contract PolicyPoolComponent is
     return _policyPool.access().hasComponentRole(address(this), role, _msgSender(), true);
   }
 
-  function _isTweakWad(
-    uint256 oldValue,
-    uint256 newValue,
-    uint256 maxTweak
-  ) internal pure returns (bool) {
+  function _isTweakWad(uint256 oldValue, uint256 newValue, uint256 maxTweak) internal pure returns (bool) {
     if (oldValue == newValue) return true;
     if (oldValue == 0) return maxTweak >= WadRayMath.WAD;
     if (newValue == 0) return false;
@@ -154,11 +138,7 @@ abstract contract PolicyPoolComponent is
   // solhint-disable-next-line no-empty-blocks
   function _validateParameters() internal view virtual {} // Must be reimplemented with specific validations
 
-  function _parameterChanged(
-    IAccessManager.GovernanceActions action,
-    uint256 value,
-    bool tweak
-  ) internal {
+  function _parameterChanged(IAccessManager.GovernanceActions action, uint256 value, bool tweak) internal {
     _validateParameters();
     if (tweak) _registerTweak(action);
     emit GovernanceAction(action, value);

@@ -118,12 +118,7 @@ interface IAccessManager is IAccessControlUpgradeable {
    * @param alsoGlobal If true, it will accept not only the component role, but also the (global) `role` itself.
    *                   If false, only the component role is accepted
    */
-  function checkComponentRole(
-    address component,
-    bytes32 role,
-    address account,
-    bool alsoGlobal
-  ) external view;
+  function checkComponentRole(address component, bytes32 role, address account, bool alsoGlobal) external view;
 
   /**
    * @dev Checks if a user has been granted any of the two component roles specified and reverts if it doesn't

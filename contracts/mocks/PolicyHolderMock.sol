@@ -20,12 +20,7 @@ contract PolicyHolderMock is IPolicyHolder {
     PolicyExpired
   }
 
-  event NotificationReceived(
-    NotificationKind kind,
-    uint256 policyId,
-    address operator,
-    address from
-  );
+  event NotificationReceived(NotificationKind kind, uint256 policyId, address operator, address from);
 
   constructor() {
     fail = false;
@@ -65,8 +60,7 @@ contract PolicyHolderMock is IPolicyHolder {
         revert(0, 0)
       }
     if (notImplemented) return false;
-    return
-      interfaceId == type(IPolicyHolder).interfaceId || interfaceId == type(IERC165).interfaceId;
+    return interfaceId == type(IPolicyHolder).interfaceId || interfaceId == type(IERC165).interfaceId;
   }
 
   function onERC721Received(
@@ -91,11 +85,7 @@ contract PolicyHolderMock is IPolicyHolder {
     return IERC721Receiver.onERC721Received.selector;
   }
 
-  function onPolicyExpired(
-    address operator,
-    address from,
-    uint256 policyId_
-  ) external override returns (bytes4) {
+  function onPolicyExpired(address operator, address from, uint256 policyId_) external override returns (bytes4) {
     if (fail)
       if (emptyRevert)
         assembly {

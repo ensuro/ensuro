@@ -266,7 +266,7 @@ class RiskModule(AccessControlContract):
 
     @external
     def new_policy(self, payout, premium, loss_prob, expiration, payer, on_behalf_of, internal_id):
-        assert type(loss_prob) == Wad, "Loss prob MUST be wad"
+        assert isinstance(loss_prob, Wad), "Loss prob MUST be wad"
         start = time_control.now
         if premium is None:
             premium = self.get_minimum_premium(payout, loss_prob, expiration)
@@ -1190,7 +1190,7 @@ class PolicyPool(ERC721Token):
     @external
     def resolve_policy(self, policy_id, payout):
         policy = self.policies[policy_id]
-        if type(payout) == bool:
+        if isinstance(payout, bool):
             payout = policy.payout if payout is True else Wad(0)
 
         customer_won = payout > Wad(0)

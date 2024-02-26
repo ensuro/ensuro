@@ -20,8 +20,6 @@ contract PolicyPoolComponentMock is IPolicyPoolComponent {
    * @dev See {IERC165-supportsInterface}.
    */
   function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
-    return
-      interfaceId == type(IERC165).interfaceId ||
-      interfaceId == type(IPolicyPoolComponent).interfaceId;
+    return interfaceId == type(IERC165).interfaceId || interfaceId == type(IPolicyPoolComponent).interfaceId;
   }
 }

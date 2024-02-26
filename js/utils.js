@@ -174,6 +174,7 @@ function accessControlMessage(address, component, role) {
  */
 function makePolicyId(rmAddress, internalId) {
   const bigRmAddress = BigInt(rmAddress);
+  // eslint-disable-next-line no-bitwise
   const shiftedValue = (bigRmAddress << BigInt(96)) + BigInt(internalId);
   return shiftedValue;
 }

@@ -15,11 +15,7 @@ import {LPManualWhitelistV20} from "./LPManualWhitelistV20.sol";
 contract LPManualWhitelistV20Upgraded is LPManualWhitelistV20 {
   constructor(IPolicyPool policyPool_) LPManualWhitelistV20(policyPool_) {}
 
-  function acceptsWithdrawal(
-    IEToken etk,
-    address provider,
-    uint256 amount
-  ) external view override returns (bool) {
+  function acceptsWithdrawal(IEToken etk, address provider, uint256 amount) external view override returns (bool) {
     return this.acceptsDeposit(etk, provider, amount);
   }
 }

@@ -158,9 +158,7 @@ abstract contract Reserve is PolicyPoolComponent {
          * the storage in the connect() method (as it is the recommended practice in normal changes of AM).
          */
       } else {
-        bytes memory result = am.functionDelegateCall(
-          abi.encodeWithSelector(IAssetManager.deinvestAll.selector)
-        );
+        bytes memory result = am.functionDelegateCall(abi.encodeWithSelector(IAssetManager.deinvestAll.selector));
         _assetEarnings(abi.decode(result, (int256)));
       }
     }
@@ -179,9 +177,7 @@ abstract contract Reserve is PolicyPoolComponent {
    * - Emits {IAssetManager-MoneyInvested} or {IAssetManager-MoneyDeinvested}
    */
   function rebalance() public whenNotPaused {
-    address(assetManager()).functionDelegateCall(
-      abi.encodeWithSelector(IAssetManager.rebalance.selector)
-    );
+    address(assetManager()).functionDelegateCall(abi.encodeWithSelector(IAssetManager.rebalance.selector));
   }
 
   /**
