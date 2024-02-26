@@ -1,24 +1,17 @@
-from ethproto import wrappers
-
-
-def pytest_addoption(parser):
-    parser.addoption(
-        "--use-w3",
-        action="store_true",
-        dest="w3",
-        default=False,
-        help="enable longrundecorated tests",
-    )
+import pytest
+from ethproto import w3wrappers, wrappers
+from web3 import Web3
 
 
 def pytest_configure(config):
-    if not config.option.w3:
-        from ethproto.brwrappers import BrownieProvider
+    wrappers.DEFAULT_PROVIDER = "w3"
+    w3wrappers.CONTRACT_JSON_PATH = ["artifacts"]
 
-        wrappers.register_provider("brownie", BrownieProvider())
-    else:
-        from ethproto.w3wrappers import W3Provider
-        from web3 import Web3
 
-        wrappers.DEFAULT_PROVIDER = "w3"
-        wrappers.register_provider("w3", W3Provider(Web3()))
+@pytest.fixture(scope="module", autouse=True)
+def reset_provider():
+    """Resets the provider for each module. Mainly for addressbook and contract map cleanse"""
+
+    wrappers.register_provider("w3", w3wrappers.W3Provider(Web3(), tx_kwargs={"gasPrice": 0}))
+    yield
+    wrappers.register_provider("w3", w3wrappers.W3Provider(Web3(), tx_kwargs={"gasPrice": 0}))

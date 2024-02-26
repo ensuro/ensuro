@@ -10,6 +10,7 @@ from prototype import ensuro, wrappers
 from prototype.utils import WEEK
 
 from . import TEST_VARIANTS
+from .contracts import PolicyPoolMock, PremiumsAccountMock
 
 TEnv = namedtuple("TEnv", ["time_control", "currency", "rm_class", "pool_access", "kind", "A"])
 
@@ -61,16 +62,13 @@ def tenv_prototype():
 
 @pytest.fixture
 def tenv_ethereum():
-    PolicyPoolMock = get_provider().get_contract_factory("PolicyPoolMock")
-    PremiumsAccountMock = get_provider().get_contract_factory("PolicyPoolComponentMock")
-
     currency = wrappers.TestCurrency(
         owner="owner", name="TEST", symbol="TEST", initial_supply=_A(1000), decimals=decimals
     )
     access = wrappers.AccessManager(owner="owner")
 
-    pool = PolicyPoolMock.deploy(currency.contract, access.contract, {"from": currency.owner})
-    premiums_account = PremiumsAccountMock.deploy(pool, {"from": currency.owner})
+    pool = PolicyPoolMock(currency_=currency.contract, access_=access.contract)
+    premiums_account = PremiumsAccountMock(policyPool_=pool)
 
     return TEnv(
         currency=currency,
@@ -79,7 +77,7 @@ def tenv_ethereum():
         kind="ethereum",
         rm_class=partial(
             wrappers.TieredSignedQuoteRiskModule,
-            policy_pool=wrappers.PolicyPool.connect(pool, currency.owner),
+            policy_pool=wrappers.PolicyPool.connect(pool.contract, currency.owner),
             premiums_account=premiums_account,
             creation_is_open=True,
         ),

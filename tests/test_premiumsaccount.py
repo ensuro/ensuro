@@ -1,15 +1,19 @@
 """Unitary tests for premiums account contract"""
-import pytest
-from ethproto.contracts import RevertError, Contract, ERC20Token, ContractProxyField
-from prototype import wrappers
-from prototype import ensuro
-from prototype.ensuro import RiskModule
-from ethproto.wrappers import get_provider
-from ethproto.wadray import _W, Wad
+
 from collections import namedtuple
 from functools import partial
-from prototype.utils import WEEK, DAY, MONTH
+
+import pytest
+from ethproto.contracts import Contract, ContractProxyField, ERC20Token, RevertError
+from ethproto.wadray import _W, Wad
+from ethproto.wrappers import get_provider
+
+from prototype import ensuro, wrappers
+from prototype.ensuro import RiskModule
+from prototype.utils import DAY, MONTH, WEEK
+
 from . import TEST_VARIANTS
+from .contracts import PolicyPoolMockForward
 
 MAX_UINT = Wad(2**256 - 1)
 TEnv = namedtuple("TEnv", "currency time_control pool_access kind pa_class etk module")
@@ -43,17 +47,15 @@ def tenv(request):
             module=ensuro,
         )
     elif request.param == "ethereum":
-        PolicyPoolMockForward = wrappers.get_provider().get_contract_factory("PolicyPoolMockForward")
         currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(10000))
         pa_access = wrappers.AccessManager(owner="owner")
 
         def etoken_factory(**kwargs):
-            access = wrappers.AccessManager(owner="owner")
-            pool = PolicyPoolMockForward.deploy(
-                wrappers.AddressBook.ZERO,
-                currency.contract,
-                access.contract,
-                {"from": currency.owner},
+            wrappers.AccessManager(owner="owner")
+            pool = PolicyPoolMockForward(
+                forwardTo=wrappers.AddressBook.ZERO,
+                currency_=currency.contract,
+                access_=pa_access.contract,
             )
             symbol = kwargs.pop("symbol", "ETK")
             etoken = wrappers.EToken(policy_pool=pool, symbol=symbol, **kwargs)
@@ -61,11 +63,10 @@ def tenv(request):
             return etoken
 
         def pa_factory(**kwargs):
-            pa_pool = PolicyPoolMockForward.deploy(
-                wrappers.AddressBook.ZERO,
-                currency.contract,
-                pa_access.contract,
-                {"from": currency.owner},
+            pa_pool = PolicyPoolMockForward(
+                forwardTo=wrappers.AddressBook.ZERO,
+                currency_=currency.contract,
+                access_=pa_access.contract,
             )
             pa = wrappers.PremiumsAccount(pool=pa_pool, **kwargs)
             pa_pool.setForwardTo(pa.contract, {"from": currency.owner})

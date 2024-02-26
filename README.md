@@ -85,7 +85,7 @@ Have in mind the new versions of the contracts might or might not be covered by 
 
 ## Development
 
-For coding the smart contracts the approach we took was prototyping initially in Python (see folder `prototype`), and later we coded in Solidity. The tests run the same test case both on the Python prototype code and the Solidity code. To adapt the Solidity code that is called using [brownie](https://eth-brownie.readthedocs.io/en/stable/), we have some glue code implemented in `tests/wrappers.py`.
+For coding the smart contracts the approach we took was prototyping initially in Python (see folder `prototype`), and later we coded in Solidity. The tests run the same test case both on the Python prototype code and the Solidity code. To adapt the Solidity code that is called using [ethproto](https://github.com/gnarvaja/eth-prototype), we have some glue code implemented in `tests/wrappers.py`.
 
 ### Without docker
 
@@ -108,8 +108,14 @@ npm install
 Then, you can run the tests with:
 
 ```bash
-brownie test -v
-npx hardhat test
+# Start a local node
+npx hardhat node
+
+# Run python tests
+pytest
+
+# Run js tests
+npx hardhat test --network localhost
 ```
 
 ### Using docker

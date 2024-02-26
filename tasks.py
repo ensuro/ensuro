@@ -1,4 +1,4 @@
-from invoke import task, Collection
+from invoke import Collection, task
 from py_docker_k8s_tasks import docker_tasks, util_tasks
 from py_docker_k8s_tasks.docker_tasks import docker_exec
 from py_docker_k8s_tasks.util_tasks import add_tasks
@@ -13,8 +13,7 @@ add_tasks(ns, util_tasks, "ramdisk")
 def gunicorn(c):
     docker_tasks.docker_exec(
         c,
-        "/usr/local/bin/gunicorn --config /usr/local/app/gunicorn.py "
-        "-b :8000 app.server:app",
+        "/usr/local/bin/gunicorn --config /usr/local/app/gunicorn.py " "-b :8000 app.server:app",
     )
 
 
@@ -41,10 +40,10 @@ def kill_flask(c):
 def test(c, coverage=False, longrun=False):
     # coverage = "--cov=app --cov-config=app/.coveragerc" if coverage else ""
     # longrun = "--longrun" if longrun else ""
-    docker_exec(c, "brownie test --gas")
+    docker_exec(c, "npx hardhat compile")
+    docker_exec(c, "npx hardhat node")
+    docker_exec(c, "pytest")
     if longrun:
-        docker_exec(c, "npm install")
-        docker_exec(c, "npx hardhat compile")
         docker_exec(c, "npx hardhat test")
 
 

@@ -8,7 +8,7 @@ from ethproto.wrappers import get_provider
 
 from prototype.utils import DAY, HOUR, WEEK, load_config
 
-from . import TEST_VARIANTS, extract_vars, is_brownie_coverage_enabled
+from . import TEST_VARIANTS, extract_vars
 
 TEnv = namedtuple("TEnv", "time_control module kind")
 
@@ -27,16 +27,7 @@ def tenv(request):
             kind="prototype",
         )
     elif request.param == "ethereum":
-        # Resets the address book on every test, to avoid some strange errors
-        # like EOA addresses recognized as contracts
-        from brownie import accounts
-        from ethproto.brwrappers import AddressBook, BrownieAddressBook
-
         from prototype import wrappers
-
-        address_book = BrownieAddressBook(accounts)
-        AddressBook.set_instance(address_book)
-        get_provider().address_book = address_book
 
         return TEnv(
             time_control=get_provider().time_control,
@@ -377,9 +368,6 @@ def test_walkthrough(tenv):
       - user: owner
         role: LEVEL2_ROLE  # For setting sr_roc
     """
-    if is_brownie_coverage_enabled(tenv):
-        pytest.skip("This test never ends if coverage is activated")
-
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
     rm = pool.risk_modules["Roulette"]
@@ -1893,9 +1881,6 @@ def test_expire_policy_payout(tenv):
 
 
 def test_withdraw_won_premiums(tenv):
-    if is_brownie_coverage_enabled(tenv):
-        pytest.skip("This test never ends if coverage is activated")
-
     vars = test_expire_policy(tenv)
     pool, premiums_account, USD = extract_vars(vars, "pool,premiums_account,USD")
     treasury_balance = USD.balance_of("ENS")
