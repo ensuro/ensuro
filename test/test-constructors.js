@@ -30,31 +30,19 @@ describe("Constructor validations", function () {
 
     await access.waitForDeployment();
 
-    return {
-      currency,
-      _A,
-      owner,
-      access,
-      PolicyPool,
-    };
+    return { currency, _A, owner, access, PolicyPool };
   }
 
   async function setupFixtureWithPool() {
     const ret = await setupFixture();
-    const policyPool = await deployPool({ currency: ret.currency.target, access: ret.access.target });
-    return {
-      policyPool,
-      ...ret,
-    };
+    const policyPool = await deployPool({ currency: ret.currency, access: ret.access });
+    return { policyPool, ...ret };
   }
 
   async function setupFixtureWithPoolAndPA() {
     const ret = await setupFixtureWithPool();
     const premiumsAccount = await deployPremiumsAccount(ret.policyPool, {});
-    return {
-      premiumsAccount,
-      ...ret,
-    };
+    return { premiumsAccount, ...ret };
   }
 
   // Nothing to check in AccessManager constructor
@@ -62,15 +50,17 @@ describe("Constructor validations", function () {
   it("Checks PolicyPool constructor validations", async () => {
     const { access, PolicyPool, currency } = await helpers.loadFixture(setupFixtureWithPool);
     const initArgs = ["foo", "bar", rndAddr];
+    const currencyAddr = await hre.ethers.resolveAddress(currency);
+    const accessAddr = await hre.ethers.resolveAddress(access);
     await expect(
       hre.upgrades.deployProxy(PolicyPool, initArgs, {
-        constructorArgs: [ZeroAddress, currency.target],
+        constructorArgs: [ZeroAddress, currencyAddr],
         ...deployProxyArgs,
       })
     ).to.be.revertedWith("PolicyPool: access cannot be zero address");
     await expect(
       hre.upgrades.deployProxy(PolicyPool, initArgs, {
-        constructorArgs: [access.target, ZeroAddress],
+        constructorArgs: [accessAddr, ZeroAddress],
         ...deployProxyArgs,
       })
     ).to.be.revertedWith("PolicyPool: currency cannot be zero address");
@@ -98,27 +88,30 @@ describe("Constructor validations", function () {
     const { premiumsAccount, policyPool, currency, access } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
     const TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
     const initArgs = ["foo", 0, 0, 0, 0, 0, rndAddr];
+    const paAddr = await hre.ethers.resolveAddress(premiumsAccount);
+    const poolAddr = await hre.ethers.resolveAddress(policyPool);
     await expect(
       hre.upgrades.deployProxy(TrustfulRiskModule, initArgs, {
-        constructorArgs: [ZeroAddress, premiumsAccount.target],
+        constructorArgs: [ZeroAddress, paAddr],
         ...deployProxyArgs,
       })
     ).to.be.revertedWith("PolicyPoolComponent: policyPool cannot be zero address");
     await expect(
       hre.upgrades.deployProxy(TrustfulRiskModule, initArgs, {
-        constructorArgs: [policyPool.target, ZeroAddress],
+        constructorArgs: [poolAddr, ZeroAddress],
         ...deployProxyArgs,
       })
     ).to.be.reverted;
     const anotherPool = await deployPool({
-      currency: currency.target,
-      access: access.target,
+      currency: currency,
+      access: access,
       dontGrantL123Roles: true,
     });
     const anotherPA = await deployPremiumsAccount(anotherPool, {});
+    const anotherPAAddr = await hre.ethers.resolveAddress(anotherPA);
     await expect(
       hre.upgrades.deployProxy(TrustfulRiskModule, initArgs, {
-        constructorArgs: [policyPool.target, anotherPA.target],
+        constructorArgs: [poolAddr, anotherPAAddr],
         ...deployProxyArgs,
       })
     ).to.be.revertedWith("The PremiumsAccount must be part of the Pool");
@@ -128,27 +121,30 @@ describe("Constructor validations", function () {
     const { premiumsAccount, policyPool, currency, access } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
     const SignedQuoteRiskModule = await hre.ethers.getContractFactory("SignedQuoteRiskModule");
     const initArgs = ["foo", 0, 0, 0, 0, 0, rndAddr];
+    const poolAddr = await hre.ethers.resolveAddress(policyPool);
+    const paAddr = await hre.ethers.resolveAddress(premiumsAccount);
     await expect(
       hre.upgrades.deployProxy(SignedQuoteRiskModule, initArgs, {
-        constructorArgs: [ZeroAddress, premiumsAccount.target, false],
+        constructorArgs: [ZeroAddress, paAddr, false],
         ...deployProxyArgs,
       })
     ).to.be.revertedWith("PolicyPoolComponent: policyPool cannot be zero address");
     await expect(
       hre.upgrades.deployProxy(SignedQuoteRiskModule, initArgs, {
-        constructorArgs: [policyPool.target, ZeroAddress, false],
+        constructorArgs: [poolAddr, ZeroAddress, false],
         ...deployProxyArgs,
       })
     ).to.be.reverted;
     const anotherPool = await deployPool({
-      currency: currency.target,
-      access: access.target,
+      currency: currency,
+      access: access,
       dontGrantL123Roles: true,
     });
     const anotherPA = await deployPremiumsAccount(anotherPool, {});
+    const anotherPaAddr = await hre.ethers.resolveAddress(anotherPA);
     await expect(
       hre.upgrades.deployProxy(SignedQuoteRiskModule, initArgs, {
-        constructorArgs: [policyPool.target, anotherPA.target, false],
+        constructorArgs: [poolAddr, anotherPaAddr, false],
         ...deployProxyArgs,
       })
     ).to.be.revertedWith("The PremiumsAccount must be part of the Pool");

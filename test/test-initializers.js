@@ -28,7 +28,7 @@ describe("Test Initialize contracts", function () {
     );
 
     const pool = await deployPool({
-      currency: currency.target,
+      currency: currency,
       grantRoles: [],
       treasuryAddress: "0x87c47c9a5a2aa74ae714857d64911d9a091c25b1", // Random address
     });
@@ -36,15 +36,15 @@ describe("Test Initialize contracts", function () {
 
     const etk = await addEToken(pool, {});
 
-    const premiumsAccount = await deployPremiumsAccount(pool, { srEtkAddr: etk.target });
+    const premiumsAccount = await deployPremiumsAccount(pool, { srEtk: etk });
     const accessManager = await hre.ethers.getContractAt("AccessManager", await pool.access());
     const TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
     const rm = await addRiskModule(pool, premiumsAccount, TrustfulRiskModule, {});
 
-    await grantRole(hre, accessManager, "GUARDIAN_ROLE", guardian.address);
+    await grantRole(hre, accessManager, "GUARDIAN_ROLE", guardian);
 
-    await currency.connect(lp).approve(pool.target, _A(5000));
-    await pool.connect(lp).deposit(etk.target, _A(3000));
+    await currency.connect(lp).approve(pool, _A(5000));
+    await pool.connect(lp).deposit(etk, _A(3000));
 
     return {
       currency,
@@ -109,9 +109,10 @@ describe("Test Initialize contracts", function () {
 
   it("Does not allow reinitializing Whitelist", async () => {
     const Whitelist = await hre.ethers.getContractFactory("LPManualWhitelist");
+    const poolAddr = await hre.ethers.resolveAddress(pool);
     const wl = await hre.upgrades.deployProxy(Whitelist, [[2, 1, 1, 2]], {
       kind: "uups",
-      constructorArgs: [pool.target],
+      constructorArgs: [poolAddr],
     });
     await expect(wl.initialize([2, 1, 1, 2])).to.be.revertedWith("Initializable: contract is already initialized");
   });

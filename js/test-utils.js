@@ -17,7 +17,7 @@ async function initCurrency(options, initial_targets, initial_balances) {
   initial_targets = initial_targets || [];
   await Promise.all(
     initial_targets.map(async function (user, index) {
-      await currency.transfer(user.address, initial_balances[index]);
+      await currency.transfer(user, initial_balances[index]);
     })
   );
   return currency;
@@ -37,7 +37,7 @@ async function initForkCurrency(currencyAddress, currencyOrigin, initialTargets,
   const whale = await ethers.getSigner(currencyOrigin);
   await Promise.all(
     initialTargets.map(async function (user, index) {
-      await currency.connect(whale).transfer(user.address, initialBalances[index]);
+      await currency.connect(whale).transfer(user, initialBalances[index]);
     })
   );
   return currency;
@@ -65,6 +65,9 @@ async function createRiskModule(
   const _A = pool._A || _W;
   maxPayoutPerPolicy = maxPayoutPerPolicy !== undefined ? _A(maxPayoutPerPolicy) : _A(1000);
   exposureLimit = exposureLimit !== undefined ? _A(exposureLimit) : _A(1000000);
+
+  const poolAddr = await ethers.resolveAddress(pool);
+  const paAddr = await ethers.resolveAddress(premiumsAccount);
   const rm = await hre.upgrades.deployProxy(
     contractFactory,
     [
@@ -79,7 +82,7 @@ async function createRiskModule(
     ],
     {
       kind: "uups",
-      constructorArgs: [pool.target, premiumsAccount.target, ...extraConstructorArgs],
+      constructorArgs: [poolAddr, paAddr, ...extraConstructorArgs],
     }
   );
 
@@ -122,7 +125,7 @@ async function addRiskModule(
     extraConstructorArgs,
   });
 
-  await pool.addComponent(rm.target, 2);
+  await pool.addComponent(rm, 2);
   return rm;
 }
 
@@ -133,6 +136,7 @@ async function createEToken(
   const EToken = await ethers.getContractFactory("EToken");
   extraArgs = extraArgs || [];
   extraConstructorArgs = extraConstructorArgs || [];
+  const poolAddr = await ethers.resolveAddress(pool);
   const etk = await hre.upgrades.deployProxy(
     EToken,
     [
@@ -145,7 +149,7 @@ async function createEToken(
     {
       kind: "uups",
       unsafeAllow: ["delegatecall"], // This holds, because EToken is a reserve and uses delegatecall
-      constructorArgs: [pool.target, ...extraConstructorArgs],
+      constructorArgs: [poolAddr, ...extraConstructorArgs],
     }
   );
 
@@ -165,7 +169,7 @@ async function addEToken(
     extraArgs,
     extraConstructorArgs,
   });
-  await pool.addComponent(etk.target, 1);
+  await pool.addComponent(etk, 1);
   return etk;
 }
 
@@ -199,6 +203,8 @@ async function deployPool(options) {
     accessManager = await ethers.getContractAt("AccessManager", options.access);
   }
 
+  const currencyAddr = await ethers.resolveAddress(options.currency);
+  const amAddr = await ethers.resolveAddress(accessManager);
   const policyPool = await hre.upgrades.deployProxy(
     PolicyPool,
     [
@@ -207,7 +213,7 @@ async function deployPool(options) {
       options.treasuryAddress || randomAddress,
     ],
     {
-      constructorArgs: [accessManager.target, options.currency],
+      constructorArgs: [amAddr, currencyAddr],
       kind: "uups",
     }
   );
@@ -229,21 +235,24 @@ async function deployPool(options) {
 
 async function deployPremiumsAccount(pool, options, addToPool = true) {
   const PremiumsAccount = await ethers.getContractFactory("PremiumsAccount");
+  const poolAddr = await ethers.resolveAddress(pool);
+  const jrEtkAddr = options.jrEtk ? await ethers.resolveAddress(options.jrEtk) : ZeroAddress;
+  const srEtkAddr = options.srEtk ? await ethers.resolveAddress(options.srEtk) : ZeroAddress;
   const premiumsAccount = await hre.upgrades.deployProxy(PremiumsAccount, [], {
-    constructorArgs: [pool.target, options.jrEtkAddr || ZeroAddress, options.srEtkAddr || ZeroAddress],
+    constructorArgs: [poolAddr, jrEtkAddr, srEtkAddr],
     kind: "uups",
     unsafeAllow: ["delegatecall"], // This holds, because EToken is a reserve and uses delegatecall
   });
 
   await premiumsAccount.waitForDeployment();
 
-  if (addToPool) await pool.addComponent(premiumsAccount.target, 3);
+  if (addToPool) await pool.addComponent(premiumsAccount, 3);
 
   return premiumsAccount;
 }
 
 async function makePolicy(pool, rm, cust, payout, premium, lossProb, expiration, internalId, method = "newPolicy") {
-  let tx = await rm.connect(cust)[method](payout, premium, lossProb, expiration, cust.address, internalId);
+  let tx = await rm.connect(cust)[method](payout, premium, lossProb, expiration, cust, internalId);
   let receipt = await tx.wait();
   const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
 

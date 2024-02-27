@@ -67,7 +67,7 @@ describe("Multiple policy expirations", function () {
     const additionalPolicies = 500; // number arrived at by trial-and-error
 
     for (let i = 0; i < additionalPolicies; i++) {
-      const policy = await makePolicy({ payer: pricer.address, internalId: 100000 + i });
+      const policy = await makePolicy({ payer: pricer, internalId: 100000 + i });
       const tx = await rm.connect(pricer).newPolicy(...policy.toArgs());
       const receipt = await tx.wait();
       const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
@@ -83,7 +83,7 @@ describe("Multiple policy expirations", function () {
   });
 
   it("Actually expires the policies", async () => {
-    const { pool, rm, backend, policies } = await helpers.loadFixture(poolWithPolicies);
+    const { pool, backend, policies } = await helpers.loadFixture(poolWithPolicies);
 
     await helpers.time.increaseTo(policies[policies.length - 1].expiration);
 
@@ -96,7 +96,6 @@ describe("Multiple policy expirations", function () {
       .filter((event) => event.name == "PolicyResolved")
       .map((event) => event.args.policyId);
 
-    console.log(rm.target);
     expect(expiredPolicyIds).to.deep.equal(policies.map((p) => p.id));
   });
 
@@ -107,7 +106,7 @@ describe("Multiple policy expirations", function () {
     await helpers.time.increaseTo(policies[policies.length - 1].expiration);
 
     // Create a new policy
-    const policy = await makePolicy({ payer: pricer.address, internalId: policies.length + 1 });
+    const policy = await makePolicy({ payer: pricer, internalId: policies.length + 1 });
     const tx = await rm.connect(pricer).newPolicy(...policy.toArgs());
     const receipt = await tx.wait();
     const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
@@ -129,14 +128,14 @@ async function poolWithPolicies() {
   );
 
   const pool = await deployPool({
-    currency: currency.target,
+    currency: currency,
     grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
     treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
   });
   pool._A = _A;
 
   const etk = await addEToken(pool, {});
-  const premiumsAccount = await deployPremiumsAccount(pool, { srEtkAddr: etk.target });
+  const premiumsAccount = await deployPremiumsAccount(pool, { srEtk: etk });
   const accessManager = await hre.ethers.getContractAt("AccessManager", await pool.access());
 
   const RiskModule = await hre.ethers.getContractFactory("RiskModuleMock");
@@ -146,11 +145,11 @@ async function poolWithPolicies() {
   });
 
   // Fund the protocol
-  await currency.connect(lp).approve(pool.target, _A(100000));
-  await pool.connect(lp).deposit(etk.target, _A(100000));
+  await currency.connect(lp).approve(pool, _A(100000));
+  await pool.connect(lp).deposit(etk, _A(100000));
 
   // Allow pricer spending to pay for policies
-  await currency.connect(pricer).approve(pool.target, _A(100000));
+  await currency.connect(pricer).approve(pool, _A(100000));
 
   // Allow pricer to create policies
   await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", pricer);
@@ -158,7 +157,7 @@ async function poolWithPolicies() {
   // Create a bunch of policies
   const policies = [];
   for (let i = 0; i < 100; i++) {
-    const policy = await makePolicy({ payer: pricer.address, internalId: i });
+    const policy = await makePolicy({ payer: pricer, internalId: i });
     const tx = await rm.connect(pricer).newPolicy(...policy.toArgs());
     const receipt = await tx.wait();
     const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");

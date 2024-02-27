@@ -7,6 +7,10 @@ const _E = ethers.parseEther;
 const WAD = 10n ** 18n; // 1e18
 const RAY = 10n ** 27n; // 1e27
 
+function getAddress(addressable) {
+  return addressable.address || addressable.target || addressable;
+}
+
 async function getStorageLayout(hre, contractSrc, contractName) {
   const buildInfo = await hre.artifacts.getBuildInfo(`${contractSrc}:${contractName}`);
   if (buildInfo === undefined) throw new Error(`Contract ${contractSrc}:${contractName} not in artifacts`);
@@ -161,10 +165,12 @@ function getTransactionEvent(interface, receipt, eventName) {
 /**
  * Builds AccessControl error message for comparison in tests
  */
-function accessControlMessage(address, component, role) {
-  const roleHash = component !== null ? getComponentRole(component, role) : getRole(role);
+function accessControlMessage(user, component, role) {
+  const userAddr = getAddress(user);
+  const compAddr = component !== null ? getAddress(component) : component;
+  const roleHash = component !== null ? getComponentRole(compAddr, role) : getRole(role);
 
-  return `AccessControl: account ${address.toLowerCase()} is missing role ${roleHash}`;
+  return `AccessControl: account ${userAddr.toLowerCase()} is missing role ${roleHash}`;
 }
 
 /**
@@ -172,7 +178,8 @@ function accessControlMessage(address, component, role) {
  *
  * Mimics the PolicyPool.newPolicy method of building the policy id.
  */
-function makePolicyId(rmAddress, internalId) {
+function makePolicyId(rm, internalId) {
+  const rmAddress = getAddress(rm);
   const bigRmAddress = BigInt(rmAddress);
   // eslint-disable-next-line no-bitwise
   const shiftedValue = (bigRmAddress << BigInt(96)) + BigInt(internalId);
@@ -235,10 +242,11 @@ function recoverAddress(policyParams, signature, makeQuoteMessageFn = makeQuoteM
  * Build a default policy parameters object.
  */
 async function defaultPolicyParams(
-  { rmAddress, payout, premium, lossProb, expiration, policyData, validUntil },
+  { rm, payout, premium, lossProb, expiration, policyData, validUntil },
   _A = amountFunction(6)
 ) {
   const now = await helpers.time.latest();
+  const rmAddress = rm ? await ethers.resolveAddress(rm) : rm;
   return {
     rmAddress,
     payout: payout || _A(1000),

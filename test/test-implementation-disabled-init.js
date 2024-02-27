@@ -35,7 +35,7 @@ describe("Test Implementation contracts can't be initialized", function () {
 
   async function setupFixtureWithPool() {
     const ret = await setupFixture();
-    const policyPool = await deployPool({ currency: ret.currency.target });
+    const policyPool = await deployPool({ currency: ret.currency });
     return {
       policyPool,
       ...ret,
@@ -59,7 +59,7 @@ describe("Test Implementation contracts can't be initialized", function () {
 
   it("Does not allow initialize PolicyPool implementation", async () => {
     const { currency, access, PolicyPool } = await helpers.loadFixture(setupFixture);
-    const pool = await PolicyPool.deploy(access.target, currency.target);
+    const pool = await PolicyPool.deploy(access, currency);
     await expect(pool.initialize("Ensuro", "EPOL", rndAddr)).to.be.revertedWith(
       "Initializable: contract is already initialized"
     );
@@ -68,7 +68,7 @@ describe("Test Implementation contracts can't be initialized", function () {
   it("Does not allow initialize EToken implementation", async () => {
     const { policyPool } = await helpers.loadFixture(setupFixtureWithPool);
     const EToken = await hre.ethers.getContractFactory("EToken");
-    const etk = await EToken.deploy(policyPool.target);
+    const etk = await EToken.deploy(policyPool);
     await expect(etk.initialize("eUSD Foobar", "eUSD", _W(1), _W("0.05"))).to.be.revertedWith(
       "Initializable: contract is already initialized"
     );
@@ -77,28 +77,28 @@ describe("Test Implementation contracts can't be initialized", function () {
   it("Does not allow initialize PremiumsAccount implementation", async () => {
     const { policyPool } = await helpers.loadFixture(setupFixtureWithPool);
     const PremiumsAccount = await hre.ethers.getContractFactory("PremiumsAccount");
-    const pa = await PremiumsAccount.deploy(policyPool.target, zeroAddr, zeroAddr);
+    const pa = await PremiumsAccount.deploy(policyPool, zeroAddr, zeroAddr);
     await expect(pa.initialize()).to.be.revertedWith("Initializable: contract is already initialized");
   });
 
   it("Does not allow initialize TrustfulRiskModule implementation", async () => {
     const { policyPool, premiumsAccount } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
     const TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
-    const rm = await TrustfulRiskModule.deploy(policyPool.target, premiumsAccount.target);
+    const rm = await TrustfulRiskModule.deploy(policyPool, premiumsAccount);
     await expect(rm.initialize(...rmParams)).to.be.revertedWith("Initializable: contract is already initialized");
   });
 
   it("Does not allow initialize SignedQuoteRiskModule implementation", async () => {
     const { policyPool, premiumsAccount } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
     const SignedQuoteRiskModule = await hre.ethers.getContractFactory("SignedQuoteRiskModule");
-    const rm = await SignedQuoteRiskModule.deploy(policyPool.target, premiumsAccount.target, true);
+    const rm = await SignedQuoteRiskModule.deploy(policyPool, premiumsAccount, true);
     await expect(rm.initialize(...rmParams)).to.be.revertedWith("Initializable: contract is already initialized");
   });
 
   it("Does not allow initialize LPManualWhitelist implementation", async () => {
     const { policyPool } = await helpers.loadFixture(setupFixtureWithPool);
     const LPManualWhitelist = await hre.ethers.getContractFactory("LPManualWhitelist");
-    const wh = await LPManualWhitelist.deploy(policyPool.target);
+    const wh = await LPManualWhitelist.deploy(policyPool);
     await expect(wh.initialize([2, 1, 1, 2])).to.be.revertedWith("Initializable: contract is already initialized");
   });
 });

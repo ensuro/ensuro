@@ -77,9 +77,10 @@ async function logContractCreated(hre, contractName, address) {
 async function verifyContract(hre, contract, isProxy, constructorArguments) {
   if (isProxy === undefined) isProxy = false;
   if (constructorArguments === undefined) constructorArguments = [];
+  const contractAddr = await ethers.resolveAddress(contract);
   const address = isProxy
-    ? await upgrades_core.getImplementationAddress(hre.network.provider, contract.target)
-    : contract.target;
+    ? await upgrades_core.getImplementationAddress(hre.network.provider, contractAddr)
+    : contractAddr;
   try {
     await hre.run("verify:verify", {
       address: address,
@@ -97,28 +98,29 @@ async function verifyContract(hre, contract, isProxy, constructorArguments) {
   try {
     if (isProxy) {
       await hre.run("verify:verify", {
-        address: contract.target,
+        address: contractAddr,
         constructorArguments: constructorArguments,
       });
     }
   } catch (error) {
     console.log("Error verifying contract proxy: ", error);
     const endpoints = await hre.run("verify:get-etherscan-endpoint");
-    console.log(`You should do it manually at ${endpoints.urls.browserURL}/proxyContractChecker?a=${contract.target}`);
+    console.log(`You should do it manually at ${endpoints.urls.browserURL}/proxyContractChecker?a=${contractAddr}`);
   }
 }
 
 async function deployContract({ saveAddr, verify, contractClass, constructorArgs }, hre) {
   const ContractFactory = await hre.ethers.getContractFactory(contractClass);
   const contract = await ContractFactory.deploy(...constructorArgs, txOverrides());
+  const contractAddr = await ethers.resolveAddress(contract);
   if (verify) {
     // From https://ethereum.stackexchange.com/a/119622/79726
     await contract.deployTransaction.wait(6);
   } else {
     await contract.waitForDeployment();
   }
-  await logContractCreated(hre, contractClass, contract.target);
-  saveAddress(saveAddr, contract.target);
+  await logContractCreated(hre, contractClass, contractAddr);
+  saveAddress(saveAddr, contractAddr);
   if (verify) await verifyContract(hre, contract, false, constructorArgs);
   return { ContractFactory, contract };
 }
@@ -134,14 +136,15 @@ async function deployProxyContract(
     initializer: initializer,
     ...deployProxyArgs,
   });
+  const contractAddr = await ethers.resolveAddress(contract);
   if (verify) {
     // From https://ethereum.stackexchange.com/a/119622/79726
     await contract.deployTransaction.wait(6);
   } else {
     await contract.waitForDeployment();
   }
-  await logContractCreated(hre, contractClass, contract.target);
-  saveAddress(saveAddr, contract.target);
+  await logContractCreated(hre, contractClass, contractAddr);
+  saveAddress(saveAddr, contractAddr);
   if (verify) await verifyContract(hre, contract, true, constructorArgs);
   return { ContractFactory, contract };
 }
@@ -207,12 +210,13 @@ async function deployEToken(
     },
     hre
   );
+  const contractAddr = await ethers.resolveAddress(contract);
   if (opts.addComponent) {
     let policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
     if (runAs) policyPool = policyPool.connect(runAs);
-    await policyPool.addComponent(contract.target, 1);
+    await policyPool.addComponent(contractAddr, 1);
   }
-  return contract.target;
+  return contractAddr;
 }
 
 async function deployPremiumsAccount({ poolAddress, juniorEtk, seniorEtk, runAs, ...opts }, hre) {
@@ -226,12 +230,13 @@ async function deployPremiumsAccount({ poolAddress, juniorEtk, seniorEtk, runAs,
     },
     hre
   );
+  const contractAddr = await ethers.resolveAddress(contract);
   if (opts.addComponent) {
     let policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
     if (runAs) policyPool = policyPool.connect(runAs);
-    await policyPool.addComponent(contract.target, 3);
+    await policyPool.addComponent(contractAddr, 3);
   }
-  return contract.target;
+  return contractAddr;
 }
 
 async function deployRiskModule(
@@ -282,7 +287,7 @@ async function deployRiskModule(
     hre
   );
   const rm = runAs === undefined ? contract : contract.connect(runAs);
-
+  const contractAddr = await ethers.resolveAddress(contract);
   if (opts.addComponent) {
     if (moc != 1.0) {
       moc = _W(moc);
@@ -305,9 +310,9 @@ async function deployRiskModule(
     }
     let policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
     if (runAs) policyPool = policyPool.connect(runAs);
-    await policyPool.addComponent(contract.target, 2);
+    await policyPool.addComponent(contractAddr, 2);
   }
-  return contract.target;
+  return contractAddr;
 }
 
 async function deploySignedQuoteRM(opts, hre) {
@@ -385,19 +390,20 @@ async function deployWhitelist(
     },
     hre
   );
+  const contractAddr = await ethers.resolveAddress(contract);
   if (eToken !== undefined) {
     const etk = await hre.ethers.getContractAt("EToken", eToken);
-    await etk.setWhitelist(contract.target);
+    await etk.setWhitelist(contractAddr);
   }
   if (eToken2 !== undefined) {
     const etk = await hre.ethers.getContractAt("EToken", eToken2);
-    await etk.setWhitelist(contract.target);
+    await etk.setWhitelist(contractAddr);
   }
   if (eToken3 !== undefined) {
     const etk = await hre.ethers.getContractAt("EToken", eToken3);
-    await etk.setWhitelist(contract.target);
+    await etk.setWhitelist(contractAddr);
   }
-  return contract.target;
+  return contractAddr;
 }
 
 async function trustfullPolicy({ rmAddress, payout, premium, lossProb, expiration, customer }, hre) {
@@ -410,7 +416,7 @@ async function trustfullPolicy({ rmAddress, payout, premium, lossProb, expiratio
   customer = customer || (await getDefaultSigner(hre));
   premium = _A(premium);
 
-  await currency.approve(policyPool.target, premium);
+  await currency.approve(policyPool, premium);
   lossProb = _W(lossProb);
   if (expiration === undefined) {
     expiration = 3600;
@@ -454,7 +460,7 @@ async function flightDelayPolicy(
   customer = customer || (await getDefaultSigner(hre));
   premium = _A(premium);
 
-  await currency.approve(policyPool.target, premium);
+  await currency.approve(policyPool, premium);
   lossProb = _W(lossProb);
   payout = _A(payout);
 
@@ -490,8 +496,8 @@ async function deposit({ etkAddress, amount }, hre) {
   const policyPool = await hre.ethers.getContractAt("PolicyPool", await etk.policyPool());
   const currency = await hre.ethers.getContractAt("IERC20Metadata", await policyPool.currency());
   amount = _A(amount);
-  await currency.approve(policyPool.target, amount);
-  const tx = await policyPool.deposit(etk.target, amount, { gasLimit: 999999 });
+  await currency.approve(policyPool, amount);
+  const tx = await policyPool.deposit(etk, amount, { gasLimit: 999999 });
   console.log(tx);
 }
 
