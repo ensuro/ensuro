@@ -12,7 +12,7 @@ const {
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { ComponentStatus } = require("../js/enums.js");
-const { HashZero, AddressZero } = hre.ethers.constants;
+const { ZeroAddress } = hre.ethers;
 
 describe("PolicyPool contract", function () {
   let _A;
@@ -128,7 +128,7 @@ describe("PolicyPool contract", function () {
 
     await pool.addComponent(premiumsAccount, 3);
 
-    await pool.changeComponentStatus(premiumsAccount.address, ComponentStatus.deprecated);
+    await pool.changeComponentStatus(premiumsAccount, ComponentStatus.deprecated);
 
     await expect(pool.removeComponent(premiumsAccount))
       .to.emit(etk, "InternalBorrowerRemoved")
@@ -152,7 +152,7 @@ describe("PolicyPool contract", function () {
 
     await pool.addComponent(premiumsAccount, 3);
 
-    await pool.changeComponentStatus(premiumsAccount.address, ComponentStatus.deprecated);
+    await pool.changeComponentStatus(premiumsAccount, ComponentStatus.deprecated);
 
     await expect(pool.removeComponent(premiumsAccount))
       .to.emit(etk, "InternalBorrowerRemoved")
@@ -285,43 +285,43 @@ describe("PolicyPool contract", function () {
 
   it("Can't replace resolved policies", async () => {
     const { policy, rm, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
-    await expect(rm.connect(backend).resolvePolicy(policy, policy.payout)).not.to.be.reverted;
+    await expect(rm.connect(backend).resolvePolicy([...policy], policy.payout)).not.to.be.reverted;
     expect(await pool.isActive(policy.id)).to.be.false;
-    await expect(pool.replacePolicy(policy, policy, AddressZero, 1234)).to.be.revertedWith("Policy not found");
+    await expect(pool.replacePolicy([...policy], [...policy], ZeroAddress, 1234)).to.be.revertedWith("Policy not found");
   });
 
   it("Only RM can replace policies", async () => {
     const { policy, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
-    await expect(pool.replacePolicy(policy, policy, AddressZero, 1234)).to.be.revertedWith(
+    await expect(pool.replacePolicy([...policy], [...policy], ZeroAddress, 1234)).to.be.revertedWith(
       "Only the RM can create new policies"
     );
   });
 
   it("Components must be active to replace policies", async () => {
     const { policy, pool, rm, premiumsAccount } = await helpers.loadFixture(deployRmWithPolicyFixture);
-    await pool.changeComponentStatus(premiumsAccount.address, ComponentStatus.deprecated);
+    await pool.changeComponentStatus(premiumsAccount, ComponentStatus.deprecated);
     await expect(
-      rm.connect(backend).replacePolicy(policy, policy.payout, policy.premium, policy.lossProb, policy.expiration, 1234)
+      rm.connect(backend).replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, policy.expiration, 1234)
     ).to.be.revertedWith("Component not found or not active");
-    await pool.changeComponentStatus(premiumsAccount.address, ComponentStatus.active);
-    await pool.changeComponentStatus(rm.address, ComponentStatus.deprecated);
+    await pool.changeComponentStatus(premiumsAccount, ComponentStatus.active);
+    await pool.changeComponentStatus(rm, ComponentStatus.deprecated);
     await expect(
-      rm.connect(backend).replacePolicy(policy, policy.payout, policy.premium, policy.lossProb, policy.expiration, 1234)
+      rm.connect(backend).replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, policy.expiration, 1234)
     ).to.be.revertedWith("Component not found or not active");
   });
 
   it("Does not allow to replace expired policies", async () => {
     const { policy, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
-    await helpers.time.increaseTo(policy.expiration + 100);
+    await helpers.time.increaseTo(policy.expiration + 100n);
     await expect(
-      rm.connect(backend).replacePolicy(policy, policy.payout, policy.premium, policy.lossProb, policy.expiration, 1234)
+      rm.connect(backend).replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, policy.expiration, 1234)
     ).to.be.revertedWith("Old policy is expired");
   });
 
   it("Replacement policy must have a new unique internalId", async () => {
     const { policy, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
     await expect(
-      rm.connect(backend).replacePolicy(policy, policy.payout, policy.premium, policy.lossProb, policy.expiration, 123)
+      rm.connect(backend).replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, policy.expiration, 123)
     ).to.be.revertedWith("Policy already exists");
   });
 
