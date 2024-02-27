@@ -511,7 +511,7 @@ function add_task() {
     .setAction(async function (taskArgs, hre) {
       if (taskArgs.currencyAddress === undefined) {
         taskArgs.saveAddr = "CURRENCY";
-        const currency = deployTestCurrency(taskArgs, hre);
+        const currency = await deployTestCurrency(taskArgs, hre);
         taskArgs.currencyAddress = await ethers.resolveAddress(currency);
       }
       if (taskArgs.accessAddress === undefined) {
