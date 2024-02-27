@@ -39,11 +39,7 @@ interface IPremiumsAccount {
    * @param policy The policy that was resolved
    * @param payout The amount that has to be transferred to `policyHolder`
    */
-  function policyResolvedWithPayout(
-    address policyHolder,
-    Policy.PolicyData memory policy,
-    uint256 payout
-  ) external;
+  function policyResolvedWithPayout(address policyHolder, Policy.PolicyData memory policy, uint256 payout) external;
 
   /**
    * @dev The PremiumsAccount is notified that the policy has expired, unlocks the SCR and earns the pure premium.

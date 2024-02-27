@@ -1,4 +1,5 @@
 node_modules
+.vscode
 
 #Hardhat files
 cache
@@ -30,3 +31,5 @@ instrumented/build
 instrumented/interfaces
 instrumented/node_modules
 instrumented/scripts
+
+.DS_Store

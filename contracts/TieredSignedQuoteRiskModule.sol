@@ -62,22 +62,16 @@ contract TieredSignedQuoteRiskModule is SignedQuoteRiskModule {
    * @param lossProb The loss probability of the new bucket.
    * @param params_ The parameters of the new bucket.
    */
-  function pushBucket(uint256 lossProb, Params calldata params_)
-    external
-    onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE)
-  {
+  function pushBucket(
+    uint256 lossProb,
+    Params calldata params_
+  ) external onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE) {
     uint256 newBucket = 0;
     if (_buckets.lossProbs[0] != 0) {
-      for (
-        newBucket = 1;
-        newBucket < MAX_BUCKETS && _buckets.lossProbs[newBucket] != 0;
-        newBucket++
-      ) {} // solhint-disable-line no-empty-blocks
+      // solhint-disable-next-line no-empty-blocks
+      for (newBucket = 1; newBucket < MAX_BUCKETS && _buckets.lossProbs[newBucket] != 0; newBucket++) {}
       require(newBucket < MAX_BUCKETS, "No more than 4 buckets accepted");
-      require(
-        lossProb > uint256(_buckets.lossProbs[newBucket - 1]),
-        "lossProb <= last lossProb - reset instead"
-      );
+      require(lossProb > uint256(_buckets.lossProbs[newBucket - 1]), "lossProb <= last lossProb - reset instead");
     }
     _buckets.lossProbs[newBucket] = lossProb.toUint64();
     _bucketParams[newBucket] = PackedParams({

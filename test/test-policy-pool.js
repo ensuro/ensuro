@@ -30,17 +30,17 @@ describe("PolicyPool contract", function () {
 
     // User with no roles fails
     await expect(pool.connect(backend).setTreasury(newTreasury)).to.be.revertedWith(
-      accessControlMessage(backend.address, null, "LEVEL1_ROLE")
+      accessControlMessage(backend, null, "LEVEL1_ROLE")
     );
 
     // User with LEVEL2_ROLE fails
-    await grantRole(hre, accessManager, "LEVEL2_ROLE", backend.address);
+    await grantRole(hre, accessManager, "LEVEL2_ROLE", backend);
     await expect(pool.connect(backend).setTreasury(newTreasury)).to.be.revertedWith(
-      accessControlMessage(backend.address, null, "LEVEL1_ROLE")
+      accessControlMessage(backend, null, "LEVEL1_ROLE")
     );
 
     // User with LEVEL1_ROLE passes
-    await grantRole(hre, accessManager, "LEVEL1_ROLE", backend.address);
+    await grantRole(hre, accessManager, "LEVEL1_ROLE", backend);
 
     // Cant set treasury to 0x0
     const zeroAddress = "0x0000000000000000000000000000000000000000";
@@ -57,118 +57,115 @@ describe("PolicyPool contract", function () {
     const { pool, accessManager } = await helpers.loadFixture(deployPoolFixture);
     const premiumsAccount = await deployPremiumsAccount(pool, {}, false);
 
-    await expect(pool.connect(backend).addComponent(premiumsAccount.address, 3)).to.be.revertedWith(
-      accessControlMessage(backend.address, null, "LEVEL1_ROLE")
+    await expect(pool.connect(backend).addComponent(premiumsAccount, 3)).to.be.revertedWith(
+      accessControlMessage(backend, null, "LEVEL1_ROLE")
     );
 
-    await grantRole(hre, accessManager, "LEVEL2_ROLE", backend.address);
-    await expect(pool.connect(backend).addComponent(premiumsAccount.address, 3)).to.be.revertedWith(
-      accessControlMessage(backend.address, null, "LEVEL1_ROLE")
+    await grantRole(hre, accessManager, "LEVEL2_ROLE", backend);
+    await expect(pool.connect(backend).addComponent(premiumsAccount, 3)).to.be.revertedWith(
+      accessControlMessage(backend, null, "LEVEL1_ROLE")
     );
 
-    await grantRole(hre, accessManager, "LEVEL1_ROLE", backend.address);
-    await expect(pool.connect(backend).addComponent(premiumsAccount.address, 3)).to.emit(
-      pool,
-      "ComponentStatusChanged"
-    );
+    await grantRole(hre, accessManager, "LEVEL1_ROLE", backend);
+    await expect(pool.connect(backend).addComponent(premiumsAccount, 3)).to.emit(pool, "ComponentStatusChanged");
   });
 
   it("Does not allow adding an existing component", async () => {
     const { pool } = await helpers.loadFixture(deployPoolFixture);
     const premiumsAccount = await deployPremiumsAccount(pool, {}, true);
 
-    await expect(pool.addComponent(premiumsAccount.address, 3)).to.be.revertedWith("Component already in the pool");
+    await expect(pool.addComponent(premiumsAccount, 3)).to.be.revertedWith("Component already in the pool");
   });
 
   it("Does not allow adding different kind of component", async () => {
     const { pool } = await helpers.loadFixture(deployPoolFixture);
 
     const etk = await createEToken(pool, {});
-    const premiumsAccount = await deployPremiumsAccount(pool, { jrEtkAddr: etk.address }, false);
+    const premiumsAccount = await deployPremiumsAccount(pool, { jrEtk: etk }, false);
     const RiskModule = await hre.ethers.getContractFactory("RiskModuleMock");
     const rm = await createRiskModule(pool, premiumsAccount, RiskModule, {});
 
     // EToken
-    await expect(pool.addComponent(etk.address, 3)).to.be.revertedWith("PolicyPool: Not the right kind");
-    await expect(pool.addComponent(etk.address, 1)).not.to.be.reverted;
+    await expect(pool.addComponent(etk, 3)).to.be.revertedWith("PolicyPool: Not the right kind");
+    await expect(pool.addComponent(etk, 1)).not.to.be.reverted;
 
     // RiskModule
-    await expect(pool.addComponent(rm.address, 3)).to.be.revertedWith("PolicyPool: Not the right kind");
-    await expect(pool.addComponent(rm.address, 2)).not.to.be.reverted;
+    await expect(pool.addComponent(rm, 3)).to.be.revertedWith("PolicyPool: Not the right kind");
+    await expect(pool.addComponent(rm, 2)).not.to.be.reverted;
 
     // Premiums account
-    await expect(pool.addComponent(premiumsAccount.address, 2)).to.be.revertedWith("PolicyPool: Not the right kind");
-    await expect(pool.addComponent(premiumsAccount.address, 3)).not.to.be.reverted;
+    await expect(pool.addComponent(premiumsAccount, 2)).to.be.revertedWith("PolicyPool: Not the right kind");
+    await expect(pool.addComponent(premiumsAccount, 3)).not.to.be.reverted;
   });
 
   it("Does not allow adding a component that belongs to a different pool", async () => {
     const { pool, currency } = await helpers.loadFixture(deployPoolFixture);
     const pool2 = await deployPool({
-      currency: currency.address,
+      currency: currency,
       grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
       treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199",
     });
 
     const premiumsAccount = await deployPremiumsAccount(pool2, {}, false);
 
-    await expect(pool.addComponent(premiumsAccount.address, 3)).to.be.revertedWith("Component not linked to this pool");
+    await expect(pool.addComponent(premiumsAccount, 3)).to.be.revertedWith("Component not linked to this pool");
   });
 
   it("Adds the PA as borrower on the jr etoken", async () => {
     const { pool } = await helpers.loadFixture(deployPoolFixture);
     const etk = await addEToken(pool, {});
-    const premiumsAccount = await deployPremiumsAccount(pool, { jrEtkAddr: etk.address }, false);
+    const premiumsAccount = await deployPremiumsAccount(pool, { jrEtk: etk }, false);
 
-    await expect(pool.addComponent(premiumsAccount.address, 3))
+    await expect(pool.addComponent(premiumsAccount, 3))
       .to.emit(etk, "InternalBorrowerAdded")
-      .withArgs(premiumsAccount.address);
+      .withArgs(premiumsAccount);
   });
 
   it("Removes the PA as borrower from the jr etoken on PremiumsAccount removal", async () => {
     const { pool } = await helpers.loadFixture(deployPoolFixture);
     const etk = await addEToken(pool, {});
-    const premiumsAccount = await deployPremiumsAccount(pool, { jrEtkAddr: etk.address }, false);
+    const premiumsAccount = await deployPremiumsAccount(pool, { jrEtk: etk }, false);
 
-    await pool.addComponent(premiumsAccount.address, 3);
+    await pool.addComponent(premiumsAccount, 3);
 
-    pool.changeComponentStatus(premiumsAccount.address, COMPONENT_STATUS_DEPRECATED);
+    pool.changeComponentStatus(premiumsAccount, COMPONENT_STATUS_DEPRECATED);
 
-    await expect(pool.removeComponent(premiumsAccount.address))
+    await expect(pool.removeComponent(premiumsAccount))
       .to.emit(etk, "InternalBorrowerRemoved")
-      .withArgs(premiumsAccount.address, 0);
+      .withArgs(premiumsAccount, 0);
   });
 
   it("Adds the PA as borrower on the sr etoken", async () => {
     const { pool } = await helpers.loadFixture(deployPoolFixture);
     const etk = await addEToken(pool, {});
-    const premiumsAccount = await deployPremiumsAccount(pool, { srEtkAddr: etk.address }, false);
+    const premiumsAccount = await deployPremiumsAccount(pool, { srEtk: etk }, false);
 
-    await expect(pool.addComponent(premiumsAccount.address, 3))
+    await expect(pool.addComponent(premiumsAccount, 3))
       .to.emit(etk, "InternalBorrowerAdded")
-      .withArgs(premiumsAccount.address);
+      .withArgs(premiumsAccount);
   });
 
   it("Removes the PA as borrower from the sr etoken on PremiumsAccount removal", async () => {
     const { pool } = await helpers.loadFixture(deployPoolFixture);
     const etk = await addEToken(pool, {});
-    const premiumsAccount = await deployPremiumsAccount(pool, { srEtkAddr: etk.address }, false);
+    const premiumsAccount = await deployPremiumsAccount(pool, { srEtk: etk }, false);
 
-    await pool.addComponent(premiumsAccount.address, 3);
+    await pool.addComponent(premiumsAccount, 3);
 
-    pool.changeComponentStatus(premiumsAccount.address, COMPONENT_STATUS_DEPRECATED);
+    pool.changeComponentStatus(premiumsAccount, COMPONENT_STATUS_DEPRECATED);
 
-    await expect(pool.removeComponent(premiumsAccount.address))
+    await expect(pool.removeComponent(premiumsAccount))
       .to.emit(etk, "InternalBorrowerRemoved")
-      .withArgs(premiumsAccount.address, 0);
+      .withArgs(premiumsAccount, 0);
   });
 
   it("Does not allow suspending unknown components", async () => {
     const { pool, accessManager } = await helpers.loadFixture(deployPoolFixture);
     const premiumsAccount = await deployPremiumsAccount(pool, {}, false);
 
-    await grantRole(hre, accessManager, "GUARDIAN_ROLE", owner.address);
+    await grantRole(hre, accessManager, "GUARDIAN_ROLE", owner);
 
-    await expect(pool.changeComponentStatus(premiumsAccount.address, 1)).to.be.revertedWith("Component not found");
+    await expect(pool.changeComponentStatus(premiumsAccount, 1)).to.be.revertedWith("Component not found");
   });
 
   it("Only allows riskmodule to create policies", async () => {
@@ -191,7 +188,7 @@ describe("PolicyPool contract", function () {
       now + 3600 * 5, // expiration
     ];
 
-    await expect(pool.newPolicy(policyData, cust.address, backend.address, 11)).to.be.revertedWith(
+    await expect(pool.newPolicy(policyData, cust, backend, 11)).to.be.revertedWith(
       "Only the RM can create new policies"
     );
   });
@@ -204,7 +201,7 @@ describe("PolicyPool contract", function () {
     );
 
     const pool = await deployPool({
-      currency: currency.address,
+      currency: currency,
       grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
       treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
     });
@@ -218,10 +215,10 @@ describe("PolicyPool contract", function () {
     const { pool, accessManager, currency } = await helpers.loadFixture(deployPoolFixture);
     // Setup the liquidity sources
     const etk = await addEToken(pool, {});
-    const premiumsAccount = await deployPremiumsAccount(pool, { srEtkAddr: etk.address });
+    const premiumsAccount = await deployPremiumsAccount(pool, { srEtk: etk });
 
-    await currency.connect(lp).approve(pool.address, _A(5000));
-    await pool.connect(lp).deposit(etk.address, _A(5000));
+    await currency.connect(lp).approve(pool, _A(5000));
+    await pool.connect(lp).deposit(etk, _A(5000));
 
     // Setup the risk module
     const RiskModule = await hre.ethers.getContractFactory("RiskModuleMock");
@@ -237,18 +234,18 @@ describe("PolicyPool contract", function () {
     const now = await helpers.time.latest();
 
     // Deploy a new policy
-    await currency.connect(cust).approve(pool.address, _A(110));
-    await currency.connect(cust).approve(backend.address, _A(110));
+    await currency.connect(cust).approve(pool, _A(110));
+    await currency.connect(cust).approve(backend, _A(110));
 
-    await accessManager.grantComponentRole(rm.address, await rm.PRICER_ROLE(), backend.address);
-    await accessManager.grantComponentRole(rm.address, await rm.RESOLVER_ROLE(), backend.address);
+    await accessManager.grantComponentRole(rm, await rm.PRICER_ROLE(), backend);
+    await accessManager.grantComponentRole(rm, await rm.RESOLVER_ROLE(), backend);
     const tx = await rm.connect(backend).newPolicy(
       _A(1000), // payout
       _A(10), // premium
       _W(0), // lossProb
       now + 3600 * 5, // expiration
-      cust.address, // payer
-      cust.address, // holder
+      cust, // payer
+      cust, // holder
       123 // internalId
     );
 
@@ -264,23 +261,23 @@ describe("PolicyPool contract", function () {
     const { policy, rm, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
     expect(await pool.isActive(policy.id)).to.be.true;
     // At least check it's not equal to 0. Doesn't make sense to add in the test the hash calculation
-    expect(await pool.getPolicyHash(policy.id)).not.to.be.equal(hre.ethers.constants.HashZero);
-    await expect(rm.connect(backend).resolvePolicy(policy, policy.payout)).not.to.be.reverted;
+    expect(await pool.getPolicyHash(policy.id)).not.to.be.equal(hre.ethers.ZeroHash);
+    await expect(rm.connect(backend).resolvePolicy([...policy], policy.payout)).not.to.be.reverted;
     expect(await pool.isActive(policy.id)).to.be.false;
-    expect(await pool.getPolicyHash(policy.id)).to.be.equal(hre.ethers.constants.HashZero);
-    await expect(rm.connect(backend).resolvePolicy(policy, _A(100))).to.be.revertedWith("Policy not found");
+    expect(await pool.getPolicyHash(policy.id)).to.be.equal(hre.ethers.ZeroHash);
+    await expect(rm.connect(backend).resolvePolicy([...policy], _A(100))).to.be.revertedWith("Policy not found");
   });
 
   it("Only allows riskmodule to resolve unexpired policies", async () => {
     const { policy, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
 
-    await expect(pool.resolvePolicy(policy, 0)).to.be.revertedWith("Only the RM can resolve policies");
+    await expect(pool.resolvePolicy([...policy], 0)).to.be.revertedWith("Only the RM can resolve policies");
   });
 
   it("Does not allow a bigger payout than the one setup in the policy", async () => {
     const { policy, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
 
-    await expect(rm.connect(backend).resolvePolicy(policy, policy.payout + _A(10))).to.be.revertedWith(
+    await expect(rm.connect(backend).resolvePolicy([...policy], policy.payout + _A(10))).to.be.revertedWith(
       "payout > policy.payout"
     );
   });
@@ -290,18 +287,18 @@ describe("PolicyPool contract", function () {
 
     // User with no roles fails
     await expect(pool.connect(backend).setBaseURI("foobar")).to.be.revertedWith(
-      accessControlMessage(backend.address, null, "LEVEL2_ROLE")
+      accessControlMessage(backend, null, "LEVEL2_ROLE")
     );
 
     // User with LEVEL2_ROLE passes
-    await grantRole(hre, accessManager, "LEVEL2_ROLE", backend.address);
+    await grantRole(hre, accessManager, "LEVEL2_ROLE", backend);
 
     expect(await pool.tokenURI(policy.id)).to.be.equal("");
 
     // User with no roles fails
     await expect(pool.connect(backend).setBaseURI("https://offchain-v2.ensuro.co/api/policies/nft/"))
       .to.be.emit(pool, "ComponentChanged")
-      .withArgs(4, backend.address);
+      .withArgs(4, backend);
 
     expect(await pool.tokenURI(policy.id)).to.be.equal(`https://offchain-v2.ensuro.co/api/policies/nft/${policy.id}`);
     await expect(pool.tokenURI(1233)).to.be.revertedWith("ERC721: invalid token ID");
@@ -317,7 +314,7 @@ describe("PolicyPool contract", function () {
     await expect(
       deployPool({
         nftName: "",
-        currency: currency.address,
+        currency: currency,
         grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
         treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
       })
@@ -326,7 +323,7 @@ describe("PolicyPool contract", function () {
     await expect(
       deployPool({
         nftSymbol: "",
-        currency: currency.address,
+        currency: currency,
         grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
         treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
       })

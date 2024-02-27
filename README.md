@@ -89,7 +89,7 @@ For coding the smart contracts the approach we took was prototyping initially in
 
 ### Without docker
 
-You can also run the development environment without using docker, just Python (>=3.9) and Node v16 are required as pre-requisits.
+You can also run the development environment without using docker, just Python (>=3.9) and Node v20 are required as pre-requisits.
 
 Initial setup:
 
@@ -101,7 +101,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 pip install -r requirements-dev.txt
 # Install javascript dependencies
-nvm use  # To change to node v16
+nvm use  # To change to node v20
 npm install
 ```
 

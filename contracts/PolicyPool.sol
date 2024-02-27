@@ -159,11 +159,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * @param kind Value indicating the kind of component. See {ComponentKind}
    * @param newStatus The status of the component after the operation. See {ComponentStatus}
    */
-  event ComponentStatusChanged(
-    IPolicyPoolComponent indexed component,
-    ComponentKind kind,
-    ComponentStatus newStatus
-  );
+  event ComponentStatusChanged(IPolicyPoolComponent indexed component, ComponentKind kind, ComponentStatus newStatus);
 
   /**
    * @dev Modifier that checks the caller has a given role
@@ -204,11 +200,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * @param symbol_ The symbol of the ERC721 token.
    * @param treasury_ The address of the treasury that will receive the protocol fees.
    */
-  function initialize(
-    string memory name_,
-    string memory symbol_,
-    address treasury_
-  ) public initializer {
+  function initialize(string memory name_, string memory symbol_, address treasury_) public initializer {
     require(bytes(name_).length > 0, "PolicyPool: name cannot be empty");
     require(bytes(symbol_).length > 0, "PolicyPool: symbol cannot be empty");
     __UUPSUpgradeable_init();
@@ -229,12 +221,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     _setTreasury(treasury_);
   }
 
-  function _authorizeUpgrade(address newImpl)
-    internal
-    view
-    override
-    onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
-  {
+  function _authorizeUpgrade(address newImpl) internal view override onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {
     IPolicyPool newPool = IPolicyPool(newImpl);
     require(newPool.access() == _access, "Can't upgrade changing the access manager");
     require(newPool.currency() == _currency, "Can't upgrade changing the currency");
@@ -310,20 +297,15 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * to this specific {PolicyPool} and matching the `kind` specified in the next paramter.
    * @param kind The type of component to be added.
    */
-  function addComponent(IPolicyPoolComponent component, ComponentKind kind)
-    external
-    onlyRole(LEVEL1_ROLE)
-  {
+  function addComponent(IPolicyPoolComponent component, ComponentKind kind) external onlyRole(LEVEL1_ROLE) {
     Component storage comp = _components[component];
     require(comp.status == ComponentStatus.inactive, "Component already in the pool");
     require(component.policyPool() == this, "Component not linked to this pool");
 
     require(
       (kind == ComponentKind.eToken && component.supportsInterface(type(IEToken).interfaceId)) ||
-        (kind == ComponentKind.premiumsAccount &&
-          component.supportsInterface(type(IPremiumsAccount).interfaceId)) ||
-        (kind == ComponentKind.riskModule &&
-          component.supportsInterface(type(IRiskModule).interfaceId)),
+        (kind == ComponentKind.premiumsAccount && component.supportsInterface(type(IPremiumsAccount).interfaceId)) ||
+        (kind == ComponentKind.riskModule && component.supportsInterface(type(IRiskModule).interfaceId)),
       "PolicyPool: Not the right kind"
     );
 
@@ -360,15 +342,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     Component storage comp = _components[component];
     require(comp.status == ComponentStatus.deprecated, "Component not deprecated");
     if (comp.kind == ComponentKind.eToken) {
-      require(
-        IEToken(address(component)).totalSupply() == 0,
-        "EToken has liquidity, can't be removed"
-      );
+      require(IEToken(address(component)).totalSupply() == 0, "EToken has liquidity, can't be removed");
     } else if (comp.kind == ComponentKind.riskModule) {
-      require(
-        IRiskModule(address(component)).activeExposure() == 0,
-        "Can't remove a module with active policies"
-      );
+      require(IRiskModule(address(component)).activeExposure() == 0, "Can't remove a module with active policies");
     } else if (comp.kind == ComponentKind.premiumsAccount) {
       IPremiumsAccount pa = IPremiumsAccount(address(component));
       require(pa.purePremiums() == 0, "Can't remove a PremiumsAccount with premiums");
@@ -398,10 +374,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * @param component The address of component contract. Must be a component added before.
    * @param newStatus The new status, must be either `active`, `deprecated` or `suspended`.
    */
-  function changeComponentStatus(IPolicyPoolComponent component, ComponentStatus newStatus)
-    external
-    onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE)
-  {
+  function changeComponentStatus(
+    IPolicyPoolComponent component,
+    ComponentStatus newStatus
+  ) external onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {
     Component storage comp = _components[component];
     require(comp.status != ComponentStatus.inactive, "Component not found");
     require(
@@ -420,11 +396,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * @param component The address of the component
    * @return The status of the component. See {ComponentStatus}
    */
-  function getComponentStatus(IPolicyPoolComponent component)
-    external
-    view
-    returns (ComponentStatus)
-  {
+  function getComponentStatus(IPolicyPoolComponent component) external view returns (ComponentStatus) {
     return _components[component].status;
   }
 
@@ -453,12 +425,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     eToken.deposit(_msgSender(), _currency.balanceOf(address(eToken)) - balanceBefore);
   }
 
-  function withdraw(IEToken eToken, uint256 amount)
-    external
-    override
-    whenNotPaused
-    returns (uint256)
-  {
+  function withdraw(IEToken eToken, uint256 amount) external override whenNotPaused returns (uint256) {
     ComponentStatus etkStatus = _etkStatus(eToken);
     require(
       etkStatus == ComponentStatus.active || etkStatus == ComponentStatus.deprecated,
@@ -523,19 +490,14 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     }
   }
 
-  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout)
-    external
-    override
-    whenNotPaused
-  {
+  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external override whenNotPaused {
     return _resolvePolicy(policy, payout, false);
   }
 
-  function resolvePolicyFullPayout(Policy.PolicyData calldata policy, bool customerWon)
-    external
-    override
-    whenNotPaused
-  {
+  function resolvePolicyFullPayout(
+    Policy.PolicyData calldata policy,
+    bool customerWon
+  ) external override whenNotPaused {
     return _resolvePolicy(policy, customerWon ? policy.payout : 0, false);
   }
 
@@ -558,11 +520,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * @param payout The amount to paid to the policyholder
    * @param expired True for expiration resolution (`payout` must be 0)
    */
-  function _resolvePolicy(
-    Policy.PolicyData memory policy,
-    uint256 payout,
-    bool expired
-  ) internal {
+  function _resolvePolicy(Policy.PolicyData memory policy, uint256 payout, bool expired) internal {
     // Checks
     _validatePolicy(policy);
     IRiskModule rm = policy.riskModule;
@@ -612,16 +570,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     if (!AddressUpgradeable.isContract(customer)) return;
     if (!ERC165Checker.supportsInterface(customer, type(IPolicyHolder).interfaceId)) return;
 
-    bytes4 retval = IPolicyHolder(customer).onPayoutReceived(
-      _msgSender(),
-      address(this),
-      policyId,
-      payout
-    );
-    require(
-      retval == IPolicyHolder.onPayoutReceived.selector,
-      "PolicyPool: Invalid return value from IPolicyHolder"
-    );
+    bytes4 retval = IPolicyHolder(customer).onPayoutReceived(_msgSender(), address(this), policyId, payout);
+    require(retval == IPolicyHolder.onPayoutReceived.selector, "PolicyPool: Invalid return value from IPolicyHolder");
   }
 
   /**
@@ -632,9 +582,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     if (!AddressUpgradeable.isContract(customer)) return;
     if (!ERC165Checker.supportsInterface(customer, type(IPolicyHolder).interfaceId)) return;
 
-    try IPolicyHolder(customer).onPolicyExpired(_msgSender(), address(this), policyId) returns (
-      bytes4
-    ) {
+    try IPolicyHolder(customer).onPolicyExpired(_msgSender(), address(this), policyId) returns (bytes4) {
       return;
     } catch {
       return;

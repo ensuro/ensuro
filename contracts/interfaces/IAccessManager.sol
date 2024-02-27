@@ -108,11 +108,7 @@ interface IAccessManager is IAccessControlUpgradeable {
    * @param role2 Another role such as `keccak256("GUARDIAN_ROLE")` that's global
    * @param account The user address for who we want to verify the permission
    */
-  function checkRole2(
-    bytes32 role1,
-    bytes32 role2,
-    address account
-  ) external view;
+  function checkRole2(bytes32 role1, bytes32 role2, address account) external view;
 
   /**
    * @dev Checks if a user has been granted a given component role and reverts if it doesn't
@@ -122,12 +118,7 @@ interface IAccessManager is IAccessControlUpgradeable {
    * @param alsoGlobal If true, it will accept not only the component role, but also the (global) `role` itself.
    *                   If false, only the component role is accepted
    */
-  function checkComponentRole(
-    address component,
-    bytes32 role,
-    address account,
-    bool alsoGlobal
-  ) external view;
+  function checkComponentRole(address component, bytes32 role, address account, bool alsoGlobal) external view;
 
   /**
    * @dev Checks if a user has been granted any of the two component roles specified and reverts if it doesn't

@@ -32,7 +32,7 @@ describe("RiskModule contract", function () {
     );
 
     pool = await deployPool({
-      currency: currency.address,
+      currency: currency,
       grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
       treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
     });
@@ -40,26 +40,26 @@ describe("RiskModule contract", function () {
 
     const etk = await addEToken(pool, {});
 
-    premiumsAccount = await deployPremiumsAccount(pool, { srEtkAddr: etk.address });
+    premiumsAccount = await deployPremiumsAccount(pool, { srEtk: etk });
 
     accessManager = await ethers.getContractAt("AccessManager", await pool.access());
 
     RiskModule = await ethers.getContractFactory("RiskModuleMock");
 
-    await currency.connect(lp).approve(pool.address, _A(5000));
-    await pool.connect(lp).deposit(etk.address, _A(5000));
+    await currency.connect(lp).approve(pool, _A(5000));
+    await pool.connect(lp).deposit(etk, _A(5000));
 
     rm = await addRiskModule(pool, premiumsAccount, RiskModule, {
       extraArgs: [],
     });
-    await accessManager.grantComponentRole(rm.address, await rm.PRICER_ROLE(), backend.address);
+    await accessManager.grantComponentRole(rm, await rm.PRICER_ROLE(), backend);
   });
 
   it("Set params jrCollRatio validations", async () => {
     let jrCollRatio = 0;
     await rm.setParam(1, jrCollRatio);
 
-    await grantRole(hre, accessManager, "LEVEL3_ROLE", lp.address);
+    await grantRole(hre, accessManager, "LEVEL3_ROLE", lp);
     await rm.connect(lp).setParam(1, jrCollRatio);
 
     jrCollRatio = 100;
@@ -67,42 +67,42 @@ describe("RiskModule contract", function () {
   });
 
   it("Allows msg.sender as payer", async () => {
-    await currency.connect(backend).approve(pool.address, _A(110));
+    await currency.connect(backend).approve(pool, _A(110));
 
-    const policy = await makePolicy({ payer: backend.address });
+    const policy = await makePolicy({ payer: backend });
     await rm.connect(backend).newPolicy(...policy.toArgs());
 
     // The premium was payed by the caller
-    expect(await currency.balanceOf(cust.address)).to.equal(_A(500));
-    expect(await currency.balanceOf(backend.address)).to.equal(_A(890));
+    expect(await currency.balanceOf(cust)).to.equal(_A(500));
+    expect(await currency.balanceOf(backend)).to.equal(_A(890));
   });
 
   it("Doesn't allow another payer by default", async () => {
     // The customer approved the spending for the pool
-    await currency.connect(cust).approve(pool.address, _A(110));
+    await currency.connect(cust).approve(pool, _A(110));
 
-    const policy = await makePolicy({ payer: cust.address });
+    const policy = await makePolicy({ payer: cust });
     await expect(rm.connect(backend).newPolicy(...policy.toArgs())).to.be.revertedWith(
       "Payer must allow caller to transfer the premium"
     );
 
-    expect(await currency.balanceOf(cust.address)).to.equal(_A(500));
-    expect(await currency.balanceOf(backend.address)).to.equal(_A(1000));
+    expect(await currency.balanceOf(cust)).to.equal(_A(500));
+    expect(await currency.balanceOf(backend)).to.equal(_A(1000));
   });
 
   it("Allows another payer given the right allowances", async () => {
     // The customer approved the spending for the pool
-    await currency.connect(cust).approve(pool.address, _A(110));
+    await currency.connect(cust).approve(pool, _A(110));
 
     // And also allowed the backend
-    await currency.connect(cust).approve(backend.address, _A(110));
+    await currency.connect(cust).approve(backend, _A(110));
 
-    const policy = await makePolicy({ payer: cust.address });
+    const policy = await makePolicy({ payer: cust });
     await rm.connect(backend).newPolicy(...policy.toArgs());
 
     // The premium was paid by the customer
-    expect(await currency.balanceOf(cust.address)).to.equal(_A(390));
-    expect(await currency.balanceOf(backend.address)).to.equal(_A(1000));
+    expect(await currency.balanceOf(cust)).to.equal(_A(390));
+    expect(await currency.balanceOf(backend)).to.equal(_A(1000));
   });
 
   it("Does not allow an exposure limit of zero", async () => {
@@ -117,7 +117,7 @@ describe("RiskModule contract", function () {
   it("Does not allow wallet with zero address", async () => {
     await expect(
       addRiskModule(pool, premiumsAccount, RiskModule, {
-        wallet: hre.ethers.constants.AddressZero,
+        wallet: hre.ethers.ZeroAddress,
         extraArgs: [],
       })
     ).to.be.revertedWith("Validation: Wallet can't be zero address");
@@ -139,8 +139,8 @@ describe("RiskModule contract", function () {
       premium: premium || _A(110),
       lossProbability: lossProbability || _W("0.1"),
       expiration: expiration || now + 3600 * 5,
-      payer: payer || cust.address,
-      onBehalfOf: onBehalfOf || cust.address,
+      payer: payer || cust,
+      onBehalfOf: onBehalfOf || cust,
       internalId: internalId || 123,
     };
     policy.toArgs = () => [

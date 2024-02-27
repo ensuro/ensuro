@@ -7,6 +7,7 @@ const {
   getTransactionEvent,
   grantRole,
   makeSignedQuote,
+  defaultBucketParams,
 } = require("../js/utils");
 const { RiskModuleParameter } = require("../js/enums");
 const hre = require("hardhat");
@@ -31,7 +32,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
     );
 
     const pool = await deployPool({
-      currency: currency.address,
+      currency: currency,
       grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
       treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
     });
@@ -42,18 +43,15 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
     // Setup the liquidity sources
     const srEtk = await addEToken(pool, {});
     const jrEtk = await addEToken(pool, {});
-    const premiumsAccount = await deployPremiumsAccount(pool, {
-      srEtkAddr: srEtk.address,
-      jrEtkAddr: jrEtk.address,
-    });
+    const premiumsAccount = await deployPremiumsAccount(pool, { srEtk: srEtk, jrEtk: jrEtk });
 
     // Provide some liquidity
-    await currency.connect(lp).approve(pool.address, _A(15000));
-    await pool.connect(lp).deposit(srEtk.address, _A(10000));
-    await pool.connect(lp).deposit(jrEtk.address, _A(5000));
+    await currency.connect(lp).approve(pool, _A(15000));
+    await pool.connect(lp).deposit(srEtk, _A(10000));
+    await pool.connect(lp).deposit(jrEtk, _A(5000));
 
     // Customer approval
-    await currency.connect(cust).approve(pool.address, _A(500));
+    await currency.connect(cust).approve(pool, _A(500));
 
     // Setup the risk module
     const TieredSignedQuoteRiskModule = await hre.ethers.getContractFactory("TieredSignedQuoteRiskModule");
@@ -64,8 +62,8 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
     await rm.setParam(RiskModuleParameter.jrCollRatio, _W("0.3"));
     await rm.setParam(RiskModuleParameter.jrRoc, _W("0.1"));
 
-    await accessManager.grantComponentRole(rm.address, await rm.PRICER_ROLE(), signer.address);
-    await accessManager.grantComponentRole(rm.address, await rm.RESOLVER_ROLE(), resolver.address);
+    await accessManager.grantComponentRole(rm, await rm.PRICER_ROLE(), signer);
+    await accessManager.grantComponentRole(rm, await rm.RESOLVER_ROLE(), resolver);
     return { srEtk, jrEtk, premiumsAccount, rm, pool, accessManager, currency };
   }
 
@@ -79,14 +77,14 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
       onBehalfOf.address,
       policyParams.policyData,
       signature.r,
-      signature._vs,
+      signature.yParityAndS,
       policyParams.validUntil
     );
   }
 
   it("Uses the default parameters when no buckets are set up", async () => {
     const { rm, pool } = await helpers.loadFixture(deployPoolFixture);
-    const policyParams = await defaultPolicyParams({ rmAddress: rm.address });
+    const policyParams = await defaultPolicyParams({ rm: rm });
     const signature = await makeSignedQuote(signer, policyParams);
     const tx = await newPolicy(rm, cust, policyParams, cust, signature);
 
@@ -107,32 +105,32 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
     const { rm, accessManager } = await helpers.loadFixture(deployPoolFixture);
 
     // level1
-    await expect(rm.connect(level1).pushBucket(_W("0.15"), bucketParameters({}))).to.be.revertedWith(
-      accessControlMessage(level1.address, rm.address, "LEVEL2_ROLE")
+    await expect(rm.connect(level1).pushBucket(_W("0.15"), defaultBucketParams({}))).to.be.revertedWith(
+      accessControlMessage(level1, rm, "LEVEL2_ROLE")
     );
     await expect(rm.connect(level1).resetBuckets()).to.be.revertedWith(
-      accessControlMessage(level1.address, rm.address, "LEVEL2_ROLE")
+      accessControlMessage(level1, rm, "LEVEL2_ROLE")
     );
-    await grantRole(hre, accessManager, "LEVEL1_ROLE", level1.address);
-    await expect(rm.connect(level1).pushBucket(_W("0.15"), bucketParameters({}))).not.to.be.reverted;
+    await grantRole(hre, accessManager, "LEVEL1_ROLE", level1);
+    await expect(rm.connect(level1).pushBucket(_W("0.15"), defaultBucketParams({}))).not.to.be.reverted;
     await expect(rm.connect(level1).resetBuckets()).not.to.be.reverted;
 
     // level2
-    await expect(rm.connect(level2).pushBucket(_W("0.15"), bucketParameters({}))).to.be.revertedWith(
-      accessControlMessage(level2.address, rm.address, "LEVEL2_ROLE")
+    await expect(rm.connect(level2).pushBucket(_W("0.15"), defaultBucketParams({}))).to.be.revertedWith(
+      accessControlMessage(level2, rm, "LEVEL2_ROLE")
     );
     await expect(rm.connect(level2).resetBuckets()).to.be.revertedWith(
-      accessControlMessage(level2.address, rm.address, "LEVEL2_ROLE")
+      accessControlMessage(level2, rm, "LEVEL2_ROLE")
     );
-    await grantRole(hre, accessManager, "LEVEL2_ROLE", level2.address);
-    await expect(rm.connect(level2).pushBucket(_W("0.15"), bucketParameters({}))).not.to.be.reverted;
+    await grantRole(hre, accessManager, "LEVEL2_ROLE", level2);
+    await expect(rm.connect(level2).pushBucket(_W("0.15"), defaultBucketParams({}))).not.to.be.reverted;
     await expect(rm.connect(level2).resetBuckets()).not.to.be.reverted;
   });
 
   it("Single bucket: uses correct bucket", async () => {
     const { rm, pool } = await helpers.loadFixture(deployPoolFixture);
     const rmParams = await rm.params();
-    const bucket = bucketParameters({
+    const bucket = defaultBucketParams({
       moc: _W("1.1"),
       jrCollRatio: _W("0.17"),
       collRatio: _W("0.5"),
@@ -147,7 +145,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
       .withArgs(_W("0.15"), bucket.asParams());
 
     // Policy with lossProb < bucket uses bucket
-    const policy1Params = await defaultPolicyParams({ rmAddress: rm.address, lossProb: _W("0.055") });
+    const policy1Params = await defaultPolicyParams({ rm: rm, lossProb: _W("0.055") });
 
     const signature1 = await makeSignedQuote(signer, policy1Params);
     const policy1Tx = await newPolicy(rm, cust, policy1Params, cust, signature1);
@@ -162,7 +160,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
     expect(policy1Data.ensuroCommission).to.equal(_W("0"));
 
     // Policy with lossProb = bucket uses bucket
-    const policy2Params = await defaultPolicyParams({ rmAddress: rm.address, lossProb: _W("0.15") });
+    const policy2Params = await defaultPolicyParams({ rm: rm, lossProb: _W("0.15") });
 
     const signature2 = await makeSignedQuote(signer, policy2Params);
     const policy2Tx = await newPolicy(rm, cust, policy2Params, cust, signature2);
@@ -177,7 +175,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
     expect(policy2Data.ensuroCommission).to.equal(_W("0"));
 
     // Policy with lossProb > bucket uses default
-    const policy3Params = await defaultPolicyParams({ rmAddress: rm.address, lossProb: _W("0.2") });
+    const policy3Params = await defaultPolicyParams({ rm: rm, lossProb: _W("0.2") });
 
     const signature3 = await makeSignedQuote(signer, policy3Params);
     const policy3Tx = await newPolicy(rm, cust, policy3Params, cust, signature3);
@@ -195,7 +193,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
   it("Two buckets: uses correct bucket", async () => {
     const { rm, pool } = await helpers.loadFixture(deployPoolFixture);
     const rmParams = await rm.params();
-    const bucket15 = bucketParameters({
+    const bucket15 = defaultBucketParams({
       moc: _W("1.1"),
       jrCollRatio: _W("0.17"),
       collRatio: _W("0.5"),
@@ -205,7 +203,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
       srRoc: _W("0.29"),
     });
 
-    const bucket10 = bucketParameters({
+    const bucket10 = defaultBucketParams({
       moc: _W("1"),
       jrCollRatio: _W("0.12"),
       collRatio: _W("1.0"),
@@ -224,11 +222,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
       .withArgs(_W("0.15"), bucket15.asParams());
 
     // Policy with lossProb < 10 uses bucket10
-    const policy1Params = await defaultPolicyParams({
-      rmAddress: rm.address,
-      lossProb: _W("0.055"),
-      payout: _A("790"),
-    });
+    const policy1Params = await defaultPolicyParams({ rm: rm,  lossProb: _W("0.055"), payout: _A("790") });
 
     const signature1 = await makeSignedQuote(signer, policy1Params);
     const policy1Tx = await newPolicy(rm, cust, policy1Params, cust, signature1);
@@ -246,11 +240,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
     );
 
     // Policy with lossProb = 10 uses bucket10
-    const policy2Params = await defaultPolicyParams({
-      rmAddress: rm.address,
-      lossProb: _W("0.1"),
-      payout: _A("930"),
-    });
+    const policy2Params = await defaultPolicyParams({ rm: rm, lossProb: _W("0.1"), payout: _A("930") });
 
     const signature2 = await makeSignedQuote(signer, policy2Params);
     const policy2Tx = await newPolicy(rm, cust, policy2Params, cust, signature2);
@@ -268,10 +258,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
     );
 
     // Policy with lossProb > 10 uses bucket15
-    const policy3Params = await defaultPolicyParams({
-      rmAddress: rm.address,
-      lossProb: _W("0.101"),
-    });
+    const policy3Params = await defaultPolicyParams({ rm: rm, lossProb: _W("0.101") });
 
     const signature3 = await makeSignedQuote(signer, policy3Params);
     const policy3Tx = await newPolicy(rm, cust, policy3Params, cust, signature3);
@@ -289,7 +276,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
     );
 
     // Policy with lossProb > 15 uses defaults
-    const policy4Params = await defaultPolicyParams({ rmAddress: rm.address, lossProb: _W("0.2") });
+    const policy4Params = await defaultPolicyParams({ rm: rm, lossProb: _W("0.2") });
 
     const signature4 = await makeSignedQuote(signer, policy4Params);
     const policy4Tx = await newPolicy(rm, cust, policy4Params, cust, signature4);
@@ -310,10 +297,10 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
   it("Only allows bucket insertion in the right order", async () => {
     const { rm } = await helpers.loadFixture(deployPoolFixture);
 
-    const bucket5 = bucketParameters({});
-    const bucket7 = bucketParameters({});
-    const bucket10 = bucketParameters({});
-    const bucket15 = bucketParameters({});
+    const bucket5 = defaultBucketParams({});
+    const bucket7 = defaultBucketParams({});
+    const bucket10 = defaultBucketParams({});
+    const bucket15 = defaultBucketParams({});
 
     await rm.pushBucket(_W("10"), bucket10.asParams());
     expect(await rm.buckets()).to.deep.equal([_W("10"), _W("0"), _W("0"), _W("0")]);
@@ -344,7 +331,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
 
   it("Allows obtaining bucket parameters", async () => {
     const { rm } = await helpers.loadFixture(deployPoolFixture);
-    const bucket = bucketParameters({});
+    const bucket = defaultBucketParams({});
     await rm.pushBucket(_W("0.1"), bucket);
 
     expect(await rm.bucketParams(_W("0.1"))).to.deep.equal(bucket.asParams());
@@ -353,26 +340,11 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
   it("Validates bucket parameters", async () => {
     const { rm } = await helpers.loadFixture(deployPoolFixture);
 
-    await expect(rm.pushBucket(_W("0.1"), bucketParameters({ moc: _W("0.2") }).asParams())).to.be.revertedWith(
+    await expect(rm.pushBucket(_W("0.1"), defaultBucketParams({ moc: _W("0.2") }).asParams())).to.be.revertedWith(
       "Validation: moc must be [0.5, 4]"
     );
   });
 });
-
-function bucketParameters({ moc, jrCollRatio, collRatio, ensuroPpFee, ensuroCocFee, jrRoc, srRoc }) {
-  return {
-    moc: moc || _W("1.1"),
-    jrCollRatio: jrCollRatio || _W("0.1"),
-    collRatio: collRatio || _W("0.2"),
-    ensuroPpFee: ensuroPpFee || _W("0.05"),
-    ensuroCocFee: ensuroCocFee || _W("0.2"),
-    jrRoc: jrRoc || _W("0.1"),
-    srRoc: srRoc || _W("0.2"),
-    asParams: function () {
-      return [this.moc, this.jrCollRatio, this.collRatio, this.ensuroPpFee, this.ensuroCocFee, this.jrRoc, this.srRoc];
-    },
-  };
-}
 
 /**
  * Extract the policy data from the NewPolicy event of the transaction tx.
@@ -400,7 +372,7 @@ async function getPolicyData(pool, tx) {
     start: policyData[12],
     expiration: policyData[13],
   };
-  ret.moc = ret.purePremium.mul(_W("1")).div(ret.payout.mul(ret.lossProb).div(_W("1")));
+  ret.moc = (ret.purePremium * _W("1")) / ((ret.payout * ret.lossProb) / _W("1"));
 
   return ret;
 }

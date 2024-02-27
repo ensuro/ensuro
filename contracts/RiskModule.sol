@@ -57,9 +57,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   address internal _wallet; // Address of the RiskModule provider
 
   /// @custom:oz-upgrades-unsafe-allow constructor
-  constructor(IPolicyPool policyPool_, IPremiumsAccount premiumsAccount_)
-    PolicyPoolComponent(policyPool_)
-  {
+  constructor(IPolicyPool policyPool_, IPremiumsAccount premiumsAccount_) PolicyPoolComponent(policyPool_) {
     require(
       PolicyPoolComponent(address(premiumsAccount_)).policyPool() == policyPool_,
       "The PremiumsAccount must be part of the Pool"
@@ -88,15 +86,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     address wallet_
   ) internal onlyInitializing {
     __PolicyPoolComponent_init();
-    __RiskModule_init_unchained(
-      name_,
-      collRatio_,
-      ensuroPpFee_,
-      srRoc_,
-      maxPayoutPerPolicy_,
-      exposureLimit_,
-      wallet_
-    );
+    __RiskModule_init_unchained(name_, collRatio_, ensuroPpFee_, srRoc_, maxPayoutPerPolicy_, exposureLimit_, wallet_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
@@ -130,10 +120,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   function _upgradeValidations(address newImpl) internal view virtual override {
     super._upgradeValidations(newImpl);
     IRiskModule newRM = IRiskModule(newImpl);
-    require(
-      newRM.premiumsAccount() == _premiumsAccount,
-      "Can't upgrade changing the PremiumsAccount"
-    );
+    require(newRM.premiumsAccount() == _premiumsAccount, "Can't upgrade changing the PremiumsAccount");
   }
 
   /**
@@ -146,30 +133,21 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   // runs validation on RiskModule parameters
   function _validateParameters() internal view virtual override {
     // _maxPayoutPerPolicy no limits
-    require(
-      exposureLimit() >= _activeExposure,
-      "Validation: exposureLimit can't be less than actual activeExposure"
-    );
+    require(exposureLimit() >= _activeExposure, "Validation: exposureLimit can't be less than actual activeExposure");
     require(_wallet != address(0), "Validation: Wallet can't be zero address");
     _validatePackedParams(_params);
   }
 
   function _validatePackedParams(PackedParams storage params_) internal view {
     require(params_.jrCollRatio <= HUNDRED_PERCENT, "Validation: jrCollRatio must be <=1");
-    require(
-      params_.collRatio <= HUNDRED_PERCENT && params_.collRatio > 0,
-      "Validation: collRatio must be <=1"
-    );
+    require(params_.collRatio <= HUNDRED_PERCENT && params_.collRatio > 0, "Validation: collRatio must be <=1");
     require(params_.collRatio >= params_.jrCollRatio, "Validation: collRatio >= jrCollRatio");
     require(params_.moc <= MAX_MOC && params_.moc >= MIN_MOC, "Validation: moc must be [0.5, 4]");
     require(params_.ensuroPpFee <= HUNDRED_PERCENT, "Validation: ensuroPpFee must be <= 1");
     require(params_.ensuroCocFee <= HUNDRED_PERCENT, "Validation: ensuroCocFee must be <= 1");
     require(params_.srRoc <= HUNDRED_PERCENT, "Validation: srRoc must be <= 1 (100%)");
     require(params_.jrRoc <= HUNDRED_PERCENT, "Validation: jrRoc must be <= 1 (100%)");
-    require(
-      params_.exposureLimit > 0 && params_.maxPayoutPerPolicy > 0,
-      "Exposure and MaxPayout must be >0"
-    );
+    require(params_.exposureLimit > 0 && params_.maxPayoutPerPolicy > 0, "Exposure and MaxPayout must be >0");
   }
 
   function name() public view override returns (string memory) {
@@ -190,12 +168,12 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   // solhint-disable-next-line func-name-mixedcase
   function _XtoAmount(uint8 decimals, uint32 value) internal view returns (uint256) {
     // X decimals to currency decimals (6 for USDC)
-    return uint256(value) * 10**(currency().decimals() - decimals);
+    return uint256(value) * 10 ** (currency().decimals() - decimals);
   }
 
   function _amountToX(uint8 decimals, uint256 value) internal view returns (uint32) {
     // currency decimals to X decimals (assuming X < currency decimals)
-    return (value / 10**(currency().decimals() - decimals)).toUint32();
+    return (value / 10 ** (currency().decimals() - decimals)).toUint32();
   }
 
   function maxPayoutPerPolicy() public view override returns (uint256) {
@@ -218,34 +196,25 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     return _wallet;
   }
 
-  function setParam(Parameter param, uint256 newValue)
-    external
-    onlyGlobalOrComponentRole3(LEVEL1_ROLE, LEVEL2_ROLE, LEVEL3_ROLE)
-  {
+  function setParam(
+    Parameter param,
+    uint256 newValue
+  ) external onlyGlobalOrComponentRole3(LEVEL1_ROLE, LEVEL2_ROLE, LEVEL3_ROLE) {
     bool tweak = !hasPoolRole(LEVEL2_ROLE) && !hasPoolRole(LEVEL1_ROLE);
     if (param == Parameter.moc) {
       require(!tweak || _isTweakWad(_4toWad(_params.moc), newValue, 1e17), "Tweak exceeded");
       _params.moc = _wadTo4(newValue);
     } else if (param == Parameter.jrCollRatio) {
-      require(
-        !tweak || _isTweakWad(_4toWad(_params.jrCollRatio), newValue, 1e17),
-        "Tweak exceeded"
-      );
+      require(!tweak || _isTweakWad(_4toWad(_params.jrCollRatio), newValue, 1e17), "Tweak exceeded");
       _params.jrCollRatio = _wadTo4(newValue);
     } else if (param == Parameter.collRatio) {
       require(!tweak || _isTweakWad(_4toWad(_params.collRatio), newValue, 1e17), "Tweak exceeded");
       _params.collRatio = _wadTo4(newValue);
     } else if (param == Parameter.ensuroPpFee) {
-      require(
-        !tweak || _isTweakWad(_4toWad(_params.ensuroPpFee), newValue, 1e17),
-        "Tweak exceeded"
-      );
+      require(!tweak || _isTweakWad(_4toWad(_params.ensuroPpFee), newValue, 1e17), "Tweak exceeded");
       _params.ensuroPpFee = _wadTo4(newValue);
     } else if (param == Parameter.ensuroCocFee) {
-      require(
-        !tweak || _isTweakWad(_4toWad(_params.ensuroCocFee), newValue, 1e17),
-        "Tweak exceeded"
-      );
+      require(!tweak || _isTweakWad(_4toWad(_params.ensuroCocFee), newValue, 1e17), "Tweak exceeded");
       _params.ensuroCocFee = _wadTo4(newValue);
     } else if (param == Parameter.jrRoc) {
       require(!tweak || _isTweakWad(_4toWad(_params.jrRoc), newValue, 1e17), "Tweak exceeded");
@@ -259,19 +228,14 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     } else if (param == Parameter.exposureLimit) {
       require(newValue >= _activeExposure, "Can't set exposureLimit less than active exposure");
       require(!tweak || _isTweakWad(exposureLimit(), newValue, 1e17), "Tweak exceeded");
-      require(
-        newValue <= exposureLimit() || hasPoolRole(LEVEL1_ROLE),
-        "Tweak exceeded: Increase requires LEVEL1_ROLE"
-      );
+      require(newValue <= exposureLimit() || hasPoolRole(LEVEL1_ROLE), "Tweak exceeded: Increase requires LEVEL1_ROLE");
       _params.exposureLimit = _amountToX(0, newValue);
     } else if (param == Parameter.maxDuration) {
       require(!tweak, "Tweak exceeded");
       _params.maxDuration = newValue.toUint16();
     }
     _parameterChanged(
-      IAccessManager.GovernanceActions(
-        uint256(IAccessManager.GovernanceActions.setMoc) + uint256(param)
-      ),
+      IAccessManager.GovernanceActions(uint256(IAccessManager.GovernanceActions.setMoc) + uint256(param)),
       newValue,
       tweak
     );
@@ -327,14 +291,9 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     } else {
       srScr = 0;
     }
-    uint256 jrCoc = jrScr.wadMul(
-      (p.jrRoc * (expiration - block.timestamp)).wadDiv(SECONDS_IN_YEAR_WAD)
-    );
-    uint256 srCoc = srScr.wadMul(
-      (p.srRoc * (expiration - block.timestamp)).wadDiv(SECONDS_IN_YEAR_WAD)
-    );
-    uint256 ensuroCommission = purePremium.wadMul(p.ensuroPpFee) +
-      (jrCoc + srCoc).wadMul(p.ensuroCocFee);
+    uint256 jrCoc = jrScr.wadMul((p.jrRoc * (expiration - block.timestamp)).wadDiv(SECONDS_IN_YEAR_WAD));
+    uint256 srCoc = srScr.wadMul((p.srRoc * (expiration - block.timestamp)).wadDiv(SECONDS_IN_YEAR_WAD));
+    uint256 ensuroCommission = purePremium.wadMul(p.ensuroPpFee) + (jrCoc + srCoc).wadMul(p.ensuroCocFee);
     return purePremium + ensuroCommission + (jrCoc + srCoc);
   }
 
@@ -359,17 +318,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     address onBehalfOf,
     uint96 internalId
   ) internal virtual returns (Policy.PolicyData memory) {
-    return
-      _newPolicyWithParams(
-        payout,
-        premium,
-        lossProb,
-        expiration,
-        payer,
-        onBehalfOf,
-        internalId,
-        params()
-      );
+    return _newPolicyWithParams(payout, premium, lossProb, expiration, payer, onBehalfOf, internalId, params());
   }
 
   /**
@@ -402,14 +351,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
       "Payer must allow caller to transfer the premium"
     );
     require(payout <= maxPayoutPerPolicy(), "RiskModule: Payout is more than maximum per policy");
-    Policy.PolicyData memory policy = Policy.initialize(
-      this,
-      params_,
-      premium,
-      payout,
-      lossProb,
-      expiration
-    );
+    Policy.PolicyData memory policy = Policy.initialize(this, params_, premium, payout, lossProb, expiration);
     _activeExposure += policy.payout;
     require(_activeExposure <= exposureLimit(), "RiskModule: Exposure limit exceeded");
     uint256 policyId = _policyPool.newPolicy(policy, payer, onBehalfOf, internalId);

@@ -67,11 +67,7 @@ interface IEToken is IERC20 {
    * @param policyInterestRate The annualized interest rate that was paid for the `scrAmount`, must be the same that was
    * sent in `lockScr` call.
    */
-  function unlockScr(
-    uint256 scrAmount,
-    uint256 policyInterestRate,
-    int256 adjustment
-  ) external;
+  function unlockScr(uint256 scrAmount, uint256 policyInterestRate, int256 adjustment) external;
 
   /**
    * @dev Registers a deposit of liquidity in the pool. Called from the PolicyPool, assumes the amount has already been

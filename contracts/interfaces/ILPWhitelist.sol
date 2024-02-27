@@ -16,11 +16,7 @@ interface ILPWhitelist {
    * @param amount The amount of the deposit
    * @return true if `provider` deposit is accepted, false if not
    */
-  function acceptsDeposit(
-    IEToken etoken,
-    address provider,
-    uint256 amount
-  ) external view returns (bool);
+  function acceptsDeposit(IEToken etoken, address provider, uint256 amount) external view returns (bool);
 
   /**
    * @dev Indicates whether or not the eTokens can be transferred from `providerFrom` to `providerTo`
@@ -46,9 +42,5 @@ interface ILPWhitelist {
    * @param amount The amount of the withdrawal
    * @return true if `provider` withdraw request is accepted, false if not
    */
-  function acceptsWithdrawal(
-    IEToken etoken,
-    address provider,
-    uint256 amount
-  ) external view returns (bool);
+  function acceptsWithdrawal(IEToken etoken, address provider, uint256 amount) external view returns (bool);
 }

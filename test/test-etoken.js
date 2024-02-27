@@ -15,7 +15,7 @@ describe("Etoken", () => {
 
   it("Refuses transfers to null address", async () => {
     const { etk } = await helpers.loadFixture(etokenFixture);
-    await expect(etk.transfer(hre.ethers.constants.AddressZero, _A(10))).to.be.revertedWith(
+    await expect(etk.transfer(hre.ethers.ZeroAddress, _A(10))).to.be.revertedWith(
       "EToken: transfer to the zero address"
     );
   });
@@ -23,16 +23,14 @@ describe("Etoken", () => {
   it("Checks user balance", async () => {
     const { etk } = await helpers.loadFixture(etokenFixture);
 
-    await expect(etk.connect(lp2).transfer(lp.address, _A(10))).to.be.revertedWith(
-      "EToken: transfer amount exceeds balance"
-    );
+    await expect(etk.connect(lp2).transfer(lp, _A(10))).to.be.revertedWith("EToken: transfer amount exceeds balance");
   });
 
   it("Returns the available funds", async () => {
     const { etk, pool } = await helpers.loadFixture(etokenFixture);
     expect(await etk.fundsAvailable()).to.equal(_A(3000));
 
-    await pool.connect(lp).withdraw(etk.address, _A(3000));
+    await pool.connect(lp).withdraw(etk, _A(3000));
 
     expect(await etk.fundsAvailable()).to.equal(_A(0));
   });
@@ -40,13 +38,13 @@ describe("Etoken", () => {
   it("Only allows PolicyPool to add new borrowers", async () => {
     const { etk } = await helpers.loadFixture(etokenFixture);
 
-    await expect(etk.addBorrower(lp.address)).to.be.revertedWith("The caller must be the PolicyPool");
+    await expect(etk.addBorrower(lp)).to.be.revertedWith("The caller must be the PolicyPool");
   });
 
   it("Only allows PolicyPool to remove borrowers", async () => {
     const { etk } = await helpers.loadFixture(etokenFixture);
 
-    await expect(etk.removeBorrower(lp.address)).to.be.revertedWith("The caller must be the PolicyPool");
+    await expect(etk.removeBorrower(lp)).to.be.revertedWith("The caller must be the PolicyPool");
   });
 
   it("Allows setting whitelist to null", async () => {
@@ -54,9 +52,9 @@ describe("Etoken", () => {
 
     grantRole(hre, await pool.access(), "GUARDIAN_ROLE");
 
-    expect(await etk.setWhitelist(hre.ethers.constants.AddressZero)).to.emit(await pool.access(), "ComponentChanged");
+    expect(await etk.setWhitelist(hre.ethers.ZeroAddress)).to.emit(await pool.access(), "ComponentChanged");
 
-    expect(await etk.whitelist()).to.equal(hre.ethers.constants.AddressZero);
+    expect(await etk.whitelist()).to.equal(hre.ethers.ZeroAddress);
   });
 
   it("Can't create etoken without name or symbol", async () => {
@@ -74,7 +72,7 @@ describe("Etoken", () => {
     );
 
     const pool = await deployPool({
-      currency: currency.address,
+      currency: currency,
       grantRoles: [],
       treasuryAddress: "0x87c47c9a5a2aa74ae714857d64911d9a091c25b1", // Random address
     });
@@ -82,8 +80,8 @@ describe("Etoken", () => {
 
     const etk = await addEToken(pool, {});
 
-    await currency.connect(lp).approve(pool.address, _A(5000));
-    await pool.connect(lp).deposit(etk.address, _A(3000));
+    await currency.connect(lp).approve(pool, _A(5000));
+    await pool.connect(lp).deposit(etk, _A(3000));
 
     return { currency, pool, etk };
   }

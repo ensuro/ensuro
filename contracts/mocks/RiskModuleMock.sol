@@ -20,9 +20,7 @@ contract RiskModuleMock is RiskModule {
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
-  constructor(IPolicyPool policyPool_, IPremiumsAccount premiumsAccount_)
-    RiskModule(policyPool_, premiumsAccount_)
-  {} // solhint-disable-line no-empty-blocks
+  constructor(IPolicyPool policyPool_, IPremiumsAccount premiumsAccount_) RiskModule(policyPool_, premiumsAccount_) {}
 
   /**
    * @dev Initializes the RiskModule
@@ -43,15 +41,7 @@ contract RiskModuleMock is RiskModule {
     uint256 exposureLimit_,
     address wallet_
   ) public initializer {
-    __RiskModule_init(
-      name_,
-      collRatio_,
-      ensuroPpFee_,
-      srRoc_,
-      maxPayoutPerPolicy_,
-      exposureLimit_,
-      wallet_
-    );
+    __RiskModule_init(name_, collRatio_, ensuroPpFee_, srRoc_, maxPayoutPerPolicy_, exposureLimit_, wallet_);
   }
 
   function newPolicy(
@@ -66,10 +56,7 @@ contract RiskModuleMock is RiskModule {
     return _newPolicy(payout, premium, lossProb, expiration, payer, onBehalfOf, internalId).id;
   }
 
-  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout)
-    external
-    onlyComponentRole(RESOLVER_ROLE)
-  {
+  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external onlyComponentRole(RESOLVER_ROLE) {
     _policyPool.resolvePolicy(policy, payout);
   }
 }

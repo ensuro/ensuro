@@ -66,27 +66,17 @@ library Policy {
       policy.srScr = 0;
     }
     // Calculate CoCs
-    policy.jrCoc = policy.jrScr.wadMul(
-      (rmParams.jrRoc * (policy.expiration - policy.start)) / SECONDS_PER_YEAR
-    );
-    policy.srCoc = policy.srScr.wadMul(
-      (rmParams.srRoc * (policy.expiration - policy.start)) / SECONDS_PER_YEAR
-    );
+    policy.jrCoc = policy.jrScr.wadMul((rmParams.jrRoc * (policy.expiration - policy.start)) / SECONDS_PER_YEAR);
+    policy.srCoc = policy.srScr.wadMul((rmParams.srRoc * (policy.expiration - policy.start)) / SECONDS_PER_YEAR);
     uint256 coc = policy.jrCoc + policy.srCoc;
-    policy.ensuroCommission =
-      policy.purePremium.wadMul(rmParams.ensuroPpFee) +
-      coc.wadMul(rmParams.ensuroCocFee);
-    require(
-      (policy.purePremium + policy.ensuroCommission + coc) <= premium,
-      "Premium less than minimum"
-    );
+    policy.ensuroCommission = policy.purePremium.wadMul(rmParams.ensuroPpFee) + coc.wadMul(rmParams.ensuroCocFee);
+    require((policy.purePremium + policy.ensuroCommission + coc) <= premium, "Premium less than minimum");
     policy.partnerCommission = premium - policy.purePremium - coc - policy.ensuroCommission;
     return policy;
   }
 
   function jrInterestRate(PolicyData memory policy) internal pure returns (uint256) {
-    return
-      ((policy.jrCoc * SECONDS_PER_YEAR) / (policy.expiration - policy.start)).wadDiv(policy.jrScr);
+    return ((policy.jrCoc * SECONDS_PER_YEAR) / (policy.expiration - policy.start)).wadDiv(policy.jrScr);
   }
 
   function jrAccruedInterest(PolicyData memory policy) internal view returns (uint256) {
@@ -94,8 +84,7 @@ library Policy {
   }
 
   function srInterestRate(PolicyData memory policy) internal pure returns (uint256) {
-    return
-      ((policy.srCoc * SECONDS_PER_YEAR) / (policy.expiration - policy.start)).wadDiv(policy.srScr);
+    return ((policy.srCoc * SECONDS_PER_YEAR) / (policy.expiration - policy.start)).wadDiv(policy.srScr);
   }
 
   function srAccruedInterest(PolicyData memory policy) internal view returns (uint256) {

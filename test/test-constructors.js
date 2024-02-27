@@ -3,7 +3,7 @@ const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { amountFunction } = require("../js/utils");
 const { initCurrency, deployPool, deployPremiumsAccount } = require("../js/test-utils");
 
-const { AddressZero } = hre.ethers.constants;
+const { ZeroAddress } = hre.ethers;
 
 describe("Constructor validations", function () {
   const rndAddr = "0xd758af6bfc2f0908d7c5f89942be52c36a6b3cab";
@@ -28,33 +28,21 @@ describe("Constructor validations", function () {
     // Deploy AccessManager
     const access = await hre.upgrades.deployProxy(AccessManager, [], { kind: "uups" });
 
-    await access.deployed();
+    await access.waitForDeployment();
 
-    return {
-      currency,
-      _A,
-      owner,
-      access,
-      PolicyPool,
-    };
+    return { currency, _A, owner, access, PolicyPool };
   }
 
   async function setupFixtureWithPool() {
     const ret = await setupFixture();
-    const policyPool = await deployPool({ currency: ret.currency.address, access: ret.access.address });
-    return {
-      policyPool,
-      ...ret,
-    };
+    const policyPool = await deployPool({ currency: ret.currency, access: ret.access });
+    return { policyPool, ...ret };
   }
 
   async function setupFixtureWithPoolAndPA() {
     const ret = await setupFixtureWithPool();
     const premiumsAccount = await deployPremiumsAccount(ret.policyPool, {});
-    return {
-      premiumsAccount,
-      ...ret,
-    };
+    return { premiumsAccount, ...ret };
   }
 
   // Nothing to check in AccessManager constructor
@@ -62,15 +50,17 @@ describe("Constructor validations", function () {
   it("Checks PolicyPool constructor validations", async () => {
     const { access, PolicyPool, currency } = await helpers.loadFixture(setupFixtureWithPool);
     const initArgs = ["foo", "bar", rndAddr];
+    const currencyAddr = await hre.ethers.resolveAddress(currency);
+    const accessAddr = await hre.ethers.resolveAddress(access);
     await expect(
       hre.upgrades.deployProxy(PolicyPool, initArgs, {
-        constructorArgs: [AddressZero, currency.address],
+        constructorArgs: [ZeroAddress, currencyAddr],
         ...deployProxyArgs,
       })
     ).to.be.revertedWith("PolicyPool: access cannot be zero address");
     await expect(
       hre.upgrades.deployProxy(PolicyPool, initArgs, {
-        constructorArgs: [access.address, AddressZero],
+        constructorArgs: [accessAddr, ZeroAddress],
         ...deployProxyArgs,
       })
     ).to.be.revertedWith("PolicyPool: currency cannot be zero address");
@@ -80,7 +70,7 @@ describe("Constructor validations", function () {
     const EToken = await hre.ethers.getContractFactory("EToken");
     const initArgs = ["foo", "bar", 0, 0];
     await expect(
-      hre.upgrades.deployProxy(EToken, initArgs, { constructorArgs: [AddressZero], ...deployReserveArgs })
+      hre.upgrades.deployProxy(EToken, initArgs, { constructorArgs: [ZeroAddress], ...deployReserveArgs })
     ).to.be.revertedWith("PolicyPoolComponent: policyPool cannot be zero address");
   });
 
@@ -88,7 +78,7 @@ describe("Constructor validations", function () {
     const PremiumsAccount = await hre.ethers.getContractFactory("PremiumsAccount");
     await expect(
       hre.upgrades.deployProxy(PremiumsAccount, [], {
-        constructorArgs: [AddressZero, AddressZero, AddressZero],
+        constructorArgs: [ZeroAddress, ZeroAddress, ZeroAddress],
         ...deployReserveArgs,
       })
     ).to.be.revertedWith("PolicyPoolComponent: policyPool cannot be zero address");
@@ -98,27 +88,30 @@ describe("Constructor validations", function () {
     const { premiumsAccount, policyPool, currency, access } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
     const TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
     const initArgs = ["foo", 0, 0, 0, 0, 0, rndAddr];
+    const paAddr = await hre.ethers.resolveAddress(premiumsAccount);
+    const poolAddr = await hre.ethers.resolveAddress(policyPool);
     await expect(
       hre.upgrades.deployProxy(TrustfulRiskModule, initArgs, {
-        constructorArgs: [AddressZero, premiumsAccount.address],
+        constructorArgs: [ZeroAddress, paAddr],
         ...deployProxyArgs,
       })
     ).to.be.revertedWith("PolicyPoolComponent: policyPool cannot be zero address");
     await expect(
       hre.upgrades.deployProxy(TrustfulRiskModule, initArgs, {
-        constructorArgs: [policyPool.address, AddressZero],
+        constructorArgs: [poolAddr, ZeroAddress],
         ...deployProxyArgs,
       })
     ).to.be.reverted;
     const anotherPool = await deployPool({
-      currency: currency.address,
-      access: access.address,
+      currency: currency,
+      access: access,
       dontGrantL123Roles: true,
     });
     const anotherPA = await deployPremiumsAccount(anotherPool, {});
+    const anotherPAAddr = await hre.ethers.resolveAddress(anotherPA);
     await expect(
       hre.upgrades.deployProxy(TrustfulRiskModule, initArgs, {
-        constructorArgs: [policyPool.address, anotherPA.address],
+        constructorArgs: [poolAddr, anotherPAAddr],
         ...deployProxyArgs,
       })
     ).to.be.revertedWith("The PremiumsAccount must be part of the Pool");
@@ -128,27 +121,30 @@ describe("Constructor validations", function () {
     const { premiumsAccount, policyPool, currency, access } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
     const SignedQuoteRiskModule = await hre.ethers.getContractFactory("SignedQuoteRiskModule");
     const initArgs = ["foo", 0, 0, 0, 0, 0, rndAddr];
+    const poolAddr = await hre.ethers.resolveAddress(policyPool);
+    const paAddr = await hre.ethers.resolveAddress(premiumsAccount);
     await expect(
       hre.upgrades.deployProxy(SignedQuoteRiskModule, initArgs, {
-        constructorArgs: [AddressZero, premiumsAccount.address, false],
+        constructorArgs: [ZeroAddress, paAddr, false],
         ...deployProxyArgs,
       })
     ).to.be.revertedWith("PolicyPoolComponent: policyPool cannot be zero address");
     await expect(
       hre.upgrades.deployProxy(SignedQuoteRiskModule, initArgs, {
-        constructorArgs: [policyPool.address, AddressZero, false],
+        constructorArgs: [poolAddr, ZeroAddress, false],
         ...deployProxyArgs,
       })
     ).to.be.reverted;
     const anotherPool = await deployPool({
-      currency: currency.address,
-      access: access.address,
+      currency: currency,
+      access: access,
       dontGrantL123Roles: true,
     });
     const anotherPA = await deployPremiumsAccount(anotherPool, {});
+    const anotherPaAddr = await hre.ethers.resolveAddress(anotherPA);
     await expect(
       hre.upgrades.deployProxy(SignedQuoteRiskModule, initArgs, {
-        constructorArgs: [policyPool.address, anotherPA.address, false],
+        constructorArgs: [poolAddr, anotherPaAddr, false],
         ...deployProxyArgs,
       })
     ).to.be.revertedWith("The PremiumsAccount must be part of the Pool");
@@ -157,16 +153,16 @@ describe("Constructor validations", function () {
   it("Checks LPManualWhitelist constructor validations", async () => {
     const LPManualWhitelist = await hre.ethers.getContractFactory("LPManualWhitelist");
     await expect(
-      hre.upgrades.deployProxy(LPManualWhitelist, [], { constructorArgs: [AddressZero], ...deployProxyArgs })
+      hre.upgrades.deployProxy(LPManualWhitelist, [], { constructorArgs: [ZeroAddress], ...deployProxyArgs })
     ).to.be.revertedWith("PolicyPoolComponent: policyPool cannot be zero address");
   });
 
   it("Checks ERC4626AssetManager constructor validations", async () => {
     const ERC4626AssetManager = await hre.ethers.getContractFactory("ERC4626AssetManager");
-    await expect(ERC4626AssetManager.deploy(AddressZero, rndAddr)).to.be.revertedWith(
+    await expect(ERC4626AssetManager.deploy(ZeroAddress, rndAddr)).to.be.revertedWith(
       "LiquidityThresholdAssetManager: asset cannot be zero address"
     );
-    await expect(ERC4626AssetManager.deploy(rndAddr, AddressZero)).to.be.revertedWith(
+    await expect(ERC4626AssetManager.deploy(rndAddr, ZeroAddress)).to.be.revertedWith(
       "ERC4626AssetManager: vault cannot be zero address"
     );
   });

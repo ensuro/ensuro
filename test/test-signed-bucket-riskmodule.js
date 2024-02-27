@@ -8,6 +8,7 @@ const {
   grantRole,
   makeBucketQuoteMessage,
   makeSignedQuote,
+  defaultBucketParams,
 } = require("../js/utils");
 const { RiskModuleParameter } = require("../js/enums");
 const { initCurrency, deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
@@ -32,7 +33,7 @@ describe("SignedBucketRiskModule contract tests", function () {
     );
 
     const pool = await deployPool({
-      currency: currency.address,
+      currency: currency,
       grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
       treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
     });
@@ -43,18 +44,15 @@ describe("SignedBucketRiskModule contract tests", function () {
     // Setup the liquidity sources
     const srEtk = await addEToken(pool, {});
     const jrEtk = await addEToken(pool, {});
-    const premiumsAccount = await deployPremiumsAccount(pool, {
-      srEtkAddr: srEtk.address,
-      jrEtkAddr: jrEtk.address,
-    });
+    const premiumsAccount = await deployPremiumsAccount(pool, { srEtk: srEtk, jrEtk: jrEtk });
 
     // Provide some liquidity
-    await currency.connect(lp).approve(pool.address, _A(15000));
-    await pool.connect(lp).deposit(srEtk.address, _A(10000));
-    await pool.connect(lp).deposit(jrEtk.address, _A(5000));
+    await currency.connect(lp).approve(pool, _A(15000));
+    await pool.connect(lp).deposit(srEtk, _A(10000));
+    await pool.connect(lp).deposit(jrEtk, _A(5000));
 
     // Customer approval
-    await currency.connect(cust).approve(pool.address, _A(500));
+    await currency.connect(cust).approve(pool, _A(500));
 
     // Setup the risk module
     const SignedBucketRiskModule = await hre.ethers.getContractFactory("SignedBucketRiskModule");
@@ -65,8 +63,8 @@ describe("SignedBucketRiskModule contract tests", function () {
     await rm.setParam(RiskModuleParameter.jrCollRatio, _W("0.3"));
     await rm.setParam(RiskModuleParameter.jrRoc, _W("0.1"));
 
-    await accessManager.grantComponentRole(rm.address, await rm.PRICER_ROLE(), signer.address);
-    await accessManager.grantComponentRole(rm.address, await rm.RESOLVER_ROLE(), resolver.address);
+    await accessManager.grantComponentRole(rm, await rm.PRICER_ROLE(), signer);
+    await accessManager.grantComponentRole(rm, await rm.RESOLVER_ROLE(), resolver);
     return { srEtk, jrEtk, premiumsAccount, rm, pool, accessManager, currency };
   }
 
@@ -87,14 +85,14 @@ describe("SignedBucketRiskModule contract tests", function () {
       policyParams.policyData,
       policyParams.bucketId,
       signature.r,
-      signature._vs,
+      signature.yParityAndS,
       policyParams.validUntil
     );
   }
 
   it("Uses the default parameters when no buckets are set up", async () => {
     const { rm, pool } = await helpers.loadFixture(deployPoolFixture);
-    const policyParams = await defaultPolicyParamsWithBucket({ rmAddress: rm.address });
+    const policyParams = await defaultPolicyParamsWithBucket({ rm: rm });
     const signature = await makeSignedQuote(signer, policyParams, makeBucketQuoteMessage);
     const tx = await newPolicy(rm, cust, policyParams, cust, signature);
 
@@ -115,33 +113,33 @@ describe("SignedBucketRiskModule contract tests", function () {
     const { rm, accessManager } = await helpers.loadFixture(deployPoolFixture);
 
     // level1
-    await expect(rm.connect(level1).setBucketParams(1, bucketParameters({}))).to.be.revertedWith(
-      accessControlMessage(level1.address, rm.address, "LEVEL2_ROLE")
+    await expect(rm.connect(level1).setBucketParams(1, defaultBucketParams({}))).to.be.revertedWith(
+      accessControlMessage(level1, rm, "LEVEL2_ROLE")
     );
     await expect(rm.connect(level1).deleteBucket(1)).to.be.revertedWith(
-      accessControlMessage(level1.address, rm.address, "LEVEL2_ROLE")
+      accessControlMessage(level1, rm, "LEVEL2_ROLE")
     );
-    await grantRole(hre, accessManager, "LEVEL1_ROLE", level1.address);
-    await expect(rm.connect(level1).setBucketParams(1, bucketParameters({}))).not.to.be.reverted;
+    await grantRole(hre, accessManager, "LEVEL1_ROLE", level1);
+    await expect(rm.connect(level1).setBucketParams(1, defaultBucketParams({}))).not.to.be.reverted;
     await expect(rm.connect(level1).deleteBucket(1)).not.to.be.reverted;
 
     // level2
-    await expect(rm.connect(level2).setBucketParams(2, bucketParameters({}))).to.be.revertedWith(
-      accessControlMessage(level2.address, rm.address, "LEVEL2_ROLE")
+    await expect(rm.connect(level2).setBucketParams(2, defaultBucketParams({}))).to.be.revertedWith(
+      accessControlMessage(level2, rm, "LEVEL2_ROLE")
     );
     await expect(rm.connect(level2).deleteBucket(2)).to.be.revertedWith(
-      accessControlMessage(level2.address, rm.address, "LEVEL2_ROLE")
+      accessControlMessage(level2, rm, "LEVEL2_ROLE")
     );
-    await grantRole(hre, accessManager, "LEVEL2_ROLE", level2.address);
-    await expect(rm.connect(level2).setBucketParams(2, bucketParameters({}))).not.to.be.reverted;
+    await grantRole(hre, accessManager, "LEVEL2_ROLE", level2);
+    await expect(rm.connect(level2).setBucketParams(2, defaultBucketParams({}))).not.to.be.reverted;
     await expect(rm.connect(level2).deleteBucket(2)).not.to.be.reverted;
   });
 
   it("Can't set of delete bucketId = 0", async () => {
     const { rm, accessManager } = await helpers.loadFixture(deployPoolFixture);
 
-    await grantRole(hre, accessManager, "LEVEL1_ROLE", level1.address);
-    await expect(rm.connect(level1).setBucketParams(0, bucketParameters({}))).to.be.revertedWith(
+    await grantRole(hre, accessManager, "LEVEL1_ROLE", level1);
+    await expect(rm.connect(level1).setBucketParams(0, defaultBucketParams({}))).to.be.revertedWith(
       "SignedBucketRiskModule: bucketId can't be zero, set default RM parameters"
     );
     await expect(rm.connect(level1).deleteBucket(0)).to.be.revertedWith(
@@ -152,7 +150,7 @@ describe("SignedBucketRiskModule contract tests", function () {
   it("Single bucket: uses correct bucket", async () => {
     const { rm, pool } = await helpers.loadFixture(deployPoolFixture);
     const rmParams = await rm.params();
-    const bucket = bucketParameters({
+    const bucket = defaultBucketParams({
       moc: _W("1.1"),
       jrCollRatio: _W("0.17"),
       collRatio: _W("0.5"),
@@ -167,11 +165,7 @@ describe("SignedBucketRiskModule contract tests", function () {
       .withArgs(1234, bucket.asParams());
 
     // Policy with bucketId = 1234 uses bucket parameters
-    const policy1Params = await defaultPolicyParamsWithBucket({
-      rmAddress: rm.address,
-      bucketId: 1234,
-      lossProb: _W("0.055"),
-    });
+    const policy1Params = await defaultPolicyParamsWithBucket({ rm: rm, bucketId: 1234, lossProb: _W("0.055") });
 
     const signature1 = await makeSignedQuote(signer, policy1Params, makeBucketQuoteMessage);
     const policy1Tx = await newPolicy(rm, cust, policy1Params, cust, signature1);
@@ -186,11 +180,7 @@ describe("SignedBucketRiskModule contract tests", function () {
     expect(policy1Data.ensuroCommission).to.equal(_W("0"));
 
     // Policy with non existent bucket reverts
-    const policy2Params = await defaultPolicyParamsWithBucket({
-      rmAddress: rm.address,
-      bucketId: 4321,
-      lossProb: _W("0.15"),
-    });
+    const policy2Params = await defaultPolicyParamsWithBucket({ rm: rm, bucketId: 4321, lossProb: _W("0.15") });
 
     const signature2 = await makeSignedQuote(signer, policy2Params, makeBucketQuoteMessage);
 
@@ -199,11 +189,7 @@ describe("SignedBucketRiskModule contract tests", function () {
     );
 
     // Policy with bucketId = 0 uses default
-    const policy3Params = await defaultPolicyParamsWithBucket({
-      rmAddress: rm.address,
-      bucketId: 0,
-      lossProb: _W("0.2"),
-    });
+    const policy3Params = await defaultPolicyParamsWithBucket({ rm: rm, bucketId: 0, lossProb: _W("0.2") });
 
     const signature3 = await makeSignedQuote(signer, policy3Params, makeBucketQuoteMessage);
     const policy3Tx = await newPolicy(rm, cust, policy3Params, cust, signature3);
@@ -221,7 +207,7 @@ describe("SignedBucketRiskModule contract tests", function () {
   it("Two buckets: uses correct bucket", async () => {
     const { rm, pool } = await helpers.loadFixture(deployPoolFixture);
     const rmParams = await rm.params();
-    const bucket15 = bucketParameters({
+    const bucket15 = defaultBucketParams({
       moc: _W("1.1"),
       jrCollRatio: _W("0.17"),
       collRatio: _W("0.5"),
@@ -231,7 +217,7 @@ describe("SignedBucketRiskModule contract tests", function () {
       srRoc: _W("0.29"),
     });
 
-    const bucket10 = bucketParameters({
+    const bucket10 = defaultBucketParams({
       moc: _W("1"),
       jrCollRatio: _W("0.12"),
       collRatio: _W("1.0"),
@@ -251,7 +237,7 @@ describe("SignedBucketRiskModule contract tests", function () {
 
     // Policy with bucketId = 10
     const policy1Params = await defaultPolicyParamsWithBucket({
-      rmAddress: rm.address,
+      rm: rm,
       bucketId: 10,
       lossProb: _W("0.055"),
       payout: _A("790"),
@@ -274,7 +260,7 @@ describe("SignedBucketRiskModule contract tests", function () {
 
     // Policy with bucketId = 10
     const policy2Params = await defaultPolicyParamsWithBucket({
-      rmAddress: rm.address,
+      rm: rm,
       lossProb: _W("0.1"),
       bucketId: 10,
       payout: _A("930"),
@@ -296,11 +282,7 @@ describe("SignedBucketRiskModule contract tests", function () {
     ).to.equal(_A("100.18296"));
 
     // Policy with bucketId = 15
-    const policy3Params = await defaultPolicyParamsWithBucket({
-      rmAddress: rm.address,
-      bucketId: 15,
-      lossProb: _W("0.101"),
-    });
+    const policy3Params = await defaultPolicyParamsWithBucket({ rm: rm, bucketId: 15, lossProb: _W("0.101") });
 
     const signature3 = await makeSignedQuote(signer, policy3Params, makeBucketQuoteMessage);
     const policy3Tx = await newPolicy(rm, cust, policy3Params, cust, signature3);
@@ -318,7 +300,7 @@ describe("SignedBucketRiskModule contract tests", function () {
     ).to.equal(_A("120.176024"));
 
     // Policy with bucketId = 0 uses defaults
-    const policy4Params = await defaultPolicyParamsWithBucket({ rmAddress: rm.address, lossProb: _W("0.2") });
+    const policy4Params = await defaultPolicyParamsWithBucket({ rm: rm, lossProb: _W("0.2") });
 
     const signature4 = await makeSignedQuote(signer, policy4Params, makeBucketQuoteMessage);
     const policy4Tx = await newPolicy(rm, cust, policy4Params, cust, signature4);
@@ -338,7 +320,7 @@ describe("SignedBucketRiskModule contract tests", function () {
 
   it("Allows obtaining bucket parameters", async () => {
     const { rm } = await helpers.loadFixture(deployPoolFixture);
-    const bucket = bucketParameters({});
+    const bucket = defaultBucketParams({});
     await rm.setBucketParams(1, bucket);
 
     expect(await rm.bucketParams(1)).to.deep.equal(bucket.asParams());
@@ -349,26 +331,11 @@ describe("SignedBucketRiskModule contract tests", function () {
   it("Validates bucket parameters", async () => {
     const { rm } = await helpers.loadFixture(deployPoolFixture);
 
-    await expect(rm.setBucketParams(1, bucketParameters({ moc: _W("0.2") }).asParams())).to.be.revertedWith(
+    await expect(rm.setBucketParams(1, defaultBucketParams({ moc: _W("0.2") }).asParams())).to.be.revertedWith(
       "Validation: moc must be [0.5, 4]"
     );
   });
 });
-
-function bucketParameters({ moc, jrCollRatio, collRatio, ensuroPpFee, ensuroCocFee, jrRoc, srRoc }) {
-  return {
-    moc: moc || _W("1.1"),
-    jrCollRatio: jrCollRatio || _W("0.1"),
-    collRatio: collRatio || _W("0.2"),
-    ensuroPpFee: ensuroPpFee || _W("0.05"),
-    ensuroCocFee: ensuroCocFee || _W("0.2"),
-    jrRoc: jrRoc || _W("0.1"),
-    srRoc: srRoc || _W("0.2"),
-    asParams: function () {
-      return [this.moc, this.jrCollRatio, this.collRatio, this.ensuroPpFee, this.ensuroCocFee, this.jrRoc, this.srRoc];
-    },
-  };
-}
 
 /**
  * Extract the policy data from the NewPolicy event of the transaction tx.
@@ -396,7 +363,7 @@ async function getPolicyData(pool, tx) {
     start: policyData[12],
     expiration: policyData[13],
   };
-  ret.moc = ret.purePremium.mul(_W("1")).div(ret.payout.mul(ret.lossProb).div(_W("1")));
+  ret.moc = (ret.purePremium * _W("1")) / ((ret.payout * ret.lossProb) / _W("1"));
 
   return ret;
 }

@@ -40,10 +40,7 @@ abstract contract LiquidityThresholdAssetManager is IAssetManager {
   }
 
   constructor(IERC20Metadata asset_) {
-    require(
-      address(asset_) != address(0),
-      "LiquidityThresholdAssetManager: asset cannot be zero address"
-    );
+    require(address(asset_) != address(0), "LiquidityThresholdAssetManager: asset cannot be zero address");
     _asset = asset_;
   }
 
@@ -67,10 +64,7 @@ abstract contract LiquidityThresholdAssetManager is IAssetManager {
   }
 
   function connect() public virtual override {
-    require(
-      IPolicyPoolComponent(address(this)).policyPool().currency() == _asset,
-      "Asset mismatch"
-    );
+    require(IPolicyPoolComponent(address(this)).policyPool().currency() == _asset, "Asset mismatch");
     DiamondStorage storage ds = diamondStorage();
     // When connecting I make sure the storage is clean, to avoid reusing data from previous AM that left
     // the data in a wrong state.
@@ -141,33 +135,29 @@ abstract contract LiquidityThresholdAssetManager is IAssetManager {
   }
 
   function liquidityMin() public view returns (uint256) {
-    return diamondStorage().liquidityMin * 10**_asset.decimals();
+    return diamondStorage().liquidityMin * 10 ** _asset.decimals();
   }
 
   function liquidityMiddle() public view returns (uint256) {
-    return diamondStorage().liquidityMiddle * 10**_asset.decimals();
+    return diamondStorage().liquidityMiddle * 10 ** _asset.decimals();
   }
 
   function liquidityMax() public view returns (uint256) {
-    return diamondStorage().liquidityMax * 10**_asset.decimals();
+    return diamondStorage().liquidityMax * 10 ** _asset.decimals();
   }
 
-  function setLiquidityThresholds(
-    uint256 min,
-    uint256 middle,
-    uint256 max
-  ) external validateParamsAfterChange {
+  function setLiquidityThresholds(uint256 min, uint256 middle, uint256 max) external validateParamsAfterChange {
     DiamondStorage storage ds = diamondStorage();
     if (min != type(uint256).max) {
-      ds.liquidityMin = (min / 10**_asset.decimals()).toUint32();
+      ds.liquidityMin = (min / 10 ** _asset.decimals()).toUint32();
       emit GovernanceAction(IAccessManager.GovernanceActions.setLiquidityMin, min);
     }
     if (middle != type(uint256).max) {
-      ds.liquidityMiddle = (middle / 10**_asset.decimals()).toUint32();
+      ds.liquidityMiddle = (middle / 10 ** _asset.decimals()).toUint32();
       emit GovernanceAction(IAccessManager.GovernanceActions.setLiquidityMiddle, middle);
     }
     if (max != type(uint256).max) {
-      ds.liquidityMax = (max / 10**_asset.decimals()).toUint32();
+      ds.liquidityMax = (max / 10 ** _asset.decimals()).toUint32();
       emit GovernanceAction(IAccessManager.GovernanceActions.setLiquidityMax, max);
     }
   }
@@ -176,7 +166,6 @@ abstract contract LiquidityThresholdAssetManager is IAssetManager {
    * @dev See {IERC165-supportsInterface}.
    */
   function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
-    return
-      interfaceId == type(IERC165).interfaceId || interfaceId == type(IAssetManager).interfaceId;
+    return interfaceId == type(IERC165).interfaceId || interfaceId == type(IAssetManager).interfaceId;
   }
 }

@@ -5,7 +5,6 @@ import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {IRiskModule} from "../interfaces/IRiskModule.sol";
 import {IEToken} from "../interfaces/IEToken.sol";
 import {IAccessManager} from "../interfaces/IAccessManager.sol";
-import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {Policy} from "../Policy.sol";
 import {ForwardProxy} from "./ForwardProxy.sol";
@@ -13,8 +12,7 @@ import {ForwardProxy} from "./ForwardProxy.sol";
 contract PolicyPoolMock is IPolicyPool {
   using Policy for Policy.PolicyData;
 
-  uint256 public constant MAX_INT =
-    0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
+  uint256 public constant MAX_INT = 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
 
   IERC20Metadata internal _currency;
   IAccessManager internal _access;
@@ -44,8 +42,8 @@ contract PolicyPoolMock is IPolicyPool {
 
   function newPolicy(
     Policy.PolicyData memory policy,
-    address, /* caller */
-    address, /* policyHolder */
+    address /* caller */,
+    address /* policyHolder */,
     uint96 internalId
   ) external override returns (uint256) {
     policy.id = (uint256(uint160(address(policy.riskModule))) << 96) + internalId;
@@ -57,10 +55,7 @@ contract PolicyPoolMock is IPolicyPool {
   function _resolvePolicy(Policy.PolicyData memory policy, uint256 payout) internal {
     require(policy.id != 0, "Policy not found");
     require(policy.hash() == policyHashes[policy.id], "Hash doesn't match");
-    require(
-      msg.sender == address(policy.riskModule),
-      "Only riskModule is authorized to resolve the policy"
-    );
+    require(msg.sender == address(policy.riskModule), "Only riskModule is authorized to resolve the policy");
     delete policies[policy.id];
     delete policyHashes[policy.id];
     emit PolicyResolved(IRiskModule(msg.sender), policy.id, payout);
@@ -74,10 +69,7 @@ contract PolicyPoolMock is IPolicyPool {
     _resolvePolicy(policy, 0);
   }
 
-  function resolvePolicyFullPayout(Policy.PolicyData calldata policy, bool customerWon)
-    external
-    override
-  {
+  function resolvePolicyFullPayout(Policy.PolicyData calldata policy, bool customerWon) external override {
     return _resolvePolicy(policy, customerWon ? policy.payout : 0);
   }
 
@@ -108,14 +100,7 @@ contract PolicyPoolMock is IPolicyPool {
     uint256 lossProb,
     uint40 expiration
   ) external {
-    Policy.PolicyData memory policy = Policy.initialize(
-      riskModule,
-      rmParams,
-      premium,
-      payout,
-      lossProb,
-      expiration
-    );
+    Policy.PolicyData memory policy = Policy.initialize(riskModule, rmParams, premium, payout, lossProb, expiration);
 
     emit NewPolicy(riskModule, policy);
   }
@@ -127,17 +112,12 @@ contract PolicyPoolMock is IPolicyPool {
  *      and other contracts that have functions that can be called only from PolicyPool
  */
 contract PolicyPoolMockForward is ForwardProxy {
-  uint256 public constant MAX_INT =
-    0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
+  uint256 public constant MAX_INT = 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
 
   IERC20Metadata internal _currency;
   IAccessManager internal _access;
 
-  constructor(
-    address forwardTo,
-    IERC20Metadata currency_,
-    IAccessManager access_
-  ) ForwardProxy(forwardTo) {
+  constructor(address forwardTo, IERC20Metadata currency_, IAccessManager access_) ForwardProxy(forwardTo) {
     _currency = currency_;
     _access = access_;
   }
