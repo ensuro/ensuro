@@ -175,11 +175,11 @@ async function deployTestCurrency({ currName, currSymbol, initialSupply, ...opts
       },
       hre
     )
-  ).contract.target;
+  ).contract;
 }
 
 async function deployAccessManager(opts, hre) {
-  return (await deployProxyContract({ contractClass: "AccessManager", ...opts }, hre)).contract.target;
+  return (await deployProxyContract({ contractClass: "AccessManager", ...opts }, hre)).contract;
 }
 
 async function deployPolicyPool({ accessAddress, currencyAddress, nftName, nftSymbol, treasuryAddress, ...opts }, hre) {
@@ -193,7 +193,7 @@ async function deployPolicyPool({ accessAddress, currencyAddress, nftName, nftSy
       },
       hre
     )
-  ).contract.target;
+  ).contract;
 }
 
 async function deployEToken(
@@ -210,13 +210,12 @@ async function deployEToken(
     },
     hre
   );
-  const contractAddr = await ethers.resolveAddress(contract);
   if (opts.addComponent) {
     let policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
     if (runAs) policyPool = policyPool.connect(runAs);
-    await policyPool.addComponent(contractAddr, 1);
+    await policyPool.addComponent(contract, 1);
   }
-  return contractAddr;
+  return contract;
 }
 
 async function deployPremiumsAccount({ poolAddress, juniorEtk, seniorEtk, runAs, ...opts }, hre) {
@@ -230,13 +229,12 @@ async function deployPremiumsAccount({ poolAddress, juniorEtk, seniorEtk, runAs,
     },
     hre
   );
-  const contractAddr = await ethers.resolveAddress(contract);
   if (opts.addComponent) {
     let policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
     if (runAs) policyPool = policyPool.connect(runAs);
-    await policyPool.addComponent(contractAddr, 3);
+    await policyPool.addComponent(contract, 3);
   }
-  return contractAddr;
+  return contract;
 }
 
 async function deployRiskModule(
@@ -287,7 +285,6 @@ async function deployRiskModule(
     hre
   );
   const rm = runAs === undefined ? contract : contract.connect(runAs);
-  const contractAddr = await ethers.resolveAddress(contract);
   if (opts.addComponent) {
     if (moc != 1.0) {
       moc = _W(moc);
@@ -310,9 +307,9 @@ async function deployRiskModule(
     }
     let policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
     if (runAs) policyPool = policyPool.connect(runAs);
-    await policyPool.addComponent(contractAddr, 2);
+    await policyPool.addComponent(contract, 2);
   }
-  return contractAddr;
+  return contract;
 }
 
 async function deploySignedQuoteRM(opts, hre) {
@@ -352,7 +349,7 @@ async function deployERC4626AssetManager({ asset, vault, amClass, ...opts }, hre
       },
       hre
     )
-  ).contract.target;
+  ).contract;
 }
 
 async function deployAaveAssetManager({ asset, aave, amClass, ...opts }, hre) {
@@ -365,7 +362,7 @@ async function deployAaveAssetManager({ asset, aave, amClass, ...opts }, hre) {
       },
       hre
     )
-  ).contract.target;
+  ).contract;
 }
 
 async function deployWhitelist(
@@ -390,20 +387,19 @@ async function deployWhitelist(
     },
     hre
   );
-  const contractAddr = await ethers.resolveAddress(contract);
   if (eToken !== undefined) {
     const etk = await hre.ethers.getContractAt("EToken", eToken);
-    await etk.setWhitelist(contractAddr);
+    await etk.setWhitelist(contract);
   }
   if (eToken2 !== undefined) {
     const etk = await hre.ethers.getContractAt("EToken", eToken2);
-    await etk.setWhitelist(contractAddr);
+    await etk.setWhitelist(contract);
   }
   if (eToken3 !== undefined) {
     const etk = await hre.ethers.getContractAt("EToken", eToken3);
-    await etk.setWhitelist(contractAddr);
+    await etk.setWhitelist(contract);
   }
-  return contractAddr;
+  return contract;
 }
 
 async function trustfullPolicy({ rmAddress, payout, premium, lossProb, expiration, customer }, hre) {
@@ -515,11 +511,13 @@ function add_task() {
     .setAction(async function (taskArgs, hre) {
       if (taskArgs.currencyAddress === undefined) {
         taskArgs.saveAddr = "CURRENCY";
-        taskArgs.currencyAddress = await deployTestCurrency(taskArgs, hre);
+        const currency = deployTestCurrency(taskArgs, hre);
+        taskArgs.currencyAddress = await ethers.resolveAddress(currency);
       }
       if (taskArgs.accessAddress === undefined) {
         taskArgs.saveAddr = "ACCESSMANAGER";
-        taskArgs.accessAddress = await deployAccessManager(taskArgs, hre);
+        const access = await deployAccessManager(taskArgs, hre);
+        taskArgs.accessAddress = await ethers.resolveAddress(access);
       }
       taskArgs.saveAddr = "POOL";
       await deployPolicyPool(taskArgs, hre);
