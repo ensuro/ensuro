@@ -116,9 +116,7 @@ describe("PolicyPool contract", function () {
     const etk = await addEToken(pool, {});
     const premiumsAccount = await deployPremiumsAccount(pool, { jrEtk: etk }, false);
 
-    await expect(pool.addComponent(premiumsAccount, 3))
-      .to.emit(etk, "InternalBorrowerAdded")
-      .withArgs(premiumsAccount);
+    await expect(pool.addComponent(premiumsAccount, 3)).to.emit(etk, "InternalBorrowerAdded").withArgs(premiumsAccount);
   });
 
   it("Removes the PA as borrower from the jr etoken on PremiumsAccount removal", async () => {
@@ -140,9 +138,7 @@ describe("PolicyPool contract", function () {
     const etk = await addEToken(pool, {});
     const premiumsAccount = await deployPremiumsAccount(pool, { srEtk: etk }, false);
 
-    await expect(pool.addComponent(premiumsAccount, 3))
-      .to.emit(etk, "InternalBorrowerAdded")
-      .withArgs(premiumsAccount);
+    await expect(pool.addComponent(premiumsAccount, 3)).to.emit(etk, "InternalBorrowerAdded").withArgs(premiumsAccount);
   });
 
   it("Removes the PA as borrower from the sr etoken on PremiumsAccount removal", async () => {
@@ -287,7 +283,9 @@ describe("PolicyPool contract", function () {
     const { policy, rm, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
     await expect(rm.connect(backend).resolvePolicy([...policy], policy.payout)).not.to.be.reverted;
     expect(await pool.isActive(policy.id)).to.be.false;
-    await expect(pool.replacePolicy([...policy], [...policy], ZeroAddress, 1234)).to.be.revertedWith("Policy not found");
+    await expect(pool.replacePolicy([...policy], [...policy], ZeroAddress, 1234)).to.be.revertedWith(
+      "Policy not found"
+    );
   });
 
   it("Only RM can replace policies", async () => {
@@ -301,12 +299,16 @@ describe("PolicyPool contract", function () {
     const { policy, pool, rm, premiumsAccount } = await helpers.loadFixture(deployRmWithPolicyFixture);
     await pool.changeComponentStatus(premiumsAccount, ComponentStatus.deprecated);
     await expect(
-      rm.connect(backend).replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, policy.expiration, 1234)
+      rm
+        .connect(backend)
+        .replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, policy.expiration, 1234)
     ).to.be.revertedWith("Component not found or not active");
     await pool.changeComponentStatus(premiumsAccount, ComponentStatus.active);
     await pool.changeComponentStatus(rm, ComponentStatus.deprecated);
     await expect(
-      rm.connect(backend).replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, policy.expiration, 1234)
+      rm
+        .connect(backend)
+        .replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, policy.expiration, 1234)
     ).to.be.revertedWith("Component not found or not active");
   });
 
@@ -314,14 +316,18 @@ describe("PolicyPool contract", function () {
     const { policy, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
     await helpers.time.increaseTo(policy.expiration + 100n);
     await expect(
-      rm.connect(backend).replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, policy.expiration, 1234)
+      rm
+        .connect(backend)
+        .replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, policy.expiration, 1234)
     ).to.be.revertedWith("Old policy is expired");
   });
 
   it("Replacement policy must have a new unique internalId", async () => {
     const { policy, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
     await expect(
-      rm.connect(backend).replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, policy.expiration, 123)
+      rm
+        .connect(backend)
+        .replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, policy.expiration, 123)
     ).to.be.revertedWith("Policy already exists");
   });
 

@@ -381,21 +381,14 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     return _components[component].status;
   }
 
-  function _componentStatus(address component, ComponentKind kind)
-    internal
-    view
-    returns (ComponentStatus)
-  {
+  function _componentStatus(address component, ComponentKind kind) internal view returns (ComponentStatus) {
     Component storage comp = _components[IPolicyPoolComponent(component)];
     require(comp.kind == kind, "Component is not of the right kind");
     return comp.status;
   }
 
   function _requireCompActive(address component, ComponentKind kind) internal view {
-    require(
-      _componentStatus(component, kind) == ComponentStatus.active,
-      "Component not found or not active"
-    );
+    require(_componentStatus(component, kind) == ComponentStatus.active, "Component not found or not active");
   }
 
   function _requireCompActiveOrDeprecated(address component, ComponentKind kind) internal view {

@@ -38,8 +38,7 @@ interface IPremiumsAccount {
    * @param oldPolicy The policy to replace (created in a previous transaction)
    * @param newPolicy The policy that will replace the old one (created in this transaction)
    */
-  function policyReplaced(Policy.PolicyData memory oldPolicy, Policy.PolicyData memory newPolicy)
-    external;
+  function policyReplaced(Policy.PolicyData memory oldPolicy, Policy.PolicyData memory newPolicy) external;
 
   /**
    * @dev The PremiumsAccount is notified that the policy was resolved and issues the payout to the policyHolder.

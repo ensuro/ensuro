@@ -477,12 +477,10 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     if (policy.srScr > 0) _seniorEtk.lockScr(policy.srScr, policy.srInterestRate());
   }
 
-  function policyReplaced(Policy.PolicyData memory oldPolicy, Policy.PolicyData memory newPolicy)
-    external
-    override
-    onlyPolicyPool
-    whenNotPaused
-  {
+  function policyReplaced(
+    Policy.PolicyData memory oldPolicy,
+    Policy.PolicyData memory newPolicy
+  ) external override onlyPolicyPool whenNotPaused {
     int256 diff = int256(oldPolicy.srInterestRate()) - int256(newPolicy.srInterestRate());
     require(SignedMath.abs(diff) < 1e14, "Interest rate can't change");
     diff = int256(oldPolicy.jrInterestRate()) - int256(newPolicy.jrInterestRate());

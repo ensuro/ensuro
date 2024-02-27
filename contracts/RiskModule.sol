@@ -386,35 +386,20 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     require(premium < payout, "Premium must be less than payout");
     require(oldPolicy.expiration > uint40(block.timestamp), "Old policy is expired");
     require(
-      expiration >= oldPolicy.expiration &&
-        payout >= oldPolicy.payout &&
-        premium >= oldPolicy.premium,
+      expiration >= oldPolicy.expiration && payout >= oldPolicy.payout && premium >= oldPolicy.premium,
       "Policy replacement must be greater or equal than old policy"
     );
+    require(((expiration - oldPolicy.start) / 3600) < _params.maxDuration, "Policy exceeds max duration");
     require(
-      ((expiration - oldPolicy.start) / 3600) < _params.maxDuration,
-      "Policy exceeds max duration"
-    );
-    require(
-      _policyPool.currency().allowance(payer, address(_policyPool)) >=
-        (premium - oldPolicy.premium),
+      _policyPool.currency().allowance(payer, address(_policyPool)) >= (premium - oldPolicy.premium),
       "You must allow ENSURO to transfer the premium"
     );
     require(
-      payer == _msgSender() ||
-        _policyPool.currency().allowance(payer, _msgSender()) >= (premium - oldPolicy.premium),
+      payer == _msgSender() || _policyPool.currency().allowance(payer, _msgSender()) >= (premium - oldPolicy.premium),
       "Payer must allow caller to transfer the premium"
     );
     require(payout <= maxPayoutPerPolicy(), "RiskModule: Payout is more than maximum per policy");
-    policy = Policy.initialize(
-      this,
-      params_,
-      premium,
-      payout,
-      lossProb,
-      expiration,
-      oldPolicy.start
-    );
+    policy = Policy.initialize(this, params_, premium, payout, lossProb, expiration, oldPolicy.start);
 
     _activeExposure += policy.payout - oldPolicy.payout;
     require(_activeExposure <= exposureLimit(), "RiskModule: Exposure limit exceeded");

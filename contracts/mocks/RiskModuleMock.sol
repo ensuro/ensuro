@@ -71,16 +71,6 @@ contract RiskModuleMock is RiskModule {
     uint96 internalId
   ) external whenNotPaused onlyComponentRole(REPLACER_ROLE) returns (uint256) {
     address onBehalfOf = IERC721(address(_policyPool)).ownerOf(oldPolicy.id);
-    return
-      _replacePolicy(
-        oldPolicy,
-        payout,
-        premium,
-        lossProb,
-        expiration,
-        onBehalfOf,
-        internalId,
-        params()
-      ).id;
+    return _replacePolicy(oldPolicy, payout, premium, lossProb, expiration, onBehalfOf, internalId, params()).id;
   }
 }
