@@ -11,7 +11,7 @@ const {
 } = require("../js/test-utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
-const { ComponentStatus } = require("../js/enums.js");
+const { ComponentStatus, RiskModuleParameter } = require("../js/enums.js");
 const { ZeroAddress } = hre.ethers;
 
 describe("PolicyPool contract", function () {
@@ -293,6 +293,80 @@ describe("PolicyPool contract", function () {
     await expect(pool.replacePolicy([...policy], [...policy], ZeroAddress, 1234)).to.be.revertedWith(
       "Only the RM can create new policies"
     );
+  });
+
+  it("Rejects replace policy if the pool is paused", async () => {
+    const { accessManager, policy, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    await grantRole(hre, accessManager, "GUARDIAN_ROLE", owner);
+    await expect(pool.connect(owner).pause()).to.emit(pool, "Paused");
+
+    await expect(pool.replacePolicy([...policy], [...policy], ZeroAddress, 1234)).to.be.revertedWith(
+      "Pausable: paused"
+    );
+  });
+
+  it("Reverts if new policy is lower than previous", async () => {
+    const { policy, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    // Old Policy: { payout= 1000, premium = 10, expiration= now + 3600 + 5}
+    await expect(
+      rm.connect(backend).replacePolicy([...policy], _A(999), policy.premium, policy.lossProb, policy.expiration, 1234)
+    ).to.be.revertedWith("Policy replacement must be greater or equal than old policy");
+
+    await expect(
+      rm.connect(backend).replacePolicy([...policy], policy.payout, _A(9), policy.lossProb, policy.expiration, 1234)
+    ).to.be.revertedWith("Policy replacement must be greater or equal than old policy");
+
+    const now = await helpers.time.latest();
+    await expect(
+      rm.connect(backend).replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, now + 3600, 1234)
+    ).to.be.revertedWith("Policy replacement must be greater or equal than old policy");
+  });
+
+  it("It reverts if the premium >= payout", async () => {
+    const { policy, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    await expect(
+      rm.connect(backend).replacePolicy([...policy], _A(100), _A(101), policy.lossProb, policy.expiration, 1234)
+    ).to.be.revertedWith("Premium must be less than payout");
+  });
+
+  it("It reverts if new policy exceeds max duration", async () => {
+    const { policy, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
+    const now = await helpers.time.latest();
+    // Max Duration = 8760
+    const newExp = 8760 * 3600 + now + 1000;
+    await expect(
+      rm.connect(backend).replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, newExp, 1234)
+    ).to.be.revertedWith("Policy exceeds max duration");
+  });
+
+  it("It reverts if new payout > maxPayoutPerPolicy", async () => {
+    const { policy, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    const newPayout = (await rm.maxPayoutPerPolicy()) + 1n;
+    await expect(
+      rm
+        .connect(backend)
+        .replacePolicy([...policy], newPayout, policy.premium, policy.lossProb, policy.expiration, 1234)
+    ).to.be.revertedWith("RiskModule: Payout is more than maximum per policy");
+  });
+
+  it("It reverts if _activeExposure > exposureLimit", async () => {
+    const { policy, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    expect(await rm.exposureLimit()).to.be.equal(_A(1000000));
+    // Set exposureLimit to 1500 and maxPayoutPerPolicy to allow bigger policies
+    await rm.setParam(RiskModuleParameter.maxPayoutPerPolicy, _A(3000));
+    await rm.setParam(RiskModuleParameter.exposureLimit, _A(1100));
+    expect(await rm.exposureLimit()).to.be.equal(_A(1100));
+
+    await expect(
+      rm
+        .connect(backend)
+        .replacePolicy([...policy], policy.payout + _A(200), policy.premium, policy.lossProb, policy.expiration, 1234)
+    ).to.be.revertedWith("RiskModule: Exposure limit exceeded");
   });
 
   it("Components must be active to replace policies", async () => {
