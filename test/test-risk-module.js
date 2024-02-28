@@ -1,5 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { MaxUint256 } = require("ethers");
 const { RiskModuleParameter } = require("../js/enums");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { grantRole, amountFunction, _W, getTransactionEvent } = require("../js/utils");
@@ -199,6 +200,18 @@ describe("RiskModule contract", function () {
     await expect(
       rm.connect(backend).replacePolicy([...policy], _A(100), _A(101), policy.lossProb, policy.expiration, 1234)
     ).to.be.revertedWith("Premium must be less than payout");
+  });
+
+  it("Reverts if new policy is lower than previous with premium == MaxUint256", async () => {
+    const { policy, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    const minPremium = await rm.getMinimumPremium(policy.payout, policy.lossProb, policy.expiration);
+    expect(minPremium < policy.premium).to.be.true;
+    await expect(
+      rm
+        .connect(backend)
+        .replacePolicy([...policy], policy.payout, MaxUint256, policy.lossProb, policy.expiration, 1234)
+    ).to.be.revertedWith("Policy replacement must be greater or equal than old policy");
   });
 
   it("It reverts if new policy exceeds max duration", async () => {
