@@ -545,7 +545,7 @@ class TrustfulRiskModule(RiskModule):
         receipt = self.replace_policy_(*args, **kwargs)
         if "PolicyReplaced" in receipt.events:
             policy_data = receipt.events["PolicyReplaced"]["newPolicy"]
-            policy = Policy(*policy_data, address_book=self.provider.address_book)
+            policy = Policy.from_policy_data(policy_data, address_book=self.provider.address_book)
             policy_db.add_policy(self.policy_pool.contract.address, policy)
             return policy
         else:
