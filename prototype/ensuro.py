@@ -313,7 +313,7 @@ class RiskModule(AccessControlContract):
     @external
     @only_component_role("REPLACER_ROLE")
     def replace_policy(self, old_policy, payout, premium, loss_prob, expiration, payer, internal_id):
-        assert type(loss_prob) == Wad, "Loss prob MUST be wad"
+        assert isinstance(loss_prob, Wad), "Loss prob MUST be wad"
         start = old_policy.start
         require(old_policy.expiration > time_control.now, "Old policy is expired")
         if premium is None:
@@ -329,7 +329,7 @@ class RiskModule(AccessControlContract):
         require(((expiration - start) / SECONDS_IN_HOUR) < self.max_duration, "Policy exceeds max duration")
         require(
             self.policy_pool.currency.allowance(payer, self.policy_pool.contract_id)
-            >= (old_policy.premium - premium),
+            >= (premium - old_policy.premium),
             "You must allow ENSURO to transfer the premium",
         )
         require(

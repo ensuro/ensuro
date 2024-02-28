@@ -1956,7 +1956,6 @@ def test_replace_policy(tenv):
 
     timecontrol.fast_forward(4 * DAY)
 
-    pool.currency.approve("owner", pool.contract_id, _W(90))
     replace_kwargs = dict(
         old_policy=policy,
         payout=_W(4200),
@@ -1972,6 +1971,10 @@ def test_replace_policy(tenv):
 
     pool.access.grant_component_role(rm, "REPLACER_ROLE", "owner")
 
+    with pytest.raises(RevertError, match="You must allow ENSURO"):
+        rm.replace_policy(**replace_kwargs)
+
+    pool.currency.approve("owner", pool.contract_id, _W(90))
     balance_before = {}
     balance_before["JR"] = pool.currency.balance_of(etkJR)
     balance_before["SR"] = pool.currency.balance_of(etkSR)
