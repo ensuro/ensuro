@@ -481,10 +481,14 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     Policy.PolicyData memory oldPolicy,
     Policy.PolicyData memory newPolicy
   ) external override onlyPolicyPool whenNotPaused {
-    int256 diff = int256(oldPolicy.srInterestRate()) - int256(newPolicy.srInterestRate());
-    require(SignedMath.abs(diff) < 1e14, "Interest rate can't change");
-    diff = int256(oldPolicy.jrInterestRate()) - int256(newPolicy.jrInterestRate());
-    require(SignedMath.abs(diff) < 1e14, "Interest rate can't change");
+    if (oldPolicy.srScr > 0 && newPolicy.srScr > 0) {
+      int256 diff = int256(oldPolicy.srInterestRate()) - int256(newPolicy.srInterestRate());
+      require(SignedMath.abs(diff) < 1e14, "Interest rate can't change");
+    }
+    if (oldPolicy.jrScr > 0 && newPolicy.jrScr > 0) {
+      int256 diff = int256(oldPolicy.jrInterestRate()) - int256(newPolicy.jrInterestRate());
+      require(SignedMath.abs(diff) < 1e14, "Interest rate can't change");
+    }
     /*
      * Supporting interest rate change is possible, but it would require complex computations.
      * If new IR > old IR, then we must adjust positivelly to accrue the interests not accrued

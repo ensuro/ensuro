@@ -264,6 +264,16 @@ describe("RiskModule contract", function () {
     ).to.be.revertedWith("Pausable: paused");
   });
 
+  it("Should emit PolicyReplaced when policy is repla", async () => {
+    const { policy, rm, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    await expect(
+      rm
+        .connect(backend)
+        .replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, policy.expiration, 1234)
+    ).to.emit(pool, "PolicyReplaced");
+  });
+
   async function makePolicy({ payout, premium, lossProbability, expiration, payer, onBehalfOf, internalId }) {
     const now = await helpers.time.latest();
     const policy = {

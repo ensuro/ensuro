@@ -1245,7 +1245,7 @@ class PolicyPool(ERC721Token):
 
     @external
     def replace_policy(self, old_policy, new_policy, payer, internal_id):
-        require(old_policy.id in self.policies, "The old policy doesn't exist")
+        require(old_policy.id in self.policies, "Policy not found")
         old_policy = self.policies[old_policy.id]  # To make sure is the same, in solidity check with hash
         require(new_policy.start == old_policy.start, "Both policies must have the same starting date")
         require(

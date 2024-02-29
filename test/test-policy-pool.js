@@ -333,6 +333,14 @@ describe("PolicyPool contract", function () {
     ).to.be.revertedWith("Old policy is expired");
   });
 
+  it("Only PolicyPool can call PA policyReplaced", async () => {
+    const { pool, policy } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    const etk = await createEToken(pool, {});
+    const pa = await deployPremiumsAccount(pool, { srEtk: etk });
+    await expect(pa.policyReplaced([...policy], [...policy])).to.be.revertedWith("The caller must be the PolicyPool");
+  });
+
   it("Replacement policy must have a new unique internalId", async () => {
     const { policy, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
     await expect(
