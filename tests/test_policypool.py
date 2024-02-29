@@ -2031,8 +2031,6 @@ def test_replace_policy_two_times(tenv):
           amount: 1000
         - user: LP2
           amount: 1000
-        - user: LP3
-          amount: 1000
         - user: CUST1
           amount: 200
         - user: owner
@@ -2183,8 +2181,6 @@ def test_replace_policy_same_params(tenv):
           amount: 1000
         - user: LP2
           amount: 1000
-        - user: LP3
-          amount: 1000
         - user: CUST1
           amount: 200
         - user: owner
@@ -2227,7 +2223,6 @@ def test_replace_policy_same_params(tenv):
         internal_id=122,
     )
 
-    # USD.balance_of("CUST1") == _W(100)
     etkSR.scr.assert_equal(_W("0.1") * _W(2100))
     etkJR.scr.assert_equal(policy.jr_scr)
 
@@ -2235,9 +2230,9 @@ def test_replace_policy_same_params(tenv):
     timecontrol.fast_forward(4 * DAY)
     replace_kwargs = dict(
         old_policy=policy,
-        payout=_W(2100),
-        premium=_W(100),
-        loss_prob=_W("0.03"),
+        payout=policy.payout,
+        premium=policy.premium,
+        loss_prob=policy.loss_prob,
         expiration=policy.expiration,
         payer="owner",
         internal_id=123,
@@ -2271,6 +2266,102 @@ def test_replace_policy_same_params(tenv):
     assert pool.owner_of(new_policy.id) == "CUST1"
     with pytest.raises(RevertError, match="Policy not found"):
         rm.resolve_policy(policy.id, True)
+
+
+def test_replace_policy_zero_sr_scr(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: CFAR
+        coll_ratio: "0.5"
+        sr_roc: "0.1"
+        ensuro_pp_fee: 0
+        wallet: "MGA"
+        roles:
+          - user: owner
+            role: PRICER_ROLE
+          - user: owner
+            role: RESOLVER_ROLE
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 6000
+        initial_balances:
+        - user: LP1
+          amount: 1000
+        - user: LP2
+          amount: 1000
+        - user: CUST1
+          amount: 200
+        - user: owner
+          amount: 90
+    premiums_accounts:
+    - senior_etk: SR
+    etokens:
+      - name: SR
+    roles:
+      - user: owner
+        role: LEVEL2_ROLE  # For setting moc
+    """
+
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    etkSR = pool.etokens["SR"]
+    USD = pool.currency
+    rm = pool.risk_modules["CFAR"]
+    premiums_account = rm.premiums_account
+
+    with rm.as_(rm.owner):
+        rm.moc = _W(1)
+        rm.ensuro_coc_fee = _W("0.05")
+
+    _deposit(pool, "SR", "LP1", _W(1000))
+
+    USD.approve("owner", pool.contract_id, _W(90))
+    USD.approve("CUST1", pool.contract_id, _W(100))
+    USD.approve("CUST1", rm.owner, _W(100))
+    policy = rm.new_policy(
+        payout=_W(100),
+        premium=_W(90),
+        on_behalf_of="CUST1",
+        loss_prob=_W("0.7"),
+        expiration=timecontrol.now + 10 * DAY,
+        internal_id=122,
+    )
+
+    policy.jr_scr.assert_equal(_W(0))
+    policy.sr_scr.assert_equal(_W(0))
+
+    rm.active_exposure.assert_equal(policy.payout)
+    timecontrol.fast_forward(4 * DAY)
+    replace_kwargs = dict(
+        old_policy=policy,
+        payout=policy.payout,
+        premium=policy.premium,
+        loss_prob=policy.loss_prob,
+        expiration=policy.expiration,
+        payer="owner",
+        internal_id=123,
+    )
+
+    pool.access.grant_component_role(rm, "REPLACER_ROLE", "owner")
+
+    balance_before = {}
+    balance_before["SR"] = USD.balance_of(etkSR)
+    balance_before["PA"] = USD.balance_of(premiums_account)
+    balance_before["ENS"] = USD.balance_of("ENS")
+    print(balance_before)
+
+    new_policy = rm.replace_policy(**replace_kwargs)
+    rm.active_exposure.assert_equal(new_policy.payout)
+    etkSR.scr.assert_equal(_W(0))
+
+    USD.balance_of(etkSR).assert_equal(balance_before["SR"] + new_policy.sr_coc - policy.sr_coc)
+    USD.balance_of(premiums_account).assert_equal(
+        balance_before["PA"] + new_policy.pure_premium - policy.pure_premium
+    )
+    USD.balance_of("ENS").assert_equal(
+        balance_before["ENS"] + new_policy.ensuro_commission - policy.ensuro_commission
+    )
 
 
 def test_withdraw_won_premiums(tenv):

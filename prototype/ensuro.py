@@ -1099,19 +1099,28 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
 
     @external
     def policy_replaced(self, old_policy, new_policy):
-        require(
-            new_policy.sr_interest_rate.equal(old_policy.sr_interest_rate, 4)
-            and new_policy.jr_interest_rate.equal(old_policy.jr_interest_rate, 4),
-            "Interest rate can't change",
-        )
+        if new_policy.sr_scr > 0 and old_policy.sr_scr > 0:
+            require(
+                new_policy.sr_interest_rate.equal(old_policy.sr_interest_rate, 4),
+                "Interest rate can't change",
+            )
+        if new_policy.jr_scr > 0 and old_policy.jr_scr > 0:
+            require(
+                new_policy.jr_interest_rate.equal(old_policy.jr_interest_rate, 4),
+                "Interest rate can't change",
+            )
         # Supporting interest rate change is possible, but it would require complex computations.
         # If new IR > old IR, then we must adjust positivelly to accrue the interests not accrued
         # If new IR < old IR, then we must adjust negativelly to substract the interests accrued in excess
         self.active_pure_premiums += new_policy.pure_premium - old_policy.pure_premium
-        self.senior_etk.unlock_scr(old_policy.sr_scr, old_policy.sr_interest_rate, Wad(0))
-        self.senior_etk.lock_scr(new_policy.sr_scr, new_policy.sr_interest_rate)
-        self.junior_etk.unlock_scr(old_policy.jr_scr, old_policy.jr_interest_rate, Wad(0))
-        self.junior_etk.lock_scr(new_policy.jr_scr, new_policy.jr_interest_rate)
+        if old_policy.sr_scr > 0:
+            self.senior_etk.unlock_scr(old_policy.sr_scr, old_policy.sr_interest_rate, Wad(0))
+        if new_policy.sr_scr > 0:
+            self.senior_etk.lock_scr(new_policy.sr_scr, new_policy.sr_interest_rate)
+        if old_policy.jr_scr > 0:
+            self.junior_etk.unlock_scr(old_policy.jr_scr, old_policy.jr_interest_rate, Wad(0))
+        if new_policy.jr_scr > 0:
+            self.junior_etk.lock_scr(new_policy.jr_scr, new_policy.jr_interest_rate)
 
     @external
     def policy_resolved_with_payout(self, customer, policy, payout):
