@@ -2268,6 +2268,92 @@ def test_replace_policy_same_params(tenv):
         rm.resolve_policy(policy.id, True)
 
 
+def test_replace_policy_not_enough_money(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: CFAR
+        jr_coll_ratio: "0.1"
+        coll_ratio: "0.2"
+        ensuro_pp_fee: "0.05"
+        jr_roc: "0.2"
+        sr_roc: "0.1"
+        wallet: "MGA"
+        roles:
+          - user: owner
+            role: PRICER_ROLE
+          - user: owner
+            role: RESOLVER_ROLE
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 6000
+        initial_balances:
+        - user: LP1
+          amount: 3000
+        - user: CUST1
+          amount: 200
+        - user: owner
+          amount: 90
+    premiums_accounts:
+    - senior_etk: SR
+      junior_etk: JR
+    etokens:
+      - name: SR
+      - name: JR
+    roles:
+      - user: owner
+        role: LEVEL2_ROLE  # For setting moc
+    """
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    etkSR = pool.etokens["SR"]
+    etkJR = pool.etokens["JR"]
+    USD = pool.currency
+    rm = pool.risk_modules["CFAR"]
+
+    with rm.as_(rm.owner):
+        rm.moc = _W("1.1")
+        rm.ensuro_coc_fee = _W("0.05")
+
+    _deposit(pool, "SR", "LP1", _W(300))
+    _deposit(pool, "JR", "LP1", _W(2000))
+
+    USD.approve("owner", pool.contract_id, _W(100))
+    USD.approve("CUST1", pool.contract_id, _W(100))
+    USD.approve("CUST1", rm.owner, _W(100))
+    policy = rm.new_policy(
+        payout=_W(2100),
+        premium=_W(100),
+        on_behalf_of="CUST1",
+        loss_prob=_W("0.03"),
+        expiration=timecontrol.now + 10 * DAY,
+        internal_id=122,
+    )
+
+    etkSR.scr.assert_equal(_W("0.1") * _W(2100))  # 210
+    etkJR.scr.assert_equal(policy.jr_scr)
+    rm.active_exposure.assert_equal(policy.payout)
+
+    timecontrol.fast_forward(4 * DAY)
+    replace_kwargs = dict(
+        old_policy=policy,
+        payout=_W(3100),
+        premium=_W(200),
+        loss_prob=_W("0.03"),
+        expiration=timecontrol.now + 14 * DAY,
+        payer="owner",
+        internal_id=123,
+    )
+
+    pool.access.grant_component_role(rm, "REPLACER_ROLE", "owner")
+    with pytest.raises(RevertError, match="Not enough funds available to cover the SCR"):
+        rm.replace_policy(**replace_kwargs)
+
+    # Can resolve the policy, was not replaced
+    assert pool.owner_of(policy.id) == "CUST1"
+    rm.resolve_policy(policy.id, True)
+
+
 def test_replace_policy_zero_sr_scr(tenv):
     YAML_SETUP = """
     risk_modules:

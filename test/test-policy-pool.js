@@ -279,6 +279,15 @@ describe("PolicyPool contract", function () {
     );
   });
 
+  it("Can't expire policies when the pool is paused", async () => {
+    const { accessManager, policy, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    await grantRole(hre, accessManager, "GUARDIAN_ROLE", owner);
+    await expect(pool.connect(owner).pause()).to.emit(pool, "Paused");
+
+    await expect(pool.connect(backend).expirePolicies([[...policy]])).to.be.revertedWith("Pausable: paused");
+  });
+
   it("Can't replace resolved policies", async () => {
     const { policy, rm, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
     await expect(rm.connect(backend).resolvePolicy([...policy], policy.payout)).not.to.be.reverted;
