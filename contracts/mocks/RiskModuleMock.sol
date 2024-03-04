@@ -58,8 +58,21 @@ contract RiskModuleMock is RiskModule {
     return _newPolicy(payout, premium, lossProb, expiration, payer, onBehalfOf, internalId).id;
   }
 
+  function newPolicyRaw(
+    Policy.PolicyData memory policy,
+    address payer,
+    address policyHolder,
+    uint96 internalId
+  ) external returns (uint256) {
+    return _policyPool.newPolicy(policy, payer, policyHolder, internalId);
+  }
+
   function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external onlyComponentRole(RESOLVER_ROLE) {
     _policyPool.resolvePolicy(policy, payout);
+  }
+
+  function resolvePolicyRaw(Policy.PolicyData calldata policy, uint256 payout) external {
+    return _policyPool.resolvePolicy(policy, payout);
   }
 
   function replacePolicy(
@@ -72,5 +85,14 @@ contract RiskModuleMock is RiskModule {
   ) external whenNotPaused onlyComponentRole(REPLACER_ROLE) returns (uint256) {
     address onBehalfOf = IERC721(address(_policyPool)).ownerOf(oldPolicy.id);
     return _replacePolicy(oldPolicy, payout, premium, lossProb, expiration, onBehalfOf, internalId, params()).id;
+  }
+
+  function replacePolicyRaw(
+    Policy.PolicyData memory oldPolicy,
+    Policy.PolicyData memory newPolicy_,
+    address payer,
+    uint96 internalId
+  ) external returns (uint256) {
+    return _policyPool.replacePolicy(oldPolicy, newPolicy_, payer, internalId);
   }
 }

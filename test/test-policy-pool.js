@@ -14,6 +14,14 @@ const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { ComponentStatus } = require("../js/enums.js");
 const { ZeroAddress } = hre.ethers;
 
+async function createNewPolicy(rm, cust, pool, payout, premium, lossProb, expiration, payer, holder, internalId) {
+  const tx = await rm.connect(cust).newPolicy(payout, premium, lossProb, expiration, payer, holder, internalId);
+  const receipt = await tx.wait();
+  const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
+  const policy = newPolicyEvt.args.policy;
+  return policy;
+}
+
 describe("PolicyPool contract", function () {
   let _A;
   let backend, cust, lp, owner;
@@ -340,6 +348,21 @@ describe("PolicyPool contract", function () {
         .connect(backend)
         .replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, policy.expiration, 1234)
     ).to.be.revertedWith("Old policy is expired");
+
+    await expect(rm.connect(backend).replacePolicyRaw([...policy], [...policy], backend, 123)).to.be.revertedWith(
+      "Old policy is expired"
+    );
+  });
+
+  it("Must revert if new policy have different start date", async () => {
+    const { rm, pool, policy } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    await helpers.time.increaseTo(policy.start + 100n);
+    const now = await helpers.time.latest();
+    const p = await createNewPolicy(rm, backend, pool, _A(1000), _A(10), _W(0), now + 3600 * 5, cust, cust, 1234);
+    await expect(rm.connect(backend).replacePolicyRaw([...policy], [...p], backend, 123)).to.be.revertedWith(
+      "Both policies must have the same starting date"
+    );
   });
 
   it("Only PolicyPool can call PA policyReplaced", async () => {
