@@ -507,7 +507,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
      * operate on low gas-cost blockchains, we keep it as it is.
      */
 
-    emit PolicyReplaced(rm, oldPolicy.id, newPolicy_);
+    emit NewPolicy(rm, newPolicy_);
+    emit PolicyReplaced(rm, oldPolicy.id, newPolicy_.id);
     return newPolicy_.id;
   }
 

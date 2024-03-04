@@ -57,7 +57,7 @@ contract PolicyPoolMock is IPolicyPool {
   ) external override returns (uint256) {
     newPolicy_.id = (uint256(uint160(address(newPolicy_.riskModule))) << 96) + internalId;
     policyHashes[newPolicy_.id] = newPolicy_.hash();
-    emit PolicyReplaced(IRiskModule(msg.sender), oldPolicy.id, newPolicy_);
+    emit PolicyReplaced(IRiskModule(msg.sender), oldPolicy.id, newPolicy_.id);
     return newPolicy_.id;
   }
 

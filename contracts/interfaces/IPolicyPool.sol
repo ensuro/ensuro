@@ -23,9 +23,9 @@ interface IPolicyPool {
    *
    * @param riskModule The risk module that created the policy
    * @param oldPolicyId The id of the replaced policy.
-   * @param newPolicy The {Policy-PolicyData} struct with all the immutable fields of the policy.
+   * @param newPolicyId The id of the new policy.
    */
-  event PolicyReplaced(IRiskModule indexed riskModule, uint256 indexed oldPolicyId, Policy.PolicyData newPolicy);
+  event PolicyReplaced(IRiskModule indexed riskModule, uint256 indexed oldPolicyId, uint256 indexed newPolicyId);
 
   /**
    * @dev Event emitted every time a policy is removed from the pool. If the policy expired, the `payout` is 0,
