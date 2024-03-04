@@ -354,6 +354,18 @@ describe("PolicyPool contract", function () {
     );
   });
 
+  it("Must revert if new policy values must be greater or equal than old policy", async () => {
+    const { rm, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    const now = await helpers.time.latest();
+    const p1 = await createNewPolicy(rm, backend, pool, _A(1000), _A(10), _W(0), now + 3600 * 5, cust, cust, 222);
+    let p2 = [...p1];
+    p2[1] -= _A(1); // change new policy payout
+    await expect(rm.connect(backend).replacePolicyRaw([...p1], [...p2], backend, 1234)).to.be.revertedWith(
+      "New policy must be greater or equal than old policy"
+    );
+  });
+
   it("Must revert if new policy have different start date", async () => {
     const { rm, pool, policy } = await helpers.loadFixture(deployRmWithPolicyFixture);
 
