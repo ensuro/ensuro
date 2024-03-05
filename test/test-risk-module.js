@@ -273,7 +273,8 @@ describe("RiskModule contract", function () {
         .replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, policy.expiration, 1234)
     )
       .to.emit(pool, "NewPolicy")
-      .to.emit(pool, "PolicyReplaced");
+      .to.emit(pool, "PolicyReplaced")
+      .withArgs(rm, policy.id, policy.id - 123n + 1234n);
   });
 
   async function makePolicy({ payout, premium, lossProbability, expiration, payer, onBehalfOf, internalId }) {
