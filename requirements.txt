@@ -27,7 +27,7 @@ environs==10.3.0
     # via
     #   -r requirements.in
     #   eth-prototype
-eth-abi==5.0.0
+eth-abi==5.0.1
     # via
     #   eth-account
     #   web3
