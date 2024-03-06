@@ -359,7 +359,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   }
 
   /**
-   * @dev Called from child contracts to create policies (after they validated the pricing).
+   * @dev Called from child contracts to replace policies (after they validated the pricing).
    *      whenNotPaused validation must be done in the external method.
    *
    * @param payout The exposure (maximum payout) of the policy

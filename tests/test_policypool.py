@@ -1975,12 +1975,12 @@ def test_replace_policy(tenv):
         rm.replace_policy(**replace_kwargs)
 
     pool.currency.approve("owner", pool.contract_id, _W(90))
-    balance_before = {}
-    balance_before["JR"] = pool.currency.balance_of(etkJR)
-    balance_before["SR"] = pool.currency.balance_of(etkSR)
-    balance_before["PA"] = pool.currency.balance_of(premiums_account)
-    balance_before["ENS"] = pool.currency.balance_of("ENS")
-    print(balance_before)
+    balance_before = {
+        "JR": pool.currency.balance_of(etkJR),
+        "SR": pool.currency.balance_of(etkSR),
+        "PA": pool.currency.balance_of(premiums_account),
+        "ENS": pool.currency.balance_of("ENS"),
+    }
 
     new_policy = rm.replace_policy(**replace_kwargs)
     rm.active_exposure.assert_equal(_W(4200))
@@ -2090,13 +2090,12 @@ def test_replace_policy_two_times(tenv):
     )
 
     pool.access.grant_component_role(rm, "REPLACER_ROLE", "owner")
-
-    balance_before = {}
-    balance_before["JR"] = USD.balance_of(etkJR)
-    balance_before["SR"] = USD.balance_of(etkSR)
-    balance_before["PA"] = USD.balance_of(premiums_account)
-    balance_before["ENS"] = USD.balance_of("ENS")
-    print(balance_before)
+    balance_before = {
+        "JR": USD.balance_of(etkJR),
+        "SR": USD.balance_of(etkSR),
+        "PA": USD.balance_of(premiums_account),
+        "ENS": USD.balance_of("ENS"),
+    }
 
     new_policy = rm.replace_policy(**replace_kwargs)
     rm.active_exposure.assert_equal(_W(4200))
@@ -2130,12 +2129,12 @@ def test_replace_policy_two_times(tenv):
         internal_id=124,
     )
 
-    balance_before = {}
-    balance_before["JR"] = USD.balance_of(etkJR)
-    balance_before["SR"] = USD.balance_of(etkSR)
-    balance_before["PA"] = USD.balance_of(premiums_account)
-    balance_before["ENS"] = USD.balance_of("ENS")
-    print(balance_before)
+    balance_before = {
+        "JR": USD.balance_of(etkJR),
+        "SR": USD.balance_of(etkSR),
+        "PA": USD.balance_of(premiums_account),
+        "ENS": USD.balance_of("ENS"),
+    }
 
     third_policy = rm.replace_policy(**replace_kwargs)
     rm.active_exposure.assert_equal(_W(4200))
@@ -2239,13 +2238,12 @@ def test_replace_policy_same_params(tenv):
     )
 
     pool.access.grant_component_role(rm, "REPLACER_ROLE", "owner")
-
-    balance_before = {}
-    balance_before["JR"] = USD.balance_of(etkJR)
-    balance_before["SR"] = USD.balance_of(etkSR)
-    balance_before["PA"] = USD.balance_of(premiums_account)
-    balance_before["ENS"] = USD.balance_of("ENS")
-    print(balance_before)
+    balance_before = {
+        "JR": USD.balance_of(etkJR),
+        "SR": USD.balance_of(etkSR),
+        "PA": USD.balance_of(premiums_account),
+        "ENS": USD.balance_of("ENS"),
+    }
 
     new_policy = rm.replace_policy(**replace_kwargs)
     rm.active_exposure.assert_equal(_W(2100))
@@ -2430,12 +2428,11 @@ def test_replace_policy_zero_sr_scr(tenv):
     )
 
     pool.access.grant_component_role(rm, "REPLACER_ROLE", "owner")
-
-    balance_before = {}
-    balance_before["SR"] = USD.balance_of(etkSR)
-    balance_before["PA"] = USD.balance_of(premiums_account)
-    balance_before["ENS"] = USD.balance_of("ENS")
-    print(balance_before)
+    balance_before = {
+        "SR": USD.balance_of(etkSR),
+        "PA": USD.balance_of(premiums_account),
+        "ENS": USD.balance_of("ENS"),
+    }
 
     new_policy = rm.replace_policy(**replace_kwargs)
     rm.active_exposure.assert_equal(new_policy.payout)

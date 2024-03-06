@@ -264,7 +264,7 @@ describe("RiskModule contract", function () {
     ).to.be.revertedWith("Pausable: paused");
   });
 
-  it("Should emit PolicyReplaced when policy is repla", async () => {
+  it("Should emit PolicyReplaced when policy is replaced", async () => {
     const { policy, rm, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
 
     await expect(
