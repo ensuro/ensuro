@@ -1936,8 +1936,8 @@ def test_replace_policy(tenv):
     _deposit(pool, "SR", "LP1", _W(1000))
     _deposit(pool, "JR", "LP2", _W(1000))
 
-    pool.currency.approve("CUST1", pool.contract_id, _W(100))
-    pool.currency.approve("CUST1", rm.owner, _W(100))
+    USD.approve("CUST1", pool.contract_id, _W(100))
+    USD.approve("CUST1", rm.owner, _W(100))
     policy = rm.new_policy(
         payout=_W(2100),
         premium=_W(100),
@@ -1947,7 +1947,7 @@ def test_replace_policy(tenv):
         internal_id=122,
     )
 
-    pool.currency.balance_of("CUST1") == _W(100)
+    USD.balance_of("CUST1") == _W(100)
 
     etkSR.scr.assert_equal(_W("0.1") * _W(2100))
     etkJR.scr.assert_equal(policy.jr_scr)
@@ -1974,12 +1974,12 @@ def test_replace_policy(tenv):
     with pytest.raises(RevertError, match="You must allow ENSURO"):
         rm.replace_policy(**replace_kwargs)
 
-    pool.currency.approve("owner", pool.contract_id, _W(90))
+    USD.approve("owner", pool.contract_id, _W(90))
     balance_before = {
-        "JR": pool.currency.balance_of(etkJR),
-        "SR": pool.currency.balance_of(etkSR),
-        "PA": pool.currency.balance_of(premiums_account),
-        "ENS": pool.currency.balance_of("ENS"),
+        "JR": USD.balance_of(etkJR),
+        "SR": USD.balance_of(etkSR),
+        "PA": USD.balance_of(premiums_account),
+        "ENS": USD.balance_of("ENS"),
     }
 
     new_policy = rm.replace_policy(**replace_kwargs)
@@ -1987,15 +1987,15 @@ def test_replace_policy(tenv):
     etkSR.scr.assert_equal(_W("0.1") * _W(4200))
     etkJR.scr.assert_equal(new_policy.jr_scr)
 
-    pool.currency.balance_of("CUST1") == _W(100 - 90)
-    pool.currency.balance_of("CUST1") == _W(100 - 90)
+    USD.balance_of("CUST1") == _W(100 - 90)
+    USD.balance_of("CUST1") == _W(100 - 90)
 
-    pool.currency.balance_of(etkJR).assert_equal(balance_before["JR"] + new_policy.jr_coc - policy.jr_coc)
-    pool.currency.balance_of(etkSR).assert_equal(balance_before["SR"] + new_policy.sr_coc - policy.sr_coc)
-    pool.currency.balance_of(premiums_account).assert_equal(
+    USD.balance_of(etkJR).assert_equal(balance_before["JR"] + new_policy.jr_coc - policy.jr_coc)
+    USD.balance_of(etkSR).assert_equal(balance_before["SR"] + new_policy.sr_coc - policy.sr_coc)
+    USD.balance_of(premiums_account).assert_equal(
         balance_before["PA"] + new_policy.pure_premium - policy.pure_premium
     )
-    pool.currency.balance_of("ENS").assert_equal(
+    USD.balance_of("ENS").assert_equal(
         balance_before["ENS"] + new_policy.ensuro_commission - policy.ensuro_commission
     )
 
@@ -2003,6 +2003,14 @@ def test_replace_policy(tenv):
         rm.resolve_policy(policy.id, True)
 
     assert pool.owner_of(new_policy.id) == "CUST1"
+
+    etkSR.scr.assert_equal(_W("0.1") * _W(4200))
+    etkJR.scr.assert_equal(new_policy.jr_scr)
+
+    rm.resolve_policy(new_policy.id, _W(500))
+
+    etkSR.scr.assert_equal(0)
+    etkJR.scr.assert_equal(0)
 
     return locals()
 
