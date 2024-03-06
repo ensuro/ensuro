@@ -425,7 +425,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     _requireCompActive(address(pa), ComponentKind.premiumsAccount);
 
     // Effects
-    policy.id = _makePolicyId(rm, internalId);
+    policy.id = makePolicyId(rm, internalId);
     require(_policies[policy.id] == bytes32(0), "Policy already exists");
     _policies[policy.id] = policy.hash();
     _safeMint(policyHolder, policy.id, "");
@@ -480,7 +480,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     );
 
     // Effects
-    newPolicy_.id = _makePolicyId(rm, internalId);
+    newPolicy_.id = makePolicyId(rm, internalId);
     require(_policies[newPolicy_.id] == bytes32(0), "Policy already exists");
     _policies[newPolicy_.id] = newPolicy_.hash();
     address policyHolder = ownerOf(oldPolicy.id);
@@ -516,7 +516,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     require(policy.id != 0 && policy.hash() == _policies[policy.id], "Policy not found");
   }
 
-  function _makePolicyId(IRiskModule rm, uint96 internalId) internal pure returns (uint256) {
+  function makePolicyId(IRiskModule rm, uint96 internalId) public pure returns (uint256) {
     return (uint256(uint160(address(rm))) << 96) + internalId;
   }
 
