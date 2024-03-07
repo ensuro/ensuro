@@ -108,9 +108,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
     await expect(rm.connect(level1).pushBucket(_W("0.15"), defaultBucketParams({}))).to.be.revertedWith(
       accessControlMessage(level1, rm, "LEVEL2_ROLE")
     );
-    await expect(rm.connect(level1).resetBuckets()).to.be.revertedWith(
-      accessControlMessage(level1, rm, "LEVEL2_ROLE")
-    );
+    await expect(rm.connect(level1).resetBuckets()).to.be.revertedWith(accessControlMessage(level1, rm, "LEVEL2_ROLE"));
     await grantRole(hre, accessManager, "LEVEL1_ROLE", level1);
     await expect(rm.connect(level1).pushBucket(_W("0.15"), defaultBucketParams({}))).not.to.be.reverted;
     await expect(rm.connect(level1).resetBuckets()).not.to.be.reverted;
@@ -119,9 +117,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
     await expect(rm.connect(level2).pushBucket(_W("0.15"), defaultBucketParams({}))).to.be.revertedWith(
       accessControlMessage(level2, rm, "LEVEL2_ROLE")
     );
-    await expect(rm.connect(level2).resetBuckets()).to.be.revertedWith(
-      accessControlMessage(level2, rm, "LEVEL2_ROLE")
-    );
+    await expect(rm.connect(level2).resetBuckets()).to.be.revertedWith(accessControlMessage(level2, rm, "LEVEL2_ROLE"));
     await grantRole(hre, accessManager, "LEVEL2_ROLE", level2);
     await expect(rm.connect(level2).pushBucket(_W("0.15"), defaultBucketParams({}))).not.to.be.reverted;
     await expect(rm.connect(level2).resetBuckets()).not.to.be.reverted;
@@ -222,7 +218,7 @@ describe("TieredSignedQuoteRiskModule contract tests", function () {
       .withArgs(_W("0.15"), bucket15.asParams());
 
     // Policy with lossProb < 10 uses bucket10
-    const policy1Params = await defaultPolicyParams({ rm: rm,  lossProb: _W("0.055"), payout: _A("790") });
+    const policy1Params = await defaultPolicyParams({ rm: rm, lossProb: _W("0.055"), payout: _A("790") });
 
     const signature1 = await makeSignedQuote(signer, policy1Params);
     const policy1Tx = await newPolicy(rm, cust, policy1Params, cust, signature1);

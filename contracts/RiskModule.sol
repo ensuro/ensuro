@@ -333,7 +333,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     address onBehalfOf,
     uint96 internalId,
     Params memory params_
-  ) internal returns (Policy.PolicyData memory) {
+  ) internal returns (Policy.PolicyData memory policy) {
     if (premium == type(uint256).max) {
       premium = _getMinimumPremium(payout, lossProb, expiration, params_);
     }
@@ -351,11 +351,60 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
       "Payer must allow caller to transfer the premium"
     );
     require(payout <= maxPayoutPerPolicy(), "RiskModule: Payout is more than maximum per policy");
-    Policy.PolicyData memory policy = Policy.initialize(this, params_, premium, payout, lossProb, expiration);
+    policy = Policy.initialize(this, params_, premium, payout, lossProb, expiration, now_);
     _activeExposure += policy.payout;
     require(_activeExposure <= exposureLimit(), "RiskModule: Exposure limit exceeded");
-    uint256 policyId = _policyPool.newPolicy(policy, payer, onBehalfOf, internalId);
-    policy.id = policyId;
+    policy.id = _policyPool.newPolicy(policy, payer, onBehalfOf, internalId);
+    return policy;
+  }
+
+  /**
+   * @dev Called from child contracts to replace policies (after they validated the pricing).
+   *      whenNotPaused validation must be done in the external method.
+   *
+   * @param payout The exposure (maximum payout) of the policy
+   * @param premium The premium that will be paid by the policyHolder
+   * @param lossProb The probability of having to pay the maximum payout (wad)
+   * @param payer The account that pays for the premium
+   * @param expiration The expiration of the policy (timestamp)
+   * @param internalId An id that's unique within this module and it will be used to identify the policy
+   * @param params_ Params to use to create the new policy
+   */
+  function _replacePolicy(
+    Policy.PolicyData calldata oldPolicy,
+    uint256 payout,
+    uint256 premium,
+    uint256 lossProb,
+    uint40 expiration,
+    address payer,
+    uint96 internalId,
+    Params memory params_
+  ) internal virtual returns (Policy.PolicyData memory policy) {
+    if (premium == type(uint256).max) {
+      premium = _getMinimumPremium(payout, lossProb, expiration, params_);
+    }
+    require(premium < payout, "Premium must be less than payout");
+    require(oldPolicy.expiration > uint40(block.timestamp), "Old policy is expired");
+    require(
+      expiration >= oldPolicy.expiration && payout >= oldPolicy.payout && premium >= oldPolicy.premium,
+      "Policy replacement must be greater or equal than old policy"
+    );
+    require(((expiration - oldPolicy.start) / 3600) < _params.maxDuration, "Policy exceeds max duration");
+    require(
+      _policyPool.currency().allowance(payer, address(_policyPool)) >= (premium - oldPolicy.premium),
+      "You must allow ENSURO to transfer the premium"
+    );
+    require(
+      payer == _msgSender() || _policyPool.currency().allowance(payer, _msgSender()) >= (premium - oldPolicy.premium),
+      "Payer must allow caller to transfer the premium"
+    );
+    require(payout <= maxPayoutPerPolicy(), "RiskModule: Payout is more than maximum per policy");
+    policy = Policy.initialize(this, params_, premium, payout, lossProb, expiration, oldPolicy.start);
+
+    _activeExposure += policy.payout - oldPolicy.payout;
+    require(_activeExposure <= exposureLimit(), "RiskModule: Exposure limit exceeded");
+
+    policy.id = _policyPool.replacePolicy(oldPolicy, policy, payer, internalId);
     return policy;
   }
 

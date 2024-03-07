@@ -11,8 +11,16 @@ const {
 } = require("../js/test-utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
+const { ComponentStatus } = require("../js/enums.js");
+const { ZeroAddress } = hre.ethers;
 
-const COMPONENT_STATUS_DEPRECATED = 2;
+async function createNewPolicy(rm, cust, pool, payout, premium, lossProb, expiration, payer, holder, internalId) {
+  const tx = await rm.connect(cust).newPolicy(payout, premium, lossProb, expiration, payer, holder, internalId);
+  const receipt = await tx.wait();
+  const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
+  const policy = newPolicyEvt.args.policy;
+  return policy;
+}
 
 describe("PolicyPool contract", function () {
   let _A;
@@ -116,9 +124,7 @@ describe("PolicyPool contract", function () {
     const etk = await addEToken(pool, {});
     const premiumsAccount = await deployPremiumsAccount(pool, { jrEtk: etk }, false);
 
-    await expect(pool.addComponent(premiumsAccount, 3))
-      .to.emit(etk, "InternalBorrowerAdded")
-      .withArgs(premiumsAccount);
+    await expect(pool.addComponent(premiumsAccount, 3)).to.emit(etk, "InternalBorrowerAdded").withArgs(premiumsAccount);
   });
 
   it("Removes the PA as borrower from the jr etoken on PremiumsAccount removal", async () => {
@@ -128,7 +134,7 @@ describe("PolicyPool contract", function () {
 
     await pool.addComponent(premiumsAccount, 3);
 
-    pool.changeComponentStatus(premiumsAccount, COMPONENT_STATUS_DEPRECATED);
+    await pool.changeComponentStatus(premiumsAccount, ComponentStatus.deprecated);
 
     await expect(pool.removeComponent(premiumsAccount))
       .to.emit(etk, "InternalBorrowerRemoved")
@@ -140,9 +146,7 @@ describe("PolicyPool contract", function () {
     const etk = await addEToken(pool, {});
     const premiumsAccount = await deployPremiumsAccount(pool, { srEtk: etk }, false);
 
-    await expect(pool.addComponent(premiumsAccount, 3))
-      .to.emit(etk, "InternalBorrowerAdded")
-      .withArgs(premiumsAccount);
+    await expect(pool.addComponent(premiumsAccount, 3)).to.emit(etk, "InternalBorrowerAdded").withArgs(premiumsAccount);
   });
 
   it("Removes the PA as borrower from the sr etoken on PremiumsAccount removal", async () => {
@@ -152,7 +156,7 @@ describe("PolicyPool contract", function () {
 
     await pool.addComponent(premiumsAccount, 3);
 
-    pool.changeComponentStatus(premiumsAccount, COMPONENT_STATUS_DEPRECATED);
+    await pool.changeComponentStatus(premiumsAccount, ComponentStatus.deprecated);
 
     await expect(pool.removeComponent(premiumsAccount))
       .to.emit(etk, "InternalBorrowerRemoved")
@@ -230,7 +234,7 @@ describe("PolicyPool contract", function () {
   }
 
   async function deployRmWithPolicyFixture() {
-    const { rm, pool, currency, accessManager } = await helpers.loadFixture(deployRiskModuleFixture);
+    const { rm, pool, currency, accessManager, premiumsAccount } = await helpers.loadFixture(deployRiskModuleFixture);
     const now = await helpers.time.latest();
 
     // Deploy a new policy
@@ -239,6 +243,7 @@ describe("PolicyPool contract", function () {
 
     await accessManager.grantComponentRole(rm, await rm.PRICER_ROLE(), backend);
     await accessManager.grantComponentRole(rm, await rm.RESOLVER_ROLE(), backend);
+    await accessManager.grantComponentRole(rm, await rm.REPLACER_ROLE(), backend);
     const tx = await rm.connect(backend).newPolicy(
       _A(1000), // payout
       _A(10), // premium
@@ -254,7 +259,7 @@ describe("PolicyPool contract", function () {
     // Try to resolve it without going through the riskModule
     const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
 
-    return { policy: newPolicyEvt.args.policy, receipt, rm, currency, accessManager, pool };
+    return { policy: newPolicyEvt.args.policy, receipt, rm, currency, accessManager, pool, premiumsAccount };
   }
 
   it("Only allows to resolve a policy once", async () => {
@@ -280,6 +285,113 @@ describe("PolicyPool contract", function () {
     await expect(rm.connect(backend).resolvePolicy([...policy], policy.payout + _A(10))).to.be.revertedWith(
       "payout > policy.payout"
     );
+  });
+
+  it("Can't expire policies when the pool is paused", async () => {
+    const { accessManager, policy, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    await grantRole(hre, accessManager, "GUARDIAN_ROLE", owner);
+    await expect(pool.connect(owner).pause()).to.emit(pool, "Paused");
+
+    await expect(pool.connect(backend).expirePolicies([[...policy]])).to.be.revertedWith("Pausable: paused");
+  });
+
+  it("Can't replace resolved policies", async () => {
+    const { policy, rm, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
+    await expect(rm.connect(backend).resolvePolicy([...policy], policy.payout)).not.to.be.reverted;
+    expect(await pool.isActive(policy.id)).to.be.false;
+    await expect(pool.replacePolicy([...policy], [...policy], ZeroAddress, 1234)).to.be.revertedWith(
+      "Policy not found"
+    );
+  });
+
+  it("Only RM can replace policies", async () => {
+    const { policy, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
+    await expect(pool.replacePolicy([...policy], [...policy], ZeroAddress, 1234)).to.be.revertedWith(
+      "Only the RM can create new policies"
+    );
+  });
+
+  it("Rejects replace policy if the pool is paused", async () => {
+    const { accessManager, policy, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    await grantRole(hre, accessManager, "GUARDIAN_ROLE", owner);
+    await expect(pool.connect(owner).pause()).to.emit(pool, "Paused");
+
+    await expect(pool.replacePolicy([...policy], [...policy], ZeroAddress, 1234)).to.be.revertedWith(
+      "Pausable: paused"
+    );
+  });
+
+  it("Components must be active to replace policies", async () => {
+    const { policy, pool, rm, premiumsAccount } = await helpers.loadFixture(deployRmWithPolicyFixture);
+    await pool.changeComponentStatus(premiumsAccount, ComponentStatus.deprecated);
+    await expect(
+      rm
+        .connect(backend)
+        .replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, policy.expiration, 1234)
+    ).to.be.revertedWith("Component not found or not active");
+    await pool.changeComponentStatus(premiumsAccount, ComponentStatus.active);
+    await pool.changeComponentStatus(rm, ComponentStatus.deprecated);
+    await expect(
+      rm
+        .connect(backend)
+        .replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, policy.expiration, 1234)
+    ).to.be.revertedWith("Component not found or not active");
+  });
+
+  it("Does not allow to replace expired policies", async () => {
+    const { policy, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
+    await helpers.time.increaseTo(policy.expiration + 100n);
+    await expect(
+      rm
+        .connect(backend)
+        .replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, policy.expiration, 1234)
+    ).to.be.revertedWith("Old policy is expired");
+
+    await expect(rm.connect(backend).replacePolicyRaw([...policy], [...policy], backend, 123)).to.be.revertedWith(
+      "Old policy is expired"
+    );
+  });
+
+  it("Must revert if new policy values must be greater or equal than old policy", async () => {
+    const { rm, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    const now = await helpers.time.latest();
+    const p1 = await createNewPolicy(rm, backend, pool, _A(1000), _A(10), _W(0), now + 3600 * 5, cust, cust, 222);
+    let p2 = [...p1];
+    p2[1] -= _A(1); // change new policy payout
+    await expect(rm.connect(backend).replacePolicyRaw([...p1], [...p2], backend, 1234)).to.be.revertedWith(
+      "New policy must be greater or equal than old policy"
+    );
+  });
+
+  it("Must revert if new policy have different start date", async () => {
+    const { rm, pool, policy } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    await helpers.time.increaseTo(policy.start + 100n);
+    const now = await helpers.time.latest();
+    const p = await createNewPolicy(rm, backend, pool, _A(1000), _A(10), _W(0), now + 3600 * 5, cust, cust, 1234);
+    await expect(rm.connect(backend).replacePolicyRaw([...policy], [...p], backend, 123)).to.be.revertedWith(
+      "Both policies must have the same starting date"
+    );
+  });
+
+  it("Only PolicyPool can call PA policyReplaced", async () => {
+    const { pool, policy } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    const etk = await createEToken(pool, {});
+    const pa = await deployPremiumsAccount(pool, { srEtk: etk });
+    await expect(pa.policyReplaced([...policy], [...policy])).to.be.revertedWith("The caller must be the PolicyPool");
+  });
+
+  it("Replacement policy must have a new unique internalId", async () => {
+    const { policy, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
+    await expect(
+      rm
+        .connect(backend)
+        .replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, policy.expiration, 123)
+    ).to.be.revertedWith("Policy already exists");
   });
 
   it("Only LEVEL2_ROLE can change the baseURI and after the change the tokenURI works", async () => {

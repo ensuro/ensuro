@@ -20,9 +20,6 @@ contract PolicyPoolMock is IPolicyPool {
   mapping(uint256 => Policy.PolicyData) internal policies;
   mapping(uint256 => bytes32) internal policyHashes;
 
-  event NewPolicy(IRiskModule indexed riskModule, Policy.PolicyData policy);
-  event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, uint256 payout);
-
   constructor(IERC20Metadata currency_, IAccessManager access_) {
     _currency = currency_;
     _access = access_;
@@ -42,7 +39,7 @@ contract PolicyPoolMock is IPolicyPool {
 
   function newPolicy(
     Policy.PolicyData memory policy,
-    address /* caller */,
+    address /* payer */,
     address /* policyHolder */,
     uint96 internalId
   ) external override returns (uint256) {
@@ -50,6 +47,20 @@ contract PolicyPoolMock is IPolicyPool {
     policyHashes[policy.id] = policy.hash();
     emit NewPolicy(IRiskModule(msg.sender), policy);
     return policy.id;
+  }
+
+  function replacePolicy(
+    Policy.PolicyData memory oldPolicy,
+    Policy.PolicyData memory newPolicy_,
+    address /* payer */,
+    uint96 internalId
+  ) external override returns (uint256) {
+    newPolicy_.id = (uint256(uint160(address(newPolicy_.riskModule))) << 96) + internalId;
+    policyHashes[newPolicy_.id] = newPolicy_.hash();
+    IRiskModule rm = oldPolicy.riskModule;
+    emit NewPolicy(rm, newPolicy_);
+    emit PolicyReplaced(IRiskModule(msg.sender), oldPolicy.id, newPolicy_.id);
+    return newPolicy_.id;
   }
 
   function _resolvePolicy(Policy.PolicyData memory policy, uint256 payout) internal {
@@ -98,9 +109,18 @@ contract PolicyPoolMock is IPolicyPool {
     uint256 premium,
     uint256 payout,
     uint256 lossProb,
-    uint40 expiration
+    uint40 expiration,
+    uint40 start
   ) external {
-    Policy.PolicyData memory policy = Policy.initialize(riskModule, rmParams, premium, payout, lossProb, expiration);
+    Policy.PolicyData memory policy = Policy.initialize(
+      riskModule,
+      rmParams,
+      premium,
+      payout,
+      lossProb,
+      expiration,
+      start == 0 ? uint40(block.timestamp) : start
+    );
 
     emit NewPolicy(riskModule, policy);
   }

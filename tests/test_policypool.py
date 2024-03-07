@@ -1880,6 +1880,581 @@ def test_expire_policy_payout(tenv):
     rm.resolve_policy(policy.id, False)
 
 
+def test_replace_policy(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: CFAR
+        jr_coll_ratio: "0.1"
+        coll_ratio: "0.2"
+        ensuro_pp_fee: "0.05"
+        jr_roc: "0.2"
+        sr_roc: "0.1"
+        wallet: "MGA"
+        roles:
+          - user: owner
+            role: PRICER_ROLE
+          - user: owner
+            role: RESOLVER_ROLE
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 6000
+        initial_balances:
+        - user: LP1
+          amount: 1000
+        - user: LP2
+          amount: 1000
+        - user: LP3
+          amount: 1000
+        - user: CUST1
+          amount: 200
+        - user: owner
+          amount: 90
+    premiums_accounts:
+    - senior_etk: SR
+      junior_etk: JR
+    etokens:
+      - name: SR
+      - name: JR
+    roles:
+      - user: owner
+        role: LEVEL2_ROLE  # For setting moc
+    """
+
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    etkSR = pool.etokens["SR"]
+    etkJR = pool.etokens["JR"]
+    USD = pool.currency
+    rm = pool.risk_modules["CFAR"]
+    premiums_account = rm.premiums_account
+
+    with rm.as_(rm.owner):
+        rm.moc = _W("1.1")
+        rm.ensuro_coc_fee = _W("0.05")
+
+    _deposit(pool, "SR", "LP1", _W(1000))
+    _deposit(pool, "JR", "LP2", _W(1000))
+
+    USD.approve("CUST1", pool.contract_id, _W(100))
+    USD.approve("CUST1", rm.owner, _W(100))
+    policy = rm.new_policy(
+        payout=_W(2100),
+        premium=_W(100),
+        on_behalf_of="CUST1",
+        loss_prob=_W("0.03"),
+        expiration=timecontrol.now + 10 * DAY,
+        internal_id=122,
+    )
+
+    USD.balance_of("CUST1") == _W(100)
+
+    etkSR.scr.assert_equal(_W("0.1") * _W(2100))
+    etkJR.scr.assert_equal(policy.jr_scr)
+
+    rm.active_exposure.assert_equal(policy.payout)
+
+    timecontrol.fast_forward(4 * DAY)
+
+    replace_kwargs = dict(
+        old_policy=policy,
+        payout=_W(4200),
+        premium=_W(190),
+        loss_prob=_W("0.03"),
+        expiration=timecontrol.now + 14 * DAY,
+        payer="owner",
+        internal_id=123,
+    )
+
+    with pytest.raises(RevertError, match="AccessControl"):
+        rm.replace_policy(**replace_kwargs)
+
+    pool.access.grant_component_role(rm, "REPLACER_ROLE", "owner")
+
+    with pytest.raises(RevertError, match="You must allow ENSURO"):
+        rm.replace_policy(**replace_kwargs)
+
+    USD.approve("owner", pool.contract_id, _W(90))
+    balance_before = {
+        "JR": USD.balance_of(etkJR),
+        "SR": USD.balance_of(etkSR),
+        "PA": USD.balance_of(premiums_account),
+        "ENS": USD.balance_of("ENS"),
+    }
+
+    new_policy = rm.replace_policy(**replace_kwargs)
+    rm.active_exposure.assert_equal(_W(4200))
+    etkSR.scr.assert_equal(_W("0.1") * _W(4200))
+    etkJR.scr.assert_equal(new_policy.jr_scr)
+
+    USD.balance_of("CUST1") == _W(100 - 90)
+    USD.balance_of("CUST1") == _W(100 - 90)
+
+    USD.balance_of(etkJR).assert_equal(balance_before["JR"] + new_policy.jr_coc - policy.jr_coc)
+    USD.balance_of(etkSR).assert_equal(balance_before["SR"] + new_policy.sr_coc - policy.sr_coc)
+    USD.balance_of(premiums_account).assert_equal(
+        balance_before["PA"] + new_policy.pure_premium - policy.pure_premium
+    )
+    USD.balance_of("ENS").assert_equal(
+        balance_before["ENS"] + new_policy.ensuro_commission - policy.ensuro_commission
+    )
+
+    with pytest.raises(RevertError, match="Policy not found"):
+        rm.resolve_policy(policy.id, True)
+
+    assert pool.owner_of(new_policy.id) == "CUST1"
+
+    etkSR.scr.assert_equal(_W("0.1") * _W(4200))
+    etkJR.scr.assert_equal(new_policy.jr_scr)
+
+    rm.resolve_policy(new_policy.id, _W(500))
+
+    etkSR.scr.assert_equal(0)
+    etkJR.scr.assert_equal(0)
+
+    return locals()
+
+
+def test_replace_policy_two_times(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: CFAR
+        jr_coll_ratio: "0.1"
+        coll_ratio: "0.2"
+        ensuro_pp_fee: "0.05"
+        jr_roc: "0.2"
+        sr_roc: "0.1"
+        wallet: "MGA"
+        roles:
+          - user: owner
+            role: PRICER_ROLE
+          - user: owner
+            role: RESOLVER_ROLE
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 6000
+        initial_balances:
+        - user: LP1
+          amount: 1000
+        - user: LP2
+          amount: 1000
+        - user: CUST1
+          amount: 200
+        - user: owner
+          amount: 90
+    premiums_accounts:
+    - senior_etk: SR
+      junior_etk: JR
+    etokens:
+      - name: SR
+      - name: JR
+    roles:
+      - user: owner
+        role: LEVEL2_ROLE  # For setting moc
+    """
+
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    etkSR = pool.etokens["SR"]
+    etkJR = pool.etokens["JR"]
+    USD = pool.currency
+    rm = pool.risk_modules["CFAR"]
+    premiums_account = rm.premiums_account
+
+    with rm.as_(rm.owner):
+        rm.moc = _W("1.1")
+        rm.ensuro_coc_fee = _W("0.05")
+
+    _deposit(pool, "SR", "LP1", _W(1000))
+    _deposit(pool, "JR", "LP2", _W(1000))
+
+    USD.approve("owner", pool.contract_id, _W(200))
+    USD.approve("CUST1", pool.contract_id, _W(100))
+    USD.approve("CUST1", rm.owner, _W(100))
+    policy = rm.new_policy(
+        payout=_W(2100),
+        premium=_W(100),
+        on_behalf_of="CUST1",
+        loss_prob=_W("0.03"),
+        expiration=timecontrol.now + 10 * DAY,
+        internal_id=122,
+    )
+
+    USD.balance_of("CUST1") == _W(100)
+    etkSR.scr.assert_equal(_W("0.1") * _W(2100))
+    etkJR.scr.assert_equal(policy.jr_scr)
+
+    rm.active_exposure.assert_equal(policy.payout)
+    timecontrol.fast_forward(4 * DAY)
+    replace_kwargs = dict(
+        old_policy=policy,
+        payout=_W(4200),
+        premium=_W(190),
+        loss_prob=_W("0.03"),
+        expiration=timecontrol.now + 14 * DAY,
+        payer="owner",
+        internal_id=123,
+    )
+
+    pool.access.grant_component_role(rm, "REPLACER_ROLE", "owner")
+    balance_before = {
+        "JR": USD.balance_of(etkJR),
+        "SR": USD.balance_of(etkSR),
+        "PA": USD.balance_of(premiums_account),
+        "ENS": USD.balance_of("ENS"),
+    }
+
+    new_policy = rm.replace_policy(**replace_kwargs)
+    rm.active_exposure.assert_equal(_W(4200))
+    etkSR.scr.assert_equal(_W("0.1") * _W(4200))
+    etkJR.scr.assert_equal(new_policy.jr_scr)
+
+    USD.balance_of(etkJR).assert_equal(balance_before["JR"] + new_policy.jr_coc - policy.jr_coc)
+    USD.balance_of(etkSR).assert_equal(balance_before["SR"] + new_policy.sr_coc - policy.sr_coc)
+    USD.balance_of(premiums_account).assert_equal(
+        balance_before["PA"] + new_policy.pure_premium - policy.pure_premium
+    )
+    USD.balance_of("ENS").assert_equal(
+        balance_before["ENS"] + new_policy.ensuro_commission - policy.ensuro_commission
+    )
+
+    assert pool.owner_of(new_policy.id) == "CUST1"
+
+    # Try to replace the FIRST policy
+    with pytest.raises(RevertError, match="Policy not found"):
+        third_policy = rm.replace_policy(**replace_kwargs)
+
+    # I'll replace the policy again
+    timecontrol.fast_forward(6 * DAY)
+    replace_kwargs = dict(
+        old_policy=new_policy,
+        payout=_W(4200),
+        premium=_W(200),
+        loss_prob=_W("0.03"),
+        expiration=timecontrol.now + 16 * DAY,
+        payer="owner",
+        internal_id=124,
+    )
+
+    balance_before = {
+        "JR": USD.balance_of(etkJR),
+        "SR": USD.balance_of(etkSR),
+        "PA": USD.balance_of(premiums_account),
+        "ENS": USD.balance_of("ENS"),
+    }
+
+    third_policy = rm.replace_policy(**replace_kwargs)
+    rm.active_exposure.assert_equal(_W(4200))
+    etkSR.scr.assert_equal(_W("0.1") * _W(4200))
+    etkJR.scr.assert_equal(third_policy.jr_scr)
+
+    USD.balance_of(etkJR).assert_equal(balance_before["JR"] + third_policy.jr_coc - new_policy.jr_coc)
+    USD.balance_of(etkSR).assert_equal(balance_before["SR"] + third_policy.sr_coc - new_policy.sr_coc)
+    USD.balance_of(premiums_account).assert_equal(
+        balance_before["PA"] + third_policy.pure_premium - new_policy.pure_premium
+    )
+    USD.balance_of("ENS").assert_equal(
+        balance_before["ENS"] + third_policy.ensuro_commission - new_policy.ensuro_commission
+    )
+
+    with pytest.raises(RevertError, match="Policy not found"):
+        rm.resolve_policy(new_policy.id, True)
+
+    assert pool.owner_of(third_policy.id) == "CUST1"
+
+
+def test_replace_policy_same_params(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: CFAR
+        jr_coll_ratio: "0.1"
+        coll_ratio: "0.2"
+        ensuro_pp_fee: "0.05"
+        jr_roc: "0.2"
+        sr_roc: "0.1"
+        wallet: "MGA"
+        roles:
+          - user: owner
+            role: PRICER_ROLE
+          - user: owner
+            role: RESOLVER_ROLE
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 6000
+        initial_balances:
+        - user: LP1
+          amount: 1000
+        - user: LP2
+          amount: 1000
+        - user: CUST1
+          amount: 200
+        - user: owner
+          amount: 90
+    premiums_accounts:
+    - senior_etk: SR
+      junior_etk: JR
+    etokens:
+      - name: SR
+      - name: JR
+    roles:
+      - user: owner
+        role: LEVEL2_ROLE  # For setting moc
+    """
+
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    etkSR = pool.etokens["SR"]
+    etkJR = pool.etokens["JR"]
+    USD = pool.currency
+    rm = pool.risk_modules["CFAR"]
+    premiums_account = rm.premiums_account
+
+    with rm.as_(rm.owner):
+        rm.moc = _W("1.1")
+        rm.ensuro_coc_fee = _W("0.05")
+
+    _deposit(pool, "SR", "LP1", _W(1000))
+    _deposit(pool, "JR", "LP2", _W(1000))
+
+    USD.approve("owner", pool.contract_id, _W(90))
+    USD.approve("CUST1", pool.contract_id, _W(100))
+    USD.approve("CUST1", rm.owner, _W(100))
+    policy = rm.new_policy(
+        payout=_W(2100),
+        premium=_W(100),
+        on_behalf_of="CUST1",
+        loss_prob=_W("0.03"),
+        expiration=timecontrol.now + 10 * DAY,
+        internal_id=122,
+    )
+
+    etkSR.scr.assert_equal(_W("0.1") * _W(2100))
+    etkJR.scr.assert_equal(policy.jr_scr)
+
+    rm.active_exposure.assert_equal(policy.payout)
+    timecontrol.fast_forward(4 * DAY)
+    replace_kwargs = dict(
+        old_policy=policy,
+        payout=policy.payout,
+        premium=policy.premium,
+        loss_prob=policy.loss_prob,
+        expiration=policy.expiration,
+        payer="owner",
+        internal_id=123,
+    )
+
+    pool.access.grant_component_role(rm, "REPLACER_ROLE", "owner")
+    balance_before = {
+        "JR": USD.balance_of(etkJR),
+        "SR": USD.balance_of(etkSR),
+        "PA": USD.balance_of(premiums_account),
+        "ENS": USD.balance_of("ENS"),
+    }
+
+    new_policy = rm.replace_policy(**replace_kwargs)
+    rm.active_exposure.assert_equal(_W(2100))
+    etkSR.scr.assert_equal(_W("0.1") * _W(2100))
+    etkJR.scr.assert_equal(new_policy.jr_scr)
+
+    USD.balance_of(etkJR).assert_equal(balance_before["JR"] + new_policy.jr_coc - policy.jr_coc)
+    USD.balance_of(etkSR).assert_equal(balance_before["SR"] + new_policy.sr_coc - policy.sr_coc)
+    USD.balance_of(premiums_account).assert_equal(
+        balance_before["PA"] + new_policy.pure_premium - policy.pure_premium
+    )
+    USD.balance_of("ENS").assert_equal(
+        balance_before["ENS"] + new_policy.ensuro_commission - policy.ensuro_commission
+    )
+
+    # The owner of the first policy is from CUST1 but can't resolve that policy
+    assert pool.owner_of(policy.id) == "CUST1"
+    assert pool.owner_of(new_policy.id) == "CUST1"
+    with pytest.raises(RevertError, match="Policy not found"):
+        rm.resolve_policy(policy.id, True)
+
+
+def test_replace_policy_not_enough_money(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: CFAR
+        jr_coll_ratio: "0.1"
+        coll_ratio: "0.2"
+        ensuro_pp_fee: "0.05"
+        jr_roc: "0.2"
+        sr_roc: "0.1"
+        wallet: "MGA"
+        roles:
+          - user: owner
+            role: PRICER_ROLE
+          - user: owner
+            role: RESOLVER_ROLE
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 6000
+        initial_balances:
+        - user: LP1
+          amount: 3000
+        - user: CUST1
+          amount: 200
+        - user: owner
+          amount: 90
+    premiums_accounts:
+    - senior_etk: SR
+      junior_etk: JR
+    etokens:
+      - name: SR
+      - name: JR
+    roles:
+      - user: owner
+        role: LEVEL2_ROLE  # For setting moc
+    """
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    etkSR = pool.etokens["SR"]
+    etkJR = pool.etokens["JR"]
+    USD = pool.currency
+    rm = pool.risk_modules["CFAR"]
+
+    with rm.as_(rm.owner):
+        rm.moc = _W("1.1")
+        rm.ensuro_coc_fee = _W("0.05")
+
+    _deposit(pool, "SR", "LP1", _W(300))
+    _deposit(pool, "JR", "LP1", _W(2000))
+
+    USD.approve("owner", pool.contract_id, _W(100))
+    USD.approve("CUST1", pool.contract_id, _W(100))
+    USD.approve("CUST1", rm.owner, _W(100))
+    policy = rm.new_policy(
+        payout=_W(2100),
+        premium=_W(100),
+        on_behalf_of="CUST1",
+        loss_prob=_W("0.03"),
+        expiration=timecontrol.now + 10 * DAY,
+        internal_id=122,
+    )
+
+    etkSR.scr.assert_equal(_W("0.1") * _W(2100))  # 210
+    etkJR.scr.assert_equal(policy.jr_scr)
+    rm.active_exposure.assert_equal(policy.payout)
+
+    timecontrol.fast_forward(4 * DAY)
+    replace_kwargs = dict(
+        old_policy=policy,
+        payout=_W(3100),
+        premium=_W(200),
+        loss_prob=_W("0.03"),
+        expiration=timecontrol.now + 14 * DAY,
+        payer="owner",
+        internal_id=123,
+    )
+
+    pool.access.grant_component_role(rm, "REPLACER_ROLE", "owner")
+    with pytest.raises(RevertError, match="Not enough funds available to cover the SCR"):
+        rm.replace_policy(**replace_kwargs)
+
+    # Can resolve the policy, was not replaced
+    assert pool.owner_of(policy.id) == "CUST1"
+    rm.resolve_policy(policy.id, True)
+
+
+def test_replace_policy_zero_sr_scr(tenv):
+    YAML_SETUP = """
+    risk_modules:
+      - name: CFAR
+        coll_ratio: "0.5"
+        sr_roc: "0.1"
+        ensuro_pp_fee: 0
+        wallet: "MGA"
+        roles:
+          - user: owner
+            role: PRICER_ROLE
+          - user: owner
+            role: RESOLVER_ROLE
+    currency:
+        name: USD
+        symbol: $
+        initial_supply: 6000
+        initial_balances:
+        - user: LP1
+          amount: 1000
+        - user: LP2
+          amount: 1000
+        - user: CUST1
+          amount: 200
+        - user: owner
+          amount: 90
+    premiums_accounts:
+    - senior_etk: SR
+    etokens:
+      - name: SR
+    roles:
+      - user: owner
+        role: LEVEL2_ROLE  # For setting moc
+    """
+
+    pool = load_config(StringIO(YAML_SETUP), tenv.module)
+    timecontrol = tenv.time_control
+    etkSR = pool.etokens["SR"]
+    USD = pool.currency
+    rm = pool.risk_modules["CFAR"]
+    premiums_account = rm.premiums_account
+
+    with rm.as_(rm.owner):
+        rm.moc = _W(1)
+        rm.ensuro_coc_fee = _W("0.05")
+
+    _deposit(pool, "SR", "LP1", _W(1000))
+
+    USD.approve("owner", pool.contract_id, _W(90))
+    USD.approve("CUST1", pool.contract_id, _W(100))
+    USD.approve("CUST1", rm.owner, _W(100))
+    policy = rm.new_policy(
+        payout=_W(100),
+        premium=_W(90),
+        on_behalf_of="CUST1",
+        loss_prob=_W("0.7"),
+        expiration=timecontrol.now + 10 * DAY,
+        internal_id=122,
+    )
+
+    policy.jr_scr.assert_equal(_W(0))
+    policy.sr_scr.assert_equal(_W(0))
+
+    rm.active_exposure.assert_equal(policy.payout)
+    timecontrol.fast_forward(4 * DAY)
+    replace_kwargs = dict(
+        old_policy=policy,
+        payout=policy.payout,
+        premium=policy.premium,
+        loss_prob=policy.loss_prob,
+        expiration=policy.expiration,
+        payer="owner",
+        internal_id=123,
+    )
+
+    pool.access.grant_component_role(rm, "REPLACER_ROLE", "owner")
+    balance_before = {
+        "SR": USD.balance_of(etkSR),
+        "PA": USD.balance_of(premiums_account),
+        "ENS": USD.balance_of("ENS"),
+    }
+
+    new_policy = rm.replace_policy(**replace_kwargs)
+    rm.active_exposure.assert_equal(new_policy.payout)
+    etkSR.scr.assert_equal(_W(0))
+
+    USD.balance_of(etkSR).assert_equal(balance_before["SR"] + new_policy.sr_coc - policy.sr_coc)
+    USD.balance_of(premiums_account).assert_equal(
+        balance_before["PA"] + new_policy.pure_premium - policy.pure_premium
+    )
+    USD.balance_of("ENS").assert_equal(
+        balance_before["ENS"] + new_policy.ensuro_commission - policy.ensuro_commission
+    )
+
+
 def test_withdraw_won_premiums(tenv):
     vars = test_expire_policy(tenv)
     pool, premiums_account, USD = extract_vars(vars, "pool,premiums_account,USD")

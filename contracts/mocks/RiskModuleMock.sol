@@ -5,6 +5,7 @@ import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {IPremiumsAccount} from "../interfaces/IPremiumsAccount.sol";
 import {RiskModule} from "../RiskModule.sol";
 import {Policy} from "../Policy.sol";
+import {IERC721} from "@openzeppelin/contracts/interfaces/IERC721.sol";
 
 /**
  * @title Trustful Risk Module
@@ -17,6 +18,7 @@ import {Policy} from "../Policy.sol";
 contract RiskModuleMock is RiskModule {
   bytes32 public constant PRICER_ROLE = keccak256("PRICER_ROLE");
   bytes32 public constant RESOLVER_ROLE = keccak256("RESOLVER_ROLE");
+  bytes32 public constant REPLACER_ROLE = keccak256("REPLACER_ROLE");
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
@@ -56,7 +58,41 @@ contract RiskModuleMock is RiskModule {
     return _newPolicy(payout, premium, lossProb, expiration, payer, onBehalfOf, internalId).id;
   }
 
+  function newPolicyRaw(
+    Policy.PolicyData memory policy,
+    address payer,
+    address policyHolder,
+    uint96 internalId
+  ) external returns (uint256) {
+    return _policyPool.newPolicy(policy, payer, policyHolder, internalId);
+  }
+
   function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external onlyComponentRole(RESOLVER_ROLE) {
     _policyPool.resolvePolicy(policy, payout);
+  }
+
+  function resolvePolicyRaw(Policy.PolicyData calldata policy, uint256 payout) external {
+    return _policyPool.resolvePolicy(policy, payout);
+  }
+
+  function replacePolicy(
+    Policy.PolicyData calldata oldPolicy,
+    uint256 payout,
+    uint256 premium,
+    uint256 lossProb,
+    uint40 expiration,
+    uint96 internalId
+  ) external whenNotPaused onlyComponentRole(REPLACER_ROLE) returns (uint256) {
+    address onBehalfOf = IERC721(address(_policyPool)).ownerOf(oldPolicy.id);
+    return _replacePolicy(oldPolicy, payout, premium, lossProb, expiration, onBehalfOf, internalId, params()).id;
+  }
+
+  function replacePolicyRaw(
+    Policy.PolicyData memory oldPolicy,
+    Policy.PolicyData memory newPolicy_,
+    address payer,
+    uint96 internalId
+  ) external returns (uint256) {
+    return _policyPool.replacePolicy(oldPolicy, newPolicy_, payer, internalId);
   }
 }
