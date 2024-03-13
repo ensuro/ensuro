@@ -68,7 +68,7 @@ This contract also follows the ERC721 standard, minting an NFT for each policy c
 
 The protocol uses three levels of access control, plus a guardian role. These roles can be assigned at protocol level or specifically for a component. The roles are managed by the AccessManager smart contract.
 
-More info about governance in https://docs.google.com/spreadsheets/d/1LqlogRn8AlnLq1rPTd5UT7CJI3uc31PdBaxj4pX3mtE/edit?usp=sharing
+More info about governance in [our docs](https://docs.ensuro.co/ensuro-docs/smart-contracts/governance)
 
 ## Upgradability
 
@@ -81,7 +81,7 @@ We will never deploy upgrades to live contracts without prior notice to the user
 - LEVEL1_ROLE: this will be delegated to a Timelock contract that will give enough time to the users to be notified of the imminent upgrade.
 - GUARDIAN_ROLE: this will used only for emergency situations to prevent hacks or fix vulnerabilities. It will be delegated to multisigs where one of the signers is a trusted third party.
 
-Have in mind the new versions of the contracts might or might not be covered by the same audit processes as the initial ones. Always check the details of the audit reports.
+Have in mind the new versions of the contracts might or might not be covered by the same audit processes as the initial ones. See our [audit applicability matrix](https://docs.ensuro.co/ensuro-docs/deployments/audits) to check which audit applies to the currently deployed contracts.
 
 ## Development
 
