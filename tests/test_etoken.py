@@ -1,18 +1,20 @@
 """Unitary tests for eToken contract"""
-import sys
-from functools import partial, wraps
+
 from collections import namedtuple
+from functools import partial
+
 import pytest
 from ethproto.contracts import RevertError
-from prototype import ensuro
-from ethproto.wadray import _W, _R, Wad
-from prototype.utils import WEEK, DAY, MONTH
-from prototype import wrappers
+from ethproto.wadray import _R, _W, Wad
+
+from prototype import ensuro, wrappers
+from prototype.utils import DAY, MONTH, WEEK
+
 from . import TEST_VARIANTS
+from .contracts import ForwardProxy, PolicyPoolMockForward
 
 TEnv = namedtuple(
-    "TEnv",
-    "time_control etoken_class policy_factory kind currency fw_proxy_factory module pool_access"
+    "TEnv", "time_control etoken_class policy_factory kind currency fw_proxy_factory module pool_access"
 )
 SECONDS_IN_YEAR = 365 * 3600 * 24
 
@@ -56,15 +58,14 @@ def tenv(request):
             module=ensuro,
         )
     elif request.param == "ethereum":
-        PolicyPoolMockForward = wrappers.get_provider().get_contract_factory("PolicyPoolMockForward")
-
         currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(10000))
         access = wrappers.AccessManager(owner="owner")
 
         def etoken_factory(**kwargs):
-            pool = PolicyPoolMockForward.deploy(
-                wrappers.AddressBook.ZERO, currency.contract, access.contract, {"from": currency.owner}
+            pool = PolicyPoolMockForward(
+                forwardTo=wrappers.AddressBook.ZERO, currency_=currency.contract, access_=access.contract
             )
+
             symbol = kwargs.pop("symbol", "ETK")
             etoken = wrappers.EToken(policy_pool=pool, symbol=symbol, **kwargs)
             pool.setForwardTo(etoken.contract, {"from": currency.owner})
@@ -72,10 +73,14 @@ def tenv(request):
 
         def fw_proxy_factory(name, etk):
             provider = wrappers.get_provider()
-            ForwardProxy = provider.get_contract_factory("ForwardProxy")
-            fw_proxy = ForwardProxy.deploy(etk.contract, {"from": currency.owner})
-            currency.approve(fw_proxy.address, etk.contract, 2**256 - 1)
-            return fw_proxy.address
+            fw_proxy = ForwardProxy(forwardTo=etk.contract)
+            # Unlock the proxy's address on the node to be able to do the approval
+            provider.unlock_account(fw_proxy.contract.address)
+
+            # TODO: This fails unless the gasPrice is zero, because fw_proxy has no gas tokens.
+            # Would it be better to transfer ETH to it?
+            currency.approve(fw_proxy.contract.address, etk.contract, 2**256 - 1)
+            return fw_proxy.contract.address
 
         FakePolicy.time_control = wrappers.get_provider().time_control
 
@@ -105,18 +110,6 @@ def test_only_policy_pool_validation(tenv):
         etk.unlock_scr(_W(600), _W("0.0365"), _W(0))
 
 
-def skip_if_coverage_activated(f):
-    @wraps(f)
-    def wrapped(tenv, *args, **kwargs):
-        if "brownie" in sys.modules:
-            from brownie._config import CONFIG
-            if CONFIG.argv.get("coverage", False) and tenv.kind == "ethereum":
-                return pytest.skip("Coverage activated")
-        return f(tenv, *args, **kwargs)
-    return wrapped
-
-
-@skip_if_coverage_activated
 def test_deposit_withdraw(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK")
     tenv.currency.transfer(tenv.currency.owner, etk, _W(1000))
@@ -140,7 +133,6 @@ def test_deposit_withdraw(tenv):
         assert tenv.currency.balance_of("LP1") == _W(1000)
 
 
-@skip_if_coverage_activated
 def test_lock_unlock_scr(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK")
     pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account
@@ -153,14 +145,15 @@ def test_lock_unlock_scr(tenv):
     assert etk.scaled_total_supply() == _W(1000)
     assert etk.scaled_balance_of("LP1") == _W(1000)
 
-    policy = tenv.policy_factory(sr_scr=_W(600), sr_interest_rate=_W("0.0365"),
-                                 expiration=tenv.time_control.now + WEEK)
+    policy = tenv.policy_factory(
+        sr_scr=_W(600), sr_interest_rate=_W("0.0365"), expiration=tenv.time_control.now + WEEK
+    )
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
     with etk.thru(pa):
         etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
     assert etk.scr == _W(600)
     assert etk.scr_interest_rate == _W("0.0365")
-    etk.token_interest_rate.assert_equal(_W("0.0365") * _W(600/1000))
+    etk.token_interest_rate.assert_equal(_W("0.0365") * _W(600 / 1000))
     etk.funds_available.assert_equal(_W(400))
 
     tenv.time_control.fast_forward(2 * DAY)
@@ -189,13 +182,12 @@ def test_lock_unlock_scr(tenv):
     with etk.thru_policy_pool():
         etk.withdraw("LP2", expected_balance // _W(4)).assert_equal(expected_balance // _W(4))
         etk.scaled_balance_of("LP2").assert_equal(_W(750))
-        etk.withdraw("LP2", None).assert_equal(expected_balance * _W(3/4))
+        etk.withdraw("LP2", None).assert_equal(expected_balance * _W(3 / 4))
         etk.balance_of("LP2").assert_equal(_W(0))
         tenv.currency.balance_of("LP2").assert_equal(expected_balance)
     etk.balance_of("LP1").assert_equal(_W(0))
 
 
-@skip_if_coverage_activated
 def test_etoken_erc20(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK")
     pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account
@@ -203,8 +195,9 @@ def test_etoken_erc20(tenv):
     with etk.thru_policy_pool():
         assert etk.deposit("LP1", _W(1000)) == _W(1000)
         etk.add_borrower(pa)
-    policy = tenv.policy_factory(sr_scr=_W(600), sr_interest_rate=_W("0.0365"),
-                                 expiration=tenv.time_control.now + WEEK)
+    policy = tenv.policy_factory(
+        sr_scr=_W(600), sr_interest_rate=_W("0.0365"), expiration=tenv.time_control.now + WEEK
+    )
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
     with etk.thru(pa):
         etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
@@ -257,7 +250,6 @@ def test_etoken_erc20(tenv):
         etk.withdraw("LP2", None).assert_equal(expected_balance // _W(2) - _W(100))
 
 
-@skip_if_coverage_activated
 def test_multiple_policies(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK")
     pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account
@@ -266,8 +258,9 @@ def test_multiple_policies(tenv):
         assert etk.deposit("LP1", _W(1000)) == _W(1000)
         etk.add_borrower(pa)
 
-    policy1 = tenv.policy_factory(sr_scr=_W(300), sr_interest_rate=_W("0.0365"),
-                                  expiration=tenv.time_control.now + WEEK)
+    policy1 = tenv.policy_factory(
+        sr_scr=_W(300), sr_interest_rate=_W("0.0365"), expiration=tenv.time_control.now + WEEK
+    )
     tenv.currency.transfer(tenv.currency.owner, etk, policy1.sr_coc)
     with etk.thru(pa):
         etk.lock_scr(policy1.sr_scr, policy1.sr_interest_rate)
@@ -279,14 +272,13 @@ def test_multiple_policies(tenv):
     etk.balance_of("LP1").assert_equal(_W(1000) + _W("0.03") * _W(2))
 
     # Create 2nd policy twice interest twice SCR
-    policy2 = tenv.policy_factory(sr_scr=_W(600), sr_interest_rate=_W("0.0730"),
-                                  expiration=tenv.time_control.now + WEEK)
+    policy2 = tenv.policy_factory(
+        sr_scr=_W(600), sr_interest_rate=_W("0.0730"), expiration=tenv.time_control.now + WEEK
+    )
     tenv.currency.transfer(tenv.currency.owner, etk, policy2.sr_coc)
     with etk.thru(pa):
         etk.lock_scr(policy2.sr_scr, policy2.sr_interest_rate)
-    etk.scr_interest_rate.assert_equal(
-        (_W("0.0365") * _W(300) + _W("0.0730") * _W(600)) // _W(900)
-    )
+    etk.scr_interest_rate.assert_equal((_W("0.0365") * _W(300) + _W("0.0730") * _W(600)) // _W(900))
 
     assert etk.scr == _W(900)
     etk.funds_available.assert_equal(_W(100) + _W("0.03") * _W(2))
@@ -297,8 +289,9 @@ def test_multiple_policies(tenv):
     etk.balance_of("LP1").assert_equal(expected_balance)
 
     # Create 3rd policy - Doesn't have impact because unlocked inmediatelly
-    policy3 = tenv.policy_factory(sr_scr=_W(100), sr_interest_rate=_W("0.1"),
-                                  expiration=tenv.time_control.now + WEEK)
+    policy3 = tenv.policy_factory(
+        sr_scr=_W(100), sr_interest_rate=_W("0.1"), expiration=tenv.time_control.now + WEEK
+    )
     tenv.currency.transfer(tenv.currency.owner, etk, policy3.sr_coc)
     with etk.thru(pa):
         etk.lock_scr(policy3.sr_scr, policy3.sr_interest_rate)
@@ -320,7 +313,6 @@ def test_multiple_policies(tenv):
     etk.total_supply().assert_equal(expected_balance)
 
 
-@skip_if_coverage_activated
 def test_multiple_lps(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK")
     pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account
@@ -329,8 +321,9 @@ def test_multiple_lps(tenv):
         assert etk.deposit("LP1", _W(1000)) == _W(1000)
         etk.add_borrower(pa)
     assert etk.funds_available == _W(1000)
-    policy = tenv.policy_factory(sr_scr=_W(600), sr_interest_rate=_W("0.0365"),
-                                 expiration=tenv.time_control.now + WEEK)
+    policy = tenv.policy_factory(
+        sr_scr=_W(600), sr_interest_rate=_W("0.0365"), expiration=tenv.time_control.now + WEEK
+    )
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
     with etk.thru(pa):
         etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
@@ -345,9 +338,9 @@ def test_multiple_lps(tenv):
         etk.deposit("LP2", _W(2000)).assert_equal(_W(2000))
     tenv.time_control.fast_forward(3 * DAY)
 
-    lp1_balance = _W(1000) + _W("0.06") * _W(2) + _W("0.06") * _W(3) * _W(1/3)
+    lp1_balance = _W(1000) + _W("0.06") * _W(2) + _W("0.06") * _W(3) * _W(1 / 3)
     etk.balance_of("LP1").assert_equal(lp1_balance)
-    lp2_balance = _W(2000) + _W("0.06") * _W(3) * _W(2/3)
+    lp2_balance = _W(2000) + _W("0.06") * _W(3) * _W(2 / 3)
     etk.balance_of("LP2").assert_equal(lp2_balance)
 
     with etk.thru_policy_pool():
@@ -362,7 +355,6 @@ def test_multiple_lps(tenv):
         etk.withdraw("LP2", None).assert_equal(lp2_balance + _W("0.06"))
 
 
-@skip_if_coverage_activated
 def test_lock_scr_validation(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK")
     pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account
@@ -389,7 +381,6 @@ def test_lock_scr_validation(tenv):
             etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
 
 
-@skip_if_coverage_activated
 def test_internal_loan(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK", internal_loan_interest_rate=_W("0.073"))
     tenv.currency.transfer(tenv.currency.owner, etk, _W(1000))
@@ -407,8 +398,9 @@ def test_internal_loan(tenv):
     with etk.thru_policy_pool():
         etk.add_borrower(pa)
 
-    policy = tenv.policy_factory(sr_scr=_W(600), sr_interest_rate=_W("0.04"),
-                                 expiration=tenv.time_control.now + MONTH)
+    policy = tenv.policy_factory(
+        sr_scr=_W(600), sr_interest_rate=_W("0.04"), expiration=tenv.time_control.now + MONTH
+    )
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
     with etk.thru(pa):
         etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
@@ -475,15 +467,14 @@ def test_internal_loan(tenv):
         pa_balance -= internal_loan // _W(3)
         tenv.currency.balance_of(pa).assert_equal(pa_balance)
 
-        etk.get_loan(pa).assert_equal(internal_loan * _W(2/3))
-        tenv.currency.approve(pa, etk, internal_loan * _W(2/3))
-        etk.repay_loan(pa, internal_loan * _W(2/3), pa)
-        pa_balance -= internal_loan * _W(2/3)
+        etk.get_loan(pa).assert_equal(internal_loan * _W(2 / 3))
+        tenv.currency.approve(pa, etk, internal_loan * _W(2 / 3))
+        etk.repay_loan(pa, internal_loan * _W(2 / 3), pa)
+        pa_balance -= internal_loan * _W(2 / 3)
         tenv.currency.balance_of(pa).assert_equal(pa_balance)
         etk.get_loan(pa).assert_equal(_W(0))
 
 
-@skip_if_coverage_activated
 def test_etk_asset_manager(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK")
 
@@ -500,7 +491,8 @@ def test_etk_asset_manager(tenv):
     # Create vault
     vault = tenv.module.FixedRateVault(asset=tenv.currency)
     asset_manager = tenv.module.ERC4626AssetManager(
-        vault=vault, reserve=etk,
+        vault=vault,
+        reserve=etk,
     )
 
     with pytest.raises(RevertError, match="AccessControl"):
@@ -540,12 +532,12 @@ def test_etk_asset_manager(tenv):
 
     # After one month record the earnings
     tenv.time_control.fast_forward(2 * MONTH)
-    interest_earnings = _W(2000 * 0.05 * 60/365)  # ~ 17
+    interest_earnings = _W(2000 * 0.05 * 60 / 365)  # ~ 17
     vault.total_assets().assert_equal(_W(2000) + interest_earnings)
 
     etk.checkpoint()
     etk.total_supply().assert_equal(_W(3000) + interest_earnings)
-    etk.balance_of("LP1").assert_equal(_W(1000) + interest_earnings * _W(1/3))
+    etk.balance_of("LP1").assert_equal(_W(1000) + interest_earnings * _W(1 / 3))
     tenv.currency.balance_of(etk).assert_equal(_W(1000))  # USDC balance unchanged
 
     vault.discrete_earning(-_W(600))
@@ -556,11 +548,11 @@ def test_etk_asset_manager(tenv):
     etk.total_supply().assert_equal(_W(3000) + interest_earnings - _W(600))
 
     # One of the LP withdraws and etk cash is not enough - Triggers deinvestment
-    lp2_balance = _W(2000) + interest_earnings * _W(2/3) - _W(600) * _W(2/3)
+    lp2_balance = _W(2000) + interest_earnings * _W(2 / 3) - _W(600) * _W(2 / 3)
     with etk.thru_policy_pool():
         etk.withdraw("LP2", None).assert_equal(lp2_balance)
 
-    lp1_balance = _W(1000) + interest_earnings * _W(1/3) - _W(600) * _W(1/3)
+    lp1_balance = _W(1000) + interest_earnings * _W(1 / 3) - _W(600) * _W(1 / 3)
     etk.balance_of("LP1").assert_equal(lp1_balance)
 
     vault.total_assets().assert_equal(_W(0))
@@ -582,7 +574,8 @@ def test_etk_asset_manager(tenv):
 
     vault_2 = tenv.module.FixedRateVault(asset=tenv.currency)
     asset_manager_2 = tenv.module.ERC4626AssetManager(
-        vault=vault_2, reserve=etk,
+        vault=vault_2,
+        reserve=etk,
     )
 
     with etk.as_("ADMIN"):
@@ -605,7 +598,6 @@ def test_etk_asset_manager(tenv):
         etk.set_asset_manager(asset_manager_2, True)
 
 
-@skip_if_coverage_activated
 def test_etk_change_asset_manager(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK")
 
@@ -622,7 +614,8 @@ def test_etk_change_asset_manager(tenv):
     # Create vault
     vault = tenv.module.FixedRateVault(asset=tenv.currency)
     asset_manager = tenv.module.ERC4626AssetManager(
-        vault=vault, reserve=etk,
+        vault=vault,
+        reserve=etk,
     )
 
     tenv.pool_access.grant_role("LEVEL1_ROLE", "ADMIN")
@@ -648,7 +641,8 @@ def test_etk_change_asset_manager(tenv):
 
     vault_2 = tenv.module.FixedRateVault(asset=tenv.currency)
     asset_manager_2 = tenv.module.ERC4626AssetManager(
-        vault=vault_2, reserve=etk,
+        vault=vault_2,
+        reserve=etk,
     )
 
     with etk.as_("ADMIN"):
@@ -671,14 +665,14 @@ def test_etk_change_asset_manager(tenv):
     etk.total_supply().assert_equal(_W(3000))  # Nothing earned yet
 
 
-@skip_if_coverage_activated
 def test_etk_asset_manager_without_movements(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK")
 
     # Create vault
     vault = tenv.module.FixedRateVault(asset=tenv.currency)
     asset_manager = tenv.module.ERC4626AssetManager(
-        vault=vault, reserve=etk,
+        vault=vault,
+        reserve=etk,
     )
 
     tenv.pool_access.grant_role("LEVEL1_ROLE", "ADMIN")
@@ -699,7 +693,6 @@ def test_etk_asset_manager_without_movements(tenv):
     assert etk.asset_manager is None or etk.asset_manager == "0x0000000000000000000000000000000000000000"
 
 
-@skip_if_coverage_activated
 def test_etk_asset_manager_liquidity_under_minimum(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK")
 
@@ -775,7 +768,6 @@ def test_name_and_others(tenv):
     assert etk.decimals == 18
 
 
-@skip_if_coverage_activated
 def test_max_utilization_rate(tenv):
     etk = tenv.etoken_class(name="eUSD1WEEK", max_utilization_rate=_W("0.9"))
     pa = tenv.fw_proxy_factory("PA", etk)  # Premiums Account
@@ -842,8 +834,9 @@ def test_max_utilization_rate(tenv):
         etk.set_min_utilization_rate(_W("0.475"))
 
     tenv.currency.transfer(tenv.currency.owner, etk, _W(5))
-    with etk.thru_policy_pool(), pytest.raises(RevertError,
-                                               match="Deposit rejected - Utilization Rate < min"):
+    with etk.thru_policy_pool(), pytest.raises(
+        RevertError, match="Deposit rejected - Utilization Rate < min"
+    ):
         etk.deposit("LP1", _W(5))
 
     withdrawable = _W(2000) - _W(950)
@@ -859,14 +852,15 @@ def test_unlock_scr(tenv):
         assert etk.deposit("LP1", _W(1000)) == _W(1000)
         etk.add_borrower(pa)
     assert etk.funds_available == _W(1000)
-    policy = tenv.policy_factory(sr_scr=_W(600), sr_interest_rate=_W("0.0365"),
-                                 expiration=tenv.time_control.now + WEEK)
+    policy = tenv.policy_factory(
+        sr_scr=_W(600), sr_interest_rate=_W("0.0365"), expiration=tenv.time_control.now + WEEK
+    )
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
     with etk.thru(pa):
         etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
     assert etk.scr == _W(600)
     assert etk.scr_interest_rate == _W("0.0365")
-    etk.token_interest_rate.assert_equal(_W("0.0365") * _W(600/1000))
+    etk.token_interest_rate.assert_equal(_W("0.0365") * _W(600 / 1000))
     etk.funds_available.assert_equal(_W(400))
 
     tenv.time_control.fast_forward(2 * DAY)
@@ -886,14 +880,15 @@ def test_unlock_scr_with_adjustment(tenv):
         assert etk.deposit("LP1", _W(1000)) == _W(1000)
         etk.add_borrower(pa)
     assert etk.funds_available == _W(1000)
-    policy = tenv.policy_factory(sr_scr=_W(600), sr_interest_rate=_W("0.0365"),
-                                 expiration=tenv.time_control.now + WEEK)
+    policy = tenv.policy_factory(
+        sr_scr=_W(600), sr_interest_rate=_W("0.0365"), expiration=tenv.time_control.now + WEEK
+    )
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
     with etk.thru(pa):
         etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
     assert etk.scr == _W(600)
     assert etk.scr_interest_rate == _W("0.0365")
-    etk.token_interest_rate.assert_equal(_W("0.0365") * _W(600/1000))
+    etk.token_interest_rate.assert_equal(_W("0.0365") * _W(600 / 1000))
     etk.funds_available.assert_equal(_W(400))
 
     tenv.time_control.fast_forward(2 * DAY)
@@ -913,14 +908,15 @@ def test_unlock_scr_with_neg_adjustment(tenv):
         assert etk.deposit("LP1", _W(1000)) == _W(1000)
         etk.add_borrower(pa)
     assert etk.funds_available == _W(1000)
-    policy = tenv.policy_factory(sr_scr=_W(600), sr_interest_rate=_W("0.0365"),
-                                 expiration=tenv.time_control.now + WEEK)
+    policy = tenv.policy_factory(
+        sr_scr=_W(600), sr_interest_rate=_W("0.0365"), expiration=tenv.time_control.now + WEEK
+    )
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
     with etk.thru(pa):
         etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
     assert etk.scr == _W(600)
     assert etk.scr_interest_rate == _W("0.0365")
-    etk.token_interest_rate.assert_equal(_W("0.0365") * _W(600/1000))
+    etk.token_interest_rate.assert_equal(_W("0.0365") * _W(600 / 1000))
     etk.funds_available.assert_equal(_W(400))
 
     tenv.time_control.fast_forward(2 * DAY)
@@ -936,8 +932,7 @@ def test_getset_etk_parameters_tweaks(tenv):
     if tenv.kind != "ethereum":
         return
     etk = tenv.etoken_class(
-        name="eUSD1WEEK", max_utilization_rate=_W("0.9"),
-        internal_loan_interest_rate=_W("0.02")
+        name="eUSD1WEEK", max_utilization_rate=_W("0.9"), internal_loan_interest_rate=_W("0.02")
     )
     with etk.as_("owner"):
         etk.grant_role("LEVEL2_ROLE", "L2_USER")
@@ -1024,8 +1019,9 @@ def test_getset_etk_parameters_tweaks(tenv):
     ]
 
     for attr_name, attr_value in test_ok_tweaks:
-        with etk.as_("L3_USER"), pytest.raises(RevertError,
-                                               match="You already tweaked this parameter recently"):
+        with etk.as_("L3_USER"), pytest.raises(
+            RevertError, match="You already tweaked this parameter recently"
+        ):
             setattr(etk, attr_name, attr_value)
 
     tenv.time_control.fast_forward(2 * DAY)  # Tweaks expired

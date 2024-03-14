@@ -1,16 +1,10 @@
 from contextlib import contextmanager
-from eth_utils import keccak
-from eth_abi import encode
-from ethproto.wadray import Wad, _W
-from ethproto.wrappers import (  # noqa: F401
-    AddressBook,
-    IERC20,
-    IERC721,
-    ETHWrapper,
-    MethodAdapter,
-    get_provider,
-)
 
+from eth_abi import encode
+from eth_utils import keccak
+from ethproto.wadray import _W, Wad
+from ethproto.wrappers import AddressBook  # noqa: F401
+from ethproto.wrappers import IERC20, IERC721, ETHWrapper, MethodAdapter, get_provider
 
 SECONDS_IN_YEAR = 365 * 24 * 3600
 MAX_UINT = 2**256 - 1
@@ -140,7 +134,7 @@ class EToken(ReserveMixin, IERC20):
         prev_contract = self.contract
         contract_factory = self.provider.get_contract_factory(self.eth_contract)
         self.contract = self.provider.build_contract(
-            self._policy_pool, contract_factory, self.eth_contract
+            self._policy_pool.address, contract_factory, self.eth_contract
         )
         try:
             yield self
@@ -151,9 +145,7 @@ class EToken(ReserveMixin, IERC20):
     def thru(self, address):
         prev_contract = self.contract
         contract_factory = self.provider.get_contract_factory(self.eth_contract)
-        self.contract = self.provider.build_contract(
-            address, contract_factory, self.eth_contract
-        )
+        self.contract = self.provider.build_contract(address, contract_factory, self.eth_contract)
         try:
             yield self
         finally:
@@ -178,9 +170,7 @@ class EToken(ReserveMixin, IERC20):
     liquidity_requirement = property(GetProperty("liquidity_requirement_"), SetParam(0))
     min_utilization_rate = property(GetProperty("min_utilization_rate_"), SetParam(1))
     max_utilization_rate = property(GetProperty("max_utilization_rate_"), SetParam(2))
-    internal_loan_interest_rate = property(
-        GetProperty("internal_loan_interest_rate_"), SetParam(3)
-    )
+    internal_loan_interest_rate = property(GetProperty("internal_loan_interest_rate_"), SetParam(3))
 
     def set_min_utilization_rate(self, value):
         return self.set_param(1, value)
@@ -242,9 +232,7 @@ class EToken(ReserveMixin, IERC20):
         else:
             return Wad(0)
 
-    repay_loan = MethodAdapter(
-        (("sender", "msg.sender"), ("amount", "amount"), ("on_behalf_of", "address"))
-    )
+    repay_loan = MethodAdapter((("sender", "msg.sender"), ("amount", "amount"), ("on_behalf_of", "address")))
 
     get_loan = MethodAdapter((("borrower", "address"),), "amount")
     get_investable = MethodAdapter((), "amount")
@@ -252,8 +240,8 @@ class EToken(ReserveMixin, IERC20):
     get_current_scale = MethodAdapter((("updated", "bool"),), "ray")
 
     scaled_total_supply = MethodAdapter((), "amount")
-    scaled_balance_of = MethodAdapter((("provider", "address"), ), "amount")
-    get_scaled_user_balance_and_supply = MethodAdapter((("provider", "address"), ), "(amount, amount)")
+    scaled_balance_of = MethodAdapter((("provider", "address"),), "amount")
+    get_scaled_user_balance_and_supply = MethodAdapter((("provider", "address"),), "(amount, amount)")
 
     def grant_role(self, role, user):
         # EToken doesn't haves grant_role
@@ -310,11 +298,7 @@ class Policy:
 
     @property
     def sr_interest_rate(self):
-        return (
-            self.sr_coc
-            * _W(SECONDS_IN_YEAR)
-            // (_W(self.expiration - self.start) * self.sr_scr)
-        )
+        return self.sr_coc * _W(SECONDS_IN_YEAR) // (_W(self.expiration - self.start) * self.sr_scr)
 
     def sr_accrued_interest(self):
         seconds = Wad.from_value(get_provider().time_control.now - self.start)
@@ -322,11 +306,7 @@ class Policy:
 
     @property
     def jr_interest_rate(self):
-        return (
-            self.jr_coc
-            * _W(SECONDS_IN_YEAR)
-            // (_W(self.expiration - self.start) * self.jr_scr)
-        )
+        return self.jr_coc * _W(SECONDS_IN_YEAR) // (_W(self.expiration - self.start) * self.jr_scr)
 
     def jr_accrued_interest(self):
         seconds = Wad.from_value(get_provider().time_control.now - self.start)
@@ -373,6 +353,27 @@ class Policy:
             fake_rm_address,
             policy.start,
             policy.expiration,
+            address_book,
+        )
+
+    @classmethod
+    def from_policy_data(cls, policy_data, address_book):
+        """Creates a Policy object from a PolicyData struct (see Policy.sol)"""
+        return cls(
+            policy_data.id,
+            policy_data.payout,
+            policy_data.premium,
+            policy_data.jrScr,
+            policy_data.srScr,
+            policy_data.lossProb,
+            policy_data.purePremium,
+            policy_data.ensuroCommission,
+            policy_data.partnerCommission,
+            policy_data.jrCoc,
+            policy_data.srCoc,
+            policy_data.riskModule,
+            policy_data.start,
+            policy_data.expiration,
             address_book,
         )
 
@@ -476,9 +477,7 @@ class RiskModule(ETHWrapper):
     @property
     def premiums_account(self):
         if getattr(self, "_premiums_account", None):
-            self._premiums_account = PremiumsAccount.connect(
-                self.premiums_account_, self.owner
-            )
+            self._premiums_account = PremiumsAccount.connect(self.premiums_account_, self.owner)
         return self._premiums_account
 
     def new_policy(self, *args, **kwargs):
@@ -489,7 +488,7 @@ class RiskModule(ETHWrapper):
         receipt = self.new_policy_(*args, **kwargs)
         if "NewPolicy" in receipt.events:
             policy_data = receipt.events["NewPolicy"]["policy"]
-            policy = Policy(*policy_data, address_book=self.provider.address_book)
+            policy = Policy.from_policy_data(policy_data, address_book=self.provider.address_book)
             policy_db.add_policy(self.policy_pool.contract.address, policy)
             return policy
         else:
@@ -516,20 +515,41 @@ class TrustfulRiskModule(RiskModule):
         "receipt",
     )
 
-    resolve_policy_full_payout = MethodAdapter(
-        (("policy", Policy.FIELDS), ("customer_won", "bool"))
+    replace_policy_ = MethodAdapter(
+        (
+            ("old_policy", Policy.FIELDS),
+            ("payout", "amount"),
+            ("premium", "amount"),
+            ("loss_prob", "wad"),
+            ("expiration", "int"),
+            ("payer", "msg.sender"),
+            ("internal_id", "int"),
+        )
     )
+
+    resolve_policy_full_payout = MethodAdapter((("policy", Policy.FIELDS), ("customer_won", "bool")))
     resolve_policy_ = MethodAdapter((("policy", Policy.FIELDS), ("payout", "amount")))
 
     def resolve_policy(self, policy_id, customer_won_or_amount):
         global policy_db
         policy = policy_db.get_policy(self.policy_pool.contract.address, policy_id)
         if customer_won_or_amount is True or customer_won_or_amount is False:
-            return self.resolve_policy_full_payout(
-                policy.as_tuple(), customer_won_or_amount
-            )
+            return self.resolve_policy_full_payout(policy.as_tuple(), customer_won_or_amount)
         else:
             return self.resolve_policy_(policy.as_tuple(), customer_won_or_amount)
+
+    def replace_policy(self, *args, **kwargs):
+        kwargs["old_policy"] = kwargs["old_policy"].as_tuple()
+        if "premium" not in kwargs:
+            kwargs["premium"] = MAX_UINT
+        receipt = self.replace_policy_(*args, **kwargs)
+        if "NewPolicy" in receipt.events:
+            policy_data = receipt.events["NewPolicy"]["policy"]
+            policy = Policy.from_policy_data(policy_data, address_book=self.provider.address_book)
+            policy_db.add_policy(self.policy_pool.contract.address, policy)
+            return policy
+        else:
+            return None
 
 
 class SignedQuoteRiskModule(RiskModule):
@@ -618,24 +638,20 @@ class SignedQuoteRiskModule(RiskModule):
         receipt = self.new_policy_paid_by_holder_(*args, **kwargs)
         if "NewPolicy" in receipt.events:
             policy_data = receipt.events["NewPolicy"]["policy"]
-            policy = Policy(*policy_data, address_book=self.provider.address_book)
+            policy = Policy.from_policy_data(policy_data, address_book=self.provider.address_book)
             policy_db.add_policy(self.policy_pool.contract.address, policy)
             return policy
         else:
             return None
 
-    resolve_policy_full_payout = MethodAdapter(
-        (("policy", Policy.FIELDS), ("customer_won", "bool"))
-    )
+    resolve_policy_full_payout = MethodAdapter((("policy", Policy.FIELDS), ("customer_won", "bool")))
     resolve_policy_ = MethodAdapter((("policy", Policy.FIELDS), ("payout", "amount")))
 
     def resolve_policy(self, policy_id, customer_won_or_amount):
         global policy_db
         policy = policy_db.get_policy(self.policy_pool.contract.address, policy_id)
         if customer_won_or_amount is True or customer_won_or_amount is False:
-            return self.resolve_policy_full_payout(
-                policy.as_tuple(), customer_won_or_amount
-            )
+            return self.resolve_policy_full_payout(policy.as_tuple(), customer_won_or_amount)
         else:
             return self.resolve_policy_(policy.as_tuple(), customer_won_or_amount)
 
@@ -650,7 +666,47 @@ class TieredSignedQuoteRiskModule(SignedQuoteRiskModule):
 
     buckets = MethodAdapter(return_type="tuple")
 
-    bucket_params = MethodAdapter((("bucket", "wad"), ), "tuple")
+    bucket_params = MethodAdapter((("loss_prob", "wad"),), "tuple")
+
+
+class SignedBucketRiskModule(SignedQuoteRiskModule):
+    eth_contract = "SignedBucketRiskModule"
+    proxy_kind = "uups"
+
+    set_bucket_params = MethodAdapter((("bucket_id", "wad"), ("params", "tuple")))
+
+    delete_bucket = MethodAdapter((("bucket_id", "wad"),))
+
+    bucket_params = MethodAdapter((("bucket_id", "wad"),), return_type="tuple")
+
+    get_minimum_premium_for_bucket = MethodAdapter(
+        (("payout", "amount"), ("loss_prob", "wad"), ("expiration", "int", "bucket_id", "wad")),
+        return_type="amount",
+    )
+
+    def fetch_buckets(self):
+        new_bucket_events = self.provider.get_events(self, "NewBucket")
+        delete_bucket_events = self.provider.get_events(self, "BucketDeleted")
+        all_events = sorted(
+            new_bucket_events + delete_bucket_events, key=lambda evt: (evt.blockNumber, evt.transactionIndex)
+        )
+        buckets = {}
+        bucket_tuple_fields = (
+            "moc",
+            "jrCollRatio",
+            "collRatio",
+            "ensuroPpFee",
+            "ensuroCocFee",
+            "jrRoc",
+            "srRoc",
+        )
+        for evt in all_events:
+            if evt.event == "NewBucket":
+                buckets[evt.args.bucketId] = tuple(evt.args.params[field] for field in bucket_tuple_fields)
+            elif evt.event == "BucketDeleted":
+                buckets.pop(evt.args.bucketId)
+
+        return buckets
 
 
 class AccessManager(ETHWrapper):
@@ -680,14 +736,10 @@ class PolicyPool(IERC721):
     )
     proxy_kind = "uups"
 
-    def __init__(
-        self, access, currency, name="Ensuro Policy", symbol="EPOL", treasury="ENS"
-    ):
+    def __init__(self, access, currency, name="Ensuro Policy", symbol="EPOL", treasury="ENS"):
         self._access = access
         self._currency = currency
-        super().__init__(
-            access.owner, access.contract, currency.contract, name, symbol, treasury
-        )
+        super().__init__(access.owner, access.contract, currency.contract, name, symbol, treasury)
         self._auto_from = self.owner
         self._etokens = {}
         self._risk_modules = {}
@@ -797,18 +849,14 @@ class PolicyPool(IERC721):
         self.add_component(risk_module, 2)
         self._risk_modules[risk_module.name] = risk_module
 
-    deposit_ = MethodAdapter(
-        (("etoken", "contract"), ("provider", "msg.sender"), ("amount", "amount"))
-    )
+    deposit_ = MethodAdapter((("etoken", "contract"), ("provider", "msg.sender"), ("amount", "amount")))
 
     def deposit(self, etoken_name, provider, amount):
         etoken = self.etokens[etoken_name]
         self.deposit_(etoken, provider, amount)
         return etoken.balance_of(provider)
 
-    withdraw_ = MethodAdapter(
-        (("etoken", "contract"), ("provider", "msg.sender"), ("amount", "amount"))
-    )
+    withdraw_ = MethodAdapter((("etoken", "contract"), ("provider", "msg.sender"), ("amount", "amount")))
 
     def withdraw(self, etoken_name, provider, amount):
         etoken = self.etokens[etoken_name]
@@ -821,19 +869,17 @@ class PolicyPool(IERC721):
     def get_policy(self, policy_id):
         policy_data = eth_call(self, "getPolicy", policy_id)
         if policy_data:
-            return Policy(*policy_data, self.provider.address_book)
+            return Policy.from_policy_data(policy_data, self.provider.address_book)
 
     get_policy_fund_count = MethodAdapter((("policy_id", "int"),), "int")
-    get_policy_fund = MethodAdapter(
-        (("policy_id", "int"), ("etoken", "contract")), "amount"
-    )
+    get_policy_fund = MethodAdapter((("policy_id", "int"), ("etoken", "contract")), "amount")
     get_investable = MethodAdapter((), "amount")
 
     expire_policy_ = MethodAdapter((("policy", "tuple"),))
     expire_policies_ = MethodAdapter((("policies", "list"),))
 
     def expire_policy(self, policy_id):
-        if type(policy_id) == tuple:
+        if isinstance(policy_id, tuple):
             return self.expire_policy_(policy_id)
         global policy_db
         policy = policy_db.get_policy(self.contract.address, policy_id)
@@ -841,7 +887,7 @@ class PolicyPool(IERC721):
 
     def expire_policies(self, policies):
         assert policies, "Empty list not accepted"
-        if type(policies[0]) == tuple:
+        if isinstance(policies[0], tuple):
             return self.expire_policies(policies)
         global policy_db
         policies = [
@@ -861,9 +907,7 @@ class PremiumsAccount(ReserveMixin, ETHWrapper):
     initialize_args = ()
     proxy_kind = "uups"
 
-    def __init__(
-        self, pool, junior_etk=None, senior_etk=None, ratio=_W(1), owner="owner"
-    ):
+    def __init__(self, pool, junior_etk=None, senior_etk=None, ratio=_W(1), owner="owner"):
         ratio = _W(ratio)
         super().__init__(
             owner,
@@ -885,13 +929,9 @@ class PremiumsAccount(ReserveMixin, ETHWrapper):
     active_pure_premiums = MethodAdapter((), "amount", is_property=True)
     deficit_ratio = MethodAdapter((), "wad", is_property=True)
 
-    borrowed_active_pp = MethodAdapter(
-        (), "amount", is_property=True, eth_method="borrowedActivePP"
-    )
+    borrowed_active_pp = MethodAdapter((), "amount", is_property=True, eth_method="borrowedActivePP")
 
-    withdraw_won_premiums_ = MethodAdapter(
-        (("amount", "amount"), ("destination", "address"))
-    )
+    withdraw_won_premiums_ = MethodAdapter((("amount", "amount"), ("destination", "address")))
     policy_created_ = MethodAdapter((("policy", "tuple"),))
     policy_expired_ = MethodAdapter((("policy", "tuple"),))
     set_deficit_ratio = MethodAdapter((("new_ratio", "wad"), ("adjustment", "bool")))
@@ -931,7 +971,7 @@ class PremiumsAccount(ReserveMixin, ETHWrapper):
         prev_contract = self.contract
         contract_factory = self.provider.get_contract_factory(self.eth_contract)
         self.contract = self.provider.build_contract(
-            self._policy_pool, contract_factory, self.eth_contract
+            self._policy_pool.address, contract_factory, self.eth_contract
         )
         try:
             yield self
@@ -980,8 +1020,7 @@ class LPManualWhitelist(ETHWrapper):
     ST_WHITELISTED = 1
     ST_UNDEFINED = 0
 
-    def __init__(self, pool,
-                 default_status=(ST_BLACKLISTED,)*4):
+    def __init__(self, pool, default_status=(ST_BLACKLISTED,) * 4):
         super().__init__("owner", pool.contract, default_status)
 
     whitelist_address = MethodAdapter(
@@ -990,7 +1029,7 @@ class LPManualWhitelist(ETHWrapper):
 
     get_whitelist_defaults = MethodAdapter((), "tuple")
 
-    set_whitelist_defaults = MethodAdapter((("new_status", "tuple"), ))
+    set_whitelist_defaults = MethodAdapter((("new_status", "tuple"),))
 
 
 ERC20Token = TestCurrency
@@ -1042,9 +1081,7 @@ class FixedRateVault(IERC20):
 class LiquidityThresholdAssetManager(ETHWrapper):
     def _set_liquidity(self, reserve, liquidity_min, liquidity_middle, liquidity_max):
         liquidity_min = liquidity_min if liquidity_min is None else _W(liquidity_min)
-        liquidity_middle = (
-            liquidity_middle if liquidity_middle is None else _W(liquidity_middle)
-        )
+        liquidity_middle = liquidity_middle if liquidity_middle is None else _W(liquidity_middle)
         liquidity_max = liquidity_max if liquidity_max is None else _W(liquidity_max)
         reserve.forward_to_asset_manager(
             "set_liquidity_thresholds", liquidity_min, liquidity_middle, liquidity_max

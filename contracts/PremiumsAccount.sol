@@ -2,6 +2,7 @@
 pragma solidity 0.8.16;
 
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {SignedMath} from "@openzeppelin/contracts/utils/math/SignedMath.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
@@ -113,11 +114,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * @param seniorEtk_ Address of the Senior EToken (2nd loss lender). `address(0)` if not present.
    */
   /// @custom:oz-upgrades-unsafe-allow constructor
-  constructor(
-    IPolicyPool policyPool_,
-    IEToken juniorEtk_,
-    IEToken seniorEtk_
-  ) Reserve(policyPool_) {
+  constructor(IPolicyPool policyPool_, IEToken juniorEtk_, IEToken seniorEtk_) Reserve(policyPool_) {
     _juniorEtk = juniorEtk_;
     _seniorEtk = seniorEtk_;
   }
@@ -169,8 +166,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * @dev See {IERC165-supportsInterface}.
    */
   function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
-    return
-      super.supportsInterface(interfaceId) || interfaceId == type(IPremiumsAccount).interfaceId;
+    return super.supportsInterface(interfaceId) || interfaceId == type(IPremiumsAccount).interfaceId;
   }
 
   function assetManager() public view override returns (IAssetManager) {
@@ -274,12 +270,12 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
 
   function _toAmount(uint32 value) internal view returns (uint256) {
     // 0 decimals to amount decimals
-    return uint256(value) * 10**currency().decimals();
+    return uint256(value) * 10 ** currency().decimals();
   }
 
   function _toZeroDecimals(uint256 amount) internal view returns (uint32) {
     // Removes the decimals from the amount
-    return (amount / 10**currency().decimals()).toUint32();
+    return (amount / 10 ** currency().decimals()).toUint32();
   }
 
   /**
@@ -316,15 +312,9 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    *                   `_maxDeficit()` and borrows the difference from the eTokens.
    *                   If false and the new ratio leaves `_surplus < -_maxDeficit()`, the operation is reverted.
    */
-  function setDeficitRatio(uint256 newRatio, bool adjustment)
-    external
-    onlyGlobalOrComponentRole(LEVEL2_ROLE)
-  {
+  function setDeficitRatio(uint256 newRatio, bool adjustment) external onlyGlobalOrComponentRole(LEVEL2_ROLE) {
     uint16 truncatedRatio = (newRatio / FOUR_DECIMAL_TO_WAD).toUint16();
-    require(
-      uint256(truncatedRatio) * FOUR_DECIMAL_TO_WAD == newRatio,
-      "Validation: only up to 4 decimals allowed"
-    );
+    require(uint256(truncatedRatio) * FOUR_DECIMAL_TO_WAD == newRatio, "Validation: only up to 4 decimals allowed");
 
     int256 maxDeficit = _maxDeficit(newRatio);
     require(adjustment || _surplus >= maxDeficit, "Validation: surplus must be >= maxDeficit");
@@ -356,10 +346,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * @param newLimitSr     The new limit to be set for the loans taken from the Senior eToken.
                            If newLimitSr == MAX_UINT, it's ignored. If == 0, means the loans are unbounded.
    */
-  function setLoanLimits(uint256 newLimitJr, uint256 newLimitSr)
-    external
-    onlyGlobalOrComponentRole(LEVEL2_ROLE)
-  {
+  function setLoanLimits(uint256 newLimitJr, uint256 newLimitSr) external onlyGlobalOrComponentRole(LEVEL2_ROLE) {
     if (newLimitJr != type(uint256).max) {
       _params.jrLoanLimit = _toZeroDecimals(newLimitJr);
       require(_toAmount(_params.jrLoanLimit) == newLimitJr, "Validation: no decimals allowed");
@@ -381,11 +368,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    *                 in the context of a policy payout.
    * @param jrEtk If true it indicates that the loan is asked first from the junior eToken.
    */
-  function _borrowFromEtk(
-    uint256 borrow,
-    address receiver,
-    bool jrEtk
-  ) internal {
+  function _borrowFromEtk(uint256 borrow, address receiver, bool jrEtk) internal {
     uint256 left = borrow;
     if (jrEtk) {
       if (_juniorEtk.getLoan(address(this)) + borrow <= jrLoanLimit()) {
@@ -471,11 +454,10 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * @param destination The address that will receive the transferred funds.
    * @return Returns the actual amount withdrawn.
    */
-  function withdrawWonPremiums(uint256 amount, address destination)
-    external
-    onlyGlobalOrComponentRole(WITHDRAW_WON_PREMIUMS_ROLE)
-    returns (uint256)
-  {
+  function withdrawWonPremiums(
+    uint256 amount,
+    address destination
+  ) external onlyGlobalOrComponentRole(WITHDRAW_WON_PREMIUMS_ROLE) returns (uint256) {
     require(destination != address(0), "PremiumsAccount: destination cannot be the zero address");
     if (_surplus <= 0) {
       amount = 0;
@@ -489,15 +471,34 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     return amount;
   }
 
-  function policyCreated(Policy.PolicyData memory policy)
-    external
-    override
-    onlyPolicyPool
-    whenNotPaused
-  {
+  function policyCreated(Policy.PolicyData memory policy) external override onlyPolicyPool whenNotPaused {
     _activePurePremiums += policy.purePremium;
     if (policy.jrScr > 0) _juniorEtk.lockScr(policy.jrScr, policy.jrInterestRate());
     if (policy.srScr > 0) _seniorEtk.lockScr(policy.srScr, policy.srInterestRate());
+  }
+
+  function policyReplaced(
+    Policy.PolicyData memory oldPolicy,
+    Policy.PolicyData memory newPolicy
+  ) external override onlyPolicyPool whenNotPaused {
+    if (oldPolicy.srScr > 0 && newPolicy.srScr > 0) {
+      int256 diff = int256(oldPolicy.srInterestRate()) - int256(newPolicy.srInterestRate());
+      require(SignedMath.abs(diff) < 1e14, "Interest rate can't change");
+    }
+    if (oldPolicy.jrScr > 0 && newPolicy.jrScr > 0) {
+      int256 diff = int256(oldPolicy.jrInterestRate()) - int256(newPolicy.jrInterestRate());
+      require(SignedMath.abs(diff) < 1e14, "Interest rate can't change");
+    }
+    /*
+     * Supporting interest rate change is possible, but it would require complex computations.
+     * If new IR > old IR, then we must adjust positivelly to accrue the interests not accrued
+     * If new IR < old IR, then we must adjust negativelly to substract the interests accrued in excess
+     */
+    _activePurePremiums += newPolicy.purePremium - oldPolicy.purePremium;
+    if (oldPolicy.jrScr > 0) _juniorEtk.unlockScr(oldPolicy.jrScr, oldPolicy.jrInterestRate(), 0);
+    if (oldPolicy.srScr > 0) _seniorEtk.unlockScr(oldPolicy.srScr, oldPolicy.srInterestRate(), 0);
+    if (newPolicy.jrScr > 0) _juniorEtk.lockScr(newPolicy.jrScr, newPolicy.jrInterestRate());
+    if (newPolicy.srScr > 0) _seniorEtk.lockScr(newPolicy.srScr, newPolicy.srInterestRate());
   }
 
   function policyResolvedWithPayout(
@@ -550,10 +551,8 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     returns (uint256 available)
   {
     available = fundsAvailable();
-    if (available != 0 && address(_seniorEtk) != address(0))
-      available = _repayLoan(available, _seniorEtk);
-    if (available != 0 && address(_juniorEtk) != address(0))
-      available = _repayLoan(available, _juniorEtk);
+    if (available != 0 && address(_seniorEtk) != address(0)) available = _repayLoan(available, _seniorEtk);
+    if (available != 0 && address(_juniorEtk) != address(0)) available = _repayLoan(available, _juniorEtk);
     return available;
   }
 
@@ -589,12 +588,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     return fundsAvailable_ - repayAmount;
   }
 
-  function policyExpired(Policy.PolicyData memory policy)
-    external
-    override
-    onlyPolicyPool
-    whenNotPaused
-  {
+  function policyExpired(Policy.PolicyData memory policy) external override onlyPolicyPool whenNotPaused {
     _activePurePremiums -= policy.purePremium;
     _storePurePremiumWon(policy.purePremium);
     _unlockScr(policy);

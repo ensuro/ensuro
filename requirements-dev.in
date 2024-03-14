@@ -1,5 +1,5 @@
 ipdb
-ipython
+ipython<8.18  # https://github.com/ipython/ipython/issues/14302
 rpdb
 colorama
 responses

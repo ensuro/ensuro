@@ -4,7 +4,12 @@ const { amountFunction } = require("../js/utils");
 const { initCurrency, deployPool, deployPremiumsAccount } = require("../js/test-utils");
 
 describe("Supports interface implementation", function () {
-  const invalidInterfaceId = "0x12345678";
+  // eslint-disable-next-line multiline-comment-style
+  /* According to ERC165Checker.sol:
+        // Any contract that implements ERC165 must explicitly indicate support of
+        // InterfaceId_ERC165 and explicitly indicate non-support of InterfaceId_Invalid=0xffffffff
+  */
+  const invalidInterfaceId = "0xffffffff";
 
   async function setupFixture() {
     const [owner] = await hre.ethers.getSigners();
@@ -31,6 +36,7 @@ describe("Supports interface implementation", function () {
       "ILPWhitelist",
       "IAccessManager",
       "IAssetManager",
+      "IPolicyHolder",
     ];
     const iinterfaceIds = {};
     for (const iName of iinterfaces) {
@@ -45,13 +51,16 @@ describe("Supports interface implementation", function () {
       IERC721: "0x80ac58cd",
       IAccessControl: "0x7965db0b",
       IEToken: "0x90770621",
-      IPolicyPool: "0x3234fad6",
+      // IPolicyPool: "0x3234fad6", - Up to v2.7
+      IPolicyPool: "0x0ce33b78",
       IPolicyPoolComponent: "0x4d15eb03",
       IRiskModule: "0xda40804f",
-      IPremiumsAccount: "0xb76712ec",
+      // IPremiumsAccount: "0xb76712ec", - Up to v2.7
+      IPremiumsAccount: "0x1ce4a652",
       ILPWhitelist: "0xf8722d89",
       IAccessManager: "0x272b8c47",
       IAssetManager: "0x799c2a5c",
+      IPolicyHolder: "0x3ece0a89",
     };
 
     const _A = amountFunction(6);
@@ -63,7 +72,7 @@ describe("Supports interface implementation", function () {
     // Deploy AccessManager
     const access = await hre.upgrades.deployProxy(AccessManager, [], { kind: "uups" });
 
-    await access.deployed();
+    await access.waitForDeployment();
 
     return {
       currency,
@@ -77,11 +86,8 @@ describe("Supports interface implementation", function () {
 
   async function setupFixtureWithPool() {
     const ret = await setupFixture();
-    const policyPool = await deployPool({ currency: ret.currency.address, access: ret.access.address });
-    return {
-      policyPool,
-      ...ret,
-    };
+    const policyPool = await deployPool({ currency: ret.currency, access: ret.access });
+    return { policyPool, ...ret };
   }
 
   async function setupFixtureWithPoolAndPA() {
@@ -107,18 +113,20 @@ describe("Supports interface implementation", function () {
     expect(await policyPool.supportsInterface(interfaceIds.IPolicyPool)).to.be.true;
     expect(await policyPool.supportsInterface(interfaceIds.IERC721)).to.be.true;
     expect(await policyPool.supportsInterface(interfaceIds.IAccessManager)).to.be.false;
+    expect(await policyPool.supportsInterface(invalidInterfaceId)).to.be.false;
   });
 
   it("Checks EToken supported interfaces", async () => {
     const { policyPool, interfaceIds } = await helpers.loadFixture(setupFixtureWithPool);
     const EToken = await hre.ethers.getContractFactory("EToken");
-    const etk = await EToken.deploy(policyPool.address);
+    const etk = await EToken.deploy(policyPool);
     expect(await etk.supportsInterface(interfaceIds.IERC165)).to.be.true;
     expect(await etk.supportsInterface(interfaceIds.IERC20)).to.be.true;
     expect(await etk.supportsInterface(interfaceIds.IERC20Metadata)).to.be.true;
     expect(await etk.supportsInterface(interfaceIds.IPolicyPoolComponent)).to.be.true;
     expect(await etk.supportsInterface(interfaceIds.IEToken)).to.be.true;
     expect(await etk.supportsInterface(interfaceIds.IERC721)).to.be.false;
+    expect(await etk.supportsInterface(invalidInterfaceId)).to.be.false;
   });
 
   it("Checks PremiumsAccount supported interfaces", async () => {
@@ -127,13 +135,14 @@ describe("Supports interface implementation", function () {
     expect(await premiumsAccount.supportsInterface(interfaceIds.IPolicyPoolComponent)).to.be.true;
     expect(await premiumsAccount.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.true;
     expect(await premiumsAccount.supportsInterface(interfaceIds.IERC721)).to.be.false;
+    expect(await premiumsAccount.supportsInterface(invalidInterfaceId)).to.be.false;
   });
 
   it("Checks Reserves reject invalid asset manager", async () => {
     const { premiumsAccount, policyPool } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
     const TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
-    const rm = await TrustfulRiskModule.deploy(policyPool.address, premiumsAccount.address);
-    await expect(premiumsAccount.setAssetManager(rm.address, true)).to.be.revertedWith(
+    const rm = await TrustfulRiskModule.deploy(policyPool, premiumsAccount);
+    await expect(premiumsAccount.setAssetManager(rm, true)).to.be.revertedWith(
       "Reserve: asset manager doesn't implements the required interface"
     );
   });
@@ -141,46 +150,51 @@ describe("Supports interface implementation", function () {
   it("Checks TrustfulRiskModule supported interfaces", async () => {
     const { interfaceIds, premiumsAccount, policyPool } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
     const TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
-    const rm = await TrustfulRiskModule.deploy(policyPool.address, premiumsAccount.address);
+    const rm = await TrustfulRiskModule.deploy(policyPool, premiumsAccount);
     expect(await rm.supportsInterface(interfaceIds.IERC165)).to.be.true;
     expect(await rm.supportsInterface(interfaceIds.IPolicyPoolComponent)).to.be.true;
     expect(await rm.supportsInterface(interfaceIds.IRiskModule)).to.be.true;
     expect(await rm.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.false;
+    expect(await rm.supportsInterface(invalidInterfaceId)).to.be.false;
   });
 
   it("Checks SignedQuoteRiskModule supported interfaces", async () => {
     const { interfaceIds, premiumsAccount, policyPool } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
     const SignedQuoteRiskModule = await hre.ethers.getContractFactory("SignedQuoteRiskModule");
-    const rm = await SignedQuoteRiskModule.deploy(policyPool.address, premiumsAccount.address, false);
+    const rm = await SignedQuoteRiskModule.deploy(policyPool, premiumsAccount, false);
     expect(await rm.supportsInterface(interfaceIds.IERC165)).to.be.true;
     expect(await rm.supportsInterface(interfaceIds.IRiskModule)).to.be.true;
     expect(await rm.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.false;
+    expect(await rm.supportsInterface(invalidInterfaceId)).to.be.false;
   });
 
   it("Checks TieredSignedQuoteRiskModule supported interfaces", async () => {
     const { interfaceIds, premiumsAccount, policyPool } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
     const TieredSignedQuoteRiskModule = await hre.ethers.getContractFactory("TieredSignedQuoteRiskModule");
-    const rm = await TieredSignedQuoteRiskModule.deploy(policyPool.address, premiumsAccount.address, false);
+    const rm = await TieredSignedQuoteRiskModule.deploy(policyPool, premiumsAccount, false);
     expect(await rm.supportsInterface(interfaceIds.IERC165)).to.be.true;
     expect(await rm.supportsInterface(interfaceIds.IRiskModule)).to.be.true;
     expect(await rm.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.false;
+    expect(await rm.supportsInterface(invalidInterfaceId)).to.be.false;
   });
 
   it("Checks LPManualWhitelist supported interfaces", async () => {
     const { policyPool, interfaceIds } = await helpers.loadFixture(setupFixtureWithPool);
     const LPManualWhitelist = await hre.ethers.getContractFactory("LPManualWhitelist");
-    const wh = await LPManualWhitelist.deploy(policyPool.address);
+    const wh = await LPManualWhitelist.deploy(policyPool);
     expect(await wh.supportsInterface(interfaceIds.IERC165)).to.be.true;
     expect(await wh.supportsInterface(interfaceIds.ILPWhitelist)).to.be.true;
     expect(await wh.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.false;
+    expect(await wh.supportsInterface(invalidInterfaceId)).to.be.false;
   });
 
   it("Checks ERC4626AssetManager supported interfaces", async () => {
     const { currency, interfaceIds } = await helpers.loadFixture(setupFixtureWithPool);
     const ERC4626AssetManager = await hre.ethers.getContractFactory("ERC4626AssetManager");
-    const am = await ERC4626AssetManager.deploy(currency.address, currency.address);
+    const am = await ERC4626AssetManager.deploy(currency, currency);
     expect(await am.supportsInterface(interfaceIds.IERC165)).to.be.true;
     expect(await am.supportsInterface(interfaceIds.IAssetManager)).to.be.true;
     expect(await am.supportsInterface(interfaceIds.IERC20)).to.be.false;
+    expect(await am.supportsInterface(invalidInterfaceId)).to.be.false;
   });
 });

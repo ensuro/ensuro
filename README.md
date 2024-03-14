@@ -68,7 +68,7 @@ This contract also follows the ERC721 standard, minting an NFT for each policy c
 
 The protocol uses three levels of access control, plus a guardian role. These roles can be assigned at protocol level or specifically for a component. The roles are managed by the AccessManager smart contract.
 
-More info about governance in https://docs.google.com/spreadsheets/d/1LqlogRn8AlnLq1rPTd5UT7CJI3uc31PdBaxj4pX3mtE/edit?usp=sharing
+More info about governance in [our docs](https://docs.ensuro.co/ensuro-docs/smart-contracts/governance)
 
 ## Upgradability
 
@@ -81,15 +81,15 @@ We will never deploy upgrades to live contracts without prior notice to the user
 - LEVEL1_ROLE: this will be delegated to a Timelock contract that will give enough time to the users to be notified of the imminent upgrade.
 - GUARDIAN_ROLE: this will used only for emergency situations to prevent hacks or fix vulnerabilities. It will be delegated to multisigs where one of the signers is a trusted third party.
 
-Have in mind the new versions of the contracts might or might not be covered by the same audit processes as the initial ones. Always check the details of the audit reports.
+Have in mind the new versions of the contracts might or might not be covered by the same audit processes as the initial ones. See our [audit applicability matrix](https://docs.ensuro.co/ensuro-docs/deployments/audits) to check which audit applies to the currently deployed contracts.
 
 ## Development
 
-For coding the smart contracts the approach we took was prototyping initially in Python (see folder `prototype`), and later we coded in Solidity. The tests run the same test case both on the Python prototype code and the Solidity code. To adapt the Solidity code that is called using [brownie](https://eth-brownie.readthedocs.io/en/stable/), we have some glue code implemented in `tests/wrappers.py`.
+For coding the smart contracts the approach we took was prototyping initially in Python (see folder `prototype`), and later we coded in Solidity. The tests run the same test case both on the Python prototype code and the Solidity code. To adapt the Solidity code that is called using [ethproto](https://github.com/gnarvaja/eth-prototype), we have some glue code implemented in `tests/wrappers.py`.
 
 ### Without docker
 
-You can also run the development environment without using docker, just Python (>=3.9) and Node v16 are required as pre-requisits.
+You can also run the development environment without using docker, just Python (>=3.9) and Node v20 are required as pre-requisits.
 
 Initial setup:
 
@@ -101,15 +101,21 @@ source venv/bin/activate
 pip install -r requirements.txt
 pip install -r requirements-dev.txt
 # Install javascript dependencies
-nvm use  # To change to node v16
+nvm use  # To change to node v20
 npm install
 ```
 
 Then, you can run the tests with:
 
 ```bash
-brownie test -v
-npx hardhat test
+# Start a local node
+npx hardhat node
+
+# Run python tests
+pytest
+
+# Run js tests
+npx hardhat test --network localhost
 ```
 
 ### Using docker

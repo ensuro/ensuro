@@ -10,6 +10,7 @@ import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {IPolicyPoolComponent} from "../interfaces/IPolicyPoolComponent.sol";
 import {IEToken} from "../interfaces/IEToken.sol";
 import {IRiskModule} from "../interfaces/IRiskModule.sol";
+import {IPolicyHolder} from "../interfaces/IPolicyHolder.sol";
 import {IPremiumsAccount} from "../interfaces/IPremiumsAccount.sol";
 import {ILPWhitelist} from "../interfaces/ILPWhitelist.sol";
 import {IAccessManager} from "../interfaces/IAccessManager.sol";
@@ -29,4 +30,5 @@ contract InterfaceIdCalculator {
   bytes4 public constant ILPWHITELIST_INTERFACEID = type(ILPWhitelist).interfaceId;
   bytes4 public constant IACCESSMANAGER_INTERFACEID = type(IAccessManager).interfaceId;
   bytes4 public constant IASSETMANAGER_INTERFACEID = type(IAssetManager).interfaceId;
+  bytes4 public constant IPOLICYHOLDER_INTERFACEID = type(IPolicyHolder).interfaceId;
 }

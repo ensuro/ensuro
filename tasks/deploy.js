@@ -1,7 +1,6 @@
 const upgrades_core = require("@openzeppelin/upgrades-core");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const fs = require("fs");
-const { request } = require("undici");
 const ethers = require("ethers");
 const { task, types } = require("hardhat/config");
 const { WhitelistStatus } = require("../js/enums");
@@ -78,53 +77,50 @@ async function logContractCreated(hre, contractName, address) {
 async function verifyContract(hre, contract, isProxy, constructorArguments) {
   if (isProxy === undefined) isProxy = false;
   if (constructorArguments === undefined) constructorArguments = [];
-  let address = contract.address;
-  if (isProxy) address = await upgrades_core.getImplementationAddress(hre.network.provider, address);
+  const contractAddr = await ethers.resolveAddress(contract);
+  const address = isProxy
+    ? await upgrades_core.getImplementationAddress(hre.network.provider, contractAddr)
+    : contractAddr;
   try {
     await hre.run("verify:verify", {
       address: address,
       constructorArguments: constructorArguments,
     });
+  } catch (error) {
+    console.log("Error verifying contract implementation: ", error);
+    console.log("You can retry with:");
+    console.log(
+      `    npx hardhat verify --network '${hre.network.name}' '${address}' ${constructorArguments
+        .map((a) => `'${a.toString()}'`)
+        .join(" ")}`
+    );
+  }
+  try {
     if (isProxy) {
-      // the following should work but it fails with the current @openzeppelin/hardhat-upgrades version (1.20.0)
-      // await hre.run("verify:verify", {
-      //   address: contract.address,
-      // });
-
-      // so we use the following workaround
-      const endpoints = await hre.run("verify:get-etherscan-endpoint");
-      const params = new URLSearchParams({
-        module: "contract",
-        action: "verifyproxycontract",
-        apiKey: hre.config.etherscan.apiKey,
-        address: contract.address,
+      await hre.run("verify:verify", {
+        address: contractAddr,
+        constructorArguments: constructorArguments,
       });
-      const response = await request(endpoints.urls.apiURL, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: params.toString(),
-      });
-      if (response.statusCode != 200)
-        throw new Error(`Etherscan replied with ${response.statusCode}: ${await response.body.text()}`);
-      const body = await response.body.json();
-      if (body.status != 1) throw new Error(`Etherscan replied with ${body}`);
     }
   } catch (error) {
-    console.log("Error verifying contract", error);
+    console.log("Error verifying contract proxy: ", error);
+    const endpoints = await hre.run("verify:get-etherscan-endpoint");
+    console.log(`You should do it manually at ${endpoints.urls.browserURL}/proxyContractChecker?a=${contractAddr}`);
   }
 }
 
 async function deployContract({ saveAddr, verify, contractClass, constructorArgs }, hre) {
   const ContractFactory = await hre.ethers.getContractFactory(contractClass);
   const contract = await ContractFactory.deploy(...constructorArgs, txOverrides());
+  const contractAddr = await ethers.resolveAddress(contract);
   if (verify) {
     // From https://ethereum.stackexchange.com/a/119622/79726
     await contract.deployTransaction.wait(6);
   } else {
-    await contract.deployed();
+    await contract.waitForDeployment();
   }
-  await logContractCreated(hre, contractClass, contract.address);
-  saveAddress(saveAddr, contract.address);
+  await logContractCreated(hre, contractClass, contractAddr);
+  saveAddress(saveAddr, contractAddr);
   if (verify) await verifyContract(hre, contract, false, constructorArgs);
   return { ContractFactory, contract };
 }
@@ -140,14 +136,15 @@ async function deployProxyContract(
     initializer: initializer,
     ...deployProxyArgs,
   });
+  const contractAddr = await ethers.resolveAddress(contract);
   if (verify) {
     // From https://ethereum.stackexchange.com/a/119622/79726
     await contract.deployTransaction.wait(6);
   } else {
-    await contract.deployed();
+    await contract.waitForDeployment();
   }
-  await logContractCreated(hre, contractClass, contract.address);
-  saveAddress(saveAddr, contract.address);
+  await logContractCreated(hre, contractClass, contractAddr);
+  saveAddress(saveAddr, contractAddr);
   if (verify) await verifyContract(hre, contract, true, constructorArgs);
   return { ContractFactory, contract };
 }
@@ -161,7 +158,7 @@ async function grantRoleTask({ contractAddress, role, account, component, impers
     }
     contract = contract.connect(signer);
   }
-  if (component === ethers.constants.AddressZero) {
+  if (component === ethers.ZeroAddress) {
     await grantRole(hre, contract, role, account, txOverrides(), console.log);
   } else {
     await grantComponentRole(hre, contract, component, role, account, txOverrides(), console.log);
@@ -178,11 +175,11 @@ async function deployTestCurrency({ currName, currSymbol, initialSupply, ...opts
       },
       hre
     )
-  ).contract.address;
+  ).contract;
 }
 
 async function deployAccessManager(opts, hre) {
-  return (await deployProxyContract({ contractClass: "AccessManager", ...opts }, hre)).contract.address;
+  return (await deployProxyContract({ contractClass: "AccessManager", ...opts }, hre)).contract;
 }
 
 async function deployPolicyPool({ accessAddress, currencyAddress, nftName, nftSymbol, treasuryAddress, ...opts }, hre) {
@@ -196,7 +193,7 @@ async function deployPolicyPool({ accessAddress, currencyAddress, nftName, nftSy
       },
       hre
     )
-  ).contract.address;
+  ).contract;
 }
 
 async function deployEToken(
@@ -216,9 +213,9 @@ async function deployEToken(
   if (opts.addComponent) {
     let policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
     if (runAs) policyPool = policyPool.connect(runAs);
-    await policyPool.addComponent(contract.address, 1);
+    await policyPool.addComponent(contract, 1);
   }
-  return contract.address;
+  return contract;
 }
 
 async function deployPremiumsAccount({ poolAddress, juniorEtk, seniorEtk, runAs, ...opts }, hre) {
@@ -235,9 +232,9 @@ async function deployPremiumsAccount({ poolAddress, juniorEtk, seniorEtk, runAs,
   if (opts.addComponent) {
     let policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
     if (runAs) policyPool = policyPool.connect(runAs);
-    await policyPool.addComponent(contract.address, 3);
+    await policyPool.addComponent(contract, 3);
   }
-  return contract.address;
+  return contract;
 }
 
 async function deployRiskModule(
@@ -264,8 +261,11 @@ async function deployRiskModule(
   },
   hre
 ) {
-  extraArgs = extraArgs || [];
-  extraConstructorArgs = extraConstructorArgs || [];
+  extraArgs = typeof extraArgs === "string" ? JSON.parse(extraArgs) : extraArgs || [];
+
+  extraConstructorArgs =
+    typeof extraConstructorArgs === "string" ? JSON.parse(extraConstructorArgs) : extraConstructorArgs || [];
+
   const { contract } = await deployProxyContract(
     {
       contractClass: rmClass,
@@ -285,7 +285,6 @@ async function deployRiskModule(
     hre
   );
   const rm = runAs === undefined ? contract : contract.connect(runAs);
-
   if (opts.addComponent) {
     if (moc != 1.0) {
       moc = _W(moc);
@@ -308,9 +307,9 @@ async function deployRiskModule(
     }
     let policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
     if (runAs) policyPool = policyPool.connect(runAs);
-    await policyPool.addComponent(contract.address, 2);
+    await policyPool.addComponent(contract, 2);
   }
-  return contract.address;
+  return contract;
 }
 
 async function deploySignedQuoteRM(opts, hre) {
@@ -323,9 +322,9 @@ async function setAssetManager({ reserve, amAddress, liquidityMin, liquidityMidd
   const tx = await reserveContract.setAssetManager(amAddress, false);
   console.log(`Asset Manager ${amAddress} set to reserve ${reserve}`);
   if (liquidityMin !== undefined || liquidityMiddle !== undefined || liquidityMax !== undefined) {
-    liquidityMin = liquidityMin === undefined ? ethers.constants.MaxUint256 : _A(liquidityMin);
-    liquidityMiddle = liquidityMiddle === undefined ? ethers.constants.MaxUint256 : _A(liquidityMiddle);
-    liquidityMax = liquidityMax === undefined ? ethers.constants.MaxUint256 : _A(liquidityMax);
+    liquidityMin = liquidityMin === undefined ? ethers.MaxUint256 : _A(liquidityMin);
+    liquidityMiddle = liquidityMiddle === undefined ? ethers.MaxUint256 : _A(liquidityMiddle);
+    liquidityMax = liquidityMax === undefined ? ethers.MaxUint256 : _A(liquidityMax);
     const amContract = await hre.ethers.getContractAt(
       "ERC4626AssetManager", // Not relevant if it's ERC4626AssetManager, only need setLiquidityThresholds
       amAddress
@@ -350,7 +349,7 @@ async function deployERC4626AssetManager({ asset, vault, amClass, ...opts }, hre
       },
       hre
     )
-  ).contract.address;
+  ).contract;
 }
 
 async function deployAaveAssetManager({ asset, aave, amClass, ...opts }, hre) {
@@ -363,7 +362,7 @@ async function deployAaveAssetManager({ asset, aave, amClass, ...opts }, hre) {
       },
       hre
     )
-  ).contract.address;
+  ).contract;
 }
 
 async function deployWhitelist(
@@ -390,17 +389,17 @@ async function deployWhitelist(
   );
   if (eToken !== undefined) {
     const etk = await hre.ethers.getContractAt("EToken", eToken);
-    await etk.setWhitelist(contract.address);
+    await etk.setWhitelist(contract);
   }
   if (eToken2 !== undefined) {
     const etk = await hre.ethers.getContractAt("EToken", eToken2);
-    await etk.setWhitelist(contract.address);
+    await etk.setWhitelist(contract);
   }
   if (eToken3 !== undefined) {
     const etk = await hre.ethers.getContractAt("EToken", eToken3);
-    await etk.setWhitelist(contract.address);
+    await etk.setWhitelist(contract);
   }
-  return contract.address;
+  return contract;
 }
 
 async function trustfullPolicy({ rmAddress, payout, premium, lossProb, expiration, customer }, hre) {
@@ -413,7 +412,7 @@ async function trustfullPolicy({ rmAddress, payout, premium, lossProb, expiratio
   customer = customer || (await getDefaultSigner(hre));
   premium = _A(premium);
 
-  await currency.approve(policyPool.address, premium);
+  await currency.approve(policyPool, premium);
   lossProb = _W(lossProb);
   if (expiration === undefined) {
     expiration = 3600;
@@ -457,7 +456,7 @@ async function flightDelayPolicy(
   customer = customer || (await getDefaultSigner(hre));
   premium = _A(premium);
 
-  await currency.approve(policyPool.address, premium);
+  await currency.approve(policyPool, premium);
   lossProb = _W(lossProb);
   payout = _A(payout);
 
@@ -484,7 +483,7 @@ async function listETokens({ poolAddress }, hre) {
   for (let i = 0; i < etkCount; i++) {
     const etk = await hre.ethers.getContractAt("EToken", await policyPool.getETokenAt(i));
     const etkName = await etk.name();
-    console.log(`eToken at ${etk.address}: ${etkName}`);
+    console.log(`eToken at ${etk.target}: ${etkName}`);
   }
 }
 
@@ -493,8 +492,8 @@ async function deposit({ etkAddress, amount }, hre) {
   const policyPool = await hre.ethers.getContractAt("PolicyPool", await etk.policyPool());
   const currency = await hre.ethers.getContractAt("IERC20Metadata", await policyPool.currency());
   amount = _A(amount);
-  await currency.approve(policyPool.address, amount);
-  const tx = await policyPool.deposit(etk.address, amount, { gasLimit: 999999 });
+  await currency.approve(policyPool, amount);
+  const tx = await policyPool.deposit(etk, amount, { gasLimit: 999999 });
   console.log(tx);
 }
 
@@ -512,11 +511,13 @@ function add_task() {
     .setAction(async function (taskArgs, hre) {
       if (taskArgs.currencyAddress === undefined) {
         taskArgs.saveAddr = "CURRENCY";
-        taskArgs.currencyAddress = await deployTestCurrency(taskArgs, hre);
+        const currency = await deployTestCurrency(taskArgs, hre);
+        taskArgs.currencyAddress = await ethers.resolveAddress(currency);
       }
       if (taskArgs.accessAddress === undefined) {
         taskArgs.saveAddr = "ACCESSMANAGER";
-        taskArgs.accessAddress = await deployAccessManager(taskArgs, hre);
+        const access = await deployAccessManager(taskArgs, hre);
+        taskArgs.accessAddress = await ethers.resolveAddress(access);
       }
       taskArgs.saveAddr = "POOL";
       await deployPolicyPool(taskArgs, hre);
@@ -540,7 +541,7 @@ function add_task() {
     .addOptionalParam("saveAddr", "Save created contract address", "POOL", types.str)
     .addOptionalParam("nftName", "Name of Policies NFT Token", "Ensuro Policies NFT", types.str)
     .addOptionalParam("nftSymbol", "Symbol of Policies NFT Token", "EPOL", types.str)
-    .addOptionalParam("treasuryAddress", "Treasury Address", ethers.constants.AddressZero, types.address)
+    .addOptionalParam("treasuryAddress", "Treasury Address", ethers.ZeroAddress, types.address)
     .addParam("currencyAddress", "Currency Address", types.address)
     .addParam("accessAddress", "AccessManager Address", types.address)
     .setAction(deployPolicyPool);
@@ -583,6 +584,8 @@ function add_task() {
     .addOptionalParam("exposureLimit", "Exposure (sum of payouts) limit for the RM", 1e6, types.float)
     .addOptionalParam("maxDuration", "Maximum policy duration in hours", 24 * 365, types.int)
     .addOptionalParam("moc", "Margin of Conservativism", 1.0, types.float)
+    .addOptionalParam("extraConstructorArgs", "Additional constructor args", undefined, types.str)
+    .addOptionalParam("extraArgs", "Additional initializer args", undefined, types.str)
     .addParam("wallet", "RM address", types.address)
     .setAction(deployRiskModule);
 
@@ -694,7 +697,7 @@ function add_task() {
     .addOptionalParam(
       "component",
       "Address of the component if it's a component role",
-      ethers.constants.AddressZero,
+      ethers.ZeroAddress,
       types.address
     )
     .setAction(grantRoleTask);

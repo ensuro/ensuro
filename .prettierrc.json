@@ -4,12 +4,13 @@
   "semi": true,
   "singleQuote": false,
   "tabWidth": 2,
+  "plugins": ["prettier-plugin-solidity"],
   "overrides": [
     {
       "files": "*.sol",
       "options": {
         "semi": true,
-        "printWidth": 100
+        "printWidth": 120
       }
     }
   ]

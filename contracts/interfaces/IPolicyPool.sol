@@ -4,9 +4,39 @@ pragma solidity 0.8.16;
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {Policy} from "../Policy.sol";
 import {IEToken} from "./IEToken.sol";
+import {IRiskModule} from "./IRiskModule.sol";
 import {IAccessManager} from "./IAccessManager.sol";
 
 interface IPolicyPool {
+  /**
+   * @dev Event emitted every time a new policy is added to the pool. Contains all the data about the policy that is
+   * later required for doing operations with the policy like resolution or expiration.
+   *
+   * @param riskModule The risk module that created the policy
+   * @param policy The {Policy-PolicyData} struct with all the immutable fields of the policy.
+   */
+  event NewPolicy(IRiskModule indexed riskModule, Policy.PolicyData policy);
+
+  /**
+   * @dev Event emitted every time a new policy replaces an old Policy Contains all the data about the policy that is
+   * later required for doing operations with the policy like resolution or expiration.
+   *
+   * @param riskModule The risk module that created the policy
+   * @param oldPolicyId The id of the replaced policy.
+   * @param newPolicyId The id of the new policy.
+   */
+  event PolicyReplaced(IRiskModule indexed riskModule, uint256 indexed oldPolicyId, uint256 indexed newPolicyId);
+
+  /**
+   * @dev Event emitted every time a policy is removed from the pool. If the policy expired, the `payout` is 0,
+   * otherwise is the amount transferred to the policyholder.
+   *
+   * @param riskModule The risk module where that created the policy initially.
+   * @param policyId The unique id of the policy
+   * @param payout The payout that has been paid to the policy holder. 0 when the policy expired.
+   */
+  event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, uint256 payout);
+
   /**
    * @dev Reference to the main currency (ERC20) used in the protocol
    * @return The address of the currency (e.g. USDC) token used in the protocol
@@ -39,15 +69,41 @@ interface IPolicyPool {
    * (see Premium Split in the docs)
    *
    * @param policy A policy created with {Policy-initialize}
-   * @param caller The pricer that's creating the policy and will pay for the premium
-   * @param policyHolder The address of the policy holder and the payer of the premiums
+   * @param payer The address that will pay for the premium
+   * @param policyHolder The address of the policy holder
    * @param internalId A unique id within the RiskModule, that will be used to compute the policy id
    * @return The policy id, identifying the NFT and the policy
    */
   function newPolicy(
     Policy.PolicyData memory policy,
-    address caller,
+    address payer,
     address policyHolder,
+    uint96 internalId
+  ) external returns (uint256);
+
+  /**
+   * @dev Replaces a policy with another. Must be called from an active RiskModule
+   *
+   * Requirements:
+   * - `msg.sender` must be an active RiskModule
+   * - `caller` approved the spending of `currency()` for at least `newPolicy_.premium - oldPolicy.premium`
+   * - `internalId` must be unique within `policy.riskModule` and not used before
+   *
+   * Events:
+   * - {PolicyPool-PolicyReplaced}: with all the details about the policy
+   * - {ERC20-Transfer}: does several transfers from caller address to the different receivers of the premium
+   * (see Premium Split in the docs)
+   *
+   * @param oldPolicy A policy created previously and not expired
+   * @param newPolicy_ A policy created with {Policy-initialize}
+   * @param payer The address that will pay for the premium
+   * @param internalId A unique id within the RiskModule, that will be used to compute the policy id
+   * @return The policy id, identifying the NFT and the policy
+   */
+  function replacePolicy(
+    Policy.PolicyData memory oldPolicy,
+    Policy.PolicyData memory newPolicy_,
+    address payer,
     uint96 internalId
   ) external returns (uint256);
 

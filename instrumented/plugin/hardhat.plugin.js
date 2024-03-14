@@ -1,7 +1,6 @@
-const path = require("path");
 const PluginUI = require("solidity-coverage/plugins/resources/nomiclabs.ui");
 
-const { task, types } = require("hardhat/config");
+const { task } = require("hardhat/config");
 const { HardhatPluginError } = require("hardhat/plugins");
 const { TASK_TEST, TASK_COMPILE } = require("hardhat/builtin-tasks/task-names");
 const { setInstrumentedSources, setMeasureCoverage } = require("./solcov");
@@ -9,66 +8,61 @@ const { setInstrumentedSources, setMeasureCoverage } = require("./solcov");
 // UI for the task flags...
 const ui = new PluginUI();
 
-task("brownie-coverage", "Generates a code coverage report for all tests, including brownie's").setAction(
-  async function (args, env) {
-    const { execAsync, setupDirectories, setupNode } = require("./utils");
-    const API = require("solidity-coverage/lib/api");
-    const utils = require("solidity-coverage/utils");
-    const nomiclabsUtils = require("solidity-coverage/plugins/resources/nomiclabs.utils");
+task("python-coverage", "Generates a code coverage report for all tests, including python's").setAction(async function (
+  args,
+  env
+) {
+  // eslint-disable-next-line global-require
+  const { execAsync, setupNode } = require("./utils");
+  // eslint-disable-next-line global-require
+  const API = require("solidity-coverage/lib/api");
+  // eslint-disable-next-line global-require
+  const utils = require("solidity-coverage/utils");
+  // eslint-disable-next-line global-require
+  const nomiclabsUtils = require("solidity-coverage/plugins/resources/nomiclabs.utils");
 
-    let error;
+  let error;
 
-    const config = nomiclabsUtils.normalizeConfig(env.config, args);
+  const config = nomiclabsUtils.normalizeConfig(env.config, args);
 
-    setMeasureCoverage(true);
+  setMeasureCoverage(true);
 
-    const api = new API(utils.loadSolcoverJS(config));
+  const api = new API(utils.loadSolcoverJS(config));
 
-    const { targets, skipped } = utils.assembleFiles(config, api.skipFiles);
+  const { targets, skipped } = utils.assembleFiles(config, api.skipFiles);
 
-    // Instrument
-    const instrumented = api.instrument(targets);
-    setInstrumentedSources(instrumented);
+  // Instrument
+  const instrumented = api.instrument(targets);
+  setInstrumentedSources(instrumented);
 
-    utils.reportSkipped(config, skipped);
+  utils.reportSkipped(config, skipped);
 
-    // Compile
-    ui.report("compilation", []);
-    await env.run(TASK_COMPILE);
+  // Compile
+  ui.report("compilation", []);
+  await env.run(TASK_COMPILE);
 
-    // Setup instrumented brownie project
-    setupDirectories(env.config.brownieCoverage);
-    utils.save(
-      [...instrumented, ...skipped],
-      config.contractsDir,
-      path.join(env.config.brownieCoverage.instrumentedDir, "contracts")
-    );
+  // Setup hardhat node
+  setupNode(env, api, ui);
 
-    // Setup hardhat node
-    setupNode(env, api, ui);
-
-    // Run brownie tests
-    try {
-      await execAsync("brownie test --network hardhat", {
-        cwd: env.config.brownieCoverage.instrumentedDir,
-      });
-    } catch (e) {
-      error = e;
-    }
-
-    // Run hardhat tests
-    try {
-      await env.run(TASK_TEST, { testFiles: [] });
-    } catch (e) {
-      error = e;
-    }
-
-    // Report
-    await api.report();
-
-    // Finish
-    await api.finish();
-
-    if (error !== undefined) throw new HardhatPluginError(error);
+  // Run python tests
+  try {
+    await execAsync("pytest");
+  } catch (e) {
+    error = e;
   }
-);
+
+  // Run hardhat tests
+  try {
+    await env.run(TASK_TEST, { testFiles: [] });
+  } catch (e) {
+    error = e;
+  }
+
+  // Report
+  await api.report();
+
+  // Finish
+  await api.finish();
+
+  if (error !== undefined) throw new HardhatPluginError(error);
+});

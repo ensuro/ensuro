@@ -75,15 +75,7 @@ contract SignedBucketRiskModule is RiskModule {
     uint256 exposureLimit_,
     address wallet_
   ) public initializer {
-    __RiskModule_init(
-      name_,
-      collRatio_,
-      ensuroPpFee_,
-      srRoc_,
-      maxPayoutPerPolicy_,
-      exposureLimit_,
-      wallet_
-    );
+    __RiskModule_init(name_, collRatio_, ensuroPpFee_, srRoc_, maxPayoutPerPolicy_, exposureLimit_, wallet_);
   }
 
   function _checkSignature(
@@ -98,12 +90,7 @@ contract SignedBucketRiskModule is RiskModule {
     uint40 quoteValidUntil
   ) internal view {
     if (!_creationIsOpen)
-      _policyPool.access().checkComponentRole(
-        address(this),
-        POLICY_CREATOR_ROLE,
-        _msgSender(),
-        false
-      );
+      _policyPool.access().checkComponentRole(address(this), POLICY_CREATOR_ROLE, _msgSender(), false);
     require(quoteValidUntil >= block.timestamp, "Quote expired");
 
     /**
@@ -116,16 +103,7 @@ contract SignedBucketRiskModule is RiskModule {
      * - quoteValidUntil: the maximum validity of the quote
      */
     bytes32 quoteHash = ECDSA.toEthSignedMessageHash(
-      abi.encodePacked(
-        address(this),
-        payout,
-        premium,
-        lossProb,
-        expiration,
-        policyData,
-        bucketId,
-        quoteValidUntil
-      )
+      abi.encodePacked(address(this), payout, premium, lossProb, expiration, policyData, bucketId, quoteValidUntil)
     );
     address signer = ECDSA.recover(quoteHash, quoteSignatureR, quoteSignatureVS);
     _policyPool.access().checkComponentRole(address(this), PRICER_ROLE, signer, false);
@@ -141,7 +119,7 @@ contract SignedBucketRiskModule is RiskModule {
     address payer,
     address onBehalfOf
   ) internal returns (Policy.PolicyData memory createdPolicy) {
-    uint96 internalId = uint96(uint256(policyData) % 2**96);
+    uint96 internalId = uint96(uint256(policyData) % 2 ** 96);
     createdPolicy = _newPolicyWithParams(
       payout,
       premium,
@@ -202,17 +180,7 @@ contract SignedBucketRiskModule is RiskModule {
       quoteSignatureVS,
       quoteValidUntil
     );
-    return
-      _newPolicySigned(
-        payout,
-        premium,
-        lossProb,
-        expiration,
-        policyData,
-        bucketId,
-        _msgSender(),
-        onBehalfOf
-      );
+    return _newPolicySigned(payout, premium, lossProb, expiration, policyData, bucketId, _msgSender(), onBehalfOf);
   }
 
   /**
@@ -261,17 +229,7 @@ contract SignedBucketRiskModule is RiskModule {
       quoteSignatureVS,
       quoteValidUntil
     );
-    return
-      _newPolicySigned(
-        payout,
-        premium,
-        lossProb,
-        expiration,
-        policyData,
-        bucketId,
-        _msgSender(),
-        onBehalfOf
-      ).id;
+    return _newPolicySigned(payout, premium, lossProb, expiration, policyData, bucketId, _msgSender(), onBehalfOf).id;
   }
 
   /**
@@ -334,24 +292,13 @@ contract SignedBucketRiskModule is RiskModule {
       quoteSignatureVS,
       quoteValidUntil
     );
-    return
-      _newPolicySigned(
-        payout,
-        premium,
-        lossProb,
-        expiration,
-        policyData,
-        bucketId,
-        onBehalfOf,
-        onBehalfOf
-      ).id;
+    return _newPolicySigned(payout, premium, lossProb, expiration, policyData, bucketId, onBehalfOf, onBehalfOf).id;
   }
 
-  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout)
-    external
-    onlyComponentRole(RESOLVER_ROLE)
-    whenNotPaused
-  {
+  function resolvePolicy(
+    Policy.PolicyData calldata policy,
+    uint256 payout
+  ) external onlyComponentRole(RESOLVER_ROLE) whenNotPaused {
     _policyPool.resolvePolicy(policy, payout);
   }
 
@@ -365,14 +312,11 @@ contract SignedBucketRiskModule is RiskModule {
    * @param bucketId Group identifier for the policies that will have these parameters
    * @param params_ The parameters of the new bucket.
    */
-  function setBucketParams(uint256 bucketId, Params calldata params_)
-    external
-    onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE)
-  {
-    require(
-      bucketId != 0,
-      "SignedBucketRiskModule: bucketId can't be zero, set default RM parameters"
-    );
+  function setBucketParams(
+    uint256 bucketId,
+    Params calldata params_
+  ) external onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE) {
+    require(bucketId != 0, "SignedBucketRiskModule: bucketId can't be zero, set default RM parameters");
     _buckets[bucketId] = PackedParams({
       moc: _wadTo4(params_.moc),
       jrCollRatio: _wadTo4(params_.jrCollRatio),
@@ -398,14 +342,8 @@ contract SignedBucketRiskModule is RiskModule {
    *
    * @param bucketId Group identifier for the policies that will have these parameters
    */
-  function deleteBucket(uint256 bucketId)
-    external
-    onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE)
-  {
-    require(
-      bucketId != 0,
-      "SignedBucketRiskModule: bucketId can't be zero, set default RM parameters"
-    );
+  function deleteBucket(uint256 bucketId) external onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE) {
+    require(bucketId != 0, "SignedBucketRiskModule: bucketId can't be zero, set default RM parameters");
     delete _buckets[bucketId];
     emit BucketDeleted(bucketId);
   }

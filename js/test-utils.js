@@ -1,11 +1,13 @@
 const hre = require("hardhat");
 const { _W, grantRole, getTransactionEvent } = require("../js/utils");
 const { RiskModuleParameter } = require("../js/enums");
+const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
-const { AddressZero } = hre.ethers.constants;
+const { ethers } = hre;
+const { ZeroAddress } = ethers;
 
 async function initCurrency(options, initial_targets, initial_balances) {
-  const Currency = await hre.ethers.getContractFactory("TestCurrency");
+  const Currency = await ethers.getContractFactory(options.contractClass || "TestCurrency");
   let currency = await Currency.deploy(
     options.name || "Test Currency",
     options.symbol || "TEST",
@@ -15,7 +17,27 @@ async function initCurrency(options, initial_targets, initial_balances) {
   initial_targets = initial_targets || [];
   await Promise.all(
     initial_targets.map(async function (user, index) {
-      await currency.transfer(user.address, initial_balances[index]);
+      await currency.transfer(user, initial_balances[index]);
+    })
+  );
+  return currency;
+}
+
+/**
+ *
+ * @param currencyAddress The currency contract address, for example the USDC address
+ * @param currencyOrigin An account that holds at least sum(initialBalances) of currency tokens
+ * @param initialTargets Array of addresses that will receive the initial balances
+ * @param initialBalances Initial balances for each address
+ */
+async function initForkCurrency(currencyAddress, currencyOrigin, initialTargets, initialBalances) {
+  const currency = await ethers.getContractAt("IERC20", currencyAddress);
+  await helpers.impersonateAccount(currencyOrigin);
+  await helpers.setBalance(currencyOrigin, ethers.parseEther("100"));
+  const whale = await ethers.getSigner(currencyOrigin);
+  await Promise.all(
+    initialTargets.map(async function (user, index) {
+      await currency.connect(whale).transfer(user, initialBalances[index]);
     })
   );
   return currency;
@@ -41,6 +63,11 @@ async function createRiskModule(
   extraArgs = extraArgs || [];
   extraConstructorArgs = extraConstructorArgs || [];
   const _A = pool._A || _W;
+  maxPayoutPerPolicy = maxPayoutPerPolicy !== undefined ? _A(maxPayoutPerPolicy) : _A(1000);
+  exposureLimit = exposureLimit !== undefined ? _A(exposureLimit) : _A(1000000);
+
+  const poolAddr = await ethers.resolveAddress(pool);
+  const paAddr = await ethers.resolveAddress(premiumsAccount);
   const rm = await hre.upgrades.deployProxy(
     contractFactory,
     [
@@ -48,18 +75,18 @@ async function createRiskModule(
       _W(collRatio) || _W(1),
       _W(ensuroPPFee) || _W(0),
       _W(srRoc) || _W("0.1"),
-      _A(maxPayoutPerPolicy) || _A(1000),
-      _A(exposureLimit) || _A(1000000),
+      maxPayoutPerPolicy,
+      exposureLimit,
       wallet || "0xdD2FD4581271e230360230F9337D5c0430Bf44C0", // Random address
       ...extraArgs,
     ],
     {
       kind: "uups",
-      constructorArgs: [pool.address, premiumsAccount.address, ...extraConstructorArgs],
+      constructorArgs: [poolAddr, paAddr, ...extraConstructorArgs],
     }
   );
 
-  await rm.deployed();
+  await rm.waitForDeployment();
 
   if (moc !== undefined && moc != 1.0) {
     moc = _W(moc);
@@ -98,7 +125,7 @@ async function addRiskModule(
     extraConstructorArgs,
   });
 
-  await pool.addComponent(rm.address, 2);
+  await pool.addComponent(rm, 2);
   return rm;
 }
 
@@ -106,9 +133,10 @@ async function createEToken(
   pool,
   { etkName, etkSymbol, maxUtilizationRate, poolLoanInterestRate, extraArgs, extraConstructorArgs }
 ) {
-  const EToken = await hre.ethers.getContractFactory("EToken");
+  const EToken = await ethers.getContractFactory("EToken");
   extraArgs = extraArgs || [];
   extraConstructorArgs = extraConstructorArgs || [];
+  const poolAddr = await ethers.resolveAddress(pool);
   const etk = await hre.upgrades.deployProxy(
     EToken,
     [
@@ -121,11 +149,11 @@ async function createEToken(
     {
       kind: "uups",
       unsafeAllow: ["delegatecall"], // This holds, because EToken is a reserve and uses delegatecall
-      constructorArgs: [pool.address, ...extraConstructorArgs],
+      constructorArgs: [poolAddr, ...extraConstructorArgs],
     }
   );
 
-  await etk.deployed();
+  await etk.waitForDeployment();
   return etk;
 }
 
@@ -141,7 +169,7 @@ async function addEToken(
     extraArgs,
     extraConstructorArgs,
   });
-  await pool.addComponent(etk.address, 1);
+  await pool.addComponent(etk, 1);
   return etk;
 }
 
@@ -162,19 +190,21 @@ const randomAddress = "0x89cDb70Fee571251a66E34caa1673cE40f7549Dc";
  * - .dontGrantL123Roles: if specified, doesn't grants LEVEL1, 2 and 3 roles.
  */
 async function deployPool(options) {
-  const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
-  const AccessManager = await hre.ethers.getContractFactory("AccessManager");
+  const PolicyPool = await ethers.getContractFactory("PolicyPool");
+  const AccessManager = await ethers.getContractFactory("AccessManager");
 
   let accessManager;
 
   if (options.access === undefined) {
     // Deploy AccessManager
     accessManager = await hre.upgrades.deployProxy(AccessManager, [], { kind: "uups" });
-    await accessManager.deployed();
+    await accessManager.waitForDeployment();
   } else {
-    accessManager = await hre.ethers.getContractAt("AccessManager", options.access);
+    accessManager = await ethers.getContractAt("AccessManager", options.access);
   }
 
+  const currencyAddr = await ethers.resolveAddress(options.currency);
+  const amAddr = await ethers.resolveAddress(accessManager);
   const policyPool = await hre.upgrades.deployProxy(
     PolicyPool,
     [
@@ -183,12 +213,12 @@ async function deployPool(options) {
       options.treasuryAddress || randomAddress,
     ],
     {
-      constructorArgs: [accessManager.address, options.currency],
+      constructorArgs: [amAddr, currencyAddr],
       kind: "uups",
     }
   );
 
-  await policyPool.deployed();
+  await policyPool.waitForDeployment();
 
   for (const role of options.grantRoles || []) {
     await grantRole(hre, accessManager, role);
@@ -204,27 +234,75 @@ async function deployPool(options) {
 }
 
 async function deployPremiumsAccount(pool, options, addToPool = true) {
-  const PremiumsAccount = await hre.ethers.getContractFactory("PremiumsAccount");
+  const PremiumsAccount = await ethers.getContractFactory("PremiumsAccount");
+  const poolAddr = await ethers.resolveAddress(pool);
+  const jrEtkAddr = options.jrEtk ? await ethers.resolveAddress(options.jrEtk) : ZeroAddress;
+  const srEtkAddr = options.srEtk ? await ethers.resolveAddress(options.srEtk) : ZeroAddress;
   const premiumsAccount = await hre.upgrades.deployProxy(PremiumsAccount, [], {
-    constructorArgs: [pool.address, options.jrEtkAddr || AddressZero, options.srEtkAddr || AddressZero],
+    constructorArgs: [poolAddr, jrEtkAddr, srEtkAddr],
     kind: "uups",
     unsafeAllow: ["delegatecall"], // This holds, because EToken is a reserve and uses delegatecall
   });
 
-  await premiumsAccount.deployed();
+  await premiumsAccount.waitForDeployment();
 
-  if (addToPool) await pool.addComponent(premiumsAccount.address, 3);
+  if (addToPool) await pool.addComponent(premiumsAccount, 3);
 
   return premiumsAccount;
 }
 
 async function makePolicy(pool, rm, cust, payout, premium, lossProb, expiration, internalId, method = "newPolicy") {
-  let tx = await rm.connect(cust)[method](payout, premium, lossProb, expiration, cust.address, internalId);
+  let tx = await rm.connect(cust)[method](payout, premium, lossProb, expiration, cust, internalId);
   let receipt = await tx.wait();
   const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
 
   return newPolicyEvt;
 }
+
+/**
+ * Resets hardhat network to fork on the specified block and url
+ */
+async function setupChain(block, alchemyUrlEnv = "ALCHEMY_URL") {
+  const alchemyUrl = process.env[alchemyUrlEnv];
+  if (alchemyUrl === undefined) throw new Error(`Define envvar ${alchemyUrlEnv} for this test`);
+
+  if (block === undefined) throw new Error("Block can't be undefined use null for the current block");
+  if (block === null) block = undefined;
+  return hre.network.provider.request({
+    method: "hardhat_reset",
+    params: [
+      {
+        forking: {
+          jsonRpcUrl: alchemyUrl,
+          blockNumber: block,
+        },
+      },
+    ],
+  });
+}
+
+const skipForkTests = process.env.SKIP_FORK_TESTS === "true";
+
+/**
+ * Chai test case wrapper for tests that require forking a live chain.
+ *
+ * It validates that the chain node URL is set, forks the chain at the specified block and adds the
+ * block number to the test name.
+ */
+const fork = {
+  it: (name, blockNumber, test, alchemyUrlEnv = "ALCHEMY_URL") => {
+    const fullName = `[FORK ${blockNumber}] ${name}`;
+
+    // eslint-disable-next-line func-style
+    const wrapped = async (...args) => {
+      await setupChain(blockNumber, alchemyUrlEnv);
+
+      return test(...args);
+    };
+
+    return (skipForkTests ? it.skip : it)(fullName, wrapped);
+  },
+};
 
 if (process.env.ENABLE_HH_WARNINGS !== "yes") hre.upgrades.silenceWarnings();
 
@@ -235,6 +313,10 @@ module.exports = {
   createRiskModule,
   deployPool,
   deployPremiumsAccount,
+  fork,
   initCurrency,
+  initForkCurrency,
   makePolicy,
+  setupChain,
+  skipForkTests,
 };

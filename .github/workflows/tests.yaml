@@ -12,15 +12,24 @@ jobs:
         uses: actions/checkout@v2
       - uses: actions/setup-node@v3
         with:
-          node-version: "16"
+          node-version: "20"
           cache: "npm"
-      - run: npm ci
-      - run: pip install -r requirements.txt
-      - run: pip install -r requirements-dev.txt
+      - name: Setup
+        run: |
+          npm ci
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
       - run: npx hardhat compile
       - run: npx hardhat size-contracts
       - run: npm run solhint
-      - run: brownie test -v --gas
+      - name: Run python tests
+        run: |
+          . scripts/utils.sh
+          startHHNode
+
+          pytest
+
+          killPID $(getHHNodePID) || true
       - run: scripts/deploySmokeTest.sh
       - run: scripts/deploySmokeTest-fork.sh
         env:
@@ -29,7 +38,26 @@ jobs:
         env:
           REPORT_GAS: "1"
           ALCHEMY_URL: ${{ secrets.ALCHEMY_URL }}
-      - run: npx hardhat brownie-coverage
+
+  coverage:
+    name: Full coverage measurement
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - uses: actions/setup-node@v3
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Setup
+        run: |
+          npm ci
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - run: npx hardhat python-coverage
       - name: Create coverage badge
         if: github.ref == 'refs/heads/main'
         run: |

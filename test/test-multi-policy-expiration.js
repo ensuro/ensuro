@@ -3,7 +3,6 @@ const { initCurrency, deployPool, deployPremiumsAccount, addRiskModule, addEToke
 const { amountFunction, _W, grantComponentRole, getTransactionEvent } = require("../js/utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
-const { BigNumber } = require("ethers");
 
 const _A = amountFunction(6);
 
@@ -15,15 +14,15 @@ describe("Multiple policy expirations", function () {
 
     await helpers.time.increaseTo(policies[policies.length - 1].expiration);
 
-    let gasUsed = BigNumber.from(0);
+    let gasUsed = 0n;
     for (const policy of policies) {
-      const tx = await pool.connect(backend).expirePolicy(policy);
+      const tx = await pool.connect(backend).expirePolicy([...policy]);
       const receipt = await tx.wait();
-      gasUsed = gasUsed.add(receipt.gasUsed);
+      gasUsed += receipt.gasUsed;
     }
 
     console.log("Total gas used by individual expiration of %s policies: %s", policies.length, gasUsed);
-    console.log("Avg gas per policy expiration: %s", gasUsed.div(policies.length));
+    console.log("Avg gas per policy expiration: %s", gasUsed / BigInt(policies.length.toString()));
   });
 
   it("Measure the gas cost of multiple policy expiration", async () => {
@@ -31,10 +30,11 @@ describe("Multiple policy expirations", function () {
 
     await helpers.time.increaseTo(policies[policies.length - 1].expiration);
 
-    const tx = await pool.connect(backend).expirePolicies(policies);
+    const toExpire = policies.map((p) => [...p]);
+    const tx = await pool.connect(backend).expirePolicies(toExpire);
     const receipt = await tx.wait();
     console.log("Total gas used by multiple expiration of %s policies: %s", policies.length, receipt.gasUsed);
-    console.log("Avg gas per policy expiration: %s", receipt.gasUsed.div(policies.length));
+    console.log("Avg gas per policy expiration: %s", receipt.gasUsed / BigInt(policies.length.toString()));
   });
 
   it("Measure the gas cost of chunked multiple policy expiration", async () => {
@@ -43,11 +43,12 @@ describe("Multiple policy expirations", function () {
     await helpers.time.increaseTo(policies[policies.length - 1].expiration);
 
     const chunkSize = 10;
-    let gasUsed = BigNumber.from(0);
+    let gasUsed = 0n;
     for (let i = 0; i < policies.length; i += chunkSize) {
-      const tx = await pool.connect(backend).expirePolicies(policies.slice(i, i + chunkSize));
+      const toExpire = policies.slice(i, i + chunkSize).map((p) => [...p]);
+      const tx = await pool.connect(backend).expirePolicies(toExpire);
       const receipt = await tx.wait();
-      gasUsed = gasUsed.add(receipt.gasUsed);
+      gasUsed += receipt.gasUsed;
     }
 
     console.log(
@@ -56,8 +57,8 @@ describe("Multiple policy expirations", function () {
       chunkSize,
       gasUsed
     );
-    console.log("Avg gas per policy chunk: %s", gasUsed.div(policies.length / chunkSize));
-    console.log("Avg gas per policy expiration: %s", gasUsed.div(policies.length));
+    console.log("Avg gas per policy chunk: %s", gasUsed / BigInt((policies.length / chunkSize).toString()));
+    console.log("Avg gas per policy expiration: %s", gasUsed / BigInt(policies.length.toString()));
   });
 
   it.skip("Measure what's the max number of policies that can be expired without exceeding the max gas", async () => {
@@ -66,7 +67,7 @@ describe("Multiple policy expirations", function () {
     const additionalPolicies = 500; // number arrived at by trial-and-error
 
     for (let i = 0; i < additionalPolicies; i++) {
-      const policy = await makePolicy({ payer: pricer.address, internalId: 100000 + i });
+      const policy = await makePolicy({ payer: pricer, internalId: 100000 + i });
       const tx = await rm.connect(pricer).newPolicy(...policy.toArgs());
       const receipt = await tx.wait();
       const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
@@ -82,11 +83,12 @@ describe("Multiple policy expirations", function () {
   });
 
   it("Actually expires the policies", async () => {
-    const { pool, rm, backend, policies } = await helpers.loadFixture(poolWithPolicies);
+    const { pool, backend, policies } = await helpers.loadFixture(poolWithPolicies);
 
     await helpers.time.increaseTo(policies[policies.length - 1].expiration);
 
-    const tx = await pool.connect(backend).expirePolicies(policies);
+    const toExpire = policies.map((p) => [...p]);
+    const tx = await pool.connect(backend).expirePolicies(toExpire);
     const receipt = await tx.wait();
 
     const expiredPolicyIds = receipt.logs
@@ -94,7 +96,6 @@ describe("Multiple policy expirations", function () {
       .filter((event) => event.name == "PolicyResolved")
       .map((event) => event.args.policyId);
 
-    console.log(rm.address);
     expect(expiredPolicyIds).to.deep.equal(policies.map((p) => p.id));
   });
 
@@ -105,13 +106,13 @@ describe("Multiple policy expirations", function () {
     await helpers.time.increaseTo(policies[policies.length - 1].expiration);
 
     // Create a new policy
-    const policy = await makePolicy({ payer: pricer.address, internalId: policies.length + 1 });
+    const policy = await makePolicy({ payer: pricer, internalId: policies.length + 1 });
     const tx = await rm.connect(pricer).newPolicy(...policy.toArgs());
     const receipt = await tx.wait();
     const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
 
     // Try to expire this unexpired policy along with an expired one
-    const toExpire = [policies[0], newPolicyEvt.args.policy];
+    const toExpire = [[...policies[0]], [...newPolicyEvt.args.policy]];
     expect(newPolicyEvt.args.policy.expiration).to.be.greaterThan(await helpers.time.latest());
     await expect(pool.connect(backend).expirePolicies(toExpire)).to.be.revertedWith("Policy not expired yet");
   });
@@ -127,14 +128,14 @@ async function poolWithPolicies() {
   );
 
   const pool = await deployPool({
-    currency: currency.address,
+    currency: currency,
     grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
     treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
   });
   pool._A = _A;
 
   const etk = await addEToken(pool, {});
-  const premiumsAccount = await deployPremiumsAccount(pool, { srEtkAddr: etk.address });
+  const premiumsAccount = await deployPremiumsAccount(pool, { srEtk: etk });
   const accessManager = await hre.ethers.getContractAt("AccessManager", await pool.access());
 
   const RiskModule = await hre.ethers.getContractFactory("RiskModuleMock");
@@ -144,11 +145,11 @@ async function poolWithPolicies() {
   });
 
   // Fund the protocol
-  await currency.connect(lp).approve(pool.address, _A(100000));
-  await pool.connect(lp).deposit(etk.address, _A(100000));
+  await currency.connect(lp).approve(pool, _A(100000));
+  await pool.connect(lp).deposit(etk, _A(100000));
 
   // Allow pricer spending to pay for policies
-  await currency.connect(pricer).approve(pool.address, _A(100000));
+  await currency.connect(pricer).approve(pool, _A(100000));
 
   // Allow pricer to create policies
   await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", pricer);
@@ -156,7 +157,7 @@ async function poolWithPolicies() {
   // Create a bunch of policies
   const policies = [];
   for (let i = 0; i < 100; i++) {
-    const policy = await makePolicy({ payer: pricer.address, internalId: i });
+    const policy = await makePolicy({ payer: pricer, internalId: i });
     const tx = await rm.connect(pricer).newPolicy(...policy.toArgs());
     const receipt = await tx.wait();
     const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");

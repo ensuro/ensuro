@@ -25,6 +25,22 @@ interface IPremiumsAccount {
   function policyCreated(Policy.PolicyData memory policy) external;
 
   /**
+   * @dev Replaces a policy with another in PremiumsAccount. Stores the pure premiums difference and
+   * re-locks the aditional funds from junior and senior eTokens.
+   *
+   * Requirements:
+   * - Must be called by `policyPool()`
+   *
+   * Events:
+   * - {EToken-SCRUnlocked}
+   * - {EToken-SCRLocked}
+   *
+   * @param oldPolicy The policy to replace (created in a previous transaction)
+   * @param newPolicy The policy that will replace the old one (created in this transaction)
+   */
+  function policyReplaced(Policy.PolicyData memory oldPolicy, Policy.PolicyData memory newPolicy) external;
+
+  /**
    * @dev The PremiumsAccount is notified that the policy was resolved and issues the payout to the policyHolder.
    *
    * Requirements:
@@ -39,11 +55,7 @@ interface IPremiumsAccount {
    * @param policy The policy that was resolved
    * @param payout The amount that has to be transferred to `policyHolder`
    */
-  function policyResolvedWithPayout(
-    address policyHolder,
-    Policy.PolicyData memory policy,
-    uint256 payout
-  ) external;
+  function policyResolvedWithPayout(address policyHolder, Policy.PolicyData memory policy, uint256 payout) external;
 
   /**
    * @dev The PremiumsAccount is notified that the policy has expired, unlocks the SCR and earns the pure premium.

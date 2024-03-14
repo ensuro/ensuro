@@ -58,15 +58,7 @@ contract SignedQuoteRiskModule is RiskModule {
     uint256 exposureLimit_,
     address wallet_
   ) public initializer {
-    __RiskModule_init(
-      name_,
-      collRatio_,
-      ensuroPpFee_,
-      srRoc_,
-      maxPayoutPerPolicy_,
-      exposureLimit_,
-      wallet_
-    );
+    __RiskModule_init(name_, collRatio_, ensuroPpFee_, srRoc_, maxPayoutPerPolicy_, exposureLimit_, wallet_);
   }
 
   function _newPolicySigned(
@@ -82,12 +74,7 @@ contract SignedQuoteRiskModule is RiskModule {
     address onBehalfOf
   ) internal returns (Policy.PolicyData memory createdPolicy) {
     if (!_creationIsOpen)
-      _policyPool.access().checkComponentRole(
-        address(this),
-        POLICY_CREATOR_ROLE,
-        _msgSender(),
-        false
-      );
+      _policyPool.access().checkComponentRole(address(this), POLICY_CREATOR_ROLE, _msgSender(), false);
     require(quoteValidUntil >= block.timestamp, "Quote expired");
 
     /**
@@ -100,29 +87,13 @@ contract SignedQuoteRiskModule is RiskModule {
      * - quoteValidUntil: the maximum validity of the quote
      */
     bytes32 quoteHash = ECDSA.toEthSignedMessageHash(
-      abi.encodePacked(
-        address(this),
-        payout,
-        premium,
-        lossProb,
-        expiration,
-        policyData,
-        quoteValidUntil
-      )
+      abi.encodePacked(address(this), payout, premium, lossProb, expiration, policyData, quoteValidUntil)
     );
     address signer = ECDSA.recover(quoteHash, quoteSignatureR, quoteSignatureVS);
     _policyPool.access().checkComponentRole(address(this), PRICER_ROLE, signer, false);
-    uint96 internalId = uint96(uint256(policyData) % 2**96);
+    uint96 internalId = uint96(uint256(policyData) % 2 ** 96);
 
-    createdPolicy = _newPolicy(
-      payout,
-      premium,
-      lossProb,
-      expiration,
-      payer,
-      onBehalfOf,
-      internalId
-    );
+    createdPolicy = _newPolicy(payout, premium, lossProb, expiration, payer, onBehalfOf, internalId);
     emit NewSignedPolicy(createdPolicy.id, policyData);
     return createdPolicy;
   }
@@ -285,19 +256,17 @@ contract SignedQuoteRiskModule is RiskModule {
       ).id;
   }
 
-  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout)
-    external
-    onlyComponentRole(RESOLVER_ROLE)
-    whenNotPaused
-  {
+  function resolvePolicy(
+    Policy.PolicyData calldata policy,
+    uint256 payout
+  ) external onlyComponentRole(RESOLVER_ROLE) whenNotPaused {
     _policyPool.resolvePolicy(policy, payout);
   }
 
-  function resolvePolicyFullPayout(Policy.PolicyData calldata policy, bool customerWon)
-    external
-    onlyComponentRole(RESOLVER_ROLE)
-    whenNotPaused
-  {
+  function resolvePolicyFullPayout(
+    Policy.PolicyData calldata policy,
+    bool customerWon
+  ) external onlyComponentRole(RESOLVER_ROLE) whenNotPaused {
     _policyPool.resolvePolicyFullPayout(policy, customerWon);
   }
 
