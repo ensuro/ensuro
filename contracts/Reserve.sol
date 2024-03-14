@@ -75,9 +75,9 @@ abstract contract Reserve is PolicyPoolComponent {
    * @param destination The destination of the transfer.
    * @param amount The amount to be transferred.
    */
-  function _transferTo(address destination, uint256 amount) internal {
+  function _transferTo(address destination, uint256 amount) internal returns (uint256) {
     require(destination != address(0), "Reserve: transfer to the zero address");
-    if (amount == 0) return;
+    if (amount == 0) return 0;
     uint256 balance = currency().balanceOf(address(this));
     if (balance < amount) {
       balance += _refillWallet(amount);
@@ -88,6 +88,7 @@ abstract contract Reserve is PolicyPoolComponent {
       }
     }
     currency().safeTransfer(destination, amount);
+    return amount;
   }
 
   /**
