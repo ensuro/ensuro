@@ -295,6 +295,7 @@ module.exports = {
   amountFunction,
   defaultPolicyParams,
   defaultBucketParams,
+  getAddress,
   getComponentRole,
   getDefaultSigner,
   getRole,
