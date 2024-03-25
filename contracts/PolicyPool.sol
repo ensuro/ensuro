@@ -11,6 +11,7 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 
 import {IAccessManager} from "./interfaces/IAccessManager.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
+import {IPolicyHolderV2} from "./interfaces/IPolicyHolderV2.sol";
 import {IPolicyHolder} from "./interfaces/IPolicyHolder.sol";
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
@@ -42,6 +43,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   bytes32 public constant LEVEL1_ROLE = keccak256("LEVEL1_ROLE");
   bytes32 public constant LEVEL2_ROLE = keccak256("LEVEL2_ROLE");
   bytes32 public constant LEVEL3_ROLE = keccak256("LEVEL3_ROLE");
+
+  uint256 internal constant HOLDER_GAS_LIMIT = 100000;
 
   /**
    * @dev {AccessManager} that handles the access permissions for the PolicyPool and its components.
@@ -617,11 +620,26 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     if (!AddressUpgradeable.isContract(customer)) return;
     if (!ERC165Checker.supportsInterface(customer, type(IPolicyHolder).interfaceId)) return;
 
-    try IPolicyHolder(customer).onPolicyExpired(_msgSender(), address(this), policyId) returns (bytes4) {
+    try IPolicyHolder(customer).onPolicyExpired{gas: HOLDER_GAS_LIMIT}(_msgSender(), address(this), policyId) returns (
+      bytes4
+    ) {
       return;
     } catch {
       return;
     }
+  }
+
+  /**
+   * @dev Notifies the replacement with a callback if the policyholder is a contract. Never reverts.
+   */
+  function _notifyReplacement(uint256 oldPolicyId, uint256 newPolicyId) internal {
+    address customer = ownerOf(oldPolicyId);
+    if (!AddressUpgradeable.isContract(customer)) return;
+    if (!ERC165Checker.supportsInterface(customer, type(IPolicyHolderV2).interfaceId)) return;
+
+    bytes4 retval = IPolicyHolderV2(customer).onPolicyReplaced(_msgSender(), address(this), oldPolicyId, newPolicyId);
+    // PolicyHolder can revert and cancel the policy replacement
+    require(retval == IPolicyHolderV2.onPolicyReplaced.selector, "PolicyPool: Invalid return value from IPolicyHolder");
   }
 
   /**

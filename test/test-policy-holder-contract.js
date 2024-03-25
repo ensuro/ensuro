@@ -141,6 +141,30 @@ describe("PolicyHolder expiration handling", function () {
     expect(await getTransactionEvent(ph.interface, receipt, "NotificationReceived")).to.be.null;
   });
 
+  it("Expiring with a holder that spends a lot of gas succeeds but doesn't execute the handler code", async () => {
+    const { pool, rm, ph, backend } = await helpers.loadFixture(deployPoolFixture);
+    const policy = await defaultPolicyParams({});
+
+    const policyEvt = await createPolicy(rm.connect(backend), pool, policyToArgs(policy, backend, ph, 1));
+    await ph.setSpendGasCount(4);
+    await helpers.time.increaseTo(policy.expiration);
+    const tx = await pool.expirePolicy([...policyEvt.args[1]]);
+    const receipt = await tx.wait();
+    expect(await getTransactionEvent(ph.interface, receipt, "NotificationReceived")).to.be.null;
+  });
+
+  it("Expiring with a holder that spends few gas succeeds and executes the handler code", async () => {
+    const { pool, rm, ph, backend } = await helpers.loadFixture(deployPoolFixture);
+    const policy = await defaultPolicyParams({});
+
+    const policyEvt = await createPolicy(rm.connect(backend), pool, policyToArgs(policy, backend, ph, 1));
+    await ph.setSpendGasCount(3);
+    await helpers.time.increaseTo(policy.expiration);
+    const tx = await pool.expirePolicy([...policyEvt.args[1]]);
+    const receipt = await tx.wait();
+    expect(await getTransactionEvent(ph.interface, receipt, "NotificationReceived")).not.to.be.null;
+  });
+
   it("Expiring with a holder that reverts empty succeeds but doesn't execute the handler code", async () => {
     const { pool, rm, ph, backend } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
