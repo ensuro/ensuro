@@ -2,13 +2,14 @@
 pragma solidity 0.8.16;
 
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
-import {RiskModule} from "./RiskModule.sol";
 import {Policy} from "./Policy.sol";
+import {RiskModule} from "./RiskModule.sol";
 
 /**
- * @title SignedQuote Risk Module
+ * @title SignedBucket Risk Module
  * @dev Risk Module that for policy creation verifies the different components of the price have been signed by a
         trusted account (PRICER_ROLE). One of the components of the price it's a bucket id that groups policies within
         a risk module, with different parameters (such as collaterallization levels or fees).
@@ -18,6 +19,7 @@ import {Policy} from "./Policy.sol";
  */
 contract SignedBucketRiskModule is RiskModule {
   bytes32 public constant POLICY_CREATOR_ROLE = keccak256("POLICY_CREATOR_ROLE");
+  bytes32 public constant REPLACER_ROLE = keccak256("REPLACER_ROLE");
   bytes32 public constant PRICER_ROLE = keccak256("PRICER_ROLE");
   bytes32 public constant RESOLVER_ROLE = keccak256("RESOLVER_ROLE");
 
@@ -87,10 +89,11 @@ contract SignedBucketRiskModule is RiskModule {
     uint256 bucketId,
     bytes32 quoteSignatureR,
     bytes32 quoteSignatureVS,
-    uint40 quoteValidUntil
+    uint40 quoteValidUntil,
+    bytes32 role
   ) internal view {
-    if (!_creationIsOpen)
-      _policyPool.access().checkComponentRole(address(this), POLICY_CREATOR_ROLE, _msgSender(), false);
+    if (!_creationIsOpen) _policyPool.access().checkComponentRole(address(this), role, _msgSender(), false);
+
     require(quoteValidUntil >= block.timestamp, "Quote expired");
 
     /**
@@ -132,55 +135,6 @@ contract SignedBucketRiskModule is RiskModule {
     );
     emit NewSignedPolicy(createdPolicy.id, policyData);
     return createdPolicy;
-  }
-
-  /**
-   * @dev Creates a new Policy using a signed quote. The caller is the payer of the policy. Returns all the struct, not just the id.
-   *
-   * Requirements:
-   * - The caller approved the spending of the premium to the PolicyPool
-   * - The quote has been signed by an address with the component role PRICER_ROLE
-   *
-   *  Emits:
-   * - {PolicyPool.NewPolicy}
-   *  - {NewSignedPolicy}
-   *
-   * @param payout The exposure (maximum payout) of the policy
-   * @param premium The premium that will be paid by the payer
-   * @param lossProb The probability of having to pay the maximum payout (wad)
-   * @param expiration The expiration of the policy (timestamp)
-   * @param onBehalfOf The policy holder
-   * @param policyData A hash of the private details of the policy. The last 96 bits will be used as internalId
-   * @param bucketId Identifies the group to which the policy belongs (that defines the RM parameters applicable to it)
-   * @param quoteSignatureR The signature of the quote. R component (EIP-2098 signature)
-   * @param quoteSignatureVS The signature of the quote. VS component (EIP-2098 signature)
-   * @param quoteValidUntil The expiration of the quote
-   * @return createdPolicy Returns the created policy
-   */
-  function newPolicyFull(
-    uint256 payout,
-    uint256 premium,
-    uint256 lossProb,
-    uint40 expiration,
-    address onBehalfOf,
-    bytes32 policyData,
-    uint256 bucketId,
-    bytes32 quoteSignatureR,
-    bytes32 quoteSignatureVS,
-    uint40 quoteValidUntil
-  ) external whenNotPaused returns (Policy.PolicyData memory createdPolicy) {
-    _checkSignature(
-      payout,
-      premium,
-      lossProb,
-      expiration,
-      policyData,
-      bucketId,
-      quoteSignatureR,
-      quoteSignatureVS,
-      quoteValidUntil
-    );
-    return _newPolicySigned(payout, premium, lossProb, expiration, policyData, bucketId, _msgSender(), onBehalfOf);
   }
 
   /**
@@ -227,27 +181,29 @@ contract SignedBucketRiskModule is RiskModule {
       bucketId,
       quoteSignatureR,
       quoteSignatureVS,
-      quoteValidUntil
+      quoteValidUntil,
+      POLICY_CREATOR_ROLE
     );
     return _newPolicySigned(payout, premium, lossProb, expiration, policyData, bucketId, _msgSender(), onBehalfOf).id;
   }
 
   /**
-   * @dev Creates a new Policy using a signed quote. The payer is the policy holder
+   * @dev Replace a policy with a new one, reusing the premium and the capital locked
    *
    * Requirements:
-   * - currency().allowance(onBehalfOf, _msgSender()) > 0
+   * - The caller approved the spending of the premium to the PolicyPool
    * - The quote has been signed by an address with the component role PRICER_ROLE
+   * - The caller has been granted component role REPLACER_ROLE or creation is open
    *
    * Emits:
+   * - {PolicyPool.PolicyReplaced}
    * - {PolicyPool.NewPolicy}
-   * - {NewSignedPolicy}
    *
-   * @param payout The exposure (maximum payout) of the policy
-   * @param premium The premium that will be paid by the payer
+   * @param oldPolicy The policy to be replaced
+   * @param payout The exposure (maximum payout) of the new policy
+   * @param premium The premium that will be paid by the caller
    * @param lossProb The probability of having to pay the maximum payout (wad)
    * @param expiration The expiration of the policy (timestamp)
-   * @param onBehalfOf The policy holder
    * @param policyData A hash of the private details of the policy. The last 96 bits will be used as internalId
    * @param bucketId Identifies the group to which the policy belongs (that defines the RM parameters applicable to it)
    * @param quoteSignatureR The signature of the quote. R component (EIP-2098 signature)
@@ -255,32 +211,18 @@ contract SignedBucketRiskModule is RiskModule {
    * @param quoteValidUntil The expiration of the quote
    * @return Returns the id of the created policy
    */
-  function newPolicyPaidByHolder(
+  function replacePolicy(
+    Policy.PolicyData calldata oldPolicy,
     uint256 payout,
     uint256 premium,
     uint256 lossProb,
     uint40 expiration,
-    address onBehalfOf,
     bytes32 policyData,
     uint256 bucketId,
     bytes32 quoteSignatureR,
     bytes32 quoteSignatureVS,
     uint40 quoteValidUntil
   ) external whenNotPaused returns (uint256) {
-    require(
-      onBehalfOf == _msgSender() || currency().allowance(onBehalfOf, _msgSender()) > 0,
-      "Sender is not authorized to create policies onBehalfOf"
-    );
-    /**
-     * The standard is the payer should be the _msgSender() but usually, in this type of module,
-     * the sender is an operative account managed by software, where the onBehalfOf is a more
-     * secure account (hardware wallet) that does the cash movements.
-     * This non standard behaviour allows for a more secure setup, where the sender never manages
-     * cash.
-     * We leverage the currency's allowance mechanism to allow the sender access to the payer's
-     * funds.
-     * Note that this allowance won't be spent, so anything above 0 is accepted.
-     */
     _checkSignature(
       payout,
       premium,
@@ -290,9 +232,13 @@ contract SignedBucketRiskModule is RiskModule {
       bucketId,
       quoteSignatureR,
       quoteSignatureVS,
-      quoteValidUntil
+      quoteValidUntil,
+      REPLACER_ROLE
     );
-    return _newPolicySigned(payout, premium, lossProb, expiration, policyData, bucketId, onBehalfOf, onBehalfOf).id;
+    uint96 internalId = uint96(uint256(policyData) % 2 ** 96);
+    return
+      _replacePolicy(oldPolicy, payout, premium, lossProb, expiration, _msgSender(), internalId, bucketParams(bucketId))
+        .id;
   }
 
   function resolvePolicy(
@@ -351,7 +297,7 @@ contract SignedBucketRiskModule is RiskModule {
   /**
    * @dev returns the risk bucket parameters for the given bucketId
    *
-   * @param bucketId Id of the bucket of 0 if you want the default params
+   * @param bucketId Id of the bucket or 0 if you want the default params
    */
   function bucketParams(uint256 bucketId) public view returns (Params memory params_) {
     if (bucketId != 0) {
