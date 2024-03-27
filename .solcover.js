@@ -5,5 +5,9 @@ module.exports = {
   //   client: client,
   port: 8545,
   skipFiles: ["dependencies/", "mocks/", "migration/"],
+  mocha: {
+    grep: "@skip-on-coverage", // Find everything with this tag
+    invert: true, // Run the grep's inverse set.
+  },
   //   logger: console,
 };

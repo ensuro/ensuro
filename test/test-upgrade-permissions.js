@@ -100,8 +100,9 @@ describe("Test Upgrade contracts", function () {
     const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
     const newImpl = await PolicyPool.deploy(currency, access); // Inverted addresses
 
-    await expect(pool.connect(level1).upgradeTo(newImpl)).to.be.revertedWith(
-      "Can't upgrade changing the access manager"
+    await expect(pool.connect(level1).upgradeTo(newImpl)).to.be.revertedWithCustomError(
+      pool,
+      "UpgradeCannotChangeAccess"
     );
   });
 
@@ -110,7 +111,10 @@ describe("Test Upgrade contracts", function () {
     const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
     const newImpl = await PolicyPool.deploy(access, access); // 2nd should be currency.address
 
-    await expect(pool.connect(level1).upgradeTo(newImpl)).to.be.revertedWith("Can't upgrade changing the currency");
+    await expect(pool.connect(level1).upgradeTo(newImpl)).to.be.revertedWithCustomError(
+      pool,
+      "UpgradeCannotChangeCurrency"
+    );
   });
 
   it("Should be able to upgrade EToken", async () => {

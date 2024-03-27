@@ -16,7 +16,7 @@ interface IPolicyHolder is IERC721Receiver {
    * No mather what's the return value or even if this function reverts, this function will not revert the policy
    * expiration.
    *
-   * The selector can be obtained in Solidity with `IPolicyPool.onPolicyExpired.selector`.
+   * The selector can be obtained in Solidity with `IPolicyHolder.onPolicyExpired.selector`.
    */
   function onPolicyExpired(address operator, address from, uint256 policyId) external returns (bytes4);
 
@@ -27,7 +27,7 @@ interface IPolicyHolder is IERC721Receiver {
    * If interface is not implemented by the recipient, it will be ignored and the payout will be successful.
    * If any other value is returned or it reverts, the policy resolution / payout will be reverted.
    *
-   * The selector can be obtained in Solidity with `IPolicyPool.onPayoutReceived.selector`.
+   * The selector can be obtained in Solidity with `IPolicyHolder.onPayoutReceived.selector`.
    */
   function onPayoutReceived(address operator, address from, uint256 policyId, uint256 amount) external returns (bytes4);
 }

@@ -57,13 +57,13 @@ describe("Constructor validations", function () {
         constructorArgs: [ZeroAddress, currencyAddr],
         ...deployProxyArgs,
       })
-    ).to.be.revertedWith("PolicyPool: access cannot be zero address");
+    ).to.be.revertedWithCustomError(PolicyPool, "NoZeroAccess");
     await expect(
       hre.upgrades.deployProxy(PolicyPool, initArgs, {
         constructorArgs: [accessAddr, ZeroAddress],
         ...deployProxyArgs,
       })
-    ).to.be.revertedWith("PolicyPool: currency cannot be zero address");
+    ).to.be.revertedWithCustomError(PolicyPool, "NoZeroCurrency");
   });
 
   it("Checks EToken constructor validations", async () => {
