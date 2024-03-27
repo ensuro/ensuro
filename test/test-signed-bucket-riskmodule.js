@@ -58,13 +58,13 @@ describe("SignedBucketRiskModule contract tests", function () {
     const SignedBucketRiskModule = await hre.ethers.getContractFactory("SignedBucketRiskModule");
     const rm = await addRiskModule(pool, premiumsAccount, SignedBucketRiskModule, {
       collRatio: "1.0",
-      extraConstructorArgs: [true],
     });
     await rm.setParam(RiskModuleParameter.jrCollRatio, _W("0.3"));
     await rm.setParam(RiskModuleParameter.jrRoc, _W("0.1"));
 
     await accessManager.grantComponentRole(rm, await rm.PRICER_ROLE(), signer);
     await accessManager.grantComponentRole(rm, await rm.RESOLVER_ROLE(), resolver);
+    await accessManager.grantComponentRole(rm, await rm.POLICY_CREATOR_ROLE(), cust);
     return { srEtk, jrEtk, premiumsAccount, rm, pool, accessManager, currency };
   }
 

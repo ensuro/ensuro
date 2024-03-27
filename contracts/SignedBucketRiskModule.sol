@@ -23,9 +23,6 @@ contract SignedBucketRiskModule is RiskModule {
   bytes32 public constant PRICER_ROLE = keccak256("PRICER_ROLE");
   bytes32 public constant RESOLVER_ROLE = keccak256("RESOLVER_ROLE");
 
-  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
-  bool internal immutable _creationIsOpen;
-
   mapping(uint256 => PackedParams) internal _buckets;
 
   /**
@@ -54,13 +51,7 @@ contract SignedBucketRiskModule is RiskModule {
   error BucketNotFound();
 
   /// @custom:oz-upgrades-unsafe-allow constructor
-  constructor(
-    IPolicyPool policyPool_,
-    IPremiumsAccount premiumsAccount_,
-    bool creationIsOpen_
-  ) RiskModule(policyPool_, premiumsAccount_) {
-    _creationIsOpen = creationIsOpen_;
-  }
+  constructor(IPolicyPool policyPool_, IPremiumsAccount premiumsAccount_) RiskModule(policyPool_, premiumsAccount_) {}
 
   /**
    * @dev Initializes the RiskModule
@@ -93,11 +84,8 @@ contract SignedBucketRiskModule is RiskModule {
     uint256 bucketId,
     bytes32 quoteSignatureR,
     bytes32 quoteSignatureVS,
-    uint40 quoteValidUntil,
-    bytes32 role
+    uint40 quoteValidUntil
   ) internal view {
-    if (!_creationIsOpen) _policyPool.access().checkComponentRole(address(this), role, _msgSender(), false);
-
     if (quoteValidUntil < block.timestamp) revert QuoteExpired();
 
     /**
@@ -175,7 +163,7 @@ contract SignedBucketRiskModule is RiskModule {
     bytes32 quoteSignatureR,
     bytes32 quoteSignatureVS,
     uint40 quoteValidUntil
-  ) external whenNotPaused returns (uint256) {
+  ) external whenNotPaused onlyComponentRole(POLICY_CREATOR_ROLE) returns (uint256) {
     _checkSignature(
       payout,
       premium,
@@ -185,8 +173,7 @@ contract SignedBucketRiskModule is RiskModule {
       bucketId,
       quoteSignatureR,
       quoteSignatureVS,
-      quoteValidUntil,
-      POLICY_CREATOR_ROLE
+      quoteValidUntil
     );
     return _newPolicySigned(payout, premium, lossProb, expiration, policyData, bucketId, _msgSender(), onBehalfOf).id;
   }
@@ -226,7 +213,7 @@ contract SignedBucketRiskModule is RiskModule {
     bytes32 quoteSignatureR,
     bytes32 quoteSignatureVS,
     uint40 quoteValidUntil
-  ) external whenNotPaused returns (uint256) {
+  ) external whenNotPaused onlyComponentRole(REPLACER_ROLE) returns (uint256) {
     _checkSignature(
       payout,
       premium,
@@ -236,8 +223,7 @@ contract SignedBucketRiskModule is RiskModule {
       bucketId,
       quoteSignatureR,
       quoteSignatureVS,
-      quoteValidUntil,
-      REPLACER_ROLE
+      quoteValidUntil
     );
     uint96 internalId = uint96(uint256(policyData) % 2 ** 96);
     return
