@@ -128,22 +128,96 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    */
   string internal _nftBaseURI;
 
+  /**
+   * @dev Constructor error when address(0) is sent as `access()`
+   */
   error NoZeroAccess();
+
+  /**
+   * @dev Constructor error when address(0) is sent as `currency()`
+   */
   error NoZeroCurrency();
+
+  /**
+   * @dev Constructor error (or setTreasury) when address(0) is sent as `treasury()`
+   */
   error NoZeroTreasury();
+
+  /**
+   * @dev Initialization error when empty name for the ERC721 is sent
+   */
   error NoEmptyName();
+
+  /**
+   * @dev Initialization error when empty symbol for the ERC721 is sent
+   */
   error NoEmptySymbol();
+
+  /**
+   * @dev Upgrade error when the new implementation contract tries to change the `access()`
+   */
   error UpgradeCannotChangeAccess();
+
+  /**
+   * @dev Upgrade error when the new implementation contract tries to change the `currency()`
+   */
   error UpgradeCannotChangeCurrency();
+
+  /**
+   * @dev Error when trying to add a component that was already added to the PolicyPool
+   */
   error ComponentAlreadyInThePool();
+
+  /**
+   * @dev Error when trying to add a component that isn't linked to this pool (`.policyPool() != this`)
+   */
   error ComponentNotLinkedToThisPool();
+
+  /**
+   * @dev Error when a component is not of the right kind, it might happen if a component declared as
+   *      ComponentKind.eToken doesn't support the IEToken interface (or similar) or when in a given operation
+   *      we expect a component to be a risk module and the stored kind is different.
+   */
   error ComponentNotTheRightKind(IPolicyPoolComponent component, ComponentKind expectedKind);
+
+  /**
+   * @dev Error when a component is expected to be deprecated for the operation (see `removeComponent`) and it isn't.
+   */
   error ComponentNotDeprecated();
+
+  /**
+   * @dev Error when trying to remove a component that is still in use. The "in use" definition can change from one
+   *      component to the other. For eToken in use means `totalSupply() != 0`. For PremiumsAccount means
+   *      `purePremiums() != 0`. For RiskModule means `activeExposure() != 0`.
+   */
   error ComponentInUseCannotRemove(ComponentKind kind, uint256 amount);
+
+  /**
+   * @dev Error when a component is not found in the pool (status = 0 = inactive)
+   */
   error ComponentNotFound();
+
+  /**
+   * @dev Error when a component is not found in the pool or is not active (status != active)
+   */
   error ComponentNotFoundOrNotActive();
+
+  /**
+   * @dev Error when a component is not active or deprecated. Happens on some operations like eToken withdrawals or
+   *      policy resolutions that accept the component might be active or deprecated and isn't on any of those states.
+   */
   error ComponentMustBeActiveOrDeprecated();
+
+  /**
+   * @dev Error when a method intented to be called by riskModule (and by policy's risk module) is called by someone
+   *      else.
+   */
   error OnlyRiskModuleAllowed();
+
+  /**
+   * @dev Error raised when IPolicyHolder doesn't return the expected selector answer when notified of policy payout,
+   *      reception or replacement.
+   */
   error InvalidNotificationResponse(bytes4 response);
 
   /**
@@ -163,6 +237,13 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    */
   event ComponentStatusChanged(IPolicyPoolComponent indexed component, ComponentKind kind, ComponentStatus newStatus);
 
+  /**
+   * @dev Event emitted when a IPolicyHolder reverts on the expiration notification. The operation doesn't reverts
+   *
+   * @param policyId The id of the policy being expired
+   * @param holder The address of the contract that owns the policy
+   */
+  event ExpirationNotificationFailed(uint256 indexed policyId, IPolicyHolder holder);
   /**
    * @dev Modifier that checks the caller has a given role
    */
@@ -643,6 +724,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     ) {
       return;
     } catch {
+      emit ExpirationNotificationFailed(policyId, IPolicyHolder(customer));
       return;
     }
   }

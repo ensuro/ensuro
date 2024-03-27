@@ -236,7 +236,7 @@ describe("PolicyHolder expiration handling", function () {
     expect(await getTransactionEvent(ph.interface, receipt, "NotificationReceived")).to.be.null;
   });
 
-  it("Expiring with a holder that spends few gas succeeds and executes the handler code", async () => {
+  it("Expiring with a holder that spends few gas succeeds and executes the handler code [ @skip-on-coverage ]", async () => {
     const { pool, rm, ph, backend } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
 
@@ -259,6 +259,10 @@ describe("PolicyHolder expiration handling", function () {
     const tx = await pool.expirePolicy([...policyEvt.args[1]]);
     const receipt = await tx.wait();
     expect(await getTransactionEvent(ph.interface, receipt, "NotificationReceived")).to.be.null;
+    const expEvt = await getTransactionEvent(pool.interface, receipt, "ExpirationNotificationFailed");
+    expect(expEvt).not.to.be.null;
+    expect(expEvt.args.policyId).to.equal(makePolicyId(rm, 1));
+    expect(expEvt.args.holder).to.equal(ph);
   });
 
   it("Expiring with a holder that returns a bad value succeeds", async () => {
