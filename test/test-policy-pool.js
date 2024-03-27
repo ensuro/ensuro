@@ -11,7 +11,7 @@ const {
 } = require("../js/test-utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
-const { ComponentStatus } = require("../js/enums.js");
+const { ComponentStatus, ComponentKind } = require("../js/enums.js");
 const { ZeroAddress } = hre.ethers;
 
 async function createNewPolicy(rm, cust, pool, payout, premium, lossProb, expiration, payer, holder, internalId) {
@@ -52,9 +52,7 @@ describe("PolicyPool contract", function () {
 
     // Cant set treasury to 0x0
     const zeroAddress = "0x0000000000000000000000000000000000000000";
-    await expect(pool.connect(backend).setTreasury(zeroAddress)).to.be.revertedWith(
-      "PolicyPool: treasury cannot be the zero address"
-    );
+    await expect(pool.connect(backend).setTreasury(zeroAddress)).to.be.revertedWithCustomError(pool, "NoZeroTreasury");
 
     await expect(pool.connect(backend).setTreasury(newTreasury)).to.emit(pool, "ComponentChanged");
 
@@ -65,24 +63,30 @@ describe("PolicyPool contract", function () {
     const { pool, accessManager } = await helpers.loadFixture(deployPoolFixture);
     const premiumsAccount = await deployPremiumsAccount(pool, {}, false);
 
-    await expect(pool.connect(backend).addComponent(premiumsAccount, 3)).to.be.revertedWith(
+    await expect(pool.connect(backend).addComponent(premiumsAccount, ComponentKind.premiumsAccount)).to.be.revertedWith(
       accessControlMessage(backend, null, "LEVEL1_ROLE")
     );
 
     await grantRole(hre, accessManager, "LEVEL2_ROLE", backend);
-    await expect(pool.connect(backend).addComponent(premiumsAccount, 3)).to.be.revertedWith(
+    await expect(pool.connect(backend).addComponent(premiumsAccount, ComponentKind.premiumsAccount)).to.be.revertedWith(
       accessControlMessage(backend, null, "LEVEL1_ROLE")
     );
 
     await grantRole(hre, accessManager, "LEVEL1_ROLE", backend);
-    await expect(pool.connect(backend).addComponent(premiumsAccount, 3)).to.emit(pool, "ComponentStatusChanged");
+    await expect(pool.connect(backend).addComponent(premiumsAccount, ComponentKind.premiumsAccount)).to.emit(
+      pool,
+      "ComponentStatusChanged"
+    );
   });
 
   it("Does not allow adding an existing component", async () => {
     const { pool } = await helpers.loadFixture(deployPoolFixture);
     const premiumsAccount = await deployPremiumsAccount(pool, {}, true);
 
-    await expect(pool.addComponent(premiumsAccount, 3)).to.be.revertedWith("Component already in the pool");
+    await expect(pool.addComponent(premiumsAccount, ComponentKind.premiumsAccount)).to.be.revertedWithCustomError(
+      pool,
+      "ComponentAlreadyInThePool"
+    );
   });
 
   it("Does not allow adding different kind of component", async () => {
@@ -94,16 +98,22 @@ describe("PolicyPool contract", function () {
     const rm = await createRiskModule(pool, premiumsAccount, RiskModule, {});
 
     // EToken
-    await expect(pool.addComponent(etk, 3)).to.be.revertedWith("PolicyPool: Not the right kind");
-    await expect(pool.addComponent(etk, 1)).not.to.be.reverted;
+    await expect(pool.addComponent(etk, ComponentKind.premiumsAccount))
+      .to.be.revertedWithCustomError(pool, "ComponentNotTheRightKind")
+      .withArgs(etk, ComponentKind.premiumsAccount);
+    await expect(pool.addComponent(etk, ComponentKind.eToken)).not.to.be.reverted;
 
     // RiskModule
-    await expect(pool.addComponent(rm, 3)).to.be.revertedWith("PolicyPool: Not the right kind");
-    await expect(pool.addComponent(rm, 2)).not.to.be.reverted;
+    await expect(pool.addComponent(rm, ComponentKind.eToken))
+      .to.be.revertedWithCustomError(pool, "ComponentNotTheRightKind")
+      .withArgs(rm, ComponentKind.eToken);
+    await expect(pool.addComponent(rm, ComponentKind.riskModule)).not.to.be.reverted;
 
     // Premiums account
-    await expect(pool.addComponent(premiumsAccount, 2)).to.be.revertedWith("PolicyPool: Not the right kind");
-    await expect(pool.addComponent(premiumsAccount, 3)).not.to.be.reverted;
+    await expect(pool.addComponent(premiumsAccount, ComponentKind.riskModule))
+      .to.be.revertedWithCustomError(pool, "ComponentNotTheRightKind")
+      .withArgs(premiumsAccount, ComponentKind.riskModule);
+    await expect(pool.addComponent(premiumsAccount, ComponentKind.premiumsAccount)).not.to.be.reverted;
   });
 
   it("Does not allow adding a component that belongs to a different pool", async () => {
@@ -116,7 +126,10 @@ describe("PolicyPool contract", function () {
 
     const premiumsAccount = await deployPremiumsAccount(pool2, {}, false);
 
-    await expect(pool.addComponent(premiumsAccount, 3)).to.be.revertedWith("Component not linked to this pool");
+    await expect(pool.addComponent(premiumsAccount, 3)).to.be.revertedWithCustomError(
+      pool,
+      "ComponentNotLinkedToThisPool"
+    );
   });
 
   it("Adds the PA as borrower on the jr etoken", async () => {
@@ -169,7 +182,10 @@ describe("PolicyPool contract", function () {
 
     await grantRole(hre, accessManager, "GUARDIAN_ROLE", owner);
 
-    await expect(pool.changeComponentStatus(premiumsAccount, 1)).to.be.revertedWith("Component not found");
+    await expect(pool.changeComponentStatus(premiumsAccount, 1)).to.be.revertedWithCustomError(
+      pool,
+      "ComponentNotFound"
+    );
   });
 
   it("Only allows riskmodule to create policies", async () => {
@@ -192,8 +208,9 @@ describe("PolicyPool contract", function () {
       now + 3600 * 5, // expiration
     ];
 
-    await expect(pool.newPolicy(policyData, cust, backend, 11)).to.be.revertedWith(
-      "Only the RM can create new policies"
+    await expect(pool.newPolicy(policyData, cust, backend, 11)).to.be.revertedWithCustomError(
+      pool,
+      "OnlyRiskModuleAllowed"
     );
   });
 
@@ -276,7 +293,7 @@ describe("PolicyPool contract", function () {
   it("Only allows riskmodule to resolve unexpired policies", async () => {
     const { policy, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
 
-    await expect(pool.resolvePolicy([...policy], 0)).to.be.revertedWith("Only the RM can resolve policies");
+    await expect(pool.resolvePolicy([...policy], 0)).to.be.revertedWithCustomError(pool, "OnlyRiskModuleAllowed");
   });
 
   it("Does not allow a bigger payout than the one setup in the policy", async () => {
@@ -307,8 +324,9 @@ describe("PolicyPool contract", function () {
 
   it("Only RM can replace policies", async () => {
     const { policy, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
-    await expect(pool.replacePolicy([...policy], [...policy], ZeroAddress, 1234)).to.be.revertedWith(
-      "Only the RM can create new policies"
+    await expect(pool.replacePolicy([...policy], [...policy], ZeroAddress, 1234)).to.be.revertedWithCustomError(
+      pool,
+      "OnlyRiskModuleAllowed"
     );
   });
 
@@ -330,14 +348,14 @@ describe("PolicyPool contract", function () {
       rm
         .connect(backend)
         .replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, policy.expiration, 1234)
-    ).to.be.revertedWith("Component not found or not active");
+    ).to.be.revertedWithCustomError(pool, "ComponentNotFoundOrNotActive");
     await pool.changeComponentStatus(premiumsAccount, ComponentStatus.active);
     await pool.changeComponentStatus(rm, ComponentStatus.deprecated);
     await expect(
       rm
         .connect(backend)
         .replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, policy.expiration, 1234)
-    ).to.be.revertedWith("Component not found or not active");
+    ).to.be.revertedWithCustomError(pool, "ComponentNotFoundOrNotActive");
   });
 
   it("Does not allow to replace expired policies", async () => {
@@ -422,6 +440,7 @@ describe("PolicyPool contract", function () {
       [lp, cust, backend],
       [_A(5000), _A(500), _A(1000)]
     );
+    const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
 
     await expect(
       deployPool({
@@ -430,7 +449,7 @@ describe("PolicyPool contract", function () {
         grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
         treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
       })
-    ).to.be.revertedWith("PolicyPool: name cannot be empty");
+    ).to.be.revertedWithCustomError(PolicyPool, "NoEmptyName");
 
     await expect(
       deployPool({
@@ -439,6 +458,6 @@ describe("PolicyPool contract", function () {
         grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
         treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
       })
-    ).to.be.revertedWith("PolicyPool: symbol cannot be empty");
+    ).to.be.revertedWithCustomError(PolicyPool, "NoEmptySymbol");
   });
 });
