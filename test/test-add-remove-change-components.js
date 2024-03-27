@@ -15,6 +15,7 @@ const {
   makePolicy,
   addEToken,
 } = require("../js/test-utils");
+const { ComponentKind, ComponentStatus } = require("../js/enums");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
 const { MaxUint256 } = hre.ethers;
@@ -29,11 +30,6 @@ describe("Test add, remove and change status of PolicyPool components", function
   let etk;
   let accessManager;
   let rm;
-
-  const ST_INACTIVE = 0;
-  const ST_ACTIVE = 1;
-  const ST_DEPRECATED = 2;
-  const ST_SUSPENDED = 3;
 
   beforeEach(async () => {
     [, lp, cust, guardian, level1, johndoe] = await hre.ethers.getSigners();
@@ -73,47 +69,53 @@ describe("Test add, remove and change status of PolicyPool components", function
 
   it("Change status and remove eToken", async function () {
     // When active deposits are OK
-    expect(await pool.getComponentStatus(etk)).to.be.equal(ST_ACTIVE);
+    expect(await pool.getComponentStatus(etk)).to.be.equal(ComponentStatus.active);
     await currency.connect(lp).approve(pool, _A(500));
     await expect(pool.connect(lp).deposit(etk, _A(300))).not.to.be.reverted;
 
     // Only LEVEL1 can deprecate
-    await expect(pool.connect(johndoe).changeComponentStatus(etk, ST_DEPRECATED)).to.be.revertedWith(
+    await expect(pool.connect(johndoe).changeComponentStatus(etk, ComponentStatus.deprecated)).to.be.revertedWith(
       accessControlMessage(johndoe, null, "LEVEL1_ROLE")
     );
-    await expect(pool.connect(guardian).changeComponentStatus(etk, ST_DEPRECATED)).to.be.revertedWith(
-      "Only GUARDIAN can suspend / Only LEVEL1 can activate/deprecate"
+    await expect(pool.connect(guardian).changeComponentStatus(etk, ComponentStatus.deprecated)).to.be.revertedWith(
+      accessControlMessage(guardian, null, "LEVEL1_ROLE")
     );
-    await expect(pool.connect(level1).changeComponentStatus(etk, ST_DEPRECATED)).not.to.be.reverted;
-    expect(await pool.getComponentStatus(etk)).to.be.equal(ST_DEPRECATED);
+    await expect(pool.connect(level1).changeComponentStatus(etk, ComponentStatus.deprecated)).not.to.be.reverted;
+    expect(await pool.getComponentStatus(etk)).to.be.equal(ComponentStatus.deprecated);
 
     // When deprecated, deposits aren't allowed, but withdrawals are allowed
-    await expect(pool.connect(lp).deposit(etk, _A(200))).to.be.revertedWith("Component not found or not active");
+    await expect(pool.connect(lp).deposit(etk, _A(200))).to.be.revertedWithCustomError(
+      pool,
+      "ComponentNotFoundOrNotActive"
+    );
     await expect(pool.connect(lp).withdraw(etk, _A(200))).not.to.be.reverted;
 
     // Only GUARDIAN can suspend
-    await expect(pool.connect(level1).changeComponentStatus(etk, ST_SUSPENDED)).to.be.revertedWith(
-      "Only GUARDIAN can suspend / Only LEVEL1 can activate/deprecate"
+    await expect(pool.connect(level1).changeComponentStatus(etk, ComponentStatus.suspended)).to.be.revertedWith(
+      accessControlMessage(level1, null, "GUARDIAN_ROLE")
     );
-    await expect(pool.connect(guardian).changeComponentStatus(etk, ST_SUSPENDED)).not.to.be.reverted;
-    expect(await pool.getComponentStatus(etk)).to.be.equal(ST_SUSPENDED);
+    await expect(pool.connect(guardian).changeComponentStatus(etk, ComponentStatus.suspended)).not.to.be.reverted;
+    expect(await pool.getComponentStatus(etk)).to.be.equal(ComponentStatus.suspended);
 
     // When suspended, withdrawals are not allowed
-    await expect(pool.connect(lp).withdraw(etk, _A(100))).to.be.revertedWith("Component must be active or deprecated");
+    await expect(pool.connect(lp).withdraw(etk, _A(100))).to.be.revertedWithCustomError(
+      pool,
+      "ComponentMustBeActiveOrDeprecated"
+    );
 
     // Only LEVEL1 can reactivate
-    await expect(pool.connect(guardian).changeComponentStatus(etk, ST_ACTIVE)).to.be.revertedWith(
-      "Only GUARDIAN can suspend / Only LEVEL1 can activate/deprecate"
+    await expect(pool.connect(guardian).changeComponentStatus(etk, ComponentStatus.active)).to.be.revertedWith(
+      accessControlMessage(guardian, null, "LEVEL1_ROLE")
     );
-    await expect(pool.connect(level1).changeComponentStatus(etk, ST_ACTIVE)).not.to.be.reverted;
-    expect(await pool.getComponentStatus(etk)).to.be.equal(ST_ACTIVE);
+    await expect(pool.connect(level1).changeComponentStatus(etk, ComponentStatus.active)).not.to.be.reverted;
+    expect(await pool.getComponentStatus(etk)).to.be.equal(ComponentStatus.active);
 
     await expect(pool.connect(lp).deposit(etk, _A(200))).not.to.be.reverted;
 
-    await expect(pool.connect(level1).changeComponentStatus(etk, ST_DEPRECATED)).not.to.be.reverted;
-    await expect(pool.connect(level1).removeComponent(etk)).to.be.revertedWith(
-      "EToken has liquidity, can't be removed"
-    );
+    await expect(pool.connect(level1).changeComponentStatus(etk, ComponentStatus.deprecated)).not.to.be.reverted;
+    await expect(pool.connect(level1).removeComponent(etk))
+      .to.be.revertedWithCustomError(pool, "ComponentInUseCannotRemove")
+      .withArgs(ComponentKind.eToken, await etk.totalSupply());
 
     await expect(pool.connect(lp).withdraw(etk, MaxUint256)).not.to.be.reverted;
 
@@ -122,9 +124,11 @@ describe("Test add, remove and change status of PolicyPool components", function
     );
 
     await expect(pool.connect(level1).removeComponent(etk)).not.to.be.reverted;
-    expect(await pool.getComponentStatus(etk)).to.be.equal(ST_INACTIVE);
+    expect(await pool.getComponentStatus(etk)).to.be.equal(ComponentStatus.inactive);
 
-    await expect(pool.connect(lp).deposit(etk, _A(200))).to.be.revertedWith("Component is not of the right kind");
+    await expect(pool.connect(lp).deposit(etk, _A(200)))
+      .to.be.revertedWithCustomError(pool, "ComponentNotTheRightKind")
+      .withArgs(etk, ComponentKind.eToken);
   });
 
   it("Change status and remove RiskModule", async function () {
@@ -135,58 +139,62 @@ describe("Test add, remove and change status of PolicyPool components", function
     let newPolicyEvt = await makePolicy(pool, rm, cust, _A(36), _A(1), _W(1 / 37), start + 3600, 1, "newPolicyFull");
     let policy = newPolicyEvt.args.policy;
 
-    expect(await pool.getComponentStatus(rm)).to.be.equal(ST_ACTIVE);
+    expect(await pool.getComponentStatus(rm)).to.be.equal(ComponentStatus.active);
 
     // Only LEVEL1 can deprecate
-    await expect(pool.connect(level1).changeComponentStatus(rm, ST_DEPRECATED)).not.to.be.reverted;
-    expect(await pool.getComponentStatus(rm)).to.be.equal(ST_DEPRECATED);
+    await expect(pool.connect(level1).changeComponentStatus(rm, ComponentStatus.deprecated)).not.to.be.reverted;
+    expect(await pool.getComponentStatus(rm)).to.be.equal(ComponentStatus.deprecated);
 
     // When deprecated can't create policy
     rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 2);
-    await expect(rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 2)).to.be.revertedWith(
-      "Component not found or not active"
-    );
+    await expect(
+      rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 2)
+    ).to.be.revertedWithCustomError(pool, "ComponentNotFoundOrNotActive");
 
     // But policies can be resolved
     await expect(rm.connect(cust).resolvePolicy([...policy], _A(10))).not.to.be.reverted;
 
     // Reactivate RM
-    await expect(pool.connect(level1).changeComponentStatus(rm, ST_ACTIVE)).not.to.be.reverted;
-    expect(await pool.getComponentStatus(rm)).to.be.equal(ST_ACTIVE);
+    await expect(pool.connect(level1).changeComponentStatus(rm, ComponentStatus.active)).not.to.be.reverted;
+    expect(await pool.getComponentStatus(rm)).to.be.equal(ComponentStatus.active);
 
     newPolicyEvt = await makePolicy(pool, rm, cust, _A(36), _A(1), _W(1 / 37), start + 3600, 3);
     policy = newPolicyEvt.args.policy;
 
     // Only GUARDIAN can suspend
-    await expect(pool.connect(level1).changeComponentStatus(rm, ST_SUSPENDED)).to.be.revertedWith(
-      "Only GUARDIAN can suspend / Only LEVEL1 can activate/deprecate"
+    await expect(pool.connect(level1).changeComponentStatus(rm, ComponentStatus.suspended)).to.be.revertedWith(
+      accessControlMessage(level1, null, "GUARDIAN_ROLE")
     );
-    await expect(pool.connect(guardian).changeComponentStatus(rm, ST_SUSPENDED)).not.to.be.reverted;
-    expect(await pool.getComponentStatus(rm)).to.be.equal(ST_SUSPENDED);
+    await expect(pool.connect(guardian).changeComponentStatus(rm, ComponentStatus.suspended)).not.to.be.reverted;
+    expect(await pool.getComponentStatus(rm)).to.be.equal(ComponentStatus.suspended);
 
     // When suspended, policy creation / resolutions are not allowed
-    await expect(rm.connect(cust).resolvePolicy([...policy], _A(10))).to.be.revertedWith(
-      "Component must be active or deprecated"
+    await expect(rm.connect(cust).resolvePolicy([...policy], _A(10))).to.be.revertedWithCustomError(
+      pool,
+      "ComponentMustBeActiveOrDeprecated"
     );
-    await expect(rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 4)).to.be.revertedWith(
-      "Component not found or not active"
-    );
+    await expect(
+      rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 4)
+    ).to.be.revertedWithCustomError(pool, "ComponentNotFoundOrNotActive");
 
     // Can't be removed if not deprecated before, or if has active policies
-    await expect(pool.connect(level1).removeComponent(rm)).to.be.revertedWith("Component not deprecated");
-    await expect(pool.connect(level1).changeComponentStatus(rm, ST_DEPRECATED)).not.to.be.reverted;
-
-    await expect(pool.connect(level1).removeComponent(rm)).to.be.revertedWith(
-      "Can't remove a module with active policies"
+    await expect(pool.connect(level1).removeComponent(rm)).to.be.revertedWithCustomError(
+      pool,
+      "ComponentNotDeprecated"
     );
+    await expect(pool.connect(level1).changeComponentStatus(rm, ComponentStatus.deprecated)).not.to.be.reverted;
+
+    await expect(pool.connect(level1).removeComponent(rm))
+      .to.be.revertedWithCustomError(pool, "ComponentInUseCannotRemove")
+      .withArgs(ComponentKind.riskModule, await rm.activeExposure());
 
     await expect(rm.connect(cust).resolvePolicy([...policy], _A(10))).not.to.be.reverted;
     await expect(pool.connect(level1).removeComponent(rm)).not.to.be.reverted;
-    expect(await pool.getComponentStatus(rm)).to.be.equal(ST_INACTIVE);
+    expect(await pool.getComponentStatus(rm)).to.be.equal(ComponentStatus.inactive);
 
-    await expect(rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 5)).to.be.revertedWith(
-      "Component is not of the right kind"
-    );
+    await expect(rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 5))
+      .to.be.revertedWithCustomError(pool, "ComponentNotTheRightKind")
+      .withArgs(rm, ComponentKind.riskModule);
   });
 
   it("Change status and remove PremiumsAccount", async function () {
@@ -197,46 +205,52 @@ describe("Test add, remove and change status of PolicyPool components", function
     let newPolicyEvt = await makePolicy(pool, rm, cust, _A(36), _A(1), _W(1 / 37), start + 3600, 1);
     let policy = newPolicyEvt.args.policy;
 
-    expect(await pool.getComponentStatus(premiumsAccount)).to.be.equal(ST_ACTIVE);
+    expect(await pool.getComponentStatus(premiumsAccount)).to.be.equal(ComponentStatus.active);
 
     // Only LEVEL1 can deprecate
-    await expect(pool.connect(level1).changeComponentStatus(premiumsAccount, ST_DEPRECATED)).not.to.be.reverted;
-    expect(await pool.getComponentStatus(premiumsAccount)).to.be.equal(ST_DEPRECATED);
+    await expect(pool.connect(level1).changeComponentStatus(premiumsAccount, ComponentStatus.deprecated)).not.to.be
+      .reverted;
+    expect(await pool.getComponentStatus(premiumsAccount)).to.be.equal(ComponentStatus.deprecated);
 
     // When deprecated can't create policy
-    await expect(rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 2)).to.be.revertedWith(
-      "Component not found or not active"
-    );
+    await expect(
+      rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 2)
+    ).to.be.revertedWithCustomError(pool, "ComponentNotFoundOrNotActive");
 
     // But policies can be resolved
     await expect(rm.connect(cust).resolvePolicy([...policy], _A(10))).not.to.be.reverted;
 
     // Reactivate PA
-    await expect(pool.connect(level1).changeComponentStatus(premiumsAccount, ST_ACTIVE)).not.to.be.reverted;
-    expect(await pool.getComponentStatus(premiumsAccount)).to.be.equal(ST_ACTIVE);
+    await expect(pool.connect(level1).changeComponentStatus(premiumsAccount, ComponentStatus.active)).not.to.be
+      .reverted;
+    expect(await pool.getComponentStatus(premiumsAccount)).to.be.equal(ComponentStatus.active);
 
     newPolicyEvt = await makePolicy(pool, rm, cust, _A(36), _A(1), _W(1 / 37), start + 3600, 3);
     policy = newPolicyEvt.args.policy;
 
     // Only GUARDIAN can suspend
-    await pool.connect(guardian).changeComponentStatus(premiumsAccount, ST_SUSPENDED);
-    expect(await pool.getComponentStatus(premiumsAccount)).to.be.equal(ST_SUSPENDED);
+    await pool.connect(guardian).changeComponentStatus(premiumsAccount, ComponentStatus.suspended);
+    expect(await pool.getComponentStatus(premiumsAccount)).to.be.equal(ComponentStatus.suspended);
 
     // When suspended, policy creation / resolutions are not allowed
-    await expect(rm.connect(cust).resolvePolicy([...policy], _A(10))).to.be.revertedWith(
-      "Component must be active or deprecated"
+    await expect(rm.connect(cust).resolvePolicy([...policy], _A(10))).to.be.revertedWithCustomError(
+      pool,
+      "ComponentMustBeActiveOrDeprecated"
     );
-    await expect(rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 4)).to.be.revertedWith(
-      "Component not found or not active"
-    );
+    await expect(
+      rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 4)
+    ).to.be.revertedWithCustomError(pool, "ComponentNotFoundOrNotActive");
 
     // Can't be removed if not deprecated before, or if has active policies
-    await expect(pool.connect(level1).removeComponent(premiumsAccount)).to.be.revertedWith("Component not deprecated");
-    await pool.connect(level1).changeComponentStatus(premiumsAccount, ST_DEPRECATED);
-
-    await expect(pool.connect(level1).removeComponent(premiumsAccount)).to.be.revertedWith(
-      "Can't remove a PremiumsAccount with premiums"
+    await expect(pool.connect(level1).removeComponent(premiumsAccount)).to.be.revertedWithCustomError(
+      pool,
+      "ComponentNotDeprecated"
     );
+    await pool.connect(level1).changeComponentStatus(premiumsAccount, ComponentStatus.deprecated);
+
+    await expect(pool.connect(level1).removeComponent(premiumsAccount))
+      .to.be.revertedWithCustomError(pool, "ComponentInUseCannotRemove")
+      .withArgs(ComponentKind.premiumsAccount, await premiumsAccount.purePremiums());
 
     await expect(rm.connect(cust).resolvePolicy([...policy], _A(10))).not.to.be.reverted;
     let internalLoan = await etk.getLoan(premiumsAccount);
@@ -247,10 +261,10 @@ describe("Test add, remove and change status of PolicyPool components", function
 
     expect(await etk.getLoan(premiumsAccount)).to.be.equal(_A(0)); // debt defaulted
     expect(borrowerRemovedEvt.args.defaultedDebt).to.be.equal(internalLoan);
-    expect(await pool.getComponentStatus(premiumsAccount)).to.be.equal(ST_INACTIVE);
+    expect(await pool.getComponentStatus(premiumsAccount)).to.be.equal(ComponentStatus.inactive);
 
-    await expect(rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 5)).to.be.revertedWith(
-      "Component is not of the right kind"
-    );
+    await expect(rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 5))
+      .to.be.revertedWithCustomError(pool, "ComponentNotTheRightKind")
+      .withArgs(premiumsAccount, ComponentKind.premiumsAccount);
   });
 });
