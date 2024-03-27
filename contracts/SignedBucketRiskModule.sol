@@ -49,6 +49,10 @@ contract SignedBucketRiskModule is RiskModule {
    */
   event NewSignedPolicy(uint256 indexed policyId, bytes32 policyData);
 
+  error QuoteExpired();
+  error BucketCannotBeZero();
+  error BucketNotFound();
+
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(
     IPolicyPool policyPool_,
@@ -94,7 +98,7 @@ contract SignedBucketRiskModule is RiskModule {
   ) internal view {
     if (!_creationIsOpen) _policyPool.access().checkComponentRole(address(this), role, _msgSender(), false);
 
-    require(quoteValidUntil >= block.timestamp, "Quote expired");
+    if (quoteValidUntil < block.timestamp) revert QuoteExpired();
 
     /**
      * Checks the quote has been signed by an authorized user
@@ -262,7 +266,7 @@ contract SignedBucketRiskModule is RiskModule {
     uint256 bucketId,
     Params calldata params_
   ) external onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE) {
-    require(bucketId != 0, "SignedBucketRiskModule: bucketId can't be zero, set default RM parameters");
+    if (bucketId == 0) revert BucketCannotBeZero();
     _buckets[bucketId] = PackedParams({
       moc: _wadTo4(params_.moc),
       jrCollRatio: _wadTo4(params_.jrCollRatio),
@@ -289,7 +293,7 @@ contract SignedBucketRiskModule is RiskModule {
    * @param bucketId Group identifier for the policies that will have these parameters
    */
   function deleteBucket(uint256 bucketId) external onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE) {
-    require(bucketId != 0, "SignedBucketRiskModule: bucketId can't be zero, set default RM parameters");
+    if (bucketId == 0) revert BucketCannotBeZero();
     delete _buckets[bucketId];
     emit BucketDeleted(bucketId);
   }
@@ -302,7 +306,7 @@ contract SignedBucketRiskModule is RiskModule {
   function bucketParams(uint256 bucketId) public view returns (Params memory params_) {
     if (bucketId != 0) {
       PackedParams storage bucketParams_ = _buckets[bucketId];
-      require(bucketParams_.moc != 0, "SignedBucketRiskModule: bucket not found!");
+      if (bucketParams_.moc == 0) revert BucketNotFound();
       params_ = _unpackParams(bucketParams_);
     } else {
       params_ = params();

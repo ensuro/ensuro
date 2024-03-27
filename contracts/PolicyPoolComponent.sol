@@ -42,6 +42,9 @@ abstract contract PolicyPoolComponent is UUPSUpgradeable, PausableUpgradeable, I
   event GovernanceAction(IAccessManager.GovernanceActions indexed action, uint256 value);
   event ComponentChanged(IAccessManager.GovernanceActions indexed action, address value);
 
+  error NoZeroPolicyPool();
+  error UpgradeCannotChangePolicyPool();
+
   modifier onlyPolicyPool() {
     require(_msgSender() == address(_policyPool), "The caller must be the PolicyPool");
     _;
@@ -76,7 +79,7 @@ abstract contract PolicyPoolComponent is UUPSUpgradeable, PausableUpgradeable, I
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(IPolicyPool policyPool_) {
-    require(address(policyPool_) != address(0), "PolicyPoolComponent: policyPool cannot be zero address");
+    if (address(policyPool_) == address(0)) revert NoZeroPolicyPool();
     _disableInitializers();
     _policyPool = policyPool_;
   }
@@ -94,7 +97,7 @@ abstract contract PolicyPoolComponent is UUPSUpgradeable, PausableUpgradeable, I
   }
 
   function _upgradeValidations(address newImpl) internal view virtual {
-    require(IPolicyPoolComponent(newImpl).policyPool() == _policyPool, "Can't upgrade changing the PolicyPool!");
+    if (IPolicyPoolComponent(newImpl).policyPool() != _policyPool) revert UpgradeCannotChangePolicyPool();
   }
 
   /**

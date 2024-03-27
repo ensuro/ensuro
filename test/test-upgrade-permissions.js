@@ -156,7 +156,10 @@ describe("Test Upgrade contracts", function () {
     const EToken = await hre.ethers.getContractFactory("EToken");
     const newImpl = await EToken.deploy(newPool);
 
-    await expect(etk.connect(guardian).upgradeTo(newImpl)).to.be.revertedWith("Can't upgrade changing the PolicyPool!");
+    await expect(etk.connect(guardian).upgradeTo(newImpl)).to.be.revertedWithCustomError(
+      etk,
+      "UpgradeCannotChangePolicyPool"
+    );
   });
 
   it("Should be able to upgrade PremiumsAccount contract", async () => {
@@ -198,8 +201,9 @@ describe("Test Upgrade contracts", function () {
     const PremiumsAccount = await hre.ethers.getContractFactory("PremiumsAccount");
     let newImpl = await PremiumsAccount.deploy(newPool, ZeroAddress, etk);
 
-    await expect(premiumsAccount.connect(guardian).upgradeTo(newImpl)).to.be.revertedWith(
-      "Can't upgrade changing the PolicyPool!"
+    await expect(premiumsAccount.connect(guardian).upgradeTo(newImpl)).to.be.revertedWithCustomError(
+      premiumsAccount,
+      "UpgradeCannotChangePolicyPool"
     );
 
     newImpl = await PremiumsAccount.deploy(pool, ZeroAddress, ZeroAddress);
@@ -278,12 +282,16 @@ describe("Test Upgrade contracts", function () {
 
     let newImpl = await TrustfulRiskModule.deploy(newPool, newPA);
 
-    await expect(rm.connect(guardian).upgradeTo(newImpl)).to.be.revertedWith("Can't upgrade changing the PolicyPool!");
+    await expect(rm.connect(guardian).upgradeTo(newImpl)).to.be.revertedWithCustomError(
+      rm,
+      "UpgradeCannotChangePolicyPool"
+    );
     const newPAOrigPool = await deployPremiumsAccount(pool, {});
 
     newImpl = await TrustfulRiskModule.deploy(pool, newPAOrigPool);
-    await expect(rm.connect(guardian).upgradeTo(newImpl)).to.be.revertedWith(
-      "Can't upgrade changing the PremiumsAccount"
+    await expect(rm.connect(guardian).upgradeTo(newImpl)).to.be.revertedWithCustomError(
+      rm,
+      "UpgradeCannotChangePremiumsAccount"
     );
   });
 

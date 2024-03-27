@@ -56,12 +56,16 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
 
   address internal _wallet; // Address of the RiskModule provider
 
+  error NoZeroWallet();
+  error ExposureLimitCannotBeLessThanActiveExposure();
+  error PremiumsAccountMustBePartOfThePool();
+  error UpgradeCannotChangePremiumsAccount();
+
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(IPolicyPool policyPool_, IPremiumsAccount premiumsAccount_) PolicyPoolComponent(policyPool_) {
-    require(
-      PolicyPoolComponent(address(premiumsAccount_)).policyPool() == policyPool_,
-      "The PremiumsAccount must be part of the Pool"
-    );
+    if (PolicyPoolComponent(address(premiumsAccount_)).policyPool() != policyPool_) {
+      revert PremiumsAccountMustBePartOfThePool();
+    }
     _premiumsAccount = premiumsAccount_;
   }
 
@@ -120,7 +124,9 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   function _upgradeValidations(address newImpl) internal view virtual override {
     super._upgradeValidations(newImpl);
     IRiskModule newRM = IRiskModule(newImpl);
-    require(newRM.premiumsAccount() == _premiumsAccount, "Can't upgrade changing the PremiumsAccount");
+    if (newRM.premiumsAccount() != _premiumsAccount) {
+      revert UpgradeCannotChangePremiumsAccount();
+    }
   }
 
   /**
@@ -133,8 +139,12 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   // runs validation on RiskModule parameters
   function _validateParameters() internal view virtual override {
     // _maxPayoutPerPolicy no limits
-    require(exposureLimit() >= _activeExposure, "Validation: exposureLimit can't be less than actual activeExposure");
-    require(_wallet != address(0), "Validation: Wallet can't be zero address");
+    if (exposureLimit() < _activeExposure) {
+      revert ExposureLimitCannotBeLessThanActiveExposure();
+    }
+    if (_wallet == address(0)) {
+      revert NoZeroWallet();
+    }
     _validatePackedParams(_params);
   }
 
@@ -259,7 +269,9 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   }
 
   function setWallet(address wallet_) external onlyComponentRole(RM_PROVIDER_ROLE) {
-    require(wallet_ != address(0), "RiskModule: wallet cannot be the zero address");
+    if (wallet_ == address(0)) {
+      revert NoZeroWallet();
+    }
     _wallet = wallet_;
     _parameterChanged(IAccessManager.GovernanceActions.setWallet, uint256(uint160(wallet_)), false);
   }

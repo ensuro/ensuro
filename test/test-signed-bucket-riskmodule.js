@@ -139,12 +139,11 @@ describe("SignedBucketRiskModule contract tests", function () {
     const { rm, accessManager } = await helpers.loadFixture(deployPoolFixture);
 
     await grantRole(hre, accessManager, "LEVEL1_ROLE", level1);
-    await expect(rm.connect(level1).setBucketParams(0, defaultBucketParams({}))).to.be.revertedWith(
-      "SignedBucketRiskModule: bucketId can't be zero, set default RM parameters"
+    await expect(rm.connect(level1).setBucketParams(0, defaultBucketParams({}))).to.be.revertedWithCustomError(
+      rm,
+      "BucketCannotBeZero"
     );
-    await expect(rm.connect(level1).deleteBucket(0)).to.be.revertedWith(
-      "SignedBucketRiskModule: bucketId can't be zero, set default RM parameters"
-    );
+    await expect(rm.connect(level1).deleteBucket(0)).to.be.revertedWithCustomError(rm, "BucketCannotBeZero");
   });
 
   it("Single bucket: uses correct bucket", async () => {
@@ -184,8 +183,9 @@ describe("SignedBucketRiskModule contract tests", function () {
 
     const signature2 = await makeSignedQuote(signer, policy2Params, makeBucketQuoteMessage);
 
-    await expect(newPolicy(rm, cust, policy2Params, cust, signature2)).to.be.revertedWith(
-      "SignedBucketRiskModule: bucket not found!"
+    await expect(newPolicy(rm, cust, policy2Params, cust, signature2)).to.be.revertedWithCustomError(
+      rm,
+      "BucketNotFound"
     );
 
     // Policy with bucketId = 0 uses default
@@ -325,7 +325,7 @@ describe("SignedBucketRiskModule contract tests", function () {
 
     expect(await rm.bucketParams(1)).to.deep.equal(bucket.asParams());
     await expect(rm.deleteBucket(1)).to.emit(rm, "BucketDeleted").withArgs(1);
-    await expect(rm.bucketParams(1)).to.be.revertedWith("SignedBucketRiskModule: bucket not found!");
+    await expect(rm.bucketParams(1)).to.be.revertedWithCustomError(rm, "BucketNotFound");
   });
 
   it("Validates bucket parameters", async () => {

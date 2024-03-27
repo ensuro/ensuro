@@ -97,7 +97,7 @@ describe("Test Initialize contracts", function () {
     );
   });
 
-  ["SignedQuoteRiskModule", "SignedBucketRiskModule", "TieredSignedQuoteRiskModule"].forEach((contract) => {
+  ["SignedQuoteRiskModule", "SignedBucketRiskModule"].forEach((contract) => {
     it(`Does not allow reinitializing ${contract}`, async () => {
       const Factory = await hre.ethers.getContractFactory(contract);
       const initRm = await createRiskModule(pool, premiumsAccount, Factory, { extraConstructorArgs: [false] });
