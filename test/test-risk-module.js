@@ -163,7 +163,7 @@ describe("RiskModule contract", function () {
         wallet: hre.ethers.ZeroAddress,
         extraArgs: [],
       })
-    ).to.be.revertedWith("Validation: Wallet can't be zero address");
+    ).to.be.revertedWithCustomError(RiskModule, "NoZeroWallet");
   });
 
   it("Does not allow a maxpayout of zero", async () => {

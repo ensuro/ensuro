@@ -71,7 +71,7 @@ describe("Constructor validations", function () {
     const initArgs = ["foo", "bar", 0, 0];
     await expect(
       hre.upgrades.deployProxy(EToken, initArgs, { constructorArgs: [ZeroAddress], ...deployReserveArgs })
-    ).to.be.revertedWith("PolicyPoolComponent: policyPool cannot be zero address");
+    ).to.be.revertedWithCustomError(EToken, "NoZeroPolicyPool");
   });
 
   it("Checks PremiumsAccount constructor validations", async () => {
@@ -81,7 +81,7 @@ describe("Constructor validations", function () {
         constructorArgs: [ZeroAddress, ZeroAddress, ZeroAddress],
         ...deployReserveArgs,
       })
-    ).to.be.revertedWith("PolicyPoolComponent: policyPool cannot be zero address");
+    ).to.be.revertedWithCustomError(PremiumsAccount, "NoZeroPolicyPool");
   });
 
   it("Checks TrustfulRiskModule constructor validations", async () => {
@@ -95,7 +95,7 @@ describe("Constructor validations", function () {
         constructorArgs: [ZeroAddress, paAddr],
         ...deployProxyArgs,
       })
-    ).to.be.revertedWith("PolicyPoolComponent: policyPool cannot be zero address");
+    ).to.be.revertedWithCustomError(TrustfulRiskModule, "NoZeroPolicyPool");
     await expect(
       hre.upgrades.deployProxy(TrustfulRiskModule, initArgs, {
         constructorArgs: [poolAddr, ZeroAddress],
@@ -114,7 +114,7 @@ describe("Constructor validations", function () {
         constructorArgs: [poolAddr, anotherPAAddr],
         ...deployProxyArgs,
       })
-    ).to.be.revertedWith("The PremiumsAccount must be part of the Pool");
+    ).to.be.revertedWithCustomError(TrustfulRiskModule, "PremiumsAccountMustBePartOfThePool");
   });
 
   it("Checks SignedQuoteRiskModule constructor validations", async () => {
@@ -128,7 +128,7 @@ describe("Constructor validations", function () {
         constructorArgs: [ZeroAddress, paAddr, false],
         ...deployProxyArgs,
       })
-    ).to.be.revertedWith("PolicyPoolComponent: policyPool cannot be zero address");
+    ).to.be.revertedWithCustomError(SignedQuoteRiskModule, "NoZeroPolicyPool");
     await expect(
       hre.upgrades.deployProxy(SignedQuoteRiskModule, initArgs, {
         constructorArgs: [poolAddr, ZeroAddress, false],
@@ -147,14 +147,14 @@ describe("Constructor validations", function () {
         constructorArgs: [poolAddr, anotherPaAddr, false],
         ...deployProxyArgs,
       })
-    ).to.be.revertedWith("The PremiumsAccount must be part of the Pool");
+    ).to.be.revertedWithCustomError(SignedQuoteRiskModule, "PremiumsAccountMustBePartOfThePool");
   });
 
   it("Checks LPManualWhitelist constructor validations", async () => {
     const LPManualWhitelist = await hre.ethers.getContractFactory("LPManualWhitelist");
     await expect(
       hre.upgrades.deployProxy(LPManualWhitelist, [], { constructorArgs: [ZeroAddress], ...deployProxyArgs })
-    ).to.be.revertedWith("PolicyPoolComponent: policyPool cannot be zero address");
+    ).to.be.revertedWithCustomError(LPManualWhitelist, "NoZeroPolicyPool");
   });
 
   it("Checks ERC4626AssetManager constructor validations", async () => {

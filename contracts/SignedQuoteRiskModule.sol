@@ -30,6 +30,8 @@ contract SignedQuoteRiskModule is RiskModule {
    */
   event NewSignedPolicy(uint256 indexed policyId, bytes32 policyData);
 
+  error QuoteExpired();
+
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(
     IPolicyPool policyPool_,
@@ -75,7 +77,7 @@ contract SignedQuoteRiskModule is RiskModule {
   ) internal returns (Policy.PolicyData memory createdPolicy) {
     if (!_creationIsOpen)
       _policyPool.access().checkComponentRole(address(this), POLICY_CREATOR_ROLE, _msgSender(), false);
-    require(quoteValidUntil >= block.timestamp, "Quote expired");
+    if (quoteValidUntil < block.timestamp) revert QuoteExpired();
 
     /**
      * Checks the quote has been signed by an authorized user

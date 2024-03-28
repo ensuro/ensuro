@@ -77,7 +77,6 @@ def tenv_ethereum():
             wrappers.SignedBucketRiskModule,
             policy_pool=wrappers.PolicyPool.connect(pool.contract, currency.owner),
             premiums_account=premiums_account,
-            creation_is_open=True,
         ),
         A=_A,
     )
