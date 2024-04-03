@@ -281,32 +281,17 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     uint256 lossProb,
     uint40 expiration
   ) public view virtual returns (uint256) {
-    return _getMinimumPremium(payout, lossProb, expiration, params());
+    return _getMinimumPremium(payout, lossProb, expiration, uint40(block.timestamp), params());
   }
 
   function _getMinimumPremium(
     uint256 payout,
     uint256 lossProb,
     uint40 expiration,
+    uint40 start,
     Params memory p
-  ) internal view returns (uint256) {
-    uint256 purePremium = payout.wadMul(lossProb.wadMul(p.moc));
-    uint256 jrScr = payout.wadMul(p.jrCollRatio);
-    if (jrScr > purePremium) {
-      jrScr -= purePremium;
-    } else {
-      jrScr = 0;
-    }
-    uint256 srScr = payout.wadMul(p.collRatio);
-    if (srScr > (purePremium + jrScr)) {
-      srScr -= purePremium + jrScr;
-    } else {
-      srScr = 0;
-    }
-    uint256 jrCoc = jrScr.wadMul((p.jrRoc * (expiration - block.timestamp)).wadDiv(SECONDS_IN_YEAR_WAD));
-    uint256 srCoc = srScr.wadMul((p.srRoc * (expiration - block.timestamp)).wadDiv(SECONDS_IN_YEAR_WAD));
-    uint256 ensuroCommission = purePremium.wadMul(p.ensuroPpFee) + (jrCoc + srCoc).wadMul(p.ensuroCocFee);
-    return purePremium + ensuroCommission + (jrCoc + srCoc);
+  ) internal pure returns (uint256) {
+    return Policy.getMinimumPremium(p, payout, lossProb, expiration, start).totalPremium;
   }
 
   /**
@@ -346,11 +331,11 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     uint96 internalId,
     Params memory params_
   ) internal returns (Policy.PolicyData memory policy) {
+    uint40 now_ = uint40(block.timestamp);
     if (premium == type(uint256).max) {
-      premium = _getMinimumPremium(payout, lossProb, expiration, params_);
+      premium = _getMinimumPremium(payout, lossProb, expiration, now_, params_);
     }
     require(premium < payout, "Premium must be less than payout");
-    uint40 now_ = uint40(block.timestamp);
     require(expiration > now_, "Expiration must be in the future");
     require(((expiration - now_) / 3600) < _params.maxDuration, "Policy exceeds max duration");
     require(onBehalfOf != address(0), "Customer can't be zero address");
@@ -393,7 +378,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     Params memory params_
   ) internal virtual returns (Policy.PolicyData memory policy) {
     if (premium == type(uint256).max) {
-      premium = _getMinimumPremium(payout, lossProb, expiration, params_);
+      premium = _getMinimumPremium(payout, lossProb, expiration, oldPolicy.start, params_);
     }
     require(premium < payout, "Premium must be less than payout");
     require(oldPolicy.expiration > uint40(block.timestamp), "Old policy is expired");

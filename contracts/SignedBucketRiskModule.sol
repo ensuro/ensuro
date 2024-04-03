@@ -313,7 +313,7 @@ contract SignedBucketRiskModule is RiskModule {
     uint40 expiration,
     uint256 bucketId
   ) public view virtual returns (uint256) {
-    return _getMinimumPremium(payout, lossProb, expiration, bucketParams(bucketId));
+    return _getMinimumPremium(payout, lossProb, expiration, uint40(block.timestamp), bucketParams(bucketId));
   }
 
   /**

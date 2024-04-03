@@ -9,18 +9,20 @@ const {
   makeBucketQuoteMessage,
   makeSignedQuote,
   defaultBucketParams,
+  recoverAddress,
 } = require("../js/utils");
 const { RiskModuleParameter } = require("../js/enums");
 const { initCurrency, deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
+const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 
 describe("SignedBucketRiskModule contract tests", function () {
   let _A;
-  let cust, level1, level2, lp, resolver, signer;
+  let cust, level1, level2, lp, owner, resolver, signer;
 
   beforeEach(async () => {
-    [, lp, cust, signer, resolver, level1, level2] = await hre.ethers.getSigners();
+    [owner, lp, cust, signer, resolver, level1, level2] = await hre.ethers.getSigners();
 
     _A = amountFunction(6);
   });
@@ -65,7 +67,22 @@ describe("SignedBucketRiskModule contract tests", function () {
     await accessManager.grantComponentRole(rm, await rm.PRICER_ROLE(), signer);
     await accessManager.grantComponentRole(rm, await rm.RESOLVER_ROLE(), resolver);
     await accessManager.grantComponentRole(rm, await rm.POLICY_CREATOR_ROLE(), cust);
+    await accessManager.grantComponentRole(rm, await rm.REPLACER_ROLE(), cust);
     return { srEtk, jrEtk, premiumsAccount, rm, pool, accessManager, currency };
+  }
+
+  async function riskModuleWithPolicyFixture() {
+    const { srEtk, jrEtk, premiumsAccount, rm, pool, accessManager, currency } = await deployPoolFixture();
+    const policyParams = await defaultPolicyParamsWithBucket({ rm: rm, payout: _A("793") });
+
+    const signature = await makeSignedQuote(signer, policyParams, makeBucketQuoteMessage);
+    const tx = await newPolicy(rm, cust, policyParams, cust, signature);
+    const receipt = await tx.wait();
+    const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
+
+    const policy = [...newPolicyEvt.args.policy];
+
+    return { srEtk, jrEtk, premiumsAccount, rm, pool, accessManager, currency, policy, policyParams };
   }
 
   async function defaultPolicyParamsWithBucket(opts) {
@@ -135,7 +152,7 @@ describe("SignedBucketRiskModule contract tests", function () {
     await expect(rm.connect(level2).deleteBucket(2)).not.to.be.reverted;
   });
 
-  it("Can't set of delete bucketId = 0", async () => {
+  it("Can't set or delete bucketId = 0", async () => {
     const { rm, accessManager } = await helpers.loadFixture(deployPoolFixture);
 
     await grantRole(hre, accessManager, "LEVEL1_ROLE", level1);
@@ -335,6 +352,63 @@ describe("SignedBucketRiskModule contract tests", function () {
       "Validation: moc must be [0.5, 4]"
     );
   });
+
+  it("Only allows REPLACER_ROLE to replace policies", async () => {
+    const { rm, pool, policy, policyParams } = await helpers.loadFixture(riskModuleWithPolicyFixture);
+
+    // Replace it with a higher payout
+    const replacementPolicyParams = await defaultPolicyParamsWithBucket({
+      rm: rm,
+      payout: _A("900"),
+      premium: policyParams.premium,
+      lossProb: policyParams.lossProb,
+      expiration: policyParams.expiration,
+      validUntil: policyParams.validUntil,
+    });
+    const replacementPolicySignature = await makeSignedQuote(signer, replacementPolicyParams, makeBucketQuoteMessage);
+
+    // Anon cannot replace
+    await expect(
+      rm.replacePolicy(policy, ...replacePolicyParams(replacementPolicyParams, replacementPolicySignature))
+    ).to.be.revertedWith(accessControlMessage(owner, rm, "REPLACER_ROLE"));
+
+    // Authorized user can replace
+    await expect(
+      rm
+        .connect(cust)
+        .replacePolicy(policy, ...replacePolicyParams(replacementPolicyParams, replacementPolicySignature))
+    )
+      .to.emit(pool, "PolicyReplaced")
+      .withArgs(rm.target, policy[0], anyValue);
+  });
+
+  it.only("Performs policy replacement when a valid signature is presented", async () => {
+    const { rm, pool, policy, policyParams } = await helpers.loadFixture(riskModuleWithPolicyFixture);
+
+    const replacementPolicyParams = await defaultPolicyParamsWithBucket({
+      rm: rm,
+      payout: _A("900"),
+      premium: policyParams.premium,
+      lossProb: policyParams.lossProb,
+      expiration: policyParams.expiration,
+      validUntil: policyParams.validUntil,
+    });
+    const replacementPolicySignature = await makeSignedQuote(signer, replacementPolicyParams, makeBucketQuoteMessage);
+
+    // Bad signature is rejected
+    const badParams = { ...replacementPolicyParams, payout: _A("1000") };
+    const badAddress = recoverAddress(badParams, replacementPolicySignature, makeBucketQuoteMessage);
+    await expect(
+      rm.connect(cust).replacePolicy(policy, ...replacePolicyParams(badParams, replacementPolicySignature))
+    ).to.be.revertedWith(accessControlMessage(badAddress, rm, "PRICER_ROLE"));
+
+    // Good signature is accepted
+    await expect(
+      rm
+        .connect(cust)
+        .replacePolicy(policy, ...replacePolicyParams(replacementPolicyParams, replacementPolicySignature))
+    ).to.emit(pool, "PolicyReplaced");
+  });
 });
 
 /**
@@ -366,4 +440,18 @@ async function getPolicyData(pool, tx) {
   ret.moc = (ret.purePremium * _W("1")) / ((ret.payout * ret.lossProb) / _W("1"));
 
   return ret;
+}
+
+function replacePolicyParams(policy, signature) {
+  return [
+    policy.payout,
+    policy.premium,
+    policy.lossProb,
+    policy.expiration,
+    policy.policyData,
+    policy.bucketId,
+    signature.r,
+    signature.yParityAndS,
+    policy.validUntil,
+  ];
 }
