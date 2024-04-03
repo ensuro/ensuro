@@ -353,6 +353,21 @@ describe("SignedBucketRiskModule contract tests", function () {
     );
   });
 
+  it("Does not allow policy replacement when paused", async () => {
+    //
+    const { rm, policy, accessManager } = await helpers.loadFixture(riskModuleWithPolicyFixture);
+
+    await accessManager.grantComponentRole(rm, await rm.GUARDIAN_ROLE(), owner);
+    await rm.pause();
+
+    const replacementPolicyParams = await defaultPolicyParamsWithBucket({ rm });
+    const replacementPolicySignature = await makeSignedQuote(signer, replacementPolicyParams, makeBucketQuoteMessage);
+
+    await expect(
+      rm.replacePolicy(policy, ...replacePolicyParams(replacementPolicyParams, replacementPolicySignature))
+    ).to.be.revertedWith("Pausable: paused");
+  });
+
   it("Only allows REPLACER_ROLE to replace policies", async () => {
     const { rm, pool, policy, policyParams } = await helpers.loadFixture(riskModuleWithPolicyFixture);
 
