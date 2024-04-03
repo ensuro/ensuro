@@ -382,7 +382,7 @@ describe("SignedBucketRiskModule contract tests", function () {
       .withArgs(rm.target, policy[0], anyValue);
   });
 
-  it.only("Performs policy replacement when a valid signature is presented", async () => {
+  it("Performs policy replacement when a valid signature is presented", async () => {
     const { rm, pool, policy, policyParams } = await helpers.loadFixture(riskModuleWithPolicyFixture);
 
     const replacementPolicyParams = await defaultPolicyParamsWithBucket({

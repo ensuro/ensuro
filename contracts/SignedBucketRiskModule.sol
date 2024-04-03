@@ -11,7 +11,7 @@ import {RiskModule} from "./RiskModule.sol";
 /**
  * @title SignedBucket Risk Module
  * @dev Risk Module that for policy creation verifies the different components of the price have been signed by a
-        trusted account (PRICER_ROLE). One of the components of the price it's a bucket id that groups policies within
+        trusted account (PRICER_ROLE). One of the components of the price is a bucket id that groups policies within
         a risk module, with different parameters (such as collaterallization levels or fees).
         For the resolution (resolvePolicy), it has to be called by an authorized user
   * @custom:security-contact security@ensuro.co
