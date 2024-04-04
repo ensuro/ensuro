@@ -280,6 +280,7 @@ contract SignedBucketRiskModule is RiskModule {
    */
   function deleteBucket(uint256 bucketId) external onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE) {
     if (bucketId == 0) revert BucketCannotBeZero();
+    if (_buckets[bucketId].moc == 0) revert BucketNotFound();
     delete _buckets[bucketId];
     emit BucketDeleted(bucketId);
   }
