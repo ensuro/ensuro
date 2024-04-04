@@ -40,7 +40,6 @@ library Policy {
     uint256 srScr;
     uint256 jrCoc;
     uint256 srCoc;
-    uint256 totalCoc;
     uint256 ensuroCommission;
     uint256 partnerCommission;
     uint256 totalPremium;
@@ -71,13 +70,13 @@ library Policy {
     // Calculate CoCs
     minPremium.jrCoc = minPremium.jrScr.wadMul((rmParams.jrRoc * (expiration - start)) / SECONDS_PER_YEAR);
     minPremium.srCoc = minPremium.srScr.wadMul((rmParams.srRoc * (expiration - start)) / SECONDS_PER_YEAR);
-    minPremium.totalCoc = minPremium.jrCoc + minPremium.srCoc;
+    uint256 totalCoc = minPremium.jrCoc + minPremium.srCoc;
 
     minPremium.ensuroCommission =
       minPremium.purePremium.wadMul(rmParams.ensuroPpFee) +
-      (minPremium.totalCoc).wadMul(rmParams.ensuroCocFee);
+      totalCoc.wadMul(rmParams.ensuroCocFee);
 
-    minPremium.totalPremium = minPremium.purePremium + minPremium.ensuroCommission + minPremium.totalCoc;
+    minPremium.totalPremium = minPremium.purePremium + minPremium.ensuroCommission + totalCoc;
   }
 
   function initialize(
@@ -109,11 +108,11 @@ library Policy {
     policy.ensuroCommission = minPremium.ensuroCommission;
 
     require(
-      (policy.purePremium + policy.ensuroCommission + minPremium.totalCoc) <= premium,
+      minPremium.totalPremium <= premium,
       "Premium less than minimum"
     );
 
-    policy.partnerCommission = premium - policy.purePremium - minPremium.totalCoc - policy.ensuroCommission;
+    policy.partnerCommission = premium - minPremium.totalPremium;
     return policy;
   }
 

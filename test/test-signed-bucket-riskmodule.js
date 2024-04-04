@@ -163,7 +163,7 @@ describe("SignedBucketRiskModule contract tests", function () {
     await expect(rm.connect(level1).deleteBucket(0)).to.be.revertedWithCustomError(rm, "BucketCannotBeZero");
   });
 
-  it.only("Can't delete non-existing bucket", async () => {
+  it("Can't delete non-existing bucket", async () => {
     const { rm, accessManager } = await helpers.loadFixture(deployPoolFixture);
     await grantRole(hre, accessManager, "LEVEL1_ROLE", level1);
 
