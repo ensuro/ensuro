@@ -107,10 +107,7 @@ library Policy {
     policy.srCoc = minPremium.srCoc;
     policy.ensuroCommission = minPremium.ensuroCommission;
 
-    require(
-      minPremium.totalPremium <= premium,
-      "Premium less than minimum"
-    );
+    require(minPremium.totalPremium <= premium, "Premium less than minimum");
 
     policy.partnerCommission = premium - minPremium.totalPremium;
     return policy;
