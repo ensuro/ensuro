@@ -251,7 +251,7 @@ async function defaultPolicyParams(
   _A = amountFunction(6)
 ) {
   const now = await helpers.time.latest();
-  const rmAddress = rm ? await ethers.resolveAddress(rm) : rm;
+  const rmAddress = rm ? getAddress(rm) : null;
   return {
     rmAddress,
     payout: payout || _A(1000),

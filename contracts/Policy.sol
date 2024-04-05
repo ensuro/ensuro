@@ -34,6 +34,51 @@ library Policy {
     uint40 expiration;
   }
 
+  struct PremiumComposition {
+    uint256 purePremium;
+    uint256 jrScr;
+    uint256 srScr;
+    uint256 jrCoc;
+    uint256 srCoc;
+    uint256 ensuroCommission;
+    uint256 partnerCommission;
+    uint256 totalPremium;
+  }
+
+  function getMinimumPremium(
+    IRiskModule.Params memory rmParams,
+    uint256 payout,
+    uint256 lossProb,
+    uint40 expiration,
+    uint40 start
+  ) internal pure returns (PremiumComposition memory minPremium) {
+    minPremium.purePremium = payout.wadMul(lossProb.wadMul(rmParams.moc));
+    minPremium.jrScr = payout.wadMul(rmParams.jrCollRatio);
+    if (minPremium.jrScr > minPremium.purePremium) {
+      minPremium.jrScr -= minPremium.purePremium;
+    } else {
+      minPremium.jrScr = 0;
+    }
+
+    minPremium.srScr = payout.wadMul(rmParams.collRatio);
+    if (minPremium.srScr > (minPremium.purePremium + minPremium.jrScr)) {
+      minPremium.srScr -= minPremium.purePremium + minPremium.jrScr;
+    } else {
+      minPremium.srScr = 0;
+    }
+
+    // Calculate CoCs
+    minPremium.jrCoc = minPremium.jrScr.wadMul((rmParams.jrRoc * (expiration - start)) / SECONDS_PER_YEAR);
+    minPremium.srCoc = minPremium.srScr.wadMul((rmParams.srRoc * (expiration - start)) / SECONDS_PER_YEAR);
+    uint256 totalCoc = minPremium.jrCoc + minPremium.srCoc;
+
+    minPremium.ensuroCommission =
+      minPremium.purePremium.wadMul(rmParams.ensuroPpFee) +
+      totalCoc.wadMul(rmParams.ensuroCocFee);
+
+    minPremium.totalPremium = minPremium.purePremium + minPremium.ensuroCommission + totalCoc;
+  }
+
   function initialize(
     IRiskModule riskModule,
     IRiskModule.Params memory rmParams,
@@ -52,27 +97,19 @@ library Policy {
     policy.lossProb = lossProb;
     policy.start = start;
     policy.expiration = expiration;
-    policy.purePremium = payout.wadMul(lossProb.wadMul(rmParams.moc));
-    // Calculate Junior and Senior SCR
-    policy.jrScr = payout.wadMul(rmParams.jrCollRatio);
-    if (policy.jrScr > policy.purePremium) {
-      policy.jrScr -= policy.purePremium;
-    } else {
-      policy.jrScr = 0;
-    }
-    policy.srScr = payout.wadMul(rmParams.collRatio);
-    if (policy.srScr > (policy.purePremium + policy.jrScr)) {
-      policy.srScr -= policy.purePremium + policy.jrScr;
-    } else {
-      policy.srScr = 0;
-    }
-    // Calculate CoCs
-    policy.jrCoc = policy.jrScr.wadMul((rmParams.jrRoc * (policy.expiration - policy.start)) / SECONDS_PER_YEAR);
-    policy.srCoc = policy.srScr.wadMul((rmParams.srRoc * (policy.expiration - policy.start)) / SECONDS_PER_YEAR);
-    uint256 coc = policy.jrCoc + policy.srCoc;
-    policy.ensuroCommission = policy.purePremium.wadMul(rmParams.ensuroPpFee) + coc.wadMul(rmParams.ensuroCocFee);
-    require((policy.purePremium + policy.ensuroCommission + coc) <= premium, "Premium less than minimum");
-    policy.partnerCommission = premium - policy.purePremium - coc - policy.ensuroCommission;
+
+    PremiumComposition memory minPremium = getMinimumPremium(rmParams, payout, lossProb, expiration, start);
+
+    policy.purePremium = minPremium.purePremium;
+    policy.jrScr = minPremium.jrScr;
+    policy.srScr = minPremium.srScr;
+    policy.jrCoc = minPremium.jrCoc;
+    policy.srCoc = minPremium.srCoc;
+    policy.ensuroCommission = minPremium.ensuroCommission;
+
+    require(minPremium.totalPremium <= premium, "Premium less than minimum");
+
+    policy.partnerCommission = premium - minPremium.totalPremium;
     return policy;
   }
 

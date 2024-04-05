@@ -403,36 +403,6 @@ class TrustfulRiskModule(RiskModule):
             return self.policy_pool.resolve_policy(policy_id, customer_won)
 
 
-class TieredSignedQuoteRiskModule(RiskModule):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self._buckets = {}
-
-    def set_buckets(self, buckets: dict[Wad, BucketParams]):
-        self._buckets = buckets.copy()
-
-    def reset_buckets(self):
-        self._buckets = dict()
-
-    def get_bucket(self, loss_prob: Wad) -> BucketParams:
-        for bound, bucket in self._buckets.items():
-            if loss_prob <= bound:
-                return bucket
-        return BucketParams(
-            moc=self.moc,
-            jr_coll_ratio=self.jr_coll_ratio,
-            coll_ratio=self.coll_ratio,
-            ensuro_pp_fee=self.ensuro_pp_fee,
-            ensuro_coc_fee=self.ensuro_coc_fee,
-            jr_roc=self.jr_roc,
-            sr_roc=self.sr_roc,
-        )
-
-    def get_minimum_premium_composition(self, payout, loss_prob, expiration) -> PremiumComposition:
-        bucket = self.get_bucket(loss_prob)
-        return super().get_minimum_premium_composition(payout, loss_prob, expiration, bucket)
-
-
 class SignedBucketRiskModule(RiskModule):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
