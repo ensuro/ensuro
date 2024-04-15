@@ -4,11 +4,9 @@
   "version": "%%VERSION%%",
   "files": [
     "**/*.sol",
-    "/build/contracts/*.json",
-    "/build/interfaces/*.json",
+    "/build",
     "/js/*.js",
-    "/scripts/*.sh",
-    "/scripts/*.js"
+    "/scripts"
   ],
   "repository": {
     "type": "git",
