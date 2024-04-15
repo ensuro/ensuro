@@ -1,4 +1,3 @@
-const upgrades_core = require("@openzeppelin/upgrades-core");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const fs = require("fs");
 const ethers = require("ethers");
@@ -75,16 +74,12 @@ async function logContractCreated(hre, contractName, address) {
 }
 
 async function verifyContract(hre, contract, isProxy, constructorArguments) {
-  if (isProxy === undefined) isProxy = false;
-  if (constructorArguments === undefined) constructorArguments = [];
-  const contractAddr = await ethers.resolveAddress(contract);
-  const address = isProxy
-    ? await upgrades_core.getImplementationAddress(hre.network.provider, contractAddr)
-    : contractAddr;
+  constructorArguments = constructorArguments || [];
+  const address = await ethers.resolveAddress(contract);
   try {
     await hre.run("verify:verify", {
-      address: address,
-      constructorArguments: constructorArguments,
+      address,
+      constructorArguments,
     });
   } catch (error) {
     console.log("Error verifying contract implementation: ", error);
@@ -95,18 +90,6 @@ async function verifyContract(hre, contract, isProxy, constructorArguments) {
         .join(" ")}`
     );
   }
-  try {
-    if (isProxy) {
-      await hre.run("verify:verify", {
-        address: contractAddr,
-        constructorArguments: constructorArguments,
-      });
-    }
-  } catch (error) {
-    console.log("Error verifying contract proxy: ", error);
-    const endpoints = await hre.run("verify:get-etherscan-endpoint");
-    console.log(`You should do it manually at ${endpoints.urls.browserURL}/proxyContractChecker?a=${contractAddr}`);
-  }
 }
 
 async function deployContract({ saveAddr, verify, contractClass, constructorArgs }, hre) {
@@ -114,8 +97,7 @@ async function deployContract({ saveAddr, verify, contractClass, constructorArgs
   const contract = await ContractFactory.deploy(...constructorArgs, txOverrides());
   const contractAddr = await ethers.resolveAddress(contract);
   if (verify) {
-    // From https://ethereum.stackexchange.com/a/119622/79726
-    await contract.deployTransaction.wait(6);
+    await contract.deploymentTransaction().wait(6);
   } else {
     await contract.waitForDeployment();
   }
@@ -138,8 +120,7 @@ async function deployProxyContract(
   });
   const contractAddr = await ethers.resolveAddress(contract);
   if (verify) {
-    // From https://ethereum.stackexchange.com/a/119622/79726
-    await contract.deployTransaction.wait(6);
+    await contract.deploymentTransaction().wait(6);
   } else {
     await contract.waitForDeployment();
   }
