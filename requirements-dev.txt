@@ -103,7 +103,7 @@ pyyaml==6.0.1
     #   responses
 pyyaml-env-tag==0.1
     # via mkdocs
-requests==2.31.0
+requests==2.32.0
     # via responses
 responses==0.24.1
     # via -r requirements-dev.in
