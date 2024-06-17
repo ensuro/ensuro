@@ -127,7 +127,7 @@ traitlets==5.14.1
     # via
     #   ipython
     #   matplotlib-inline
-urllib3==2.1.0
+urllib3==2.2.2
     # via
     #   requests
     #   responses
