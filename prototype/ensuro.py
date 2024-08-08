@@ -1457,6 +1457,10 @@ class FixedRateVault(ERC20Token):
         else:
             self.total_assets_.sub(-assets, self.interest_rate)
 
+    @view
+    def max_withdraw(self, owner):
+        return self.convert_to_assets(self.balance_of(owner))
+
 
 class AssetManager(Contract):
     reserve = ContractProxyField()
@@ -1582,3 +1586,37 @@ class ERC4626AssetManager(LiquidityThresholdAssetManager):
 
     def get_investment_value(self):
         return self.vault.convert_to_assets(self.vault.balance_of(self.reserve))
+
+
+class ERC4626PlusVaultAssetManager(ERC4626AssetManager):
+    discretionary_vault = ContractProxyField()
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        assert self.discretionary_vault.asset.contract_id == self.reserve.currency.contract_id
+        self.reserve.currency.approve(self.reserve, self.discretionary_vault, Wad(2**256 - 1))
+
+    def _deinvest(self, amount):
+        super(ERC4626AssetManager, self)._deinvest(amount)
+        vault_amount = min(amount, self.vault.max_withdraw(self.reserve))
+        if vault_amount:
+            self.vault.withdraw(self.reserve, vault_amount, self.reserve, self.reserve)
+        if amount - vault_amount:
+            self.discretionary_vault.withdraw(self.reserve, amount - vault_amount, self.reserve, self.reserve)
+
+    def get_investment_value(self):
+        return self.vault.convert_to_assets(
+            self.vault.balance_of(self.reserve)
+        ) + self.discretionary_vault.convert_to_assets(self.discretionary_vault.balance_of(self.reserve))
+
+    def vault_to_discretionary(self, amount):
+        if amount is None or amount == MAX_UINT:
+            amount = self.vault.max_withdraw(self.reserve)
+        self.vault.withdraw(self.reserve, amount, self.reserve, self.reserve)
+        self.discretionary_vault.deposit(self.reserve, amount, self.reserve)
+
+    def discretionary_to_vault(self, amount):
+        if amount is None or amount == MAX_UINT:
+            amount = self.discretionary_vault.max_withdraw(self.reserve)
+        self.discretionary_vault.withdraw(self.reserve, amount, self.reserve, self.reserve)
+        self.vault.deposit(self.reserve, amount, self.reserve)

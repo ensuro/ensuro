@@ -29,6 +29,10 @@ contract ERC4626PlusVaultAssetManager is ERC4626AssetManager {
       address(asset_) == discretionaryVault_.asset(),
       "ERC4626PlusVaultAssetManager: vault must have the same asset"
     );
+    require(
+      vault_ != discretionaryVault_,
+      "ERC4626PlusVaultAssetManager: vaults must be different"
+    );
     _discretionaryVault = discretionaryVault_;
   }
 

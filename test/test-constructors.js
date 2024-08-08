@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
-const { amountFunction } = require("../js/utils");
+const { amountFunction, _W } = require("../js/utils");
 const { initCurrency, deployPool, deployPremiumsAccount } = require("../js/test-utils");
 
 const { ZeroAddress } = hre.ethers;
@@ -24,13 +24,14 @@ describe("Constructor validations", function () {
     const currency = await initCurrency({ name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(10000) });
     const AccessManager = await hre.ethers.getContractFactory("AccessManager");
     const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
+    const FixedRateVault = await hre.ethers.getContractFactory("FixedRateVault");
 
     // Deploy AccessManager
     const access = await hre.upgrades.deployProxy(AccessManager, [], { kind: "uups" });
 
     await access.waitForDeployment();
 
-    return { currency, _A, owner, access, PolicyPool };
+    return { currency, _A, owner, access, PolicyPool, FixedRateVault };
   }
 
   async function setupFixtureWithPool() {
@@ -158,12 +159,39 @@ describe("Constructor validations", function () {
   });
 
   it("Checks ERC4626AssetManager constructor validations", async () => {
+    const { currency, FixedRateVault } = await helpers.loadFixture(setupFixtureWithPool);
     const ERC4626AssetManager = await hre.ethers.getContractFactory("ERC4626AssetManager");
     await expect(ERC4626AssetManager.deploy(ZeroAddress, rndAddr)).to.be.revertedWith(
       "LiquidityThresholdAssetManager: asset cannot be zero address"
     );
     await expect(ERC4626AssetManager.deploy(rndAddr, ZeroAddress)).to.be.revertedWith(
       "ERC4626AssetManager: vault cannot be zero address"
+    );
+    const vault = await FixedRateVault.deploy("MyVault", "MYV", currency, _W(1));
+    await expect(ERC4626AssetManager.deploy(rndAddr, vault)).to.be.revertedWith(
+      "ERC4626AssetManager: vault must have the same asset"
+    );
+  });
+
+  it("Checks ERC4626PlusVaultAssetManager constructor validations", async () => {
+    const { currency, FixedRateVault } = await helpers.loadFixture(setupFixtureWithPool);
+    const ERC4626PlusVaultAssetManager = await hre.ethers.getContractFactory("ERC4626PlusVaultAssetManager");
+    const vault = await FixedRateVault.deploy("MyVault", "MYV", currency, _W(1));
+    await expect(ERC4626PlusVaultAssetManager.deploy(ZeroAddress, rndAddr, ZeroAddress)).to.be.revertedWith(
+      "LiquidityThresholdAssetManager: asset cannot be zero address"
+    );
+    await expect(ERC4626PlusVaultAssetManager.deploy(rndAddr, ZeroAddress, rndAddr)).to.be.revertedWith(
+      "ERC4626AssetManager: vault cannot be zero address"
+    );
+    await expect(ERC4626PlusVaultAssetManager.deploy(rndAddr, vault, vault)).to.be.revertedWith(
+      "ERC4626AssetManager: vault must have the same asset"
+    );
+    const vault2 = await FixedRateVault.deploy("MyVault", "MYV", rndAddr, _W(1));
+    await expect(ERC4626PlusVaultAssetManager.deploy(currency, vault, vault2)).to.be.revertedWith(
+      "ERC4626PlusVaultAssetManager: vault must have the same asset"
+    );
+    await expect(ERC4626PlusVaultAssetManager.deploy(currency, vault, vault)).to.be.revertedWith(
+      "ERC4626PlusVaultAssetManager: vaults must be different"
     );
   });
 });

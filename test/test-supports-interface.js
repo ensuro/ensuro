@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
-const { amountFunction } = require("../js/utils");
+const { amountFunction, _W } = require("../js/utils");
 const { initCurrency, deployPool, deployPremiumsAccount } = require("../js/test-utils");
 
 describe("Supports interface implementation", function () {
@@ -68,6 +68,7 @@ describe("Supports interface implementation", function () {
     const currency = await initCurrency({ name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(10000) });
     const AccessManager = await hre.ethers.getContractFactory("AccessManager");
     const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
+    const FixedRateVault = await hre.ethers.getContractFactory("FixedRateVault");
 
     // Deploy AccessManager
     const access = await hre.upgrades.deployProxy(AccessManager, [], { kind: "uups" });
@@ -81,6 +82,7 @@ describe("Supports interface implementation", function () {
       access,
       PolicyPool,
       interfaceIds,
+      FixedRateVault,
     };
   }
 
@@ -179,9 +181,22 @@ describe("Supports interface implementation", function () {
   });
 
   it("Checks ERC4626AssetManager supported interfaces", async () => {
-    const { currency, interfaceIds } = await helpers.loadFixture(setupFixtureWithPool);
+    const { currency, interfaceIds, FixedRateVault } = await helpers.loadFixture(setupFixtureWithPool);
+    const vault = await FixedRateVault.deploy("MyVault", "MYV", currency, _W(1));
     const ERC4626AssetManager = await hre.ethers.getContractFactory("ERC4626AssetManager");
-    const am = await ERC4626AssetManager.deploy(currency, currency);
+    const am = await ERC4626AssetManager.deploy(currency, vault);
+    expect(await am.supportsInterface(interfaceIds.IERC165)).to.be.true;
+    expect(await am.supportsInterface(interfaceIds.IAssetManager)).to.be.true;
+    expect(await am.supportsInterface(interfaceIds.IERC20)).to.be.false;
+    expect(await am.supportsInterface(invalidInterfaceId)).to.be.false;
+  });
+
+  it("Checks ERC4626PlusVaultAssetManager supported interfaces", async () => {
+    const { currency, interfaceIds, FixedRateVault } = await helpers.loadFixture(setupFixtureWithPool);
+    const vault = await FixedRateVault.deploy("MyVault", "MYV", currency, _W(1));
+    const discVault = await FixedRateVault.deploy("My Other Vault", "MOV", currency, _W(1));
+    const ERC4626PlusVaultAssetManager = await hre.ethers.getContractFactory("ERC4626PlusVaultAssetManager");
+    const am = await ERC4626PlusVaultAssetManager.deploy(currency, vault, discVault);
     expect(await am.supportsInterface(interfaceIds.IERC165)).to.be.true;
     expect(await am.supportsInterface(interfaceIds.IAssetManager)).to.be.true;
     expect(await am.supportsInterface(interfaceIds.IERC20)).to.be.false;
