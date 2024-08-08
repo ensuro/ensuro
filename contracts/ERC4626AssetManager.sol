@@ -21,10 +21,7 @@ contract ERC4626AssetManager is LiquidityThresholdAssetManager {
 
   constructor(IERC20Metadata asset_, IERC4626 vault_) LiquidityThresholdAssetManager(asset_) {
     require(address(vault_) != address(0), "ERC4626AssetManager: vault cannot be zero address");
-    require(
-      address(asset_) == vault_.asset(),
-      "ERC4626AssetManager: vault must have the same asset"
-    );
+    require(address(asset_) == vault_.asset(), "ERC4626AssetManager: vault must have the same asset");
     _vault = vault_;
   }
 
