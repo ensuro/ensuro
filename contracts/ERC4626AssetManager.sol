@@ -21,25 +21,26 @@ contract ERC4626AssetManager is LiquidityThresholdAssetManager {
 
   constructor(IERC20Metadata asset_, IERC4626 vault_) LiquidityThresholdAssetManager(asset_) {
     require(address(vault_) != address(0), "ERC4626AssetManager: vault cannot be zero address");
+    require(address(asset_) == vault_.asset(), "ERC4626AssetManager: vault must have the same asset");
     _vault = vault_;
   }
 
-  function connect() public override {
+  function connect() public virtual override {
     super.connect();
     _asset.approve(address(_vault), type(uint256).max); // infinite approval to the vault
   }
 
-  function _invest(uint256 amount) internal override {
+  function _invest(uint256 amount) internal virtual override {
     super._invest(amount);
     _vault.deposit(amount, address(this));
   }
 
-  function _deinvest(uint256 amount) internal override {
+  function _deinvest(uint256 amount) internal virtual override {
     super._deinvest(amount);
     _vault.withdraw(amount, address(this), address(this));
   }
 
-  function deinvestAll() external override returns (int256 earnings) {
+  function deinvestAll() external virtual override returns (int256 earnings) {
     DiamondStorage storage ds = diamondStorage();
     uint256 assets = _vault.redeem(_vault.balanceOf(address(this)), address(this), address(this));
     earnings = int256(assets) - int256(uint256(ds.lastInvestmentValue));
@@ -49,7 +50,7 @@ contract ERC4626AssetManager is LiquidityThresholdAssetManager {
     return earnings;
   }
 
-  function getInvestmentValue() public view override returns (uint256) {
+  function getInvestmentValue() public view virtual override returns (uint256) {
     return _vault.convertToAssets(_vault.balanceOf(address(this)));
   }
 }

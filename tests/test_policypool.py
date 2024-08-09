@@ -6,6 +6,7 @@ from ethproto.contracts import RevertError
 from ethproto.wadray import _W, Wad, make_integer_float, set_precision
 from ethproto.wrappers import get_provider
 
+from prototype.ensuro import SECONDS_IN_YEAR
 from prototype.utils import DAY, HOUR, WEEK, load_config
 
 from . import TEST_VARIANTS, extract_vars
@@ -935,8 +936,40 @@ def test_payout_bigger_than_pure_premium(tenv):
     eUSD1YEAR.get_loan(premiums_account).assert_equal(_W(100) - policy.pure_premium)
 
 
+@pytest.fixture(params=["ERC4626AssetManager", "ERC4626PlusVaultAssetManager"])
+def asset_manager(request, tenv):
+    if request.param == "ERC4626AssetManager":
+        AM = namedtuple("AM", "variant am vault")
+
+        def deploy_am(reserve, asset, vault=None):
+            if vault is None:
+                vault = tenv.module.FixedRateVault(asset=asset)
+            # Create vault
+            asset_manager = tenv.module.ERC4626AssetManager(
+                vault=vault,
+                reserve=reserve,
+            )
+            return AM(request.param, asset_manager, vault)
+
+    else:  # request.param == "ERC4626PlusVaultAssetManager":
+        AM = namedtuple("AM", "variant am vault discretionary_vault")
+
+        def deploy_am(reserve, asset, vault=None, discretionary_vault=None):
+            if vault is None:
+                vault = tenv.module.FixedRateVault(asset=asset)
+            if discretionary_vault is None:
+                discretionary_vault = tenv.module.FixedRateVault(asset=asset, interest_rate=_W("0.10"))
+            # Create vault
+            asset_manager = tenv.module.ERC4626PlusVaultAssetManager(
+                vault=vault, reserve=reserve, discretionary_vault=discretionary_vault
+            )
+            return AM(request.param, asset_manager, vault, discretionary_vault)
+
+    return deploy_am
+
+
 @set_precision(Wad, 3)
-def test_asset_manager(tenv):
+def test_asset_manager(tenv, asset_manager):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
@@ -965,11 +998,8 @@ def test_asset_manager(tenv):
     etk = pool.etokens["eUSD1YEAR"]
 
     # Create vault
-    vault = tenv.module.FixedRateVault(asset=USD)
-    asset_manager = tenv.module.ERC4626AssetManager(
-        vault=vault,
-        reserve=etk,
-    )
+    am = asset_manager(reserve=etk, asset=USD)
+    vault, asset_manager = am.vault, am.am
 
     pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
 
@@ -990,11 +1020,37 @@ def test_asset_manager(tenv):
     assert USD.balance_of(etk) == _W(1500)
     vault.total_assets().assert_equal(_W(8500))
 
+    if am.variant == "ERC4626PlusVaultAssetManager":
+        # Move some funds to the discretionary_vault
+        with pytest.raises(RevertError), etk.as_("ADMIN"):
+            # Fails if amount greater than available
+            etk.forward_to_asset_manager("vault_to_discretionary", _W(9000))
+        # Send 2K
+        with etk.as_("ADMIN"):
+            etk.forward_to_asset_manager("vault_to_discretionary", _W(2000))
+        vault.total_assets().assert_equal(_W(6500))
+        am.discretionary_vault.total_assets().assert_equal(_W(2000))
+        # If amount = None = MAX_UINT, send all
+        with etk.as_("ADMIN"):
+            etk.forward_to_asset_manager("vault_to_discretionary", None)
+        vault.total_assets().assert_equal(_W(0))
+        am.discretionary_vault.total_assets().assert_equal(_W(8500))
+        # Send some money back
+        with etk.as_("ADMIN"):
+            etk.forward_to_asset_manager("discretionary_to_vault", _W(4000))
+        vault.total_assets().assert_equal(_W(4000))
+        am.discretionary_vault.total_assets().assert_equal(_W(4500))
+
     timecontrol.fast_forward(365 * DAY)
     assert etk.balance_of("LP1") == _W(10000)
     etk.checkpoint()
     assert USD.balance_of(etk) == _W(1500)  # unchanged
-    etk.balance_of("LP1").assert_equal(_W(10000) + _W(8500) * _W("0.05"))  # All earnings for the LP
+    if am.variant == "ERC4626PlusVaultAssetManager":
+        # 4000 have 5% return, and 4500 10% return
+        am_yield = _W(4000) * _W("0.05") + _W(4500) * _W("0.10")
+    else:
+        am_yield = _W(8500) * _W("0.05")
+    etk.balance_of("LP1").assert_equal(_W(10000) + am_yield)  # All earnings for the LP
     lp1_balance = etk.balance_of("LP1")
 
     USD.approve("CUST1", pool.contract_id, _W(200))
@@ -1015,17 +1071,66 @@ def test_asset_manager(tenv):
     timecontrol.fast_forward(365 * DAY // 2 - 60)
 
     etk.checkpoint()
+    year_proportion = _W((365 * DAY // 2 - 60) / SECONDS_IN_YEAR)
+    if am.variant == "ERC4626PlusVaultAssetManager":
+        am_yield = _W(4000) * _W("0.05") * year_proportion + _W(4500) * _W("0.10") * year_proportion
+    else:
+        am_yield = _W(8500) * _W("0.05") * year_proportion
+    etk.balance_of("LP1").assert_equal(lp1_balance + policy.sr_coc + am_yield)
+    lp1_balance = etk.balance_of("LP1")
 
     rm.resolve_policy(policy.id, True)
+    loan = etk.get_loan(rm.premiums_account)
+    loan.assert_equal(_W(9200) - policy.pure_premium)
+    etk.balance_of("LP1").assert_equal(lp1_balance - loan)
     assert USD.balance_of(etk) == _W(1500)  # balance back to middle
-    vault.total_assets().assert_equal(
-        _W(10000)
-        + _W(8500) * _W("0.075")  # initial LP investment
-        + policy.pure_premium  # earned interest
-        + policy.sr_coc
-        - _W(9200)  # part of the premium retained in the pool
-        - _W(1500)  # payout  # 1500 (liquidity_middle)
-    )
+    if am.variant == "ERC4626PlusVaultAssetManager":
+        am_yield = _W(4000) * _W("0.075") + _W(4500) * _W("0.15")
+        vault.total_assets().assert_equal(0)
+        expected = (
+            _W(10000)  # initial LP investment
+            + am_yield  # earned interest
+            + policy.pure_premium
+            + policy.sr_coc
+            - _W(9200)  # part of the premium retained in the pool
+            - _W(1500)  # payout  # 1500 (liquidity_middle)
+        )
+        am.discretionary_vault.total_assets().assert_equal(expected, decimals=2)
+
+        # To some more movements to battle test ERC4626PlusVaultAssetManager
+        with etk.as_("ADMIN"):
+            etk.forward_to_asset_manager("discretionary_to_vault", None)
+        vault.total_assets().assert_equal(expected, decimals=2)
+        am.discretionary_vault.total_assets().assert_equal(0)
+
+        with etk.as_("ADMIN"):
+            etk.forward_to_asset_manager("vault_to_discretionary", expected // _W(3))
+        vault.total_assets().assert_equal(expected * _W(2 / 3), decimals=2)
+        am.discretionary_vault.total_assets().assert_equal(expected * _W(1 / 3), decimals=2)
+
+    else:
+        am_yield = _W(8500) * _W("0.075")
+        expected = (
+            _W(10000)  # initial LP investment
+            + am_yield  # earned interest
+            + policy.pure_premium
+            + policy.sr_coc
+            - _W(9200)  # part of the premium retained in the pool
+            - _W(1500)  # payout  # 1500 (liquidity_middle)
+        )
+        vault.total_assets().assert_equal(expected)
+
+    # Disconnect the asset manager, forces deinvestAll
+    with etk.as_("ADMIN"):
+        etk.set_asset_manager(None, False)
+
+    if am.variant == "ERC4626PlusVaultAssetManager":
+        vault.total_assets().assert_equal(0)
+        am.discretionary_vault.total_assets().assert_equal(0)
+        USD.balance_of(etk).assert_equal(_W(1500) + expected, decimals=2)
+    else:
+        vault.total_assets().assert_equal(0)
+        USD.balance_of(etk).assert_equal(_W(1500) + expected)
 
     # assert pool.get_investable() == _W(0)
     # assert etk.get_investable() == (
@@ -1129,7 +1234,7 @@ def test_assets_under_liquidity_middle(tenv):
     etk.get_loan(premiums_account).assert_equal(_W(3) - policy.pure_premium - policy_2.pure_premium)
 
 
-def test_distribute_negative_earnings(tenv):
+def test_distribute_negative_earnings(tenv, asset_manager):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
@@ -1161,11 +1266,8 @@ def test_distribute_negative_earnings(tenv):
     etk = pool.etokens["eUSD1YEAR"]
 
     # Create vault and asset manager
-    vault = tenv.module.FixedRateVault(asset=USD)
-    asset_manager = tenv.module.ERC4626AssetManager(
-        vault=vault,
-        reserve=etk,
-    )
+    am = asset_manager(asset=USD, reserve=etk)
+    vault, asset_manager = am.vault, am.am
 
     pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
 
@@ -1196,7 +1298,7 @@ def test_distribute_negative_earnings(tenv):
     vault.total_assets().assert_equal(_W(3500) * _W("1.1") * _W("0.95"))
 
 
-def test_distribute_negative_earnings_full_capital_from_etokens(tenv):
+def test_distribute_negative_earnings_full_capital_from_etokens(tenv, asset_manager):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
@@ -1228,11 +1330,8 @@ def test_distribute_negative_earnings_full_capital_from_etokens(tenv):
     USD = pool.currency
     etk = pool.etokens["eUSD1YEAR"]
     # Create vault and asset manager
-    vault = tenv.module.FixedRateVault(asset=USD)
-    asset_manager = tenv.module.ERC4626AssetManager(
-        vault=vault,
-        reserve=etk,
-    )
+    am = asset_manager(asset=USD, reserve=etk)
+    vault, asset_manager = am.vault, am.am
 
     pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
 
@@ -2534,7 +2633,7 @@ def test_risk_provider_cant_drain_liquidity_provider(tenv):
     assert USD.balance_of("LP1") == _W(2000)
 
 
-def test_same_asset_manager_for_etk_and_pa(tenv):
+def test_same_asset_manager_for_etk_and_pa(tenv, asset_manager):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
@@ -2568,15 +2667,8 @@ def test_same_asset_manager_for_etk_and_pa(tenv):
 
     # Create vault and asset manager
     vault = tenv.module.FixedRateVault(asset=USD)
-    asset_manager_etk = tenv.module.ERC4626AssetManager(
-        vault=vault,
-        reserve=etk,
-    )
-
-    asset_manager_pa = tenv.module.ERC4626AssetManager(
-        vault=vault,
-        reserve=pa,
-    )
+    asset_manager_etk = asset_manager(asset=USD, reserve=etk, vault=vault).am
+    asset_manager_pa = asset_manager(asset=USD, reserve=pa, vault=vault).am
 
     pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
 
@@ -2632,7 +2724,7 @@ def test_same_asset_manager_for_etk_and_pa(tenv):
     vault.total_assets().assert_equal(total_assets * _W("1.1") * _W("0.95"))
 
 
-def test_same_asset_manager_for_etk_and_pa_with_policy(tenv):
+def test_same_asset_manager_for_etk_and_pa_with_policy(tenv, asset_manager):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
@@ -2666,15 +2758,8 @@ def test_same_asset_manager_for_etk_and_pa_with_policy(tenv):
 
     # Create vault and asset manager
     vault = tenv.module.FixedRateVault(asset=USD)
-    asset_manager_etk = tenv.module.ERC4626AssetManager(
-        vault=vault,
-        reserve=etk,
-    )
-
-    asset_manager_pa = tenv.module.ERC4626AssetManager(
-        vault=vault,
-        reserve=pa,
-    )
+    asset_manager_etk = asset_manager(asset=USD, reserve=etk, vault=vault).am
+    asset_manager_pa = asset_manager(asset=USD, reserve=pa, vault=vault).am
 
     pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
 
@@ -2759,7 +2844,7 @@ def test_same_asset_manager_for_etk_and_pa_with_policy(tenv):
     vault.total_assets().assert_equal(initial_investment_value + investment_earning, decimals=0)
 
 
-def test_same_asset_manager_for_etk_and_pa_resolve_policy(tenv):
+def test_same_asset_manager_for_etk_and_pa_resolve_policy(tenv, asset_manager):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
@@ -2793,15 +2878,8 @@ def test_same_asset_manager_for_etk_and_pa_resolve_policy(tenv):
 
     # Create vault and asset manager
     vault = tenv.module.FixedRateVault(asset=USD)
-    asset_manager_etk = tenv.module.ERC4626AssetManager(
-        vault=vault,
-        reserve=etk,
-    )
-
-    asset_manager_pa = tenv.module.ERC4626AssetManager(
-        vault=vault,
-        reserve=pa,
-    )
+    asset_manager_etk = asset_manager(asset=USD, reserve=etk, vault=vault).am
+    asset_manager_pa = asset_manager(asset=USD, reserve=pa, vault=vault).am
 
     pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
 
@@ -2880,7 +2958,7 @@ def test_same_asset_manager_for_etk_and_pa_resolve_policy(tenv):
     vault.total_assets().assert_equal(initial_investment_value + investment_earning, decimals=0)
 
 
-def test_repay_loan(tenv):
+def test_repay_loan(tenv, asset_manager):
     YAML_SETUP = """
     risk_modules:
       - name: Roulette
@@ -2913,17 +2991,13 @@ def test_repay_loan(tenv):
     pool.access.grant_component_role(pa, "LEVEL2_ROLE", USD.owner)
     pa.set_deficit_ratio(_W(0), True)
 
-    # Create vault
-    vault = tenv.module.FixedRateVault(asset=USD)
-    asset_manager = tenv.module.ERC4626AssetManager(
-        vault=vault,
-        reserve=pa,
-    )
+    # Create vault and asset manager
+    am = asset_manager(asset=USD, reserve=pa).am
 
     pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
     # Set asset manager
     with pa.as_("ADMIN"):
-        pa.set_asset_manager(asset_manager, False)
+        pa.set_asset_manager(am, False)
 
     pool.access.grant_component_role(pa, "LEVEL2_ROLE", "ADMIN")
 

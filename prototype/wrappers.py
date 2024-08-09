@@ -88,6 +88,16 @@ class ReserveMixin:
             selector = keccak(b"setLiquidityThresholds(uint256,uint256,uint256)")[:4]
             data = encode(["uint256", "uint256", "uint256"], [min, middle, max])
             return self.forward_to_asset_manager_((selector + data))
+        elif method == "vault_to_discretionary":
+            selector = keccak(b"vaultToDiscretionary(uint256)")[:4]
+            amount = args[0]
+            data = encode(["uint256"], [MAX_UINT if amount is None else amount])
+            return self.forward_to_asset_manager_((selector + data))
+        elif method == "discretionary_to_vault":
+            selector = keccak(b"discretionaryToVault(uint256)")[:4]
+            amount = args[0]
+            data = encode(["uint256"], [MAX_UINT if amount is None else amount])
+            return self.forward_to_asset_manager_((selector + data))
         else:
             raise NotImplementedError()
 
@@ -1127,3 +1137,16 @@ class ERC4626AssetManager(LiquidityThresholdAssetManager):
 
     def __init__(self, reserve, vault):
         super().__init__(reserve.owner, reserve.currency, vault)
+
+
+class ERC4626PlusVaultAssetManager(ERC4626AssetManager):
+    eth_contract = "ERC4626PlusVaultAssetManager"
+
+    constructor_args = (
+        ("asset", "address"),
+        ("vault", "address"),
+        ("discretionary_vault", "address"),
+    )
+
+    def __init__(self, reserve, vault, discretionary_vault):
+        super(ERC4626AssetManager, self).__init__(reserve.owner, reserve.currency, vault, discretionary_vault)
