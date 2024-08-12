@@ -1,6 +1,6 @@
 <?xml version="1.0" ?>
 <!DOCTYPE coverage SYSTEM "http://cobertura.sourceforge.net/xml/coverage-04.dtd">
-<coverage lines-valid="961"  lines-covered="960"  line-rate="0.9990000000000001"  branches-valid="876"  branches-covered="816"  branch-rate="0.9315000000000001"  timestamp="1723464348410" complexity="0" version="0.1">
+<coverage lines-valid="961"  lines-covered="960"  line-rate="0.9990000000000001"  branches-valid="876"  branches-covered="816"  branch-rate="0.9315000000000001"  timestamp="1723464854305" complexity="0" version="0.1">
 <sources>
 	<source>/home/runner/work/ensuro/ensuro</source>
 </sources>
@@ -1709,7 +1709,7 @@
 			<line number="352"  hits="1739"  branch="false" />
 			<line number="353"  hits="1739"  branch="true"  condition-coverage="100% (2/2)" />
 			<line number="354"  hits="1738"  branch="false" />
-			<line number="355"  hits="1348"  branch="false" />
+			<line number="355"  hits="1347"  branch="false" />
 			<line number="380"  hits="93"  branch="true"  condition-coverage="100% (2/2)" />
 			<line number="381"  hits="3"  branch="false" />
 			<line number="383"  hits="93"  branch="true"  condition-coverage="100% (2/2)" />
