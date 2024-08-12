@@ -58,18 +58,23 @@ jobs:
           pip install -r requirements-dev.txt
 
       - run: npx hardhat python-coverage
-      - name: Create coverage badge
-        if: github.ref == 'refs/heads/main'
-        run: |
-          set -x
-          COVERAGE_BADGE=badges/coverage.svg
-          mkdir -p badges
-          npx lcov-badge2 -o $COVERAGE_BADGE coverage/lcov.info
-          git config --global user.name 'Tests workflow'
-          git config --global user.email 'ensuro@users.noreply.github.com'
-
-          git add $COVERAGE_BADGE
-          if ! git diff HEAD -s --exit-code $COVERAGE_BADGE; then
-            git commit -m "Add coverage badge" $COVERAGE_BADGE && \
-            git push;
-          fi
+      - name: Produce the coverage report
+        uses: insightsengineering/coverage-action@v2
+        with:
+          # Path to the Cobertura XML report.
+          path: ./coverage/cobertura-coverage.xml
+          # Fail the workflow if the minimum code coverage
+          # reuqirements are not satisfied.
+          fail: true
+          # Publish the rendered output as a PR comment
+          publish: true
+          # Create a coverage diff report.
+          diff: true
+          # Branch to diff against.
+          # Compare the current coverage to the coverage
+          # determined on this branch.
+          diff-branch: main
+          # This is where the coverage reports for the
+          # `diff-branch` are stored.
+          # Branch is created if it doesn't already exist'.
+          diff-storage: _xml_coverage_reports
