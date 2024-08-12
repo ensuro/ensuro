@@ -9,11 +9,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
-      - uses: actions/setup-node@v3
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
+
       - name: Setup
         run: |
           npm ci
@@ -44,13 +46,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
+    # Grant permissions for the coverage-action to push on the coverage branch and write on the pull request
+    permissions:
+      contents: write
+      pull-requests: write
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
-      - uses: actions/setup-node@v3
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
+
       - name: Setup
         run: |
           npm ci
@@ -58,6 +67,7 @@ jobs:
           pip install -r requirements-dev.txt
 
       - run: npx hardhat python-coverage
+
       - name: Produce the coverage report
         uses: insightsengineering/coverage-action@v2
         with:
