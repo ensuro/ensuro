@@ -183,6 +183,9 @@ describe("Constructor validations", function () {
     await expect(ERC4626PlusVaultAssetManager.deploy(rndAddr, ZeroAddress, rndAddr)).to.be.revertedWith(
       "ERC4626AssetManager: vault cannot be zero address"
     );
+    await expect(ERC4626PlusVaultAssetManager.deploy(currency, vault, ZeroAddress)).to.be.revertedWith(
+      "ERC4626PlusVaultAssetManager: vault cannot be zero address"
+    );
     await expect(ERC4626PlusVaultAssetManager.deploy(rndAddr, vault, vault)).to.be.revertedWith(
       "ERC4626AssetManager: vault must have the same asset"
     );
