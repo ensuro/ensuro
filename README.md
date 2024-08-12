@@ -1,6 +1,6 @@
 [![Tests](https://github.com/ensuro/ensuro/actions/workflows/tests.yaml/badge.svg)](https://github.com/ensuro/ensuro/actions/workflows/tests.yaml)
-[![cov](https://github.com/ensuro/ensuro/raw/main/badges/coverage.svg)](https://github.com/ensuro/ensuro/actions/workflows/tests.yaml)
-[![Build and Push Docker Image to Google Artifact Registry](https://github.com/ensuro/ensuro/actions/workflows/build-base-image.yaml/badge.svg)](https://github.com/ensuro/ensuro/actions/workflows/build-base-image.yaml)
+[![cov](https://raw.githubusercontent.com/ensuro/ensuro/_xml_coverage_reports/data/main/badge.svg)](https://github.com/ensuro/ensuro/actions/workflows/tests.yaml)
+[![Build](https://github.com/ensuro/ensuro/actions/workflows/build-base-image.yaml/badge.svg)](https://github.com/ensuro/ensuro/actions/workflows/build-base-image.yaml)
 [![release](https://badgen.net/github/release/ensuro/ensuro)](https://github.com/ensuro/ensuro/releases)
 [![NPM Package](https://github.com/ensuro/ensuro/actions/workflows/npm.yaml/badge.svg)](https://www.npmjs.com/package/@ensuro/core)
 
@@ -134,7 +134,6 @@ Also the docker container is prepared to run [hardhat](https://hardhat.org/). Th
 - Process Quality Review by [DefiSafety](https://www.defisafety.com/) - 2024-03-18: [Process Quality Review](audits/DefiSafety.Process_Quality_Review.Ensuro.pdf)
 
 [![DeFiSafety Badge](audits/DefiSafety-93-badge.png)](https://www.defisafety.com/app/pqrs/594)
-
 
 ## Contributing
 
