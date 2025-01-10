@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.16;
+pragma solidity ^0.8.0;
 
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -27,12 +27,12 @@ import {WadRayMath} from "./dependencies/WadRayMath.sol";
 abstract contract PolicyPoolComponent is UUPSUpgradeable, PausableUpgradeable, IPolicyPoolComponent {
   using WadRayMath for uint256;
 
-  bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
-  bytes32 public constant LEVEL1_ROLE = keccak256("LEVEL1_ROLE");
-  bytes32 public constant LEVEL2_ROLE = keccak256("LEVEL2_ROLE");
-  bytes32 public constant LEVEL3_ROLE = keccak256("LEVEL3_ROLE");
+  bytes32 internal constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
+  bytes32 internal constant LEVEL1_ROLE = keccak256("LEVEL1_ROLE");
+  bytes32 internal constant LEVEL2_ROLE = keccak256("LEVEL2_ROLE");
+  bytes32 internal constant LEVEL3_ROLE = keccak256("LEVEL3_ROLE");
 
-  uint40 public constant TWEAK_EXPIRATION = 1 days;
+  uint40 internal constant TWEAK_EXPIRATION = 1 days;
 
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IPolicyPool internal immutable _policyPool;
@@ -44,9 +44,11 @@ abstract contract PolicyPoolComponent is UUPSUpgradeable, PausableUpgradeable, I
 
   error NoZeroPolicyPool();
   error UpgradeCannotChangePolicyPool();
+  error OnlyPolicyPool();
+  error WaitBeforeTweak(uint40 elapsedSinceLastTweak, uint40 tweakExpiration);
 
   modifier onlyPolicyPool() {
-    require(_msgSender() == address(_policyPool), "The caller must be the PolicyPool");
+    require(_msgSender() == address(_policyPool), OnlyPolicyPool());
     _;
   }
 
@@ -166,7 +168,7 @@ abstract contract PolicyPoolComponent is UUPSUpgradeable, PausableUpgradeable, I
         _lastTweakActions |= actionBitMap;
         _lastTweakTimestamp = uint40(block.timestamp); // Updates the expiration
       } else {
-        revert("You already tweaked this parameter recently. Wait before tweaking again");
+        revert WaitBeforeTweak(uint40(block.timestamp) - _lastTweakTimestamp, TWEAK_EXPIRATION);
       }
     }
   }

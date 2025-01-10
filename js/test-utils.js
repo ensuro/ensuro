@@ -304,7 +304,7 @@ const fork = {
   },
 };
 
-if (process.env.ENABLE_HH_WARNINGS !== "yes") hre.upgrades.silenceWarnings();
+if (process.env.ENABLE_HH_WARNINGS !== "yes" && hre.upgrades !== undefined) hre.upgrades.silenceWarnings();
 
 module.exports = {
   addEToken,

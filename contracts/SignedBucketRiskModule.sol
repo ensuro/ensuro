@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.16;
+pragma solidity ^0.8.0;
 
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
@@ -18,10 +18,10 @@ import {RiskModule} from "./RiskModule.sol";
  * @author Ensuro
  */
 contract SignedBucketRiskModule is RiskModule {
-  bytes32 public constant POLICY_CREATOR_ROLE = keccak256("POLICY_CREATOR_ROLE");
-  bytes32 public constant REPLACER_ROLE = keccak256("REPLACER_ROLE");
-  bytes32 public constant PRICER_ROLE = keccak256("PRICER_ROLE");
-  bytes32 public constant RESOLVER_ROLE = keccak256("RESOLVER_ROLE");
+  bytes32 internal constant POLICY_CREATOR_ROLE = keccak256("POLICY_CREATOR_ROLE");
+  bytes32 internal constant REPLACER_ROLE = keccak256("REPLACER_ROLE");
+  bytes32 internal constant PRICER_ROLE = keccak256("PRICER_ROLE");
+  bytes32 internal constant RESOLVER_ROLE = keccak256("RESOLVER_ROLE");
 
   mapping(uint256 => PackedParams) internal _buckets;
 
