@@ -6,6 +6,7 @@ const {
   defaultPolicyParams,
   getTransactionEvent,
   grantRole,
+  getRole,
   makeBucketQuoteMessage,
   makeSignedQuote,
   defaultBucketParams,
@@ -64,10 +65,10 @@ describe("SignedBucketRiskModule contract tests", function () {
     await rm.setParam(RiskModuleParameter.jrCollRatio, _W("0.3"));
     await rm.setParam(RiskModuleParameter.jrRoc, _W("0.1"));
 
-    await accessManager.grantComponentRole(rm, await rm.PRICER_ROLE(), signer);
-    await accessManager.grantComponentRole(rm, await rm.RESOLVER_ROLE(), resolver);
-    await accessManager.grantComponentRole(rm, await rm.POLICY_CREATOR_ROLE(), cust);
-    await accessManager.grantComponentRole(rm, await rm.REPLACER_ROLE(), cust);
+    await accessManager.grantComponentRole(rm, getRole("PRICER_ROLE"), signer);
+    await accessManager.grantComponentRole(rm, getRole("RESOLVER_ROLE"), resolver);
+    await accessManager.grantComponentRole(rm, getRole("POLICY_CREATOR_ROLE"), cust);
+    await accessManager.grantComponentRole(rm, getRole("REPLACER_ROLE"), cust);
     return { srEtk, jrEtk, premiumsAccount, rm, pool, accessManager, currency };
   }
 
@@ -364,7 +365,7 @@ describe("SignedBucketRiskModule contract tests", function () {
     //
     const { rm, policy, accessManager } = await helpers.loadFixture(riskModuleWithPolicyFixture);
 
-    await accessManager.grantComponentRole(rm, await rm.GUARDIAN_ROLE(), owner);
+    await accessManager.grantComponentRole(rm, getRole("GUARDIAN_ROLE"), owner);
     await rm.pause();
 
     const replacementPolicyParams = await defaultPolicyParamsWithBucket({ rm });

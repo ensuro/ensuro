@@ -100,9 +100,9 @@ def test_only_policy_pool_validation(tenv):
     if tenv.kind == "prototype":
         return
     etk = tenv.etoken_class(name="eUSD1WEEK")
-    with pytest.raises(RevertError, match="The caller must be the PolicyPool"):
+    with pytest.raises(RevertError, match="OnlyPolicyPool()"):
         etk.deposit("LP1", _W(1000))
-    with pytest.raises(RevertError, match="The caller must be the PolicyPool"):
+    with pytest.raises(RevertError, match="OnlyPolicyPool()"):
         etk.withdraw("LP1", _W(1000))
     with pytest.raises(RevertError, match="The caller must be a borrower"):
         etk.lock_scr(_W(600), _W("0.0365"))
@@ -1019,9 +1019,7 @@ def test_getset_etk_parameters_tweaks(tenv):
     ]
 
     for attr_name, attr_value in test_ok_tweaks:
-        with etk.as_("L3_USER"), pytest.raises(
-            RevertError, match="You already tweaked this parameter recently"
-        ):
+        with etk.as_("L3_USER"), pytest.raises(RevertError, match="WaitBeforeTweak"):
             setattr(etk, attr_name, attr_value)
 
     tenv.time_control.fast_forward(2 * DAY)  # Tweaks expired

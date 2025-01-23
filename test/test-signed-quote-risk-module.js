@@ -7,6 +7,7 @@ const {
   getTransactionEvent,
   makeBucketQuoteMessage,
   makeSignedQuote,
+  getRole,
   recoverAddress,
 } = require("../js/utils");
 const { initCurrency, deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
@@ -131,9 +132,9 @@ variants.forEach((variant) => {
         extraConstructorArgs: variant.contract === "SignedBucketRiskModule" ? [] : [creationIsOpen],
       });
 
-      await accessManager.grantComponentRole(rm, await rm.PRICER_ROLE(), signer);
-      await accessManager.grantComponentRole(rm, await rm.RESOLVER_ROLE(), resolver);
-      await accessManager.grantComponentRole(rm, await rm.POLICY_CREATOR_ROLE(), creator);
+      await accessManager.grantComponentRole(rm, getRole("PRICER_ROLE"), signer);
+      await accessManager.grantComponentRole(rm, getRole("RESOLVER_ROLE"), resolver);
+      await accessManager.grantComponentRole(rm, getRole("POLICY_CREATOR_ROLE"), creator);
       return { etk, premiumsAccount, rm, pool, accessManager, currency };
     }
 
@@ -212,7 +213,7 @@ variants.forEach((variant) => {
 
     it("Rejects policy creation and resolution if it's paused", async () => {
       const { rm, accessManager, pool } = await helpers.loadFixture(deployPoolFixture);
-      await accessManager.grantComponentRole(rm, await rm.GUARDIAN_ROLE(), guardian);
+      await accessManager.grantComponentRole(rm, getRole("GUARDIAN_ROLE"), guardian);
       await expect(rm.connect(guardian).pause()).to.emit(rm, "Paused");
       const policyParams = await variant.defaultPolicyParams({ rm: rm });
       const signature = await variant.makeSignedQuote(anon, policyParams);
@@ -231,7 +232,7 @@ variants.forEach((variant) => {
 
       // Unpause and create a policy
       await expect(rm.connect(guardian).unpause()).to.emit(rm, "Unpaused");
-      await accessManager.grantComponentRole(rm, await rm.PRICER_ROLE(), anon);
+      await accessManager.grantComponentRole(rm, getRole("PRICER_ROLE"), anon);
       const tx = await variant.newPolicy(rm, creator, policyParams, anon, signature);
       const receipt = await tx.wait();
       const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");

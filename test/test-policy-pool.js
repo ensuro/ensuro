@@ -400,7 +400,7 @@ describe("PolicyPool contract", function () {
 
     const etk = await createEToken(pool, {});
     const pa = await deployPremiumsAccount(pool, { srEtk: etk });
-    await expect(pa.policyReplaced([...policy], [...policy])).to.be.revertedWith("The caller must be the PolicyPool");
+    await expect(pa.policyReplaced([...policy], [...policy])).to.be.revertedWithCustomError(pa, "OnlyPolicyPool");
   });
 
   it("Replacement policy must have a new unique internalId", async () => {

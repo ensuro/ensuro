@@ -183,7 +183,7 @@ def test_withdraw_won_premiums_with_borrowed_active_pp(tenv):
     )
 
     if tenv.kind == "ethereum":
-        with pytest.raises(RevertError, match="The caller must be the PolicyPool"):
+        with pytest.raises(RevertError, match="OnlyPolicyPool()"):
             pa.policy_created(policy)
 
     with pa.thru_policy_pool():
@@ -206,7 +206,7 @@ def test_withdraw_won_premiums_with_borrowed_active_pp(tenv):
     assert tenv.currency.allowance(tenv.currency.owner, pa) == _W(100)
 
     if tenv.kind == "ethereum":
-        with pytest.raises(RevertError, match="The caller must be the PolicyPool"):
+        with pytest.raises(RevertError, match="OnlyPolicyPool()"):
             pa.policy_resolved_with_payout(tenv.currency.owner, policy_2, _W(12))
 
     with pa.thru_policy_pool():
@@ -223,7 +223,7 @@ def test_withdraw_won_premiums_with_borrowed_active_pp(tenv):
 
     # Expire policy
     if tenv.kind == "ethereum":
-        with pytest.raises(RevertError, match="The caller must be the PolicyPool"):
+        with pytest.raises(RevertError, match="OnlyPolicyPool()"):
             pa.policy_expired(policy)
 
     with pa.thru_policy_pool():

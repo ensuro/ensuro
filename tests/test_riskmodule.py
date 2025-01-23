@@ -292,10 +292,10 @@ def test_avoid_repeated_tweaks(tenv):
     # 2 ** (GovernanceActions.setCollRatio - 1) + 2 ** (GovernanceActions.setSrRoc - 1)
     assert fields == (2**9 + 2**13)
 
-    with rm.as_("L3_USER"), pytest.raises(RevertError, match="You already tweaked this parameter recently"):
+    with rm.as_("L3_USER"), pytest.raises(RevertError, match="WaitBeforeTweak"):
         rm.coll_ratio = _W("0.93")
 
-    with rm.as_("L3_USER"), pytest.raises(RevertError, match="You already tweaked this parameter recently"):
+    with rm.as_("L3_USER"), pytest.raises(RevertError, match="WaitBeforeTweak"):
         rm.sr_roc = _W("0.022")
 
     tenv.time_control.fast_forward(2 * DAY)
