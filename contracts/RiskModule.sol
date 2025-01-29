@@ -268,6 +268,10 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
       });
   }
 
+  function _makeInternalId(bytes32 policyData) internal pure returns (uint96) {
+    return uint96(uint256(policyData) % 2 ** 96);
+  }
+
   function setWallet(address wallet_) external onlyComponentRole(RM_PROVIDER_ROLE) {
     if (wallet_ == address(0)) {
       revert NoZeroWallet();

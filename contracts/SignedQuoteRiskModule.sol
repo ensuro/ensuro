@@ -91,11 +91,14 @@ contract SignedQuoteRiskModule is RiskModule {
     bytes32 quoteHash = ECDSA.toEthSignedMessageHash(
       abi.encodePacked(address(this), payout, premium, lossProb, expiration, policyData, quoteValidUntil)
     );
-    address signer = ECDSA.recover(quoteHash, quoteSignatureR, quoteSignatureVS);
-    _policyPool.access().checkComponentRole(address(this), PRICER_ROLE, signer, false);
-    uint96 internalId = uint96(uint256(policyData) % 2 ** 96);
+    _policyPool.access().checkComponentRole(
+      address(this),
+      PRICER_ROLE,
+      ECDSA.recover(quoteHash, quoteSignatureR, quoteSignatureVS),
+      false
+    );
 
-    createdPolicy = _newPolicy(payout, premium, lossProb, expiration, payer, onBehalfOf, internalId);
+    createdPolicy = _newPolicy(payout, premium, lossProb, expiration, payer, onBehalfOf, _makeInternalId(policyData));
     emit NewSignedPolicy(createdPolicy.id, policyData);
     return createdPolicy;
   }

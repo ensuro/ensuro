@@ -33,10 +33,7 @@ contract FullSignedBucketRiskModule is SignedBucketRiskModule {
       (uint256(overrideParams.ensuroPpFee) << 192) |
       (uint256(overrideParams.ensuroCocFee) << 176) |
       (uint256(overrideParams.jrRoc) << 160) |
-      (uint256(overrideParams.srRoc) << 144) |
-      (uint256(overrideParams.maxPayoutPerPolicy) << 112) |
-      (uint256(overrideParams.exposureLimit) << 80) |
-      (uint256(overrideParams.maxDuration) << 64);
+      (uint256(overrideParams.srRoc) << 144);
   }
 
   function _checkFullSignature(
@@ -124,7 +121,6 @@ contract FullSignedBucketRiskModule is SignedBucketRiskModule {
       quoteSignatureVS,
       quoteValidUntil
     );
-    uint96 internalId = uint96(uint256(policyData) % 2 ** 96);
     createdPolicy = _newPolicyWithParams(
       payout,
       premium,
@@ -132,7 +128,7 @@ contract FullSignedBucketRiskModule is SignedBucketRiskModule {
       expiration,
       _msgSender(),
       onBehalfOf,
-      internalId,
+      _makeInternalId(policyData),
       _unpackParams(params)
     );
     emit NewSignedPolicy(createdPolicy.id, policyData);

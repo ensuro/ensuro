@@ -114,7 +114,6 @@ contract SignedBucketRiskModule is RiskModule {
     address payer,
     address onBehalfOf
   ) internal returns (Policy.PolicyData memory createdPolicy) {
-    uint96 internalId = uint96(uint256(policyData) % 2 ** 96);
     createdPolicy = _newPolicyWithParams(
       payout,
       premium,
@@ -122,7 +121,7 @@ contract SignedBucketRiskModule is RiskModule {
       expiration,
       payer,
       onBehalfOf,
-      internalId,
+      _makeInternalId(policyData),
       bucketParams(bucketId)
     );
     emit NewSignedPolicy(createdPolicy.id, policyData);

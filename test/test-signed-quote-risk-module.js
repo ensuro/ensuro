@@ -65,10 +65,7 @@ function paramsAsUint256(params) {
     (params.ensuroPpFee << 192n) |
     (params.ensuroCocFee << 176n) |
     (params.jrRoc << 160n) |
-    (params.srRoc << 144n) |
-    (params.maxPayoutPerPolicy << 112n) |
-    (params.exposureLimit << 80n) |
-    (params.maxDuration << 64n)
+    (params.srRoc << 144n)
   );
 }
 
