@@ -10,10 +10,9 @@ import {SignedBucketRiskModule} from "./SignedBucketRiskModule.sol";
 
 /**
  * @title FullSignedBucket Risk Module
- * @dev Risk Module that for policy creation verifies the different components of the price have been signed by a
-        trusted account (PRICER_ROLE). One of the components of the price is a bucket id that groups policies within
-        a risk module, with different parameters (such as collaterallization levels or fees).
-        For the resolution (resolvePolicy), it has to be called by an authorized user
+ * @dev Variation of SignedBucketRiskModule that also supports the creation of policies receiving all the
+        parameters that affect the price (not just the lossProb). And validates the signature.
+        It requires a new permission, the FULL_PRICER_ROLE.
   * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
@@ -144,5 +143,5 @@ contract FullSignedBucketRiskModule is SignedBucketRiskModule {
    * variables without shifting down storage in the inheritance chain.
    * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
    */
-  uint256[49] private __gap;
+  uint256[50] private __gap;
 }
