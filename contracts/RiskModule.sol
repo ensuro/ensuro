@@ -206,48 +206,34 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     return _wallet;
   }
 
-  function setParam(
-    Parameter param,
-    uint256 newValue
-  ) external onlyGlobalOrComponentRole3(LEVEL1_ROLE, LEVEL2_ROLE, LEVEL3_ROLE) {
-    bool tweak = !hasPoolRole(LEVEL2_ROLE) && !hasPoolRole(LEVEL1_ROLE);
+  function setParam(Parameter param, uint256 newValue) external onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE) {
     if (param == Parameter.moc) {
-      require(!tweak || _isTweakWad(_4toWad(_params.moc), newValue, 1e17), "Tweak exceeded");
       _params.moc = _wadTo4(newValue);
     } else if (param == Parameter.jrCollRatio) {
-      require(!tweak || _isTweakWad(_4toWad(_params.jrCollRatio), newValue, 1e17), "Tweak exceeded");
       _params.jrCollRatio = _wadTo4(newValue);
     } else if (param == Parameter.collRatio) {
-      require(!tweak || _isTweakWad(_4toWad(_params.collRatio), newValue, 1e17), "Tweak exceeded");
       _params.collRatio = _wadTo4(newValue);
     } else if (param == Parameter.ensuroPpFee) {
-      require(!tweak || _isTweakWad(_4toWad(_params.ensuroPpFee), newValue, 1e17), "Tweak exceeded");
       _params.ensuroPpFee = _wadTo4(newValue);
     } else if (param == Parameter.ensuroCocFee) {
-      require(!tweak || _isTweakWad(_4toWad(_params.ensuroCocFee), newValue, 1e17), "Tweak exceeded");
       _params.ensuroCocFee = _wadTo4(newValue);
     } else if (param == Parameter.jrRoc) {
-      require(!tweak || _isTweakWad(_4toWad(_params.jrRoc), newValue, 1e17), "Tweak exceeded");
       _params.jrRoc = _wadTo4(newValue);
     } else if (param == Parameter.srRoc) {
-      require(!tweak || _isTweakWad(_4toWad(_params.srRoc), newValue, 1e17), "Tweak exceeded");
       _params.srRoc = _wadTo4(newValue);
     } else if (param == Parameter.maxPayoutPerPolicy) {
-      require(!tweak || _isTweakWad(maxPayoutPerPolicy(), newValue, 1e17), "Tweak exceeded");
       _params.maxPayoutPerPolicy = _amountToX(2, newValue);
     } else if (param == Parameter.exposureLimit) {
       require(newValue >= _activeExposure, "Can't set exposureLimit less than active exposure");
-      require(!tweak || _isTweakWad(exposureLimit(), newValue, 1e17), "Tweak exceeded");
-      require(newValue <= exposureLimit() || hasPoolRole(LEVEL1_ROLE), "Tweak exceeded: Increase requires LEVEL1_ROLE");
+      require(newValue <= exposureLimit() || hasPoolRole(LEVEL1_ROLE), "Increase requires LEVEL1_ROLE");
       _params.exposureLimit = _amountToX(0, newValue);
     } else if (param == Parameter.maxDuration) {
-      require(!tweak, "Tweak exceeded");
       _params.maxDuration = newValue.toUint16();
     }
     _parameterChanged(
       IAccessManager.GovernanceActions(uint256(IAccessManager.GovernanceActions.setMoc) + uint256(param)),
       newValue,
-      tweak
+      false
     );
   }
 

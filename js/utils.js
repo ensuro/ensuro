@@ -203,6 +203,31 @@ function makeQuoteMessage({ rmAddress, payout, premium, lossProb, expiration, po
   );
 }
 
+function paramsAsUint256(params) {
+  /* eslint no-bitwise: "off" */
+  return (
+    (params.moc << 240n) |
+    (params.jrCollRatio << 224n) |
+    (params.collRatio << 208n) |
+    (params.ensuroPpFee << 192n) |
+    (params.ensuroCocFee << 176n) |
+    (params.jrRoc << 160n) |
+    (params.srRoc << 144n)
+  );
+}
+
+/**
+ * Create a packed quote message for later signing or hashing.
+ *
+ * Mimics the behaviour of the FullSignedBucketRiskModule._checkFullSignature method.
+ */
+function makeFullQuoteMessage({ rmAddress, payout, premium, lossProb, expiration, policyData, params, validUntil }) {
+  return ethers.solidityPacked(
+    ["address", "uint256", "uint256", "uint256", "uint40", "bytes32", "uint256", "uint40"],
+    [rmAddress, payout, premium, lossProb, expiration, policyData, paramsAsUint256(params), validUntil]
+  );
+}
+
 /**
  * Create a packed quote message for later signing or hashing.
  *
@@ -263,6 +288,42 @@ async function defaultPolicyParams(
   };
 }
 
+async function defaultPolicyParamsWithBucket(opts, _A = amountFunction(6)) {
+  const ret = await defaultPolicyParams(opts, _A);
+  return { bucketId: opts.bucketId || 0, ...ret };
+}
+
+async function defaultPolicyParamsWithParams(opts, _A = amountFunction(6)) {
+  const ret = await defaultPolicyParams(opts, _A);
+  // struct PackedParams {
+  //   uint16 moc; // Margin Of Conservativism - factor that multiplies lossProb - 4 decimals
+  //   uint16 jrCollRatio; // Collateralization Ratio to compute Junior solvency as % of payout - 4 decimals
+  //   uint16 collRatio; // Collateralization Ratio to compute solvency requirement as % of payout - 4 decimals
+  //   uint16 ensuroPpFee; // % of pure premium that will go for Ensuro treasury - 4 decimals
+  //   uint16 ensuroCocFee; // % of CoC that will go for Ensuro treasury - 4 decimals
+  //   uint16 jrRoc; // Return on Capital paid to Junior LPs - Annualized Percentage - 4 decimals
+  //   uint16 srRoc; // Return on Capital paid to Senior LPs - Annualized Percentage - 4 decimals
+  //   uint32 maxPayoutPerPolicy; // Max Payout per Policy - 2 decimals
+  //   uint32 exposureLimit; // Max exposure (sum of payouts) to be allocated to this module - 0 decimals
+  //   uint16 maxDuration; // Max policy duration (in hours)
+  // }
+  const optsParams = opts.params || {};
+  const wadTo4Decimals = 10n ** 14n;
+  const params = {
+    moc: (optsParams.moc || _W(1)) / wadTo4Decimals,
+    jrCollRatio: (optsParams.jrCollRatio || 0n) / wadTo4Decimals,
+    collRatio: (optsParams.collRatio || _W(1)) / wadTo4Decimals,
+    ensuroPpFee: (optsParams.ensuroPpFee || 0n) / wadTo4Decimals,
+    ensuroCocFee: (optsParams.ensuroCocFee || 0n) / wadTo4Decimals,
+    jrRoc: (optsParams.jrRoc || 0n) / wadTo4Decimals,
+    srRoc: (optsParams.srRoc || _W("0.1")) / wadTo4Decimals, // 10%
+    maxPayoutPerPolicy: 0n, // Not used
+    exposureLimit: 0n, // Not used
+    maxDuration: 0n, // Not used
+  };
+  return { params, ...ret };
+}
+
 function defaultBucketParams({ moc, jrCollRatio, collRatio, ensuroPpFee, ensuroCocFee, jrRoc, srRoc }) {
   return {
     moc: moc !== undefined ? moc : _W("1.1"),
@@ -299,6 +360,8 @@ module.exports = {
   accessControlMessage,
   amountFunction,
   defaultPolicyParams,
+  defaultPolicyParamsWithBucket,
+  defaultPolicyParamsWithParams,
   defaultBucketParams,
   getAddress,
   getComponentRole,
@@ -309,6 +372,8 @@ module.exports = {
   grantComponentRole,
   grantRole,
   makeBucketQuoteMessage,
+  makeFullQuoteMessage,
+  paramsAsUint256,
   makePolicyId,
   makeQuoteMessage,
   makeSignedQuote,

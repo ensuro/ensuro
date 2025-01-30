@@ -67,18 +67,6 @@ abstract contract PolicyPoolComponent is UUPSUpgradeable, PausableUpgradeable, I
     _;
   }
 
-  modifier onlyGlobalOrComponentRole3(
-    bytes32 role1,
-    bytes32 role2,
-    bytes32 role3
-  ) {
-    IAccessManager access = _policyPool.access();
-    if (!access.hasComponentRole(address(this), role1, _msgSender(), true)) {
-      _policyPool.access().checkComponentRole2(address(this), role2, role3, _msgSender(), true);
-    }
-    _;
-  }
-
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(IPolicyPool policyPool_) {
     if (address(policyPool_) == address(0)) revert NoZeroPolicyPool();

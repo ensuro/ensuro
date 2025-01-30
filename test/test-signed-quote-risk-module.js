@@ -4,76 +4,23 @@ const {
   accessControlMessage,
   amountFunction,
   defaultPolicyParams,
+  defaultPolicyParamsWithBucket,
+  defaultPolicyParamsWithParams,
   getTransactionEvent,
   makeBucketQuoteMessage,
+  makeFullQuoteMessage,
   makeSignedQuote,
   getRole,
   recoverAddress,
 } = require("../js/utils");
 const { initCurrency, deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
 const hre = require("hardhat");
-const ethers = hre.ethers;
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
 const _A = amountFunction(6);
 
-async function defaultPolicyParamsWithBucket(opts) {
-  const ret = await defaultPolicyParams(opts, _A);
-  return { bucketId: opts.bucketId || 0, ...ret };
-}
-
-async function defaultPolicyParamsWithParams(opts) {
-  const ret = await defaultPolicyParams(opts, _A);
-  // struct PackedParams {
-  //   uint16 moc; // Margin Of Conservativism - factor that multiplies lossProb - 4 decimals
-  //   uint16 jrCollRatio; // Collateralization Ratio to compute Junior solvency as % of payout - 4 decimals
-  //   uint16 collRatio; // Collateralization Ratio to compute solvency requirement as % of payout - 4 decimals
-  //   uint16 ensuroPpFee; // % of pure premium that will go for Ensuro treasury - 4 decimals
-  //   uint16 ensuroCocFee; // % of CoC that will go for Ensuro treasury - 4 decimals
-  //   uint16 jrRoc; // Return on Capital paid to Junior LPs - Annualized Percentage - 4 decimals
-  //   uint16 srRoc; // Return on Capital paid to Senior LPs - Annualized Percentage - 4 decimals
-  //   uint32 maxPayoutPerPolicy; // Max Payout per Policy - 2 decimals
-  //   uint32 exposureLimit; // Max exposure (sum of payouts) to be allocated to this module - 0 decimals
-  //   uint16 maxDuration; // Max policy duration (in hours)
-  // }
-  const optsParams = opts.params || {};
-  const params = {
-    moc: optsParams.moc || 10000n,
-    jrCollRatio: optsParams.jrCollRatio || 0n,
-    collRatio: optsParams.collRatio || 10000n,
-    ensuroPpFee: optsParams.ensuroPpFee || 0n,
-    ensuroCocFee: optsParams.ensuroCocFee || 0n,
-    jrRoc: optsParams.jrRoc || 0n,
-    srRoc: optsParams.srRoc || 1000n, // 10%
-    maxPayoutPerPolicy: 0n, // Not used
-    exposureLimit: 0n, // Not used
-    maxDuration: 0n, // Not used
-  };
-  return { params, ...ret };
-}
-
 async function makeBucketSignedQuote(signer, policyParams) {
   return makeSignedQuote(signer, policyParams, makeBucketQuoteMessage);
-}
-
-function paramsAsUint256(params) {
-  /* eslint no-bitwise: "off" */
-  return (
-    (params.moc << 240n) |
-    (params.jrCollRatio << 224n) |
-    (params.collRatio << 208n) |
-    (params.ensuroPpFee << 192n) |
-    (params.ensuroCocFee << 176n) |
-    (params.jrRoc << 160n) |
-    (params.srRoc << 144n)
-  );
-}
-
-function makeFullQuoteMessage({ rmAddress, payout, premium, lossProb, expiration, policyData, params, validUntil }) {
-  return ethers.solidityPacked(
-    ["address", "uint256", "uint256", "uint256", "uint40", "bytes32", "uint256", "uint40"],
-    [rmAddress, payout, premium, lossProb, expiration, policyData, paramsAsUint256(params), validUntil]
-  );
 }
 
 async function makeFullSignedQuote(signer, policyParams) {

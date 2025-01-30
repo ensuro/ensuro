@@ -93,6 +93,7 @@ contract FullSignedBucketRiskModule is SignedBucketRiskModule {
    * @param expiration The expiration of the policy (timestamp)
    * @param onBehalfOf The policy holder
    * @param policyData A hash of the private details of the policy. The last 96 bits will be used as internalId
+   * @param params The parameters for the policy creation (coll ratios, RoCs, fees, etc.)
    * @param quoteSignatureR The signature of the quote. R component (EIP-2098 signature)
    * @param quoteSignatureVS The signature of the quote. VS component (EIP-2098 signature)
    * @param quoteValidUntil The expiration of the quote
@@ -132,6 +133,66 @@ contract FullSignedBucketRiskModule is SignedBucketRiskModule {
       _unpackParams(params)
     );
     emit NewSignedPolicy(createdPolicy.id, policyData);
+  }
+
+  /**
+   * @dev Replace a policy with a new one, reusing the premium and the capital locked
+   *
+   * Requirements:
+   * - The caller approved the spending of the premium to the PolicyPool
+   * - The quote has been signed by an address with the component role PRICER_ROLE
+   * - The caller has been granted component role REPLACER_ROLE or creation is open
+   *
+   * Emits:
+   * - {PolicyPool.PolicyReplaced}
+   * - {PolicyPool.NewPolicy}
+   *
+   * @param oldPolicy The policy to be replaced
+   * @param payout The exposure (maximum payout) of the new policy
+   * @param premium The premium that will be paid by the caller
+   * @param lossProb The probability of having to pay the maximum payout (wad)
+   * @param expiration The expiration of the policy (timestamp)
+   * @param policyData A hash of the private details of the policy. The last 96 bits will be used as internalId
+   * @param params The parameters for the policy creation (coll ratios, RoCs, fees, etc.)
+   * @param quoteSignatureR The signature of the quote. R component (EIP-2098 signature)
+   * @param quoteSignatureVS The signature of the quote. VS component (EIP-2098 signature)
+   * @param quoteValidUntil The expiration of the quote
+   * @return Returns the id of the created policy
+   */
+  function replacePolicyFullParams(
+    Policy.PolicyData calldata oldPolicy,
+    uint256 payout,
+    uint256 premium,
+    uint256 lossProb,
+    uint40 expiration,
+    bytes32 policyData,
+    PackedParams memory params,
+    bytes32 quoteSignatureR,
+    bytes32 quoteSignatureVS,
+    uint40 quoteValidUntil
+  ) external whenNotPaused onlyComponentRole(REPLACER_ROLE) returns (uint256) {
+    _checkFullSignature(
+      payout,
+      premium,
+      lossProb,
+      expiration,
+      policyData,
+      params,
+      quoteSignatureR,
+      quoteSignatureVS,
+      quoteValidUntil
+    );
+    return
+      _replacePolicy(
+        oldPolicy,
+        payout,
+        premium,
+        lossProb,
+        expiration,
+        _msgSender(),
+        _makeInternalId(policyData),
+        _unpackParams(params)
+      ).id;
   }
 
   /**

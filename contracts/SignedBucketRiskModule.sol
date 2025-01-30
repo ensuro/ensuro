@@ -224,10 +224,17 @@ contract SignedBucketRiskModule is RiskModule {
       quoteSignatureVS,
       quoteValidUntil
     );
-    uint96 internalId = uint96(uint256(policyData) % 2 ** 96);
     return
-      _replacePolicy(oldPolicy, payout, premium, lossProb, expiration, _msgSender(), internalId, bucketParams(bucketId))
-        .id;
+      _replacePolicy(
+        oldPolicy,
+        payout,
+        premium,
+        lossProb,
+        expiration,
+        _msgSender(),
+        _makeInternalId(policyData),
+        bucketParams(bucketId)
+      ).id;
   }
 
   function resolvePolicy(
