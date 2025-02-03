@@ -42,7 +42,7 @@ task("python-coverage", "Generates a code coverage report for all tests, includi
   await env.run(TASK_COMPILE);
 
   // Setup hardhat node
-  setupNode(env, api, ui);
+  await setupNode(env, api, ui);
 
   // Run python tests
   try {

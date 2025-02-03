@@ -26,7 +26,7 @@ POOL=`readAddress POOL`
 ACCESSMANAGER=`readAddress ACCESSMANAGER`
 echo "PolicyPool = $POOL / AccessManager = $ACCESSMANAGER"
 
-for ROLE in LEVEL1 LEVEL2 LEVEL3; do
+for ROLE in LEVEL1 LEVEL2; do
   npx hardhat --network $NETWORK ens:grantRole --contract-address $ACCESSMANAGER \
       --role ${ROLE}_ROLE || die "Error granting ${ROLE}_ROLE"
 done

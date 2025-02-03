@@ -14,6 +14,8 @@ describe("Storage Gaps", () => {
     "Reserve",
     "RiskModule",
     "SignedQuoteRiskModule",
+    "SignedBucketRiskModule",
+    "FullSignedBucketRiskModule",
     "TrustfulRiskModule",
   ];
 

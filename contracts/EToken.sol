@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.16;
+pragma solidity ^0.8.0;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -697,31 +697,14 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     return _4toWad(_params.internalLoanInterestRate);
   }
 
-  function setParam(Parameter param, uint256 newValue) external onlyGlobalOrComponentRole2(LEVEL2_ROLE, LEVEL3_ROLE) {
-    bool tweak = !hasPoolRole(LEVEL2_ROLE);
+  function setParam(Parameter param, uint256 newValue) external onlyGlobalOrComponentRole(LEVEL2_ROLE) {
     if (param == Parameter.liquidityRequirement) {
-      require(
-        !tweak || _isTweakWad(liquidityRequirement(), newValue, 1e17),
-        "Tweak exceeded: liquidityRequirement tweaks only up to 10%"
-      );
       _params.liquidityRequirement = _wadTo4(newValue);
     } else if (param == Parameter.minUtilizationRate) {
-      require(
-        !tweak || _isTweakWad(minUtilizationRate(), newValue, 3e17),
-        "Tweak exceeded: minUtilizationRate tweaks only up to 30%"
-      );
       _params.minUtilizationRate = _wadTo4(newValue);
     } else if (param == Parameter.maxUtilizationRate) {
-      require(
-        !tweak || _isTweakWad(maxUtilizationRate(), newValue, 3e17),
-        "Tweak exceeded: maxUtilizationRate tweaks only up to 30%"
-      );
       _params.maxUtilizationRate = _wadTo4(newValue);
     } else if (param == Parameter.internalLoanInterestRate) {
-      require(
-        !tweak || _isTweakWad(internalLoanInterestRate(), newValue, 3e17),
-        "Tweak exceeded: internalLoanInterestRate tweaks only up to 30%"
-      );
       // This call changes the interest rate without updating the current loans up to this point
       // So, if interest rate goes from 5% to 6%, this change will be retroactive to the lastUpdate of each
       // loan. Since it's a permissioned call, I'm ok with this. If a caller wants to reduce the impact, it can
@@ -732,8 +715,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
       IAccessManager.GovernanceActions(
         uint256(IAccessManager.GovernanceActions.setLiquidityRequirement) + uint256(param)
       ),
-      newValue,
-      tweak
+      newValue
     );
   }
 

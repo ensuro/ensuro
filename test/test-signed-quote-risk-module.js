@@ -4,9 +4,13 @@ const {
   accessControlMessage,
   amountFunction,
   defaultPolicyParams,
+  defaultPolicyParamsWithBucket,
+  defaultPolicyParamsWithParams,
   getTransactionEvent,
   makeBucketQuoteMessage,
+  makeFullQuoteMessage,
   makeSignedQuote,
+  getRole,
   recoverAddress,
 } = require("../js/utils");
 const { initCurrency, deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
@@ -15,17 +19,20 @@ const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
 const _A = amountFunction(6);
 
-async function defaultPolicyParamsWithBucket(opts) {
-  const ret = await defaultPolicyParams(opts, _A);
-  return { bucketId: opts.bucketId || 0, ...ret };
-}
-
 async function makeBucketSignedQuote(signer, policyParams) {
   return makeSignedQuote(signer, policyParams, makeBucketQuoteMessage);
 }
 
+async function makeFullSignedQuote(signer, policyParams) {
+  return makeSignedQuote(signer, policyParams, makeFullQuoteMessage);
+}
+
 function recoverBucketAddress(policyParams, signature) {
   return recoverAddress(policyParams, signature, makeBucketQuoteMessage);
+}
+
+function recoverFullParamsAddress(policyParams, signature) {
+  return recoverAddress(policyParams, signature, makeFullQuoteMessage);
 }
 
 function newPolicy(rm, sender, policyParams, onBehalfOf, signature, method) {
@@ -59,6 +66,22 @@ function newPolicyWithBucket(rm, sender, policyParams, onBehalfOf, signature, me
   );
 }
 
+function newPolicyFullParams(rm, sender, policyParams, onBehalfOf, signature, method) {
+  if (sender !== undefined) rm = rm.connect(sender);
+  return rm[method || "newPolicyFullParams"](
+    policyParams.payout,
+    policyParams.premium,
+    policyParams.lossProb,
+    policyParams.expiration,
+    onBehalfOf.address,
+    policyParams.policyData,
+    policyParams.params,
+    signature.r,
+    signature.yParityAndS,
+    policyParams.validUntil
+  );
+}
+
 function resolvePolicyFullPayout(rm, policy, customerWon) {
   return rm.resolvePolicyFullPayout(policy, customerWon);
 }
@@ -85,6 +108,14 @@ const variants = [
     newPolicy: newPolicyWithBucket,
     resolvePolicyFullPayout: resolvePolicyMaxPayout,
     recoverAddress: recoverBucketAddress,
+  },
+  {
+    contract: "FullSignedBucketRiskModule",
+    makeSignedQuote: makeFullSignedQuote,
+    defaultPolicyParams: defaultPolicyParamsWithParams,
+    newPolicy: newPolicyFullParams,
+    resolvePolicyFullPayout: resolvePolicyMaxPayout,
+    recoverAddress: recoverFullParamsAddress,
   },
 ];
 
@@ -128,12 +159,14 @@ variants.forEach((variant) => {
       const RiskModuleContract = await hre.ethers.getContractFactory(variant.contract);
       const rm = await addRiskModule(pool, premiumsAccount, RiskModuleContract, {
         ensuroFee: 0.03,
-        extraConstructorArgs: variant.contract === "SignedBucketRiskModule" ? [] : [creationIsOpen],
+        extraConstructorArgs: variant.contract === "SignedQuoteRiskModule" ? [creationIsOpen] : [],
       });
 
-      await accessManager.grantComponentRole(rm, await rm.PRICER_ROLE(), signer);
-      await accessManager.grantComponentRole(rm, await rm.RESOLVER_ROLE(), resolver);
-      await accessManager.grantComponentRole(rm, await rm.POLICY_CREATOR_ROLE(), creator);
+      await accessManager.grantComponentRole(rm, getRole("PRICER_ROLE"), signer);
+      if (variant.contract === "FullSignedBucketRiskModule")
+        await accessManager.grantComponentRole(rm, getRole("FULL_PRICER_ROLE"), signer);
+      await accessManager.grantComponentRole(rm, getRole("RESOLVER_ROLE"), resolver);
+      await accessManager.grantComponentRole(rm, getRole("POLICY_CREATOR_ROLE"), creator);
       return { etk, premiumsAccount, rm, pool, accessManager, currency };
     }
 
@@ -174,7 +207,11 @@ variants.forEach((variant) => {
       const policyParams = await variant.defaultPolicyParams({ rm: rm });
       const signature = await variant.makeSignedQuote(anon, policyParams);
       await expect(variant.newPolicy(rm, creator, policyParams, cust, signature)).to.be.revertedWith(
-        accessControlMessage(anon, rm, "PRICER_ROLE")
+        accessControlMessage(
+          anon,
+          rm,
+          variant.contract === "FullSignedBucketRiskModule" ? "FULL_PRICER_ROLE" : "PRICER_ROLE"
+        )
       );
     });
 
@@ -206,13 +243,17 @@ variants.forEach((variant) => {
       policyParams.validUntil = now + 2000;
       const recoveredAddress = variant.recoverAddress(policyParams, signature);
       await expect(variant.newPolicy(rm, creator, policyParams, cust, signature)).to.be.revertedWith(
-        accessControlMessage(recoveredAddress, rm, "PRICER_ROLE")
+        accessControlMessage(
+          recoveredAddress,
+          rm,
+          variant.contract === "FullSignedBucketRiskModule" ? "FULL_PRICER_ROLE" : "PRICER_ROLE"
+        )
       );
     });
 
     it("Rejects policy creation and resolution if it's paused", async () => {
       const { rm, accessManager, pool } = await helpers.loadFixture(deployPoolFixture);
-      await accessManager.grantComponentRole(rm, await rm.GUARDIAN_ROLE(), guardian);
+      await accessManager.grantComponentRole(rm, getRole("GUARDIAN_ROLE"), guardian);
       await expect(rm.connect(guardian).pause()).to.emit(rm, "Paused");
       const policyParams = await variant.defaultPolicyParams({ rm: rm });
       const signature = await variant.makeSignedQuote(anon, policyParams);
@@ -231,7 +272,11 @@ variants.forEach((variant) => {
 
       // Unpause and create a policy
       await expect(rm.connect(guardian).unpause()).to.emit(rm, "Unpaused");
-      await accessManager.grantComponentRole(rm, await rm.PRICER_ROLE(), anon);
+      await accessManager.grantComponentRole(
+        rm,
+        getRole(variant.contract === "FullSignedBucketRiskModule" ? "FULL_PRICER_ROLE" : "PRICER_ROLE"),
+        anon
+      );
       const tx = await variant.newPolicy(rm, creator, policyParams, anon, signature);
       const receipt = await tx.wait();
       const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");

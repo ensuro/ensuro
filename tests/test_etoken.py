@@ -100,9 +100,9 @@ def test_only_policy_pool_validation(tenv):
     if tenv.kind == "prototype":
         return
     etk = tenv.etoken_class(name="eUSD1WEEK")
-    with pytest.raises(RevertError, match="The caller must be the PolicyPool"):
+    with pytest.raises(RevertError, match="OnlyPolicyPool()"):
         etk.deposit("LP1", _W(1000))
-    with pytest.raises(RevertError, match="The caller must be the PolicyPool"):
+    with pytest.raises(RevertError, match="OnlyPolicyPool()"):
         etk.withdraw("LP1", _W(1000))
     with pytest.raises(RevertError, match="The caller must be a borrower"):
         etk.lock_scr(_W(600), _W("0.0365"))
@@ -926,110 +926,6 @@ def test_unlock_scr_with_neg_adjustment(tenv):
 
     with etk.thru(pa):
         etk.unlock_scr(policy.sr_scr, policy.sr_interest_rate, policy.sr_coc - _W("0.06") * _W(10))
-
-
-def test_getset_etk_parameters_tweaks(tenv):
-    if tenv.kind != "ethereum":
-        return
-    etk = tenv.etoken_class(
-        name="eUSD1WEEK", max_utilization_rate=_W("0.9"), internal_loan_interest_rate=_W("0.02")
-    )
-    with etk.as_("owner"):
-        etk.grant_role("LEVEL2_ROLE", "L2_USER")
-        etk.grant_role("LEVEL3_ROLE", "L3_USER")
-
-    with etk.as_("UNAUTHORIZED_USER"), pytest.raises(RevertError, match="AccessControl"):
-        setattr(etk, "liquidity_requirement", _W("0.7"))
-
-    # Verifies hard-coded validations
-    test_validations = [
-        ("liquidity_requirement", _W("0.7")),  # [0.8, 1.3]
-        ("liquidity_requirement", _W("1.4")),  # [0.8, 1.3]
-        ("min_utilization_rate", _W(1.01)),  # <= [0, 1]
-        ("max_utilization_rate", _W(1.01)),  # <= [0.5, 1]
-        ("max_utilization_rate", _W(0.3)),  # <= [0.5, 1]
-        ("internal_loan_interest_rate", _W("0.6")),  # <=50%
-    ]
-
-    for attr_name, attr_value in test_validations:
-        with etk.as_("L2_USER"), pytest.raises(RevertError, match="Validation: "):
-            setattr(etk, attr_name, attr_value)
-
-    with etk.as_("L2_USER"):
-        etk.min_utilization_rate = _W("0.5")
-
-    # Verifies exceeded tweaks
-    test_exceeded_tweaks = [
-        ("liquidity_requirement", _W("0.6")),  # 10% allowed - previous 100%
-        ("liquidity_requirement", _W("1.5")),  # 10% allowed - previous 100%
-        ("max_utilization_rate", _W("0.4")),  # 30% allowed - previous 90%
-        ("min_utilization_rate", _W("0.1")),  # 30% allowed - previous 10%
-        ("internal_loan_interest_rate", _W("0.04")),  # 30% allowed - previous 2%
-    ]
-
-    for attr_name, attr_value in test_exceeded_tweaks:
-        with etk.as_("L3_USER"), pytest.raises(RevertError, match="Tweak exceeded: "):
-            setattr(etk, attr_name, attr_value)
-
-    # Verifies OK tweaks
-    test_ok_tweaks = [
-        ("liquidity_requirement", _W("1.09")),  # 10% allowed - previous 100%
-        ("max_utilization_rate", _W("0.8")),  # 30% allowed - previous 90%
-        ("internal_loan_interest_rate", _W("0.025")),  # 30% allowed - previous 2%
-    ]
-
-    for attr_name, attr_value in test_ok_tweaks:
-        with etk.as_("L3_USER"):
-            setattr(etk, attr_name, attr_value)
-        assert getattr(etk, attr_name) == attr_value
-
-    # Verifies L2_USER changes
-    test_ok_l2_changes = [
-        ("liquidity_requirement", _W("0.8")),  # previous 109%
-        ("max_utilization_rate", _W("0.51")),  # previous 80%
-        ("internal_loan_interest_rate", _W("0.07")),  # previous 2.5%
-        ("accept_all_rms", False),  # previous True
-        ("accept_all_rms", True),  # previous False
-    ]
-
-    for attr_name, attr_value in test_ok_l2_changes:
-        with etk.as_("L2_USER"):
-            setattr(etk, attr_name, attr_value)
-        assert getattr(etk, attr_name) == attr_value
-
-    tenv.time_control.fast_forward(WEEK)  # To avoid repeated tweaks
-
-    # New OK tweaks
-    test_ok_tweaks = [
-        ("liquidity_requirement", _W("0.87")),  # previous 80%
-        ("max_utilization_rate", _W("0.6")),  # previous 51%
-        ("internal_loan_interest_rate", _W("0.06")),  # previous 7%
-    ]
-
-    for attr_name, attr_value in test_ok_tweaks:
-        with etk.as_("L3_USER"):
-            setattr(etk, attr_name, attr_value)
-        assert getattr(etk, attr_name) == attr_value
-
-    # Other tweaks
-    test_ok_tweaks = [
-        ("liquidity_requirement", _W("0.9")),  # previous 87%
-        ("max_utilization_rate", _W("0.66")),  # previous 60%
-        ("internal_loan_interest_rate", _W("0.05")),  # previous 6%
-    ]
-
-    for attr_name, attr_value in test_ok_tweaks:
-        with etk.as_("L3_USER"), pytest.raises(
-            RevertError, match="You already tweaked this parameter recently"
-        ):
-            setattr(etk, attr_name, attr_value)
-
-    tenv.time_control.fast_forward(2 * DAY)  # Tweaks expired
-
-    for attr_name, attr_value in test_ok_tweaks:
-        with etk.as_("L3_USER"):
-            setattr(etk, attr_name, attr_value)
-        assert getattr(etk, attr_name) == attr_value
 
 
 def test_mint_to_zero_address(tenv):

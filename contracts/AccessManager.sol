@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.16;
+pragma solidity ^0.8.0;
 
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -35,7 +35,6 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
   bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
   bytes32 public constant LEVEL1_ROLE = keccak256("LEVEL1_ROLE");
   bytes32 public constant LEVEL2_ROLE = keccak256("LEVEL2_ROLE");
-  bytes32 public constant LEVEL3_ROLE = keccak256("LEVEL3_ROLE");
 
   //
   /**

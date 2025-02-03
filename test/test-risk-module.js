@@ -89,16 +89,10 @@ describe("RiskModule contract", function () {
   }
 
   it("Set params jrCollRatio validations", async () => {
-    const { rm, accessManager } = await helpers.loadFixture(deployRiskModuleFixture);
+    const { rm } = await helpers.loadFixture(deployRiskModuleFixture);
 
     let jrCollRatio = 0;
     await rm.setParam(1, jrCollRatio);
-
-    await grantRole(hre, accessManager, "LEVEL3_ROLE", lp);
-    await rm.connect(lp).setParam(1, jrCollRatio);
-
-    jrCollRatio = 100;
-    await expect(rm.connect(lp).setParam(1, jrCollRatio)).to.be.revertedWith("Tweak exceeded");
   });
 
   it("Allows msg.sender as payer", async () => {

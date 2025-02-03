@@ -38,13 +38,13 @@ describe("Etoken", () => {
   it("Only allows PolicyPool to add new borrowers", async () => {
     const { etk } = await helpers.loadFixture(etokenFixture);
 
-    await expect(etk.addBorrower(lp)).to.be.revertedWith("The caller must be the PolicyPool");
+    await expect(etk.addBorrower(lp)).to.be.revertedWithCustomError(etk, "OnlyPolicyPool");
   });
 
   it("Only allows PolicyPool to remove borrowers", async () => {
     const { etk } = await helpers.loadFixture(etokenFixture);
 
-    await expect(etk.removeBorrower(lp)).to.be.revertedWith("The caller must be the PolicyPool");
+    await expect(etk.removeBorrower(lp)).to.be.revertedWithCustomError(etk, "OnlyPolicyPool");
   });
 
   it("Allows setting whitelist to null", async () => {

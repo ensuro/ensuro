@@ -45,12 +45,13 @@ function readEnvAccounts(network) {
  */
 module.exports = {
   solidity: {
-    version: "0.8.16",
+    version: "0.8.28",
     settings: {
       optimizer: {
         enabled: true,
         runs: 200,
       },
+      evmVersion: "cancun",
     },
   },
   contractSizer: {
@@ -67,7 +68,7 @@ module.exports = {
       url: "http://ganache-cli:8545",
     },
     hardhat: {
-      hardfork: "london",
+      hardfork: "cancun",
       // base fee of 0 allows use of 0 gas price when testing
       initialBaseFeePerGas: 0,
     },

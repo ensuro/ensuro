@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.16;
+pragma solidity ^0.8.0;
 
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
@@ -18,10 +18,10 @@ import {RiskModule} from "./RiskModule.sol";
  * @author Ensuro
  */
 contract SignedBucketRiskModule is RiskModule {
-  bytes32 public constant POLICY_CREATOR_ROLE = keccak256("POLICY_CREATOR_ROLE");
-  bytes32 public constant REPLACER_ROLE = keccak256("REPLACER_ROLE");
-  bytes32 public constant PRICER_ROLE = keccak256("PRICER_ROLE");
-  bytes32 public constant RESOLVER_ROLE = keccak256("RESOLVER_ROLE");
+  bytes32 internal constant POLICY_CREATOR_ROLE = keccak256("POLICY_CREATOR_ROLE");
+  bytes32 internal constant REPLACER_ROLE = keccak256("REPLACER_ROLE");
+  bytes32 internal constant PRICER_ROLE = keccak256("PRICER_ROLE");
+  bytes32 internal constant RESOLVER_ROLE = keccak256("RESOLVER_ROLE");
 
   mapping(uint256 => PackedParams) internal _buckets;
 
@@ -114,7 +114,6 @@ contract SignedBucketRiskModule is RiskModule {
     address payer,
     address onBehalfOf
   ) internal returns (Policy.PolicyData memory createdPolicy) {
-    uint96 internalId = uint96(uint256(policyData) % 2 ** 96);
     createdPolicy = _newPolicyWithParams(
       payout,
       premium,
@@ -122,7 +121,7 @@ contract SignedBucketRiskModule is RiskModule {
       expiration,
       payer,
       onBehalfOf,
-      internalId,
+      _makeInternalId(policyData),
       bucketParams(bucketId)
     );
     emit NewSignedPolicy(createdPolicy.id, policyData);
@@ -225,10 +224,17 @@ contract SignedBucketRiskModule is RiskModule {
       quoteSignatureVS,
       quoteValidUntil
     );
-    uint96 internalId = uint96(uint256(policyData) % 2 ** 96);
     return
-      _replacePolicy(oldPolicy, payout, premium, lossProb, expiration, _msgSender(), internalId, bucketParams(bucketId))
-        .id;
+      _replacePolicy(
+        oldPolicy,
+        payout,
+        premium,
+        lossProb,
+        expiration,
+        _msgSender(),
+        _makeInternalId(policyData),
+        bucketParams(bucketId)
+      ).id;
   }
 
   function resolvePolicy(

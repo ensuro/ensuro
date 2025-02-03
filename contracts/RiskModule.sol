@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.16;
+pragma solidity ^0.8.0;
 
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {WadRayMath} from "./dependencies/WadRayMath.sol";
@@ -30,7 +30,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   uint16 internal constant MAX_MOC = 4e4; // 400%
 
   // For parameters that can be changed by the risk module provider
-  bytes32 public constant RM_PROVIDER_ROLE = keccak256("RM_PROVIDER_ROLE");
+  bytes32 internal constant RM_PROVIDER_ROLE = keccak256("RM_PROVIDER_ROLE");
 
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IPremiumsAccount internal immutable _premiumsAccount;
@@ -206,48 +206,33 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     return _wallet;
   }
 
-  function setParam(
-    Parameter param,
-    uint256 newValue
-  ) external onlyGlobalOrComponentRole3(LEVEL1_ROLE, LEVEL2_ROLE, LEVEL3_ROLE) {
-    bool tweak = !hasPoolRole(LEVEL2_ROLE) && !hasPoolRole(LEVEL1_ROLE);
+  function setParam(Parameter param, uint256 newValue) external onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE) {
     if (param == Parameter.moc) {
-      require(!tweak || _isTweakWad(_4toWad(_params.moc), newValue, 1e17), "Tweak exceeded");
       _params.moc = _wadTo4(newValue);
     } else if (param == Parameter.jrCollRatio) {
-      require(!tweak || _isTweakWad(_4toWad(_params.jrCollRatio), newValue, 1e17), "Tweak exceeded");
       _params.jrCollRatio = _wadTo4(newValue);
     } else if (param == Parameter.collRatio) {
-      require(!tweak || _isTweakWad(_4toWad(_params.collRatio), newValue, 1e17), "Tweak exceeded");
       _params.collRatio = _wadTo4(newValue);
     } else if (param == Parameter.ensuroPpFee) {
-      require(!tweak || _isTweakWad(_4toWad(_params.ensuroPpFee), newValue, 1e17), "Tweak exceeded");
       _params.ensuroPpFee = _wadTo4(newValue);
     } else if (param == Parameter.ensuroCocFee) {
-      require(!tweak || _isTweakWad(_4toWad(_params.ensuroCocFee), newValue, 1e17), "Tweak exceeded");
       _params.ensuroCocFee = _wadTo4(newValue);
     } else if (param == Parameter.jrRoc) {
-      require(!tweak || _isTweakWad(_4toWad(_params.jrRoc), newValue, 1e17), "Tweak exceeded");
       _params.jrRoc = _wadTo4(newValue);
     } else if (param == Parameter.srRoc) {
-      require(!tweak || _isTweakWad(_4toWad(_params.srRoc), newValue, 1e17), "Tweak exceeded");
       _params.srRoc = _wadTo4(newValue);
     } else if (param == Parameter.maxPayoutPerPolicy) {
-      require(!tweak || _isTweakWad(maxPayoutPerPolicy(), newValue, 1e17), "Tweak exceeded");
       _params.maxPayoutPerPolicy = _amountToX(2, newValue);
     } else if (param == Parameter.exposureLimit) {
       require(newValue >= _activeExposure, "Can't set exposureLimit less than active exposure");
-      require(!tweak || _isTweakWad(exposureLimit(), newValue, 1e17), "Tweak exceeded");
-      require(newValue <= exposureLimit() || hasPoolRole(LEVEL1_ROLE), "Tweak exceeded: Increase requires LEVEL1_ROLE");
+      require(newValue <= exposureLimit() || hasPoolRole(LEVEL1_ROLE), "Increase requires LEVEL1_ROLE");
       _params.exposureLimit = _amountToX(0, newValue);
     } else if (param == Parameter.maxDuration) {
-      require(!tweak, "Tweak exceeded");
       _params.maxDuration = newValue.toUint16();
     }
     _parameterChanged(
       IAccessManager.GovernanceActions(uint256(IAccessManager.GovernanceActions.setMoc) + uint256(param)),
-      newValue,
-      tweak
+      newValue
     );
   }
 
@@ -255,7 +240,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     return _unpackParams(_params);
   }
 
-  function _unpackParams(PackedParams storage params_) internal view returns (Params memory ret) {
+  function _unpackParams(PackedParams memory params_) internal pure returns (Params memory ret) {
     return
       Params({
         moc: _4toWad(params_.moc),
@@ -268,12 +253,16 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
       });
   }
 
+  function _makeInternalId(bytes32 policyData) internal pure returns (uint96) {
+    return uint96(uint256(policyData) % 2 ** 96);
+  }
+
   function setWallet(address wallet_) external onlyComponentRole(RM_PROVIDER_ROLE) {
     if (wallet_ == address(0)) {
       revert NoZeroWallet();
     }
     _wallet = wallet_;
-    _parameterChanged(IAccessManager.GovernanceActions.setWallet, uint256(uint160(wallet_)), false);
+    _parameterChanged(IAccessManager.GovernanceActions.setWallet, uint256(uint160(wallet_)));
   }
 
   function getMinimumPremium(

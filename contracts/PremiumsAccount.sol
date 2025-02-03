@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.16;
+pragma solidity ^0.8.0;
 
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {SignedMath} from "@openzeppelin/contracts/utils/math/SignedMath.sol";
@@ -329,7 +329,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
       _borrowFromEtk(borrow, address(this), address(_juniorEtk) != address(0));
       action = IAccessManager.GovernanceActions.setDeficitRatioWithAdjustment;
     }
-    _parameterChanged(action, newRatio, false);
+    _parameterChanged(action, newRatio);
   }
 
   /**
@@ -350,12 +350,12 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     if (newLimitJr != type(uint256).max) {
       _params.jrLoanLimit = _toZeroDecimals(newLimitJr);
       require(_toAmount(_params.jrLoanLimit) == newLimitJr, "Validation: no decimals allowed");
-      _parameterChanged(IAccessManager.GovernanceActions.setJrLoanLimit, newLimitJr, false);
+      _parameterChanged(IAccessManager.GovernanceActions.setJrLoanLimit, newLimitJr);
     }
     if (newLimitSr != type(uint256).max) {
       _params.srLoanLimit = _toZeroDecimals(newLimitSr);
       require(_toAmount(_params.srLoanLimit) == newLimitSr, "Validation: no decimals allowed");
-      _parameterChanged(IAccessManager.GovernanceActions.setSrLoanLimit, newLimitSr, false);
+      _parameterChanged(IAccessManager.GovernanceActions.setSrLoanLimit, newLimitSr);
     }
   }
 
