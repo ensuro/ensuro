@@ -35,7 +35,6 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
   bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
   bytes32 public constant LEVEL1_ROLE = keccak256("LEVEL1_ROLE");
   bytes32 public constant LEVEL2_ROLE = keccak256("LEVEL2_ROLE");
-  bytes32 public constant LEVEL3_ROLE = keccak256("LEVEL3_ROLE");
 
   //
   /**

@@ -232,8 +232,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     }
     _parameterChanged(
       IAccessManager.GovernanceActions(uint256(IAccessManager.GovernanceActions.setMoc) + uint256(param)),
-      newValue,
-      false
+      newValue
     );
   }
 
@@ -263,7 +262,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
       revert NoZeroWallet();
     }
     _wallet = wallet_;
-    _parameterChanged(IAccessManager.GovernanceActions.setWallet, uint256(uint160(wallet_)), false);
+    _parameterChanged(IAccessManager.GovernanceActions.setWallet, uint256(uint160(wallet_)));
   }
 
   function getMinimumPremium(

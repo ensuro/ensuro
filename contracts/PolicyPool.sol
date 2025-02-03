@@ -42,7 +42,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
   bytes32 public constant LEVEL1_ROLE = keccak256("LEVEL1_ROLE");
   bytes32 public constant LEVEL2_ROLE = keccak256("LEVEL2_ROLE");
-  bytes32 public constant LEVEL3_ROLE = keccak256("LEVEL3_ROLE");
 
   uint256 internal constant HOLDER_GAS_LIMIT = 150000;
 

@@ -227,7 +227,6 @@ async function deployPool(options) {
   if (options.dontGrantL123Roles === undefined) {
     await grantRole(hre, accessManager, "LEVEL1_ROLE");
     await grantRole(hre, accessManager, "LEVEL2_ROLE");
-    await grantRole(hre, accessManager, "LEVEL3_ROLE");
   }
 
   return policyPool;
