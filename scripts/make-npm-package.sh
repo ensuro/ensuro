@@ -30,6 +30,8 @@ scripts/change-pragma.sh $TARGET_DIR/contracts '^0.8.0'
 mkdir $TARGET_DIR/build
 cp -r artifacts/contracts $TARGET_DIR/build
 
+cp artifacts/build-info/*.json $TARGET_DIR/build/build-info.json
+
 cp tasks/deploy.js $TARGET_DIR/js/
 
 mkdir $TARGET_DIR/scripts
