@@ -1,6 +1,8 @@
 const { expect } = require("chai");
-const { getAddress, amountFunction, defaultPolicyParams, makePolicyId, getTransactionEvent } = require("../js/utils");
-const { initCurrency, deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
+const { getAddress, amountFunction, getTransactionEvent } = require("@ensuro/utils/js/utils");
+const { initCurrency } = require("@ensuro/utils/js/test-utils");
+const { defaultPolicyParams, makePolicyId } = require("../js/utils");
+const { deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
 const { ethers } = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 

@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
-const { getRole, getComponentRole, accessControlMessage } = require("../js/utils");
+const { getRole, getComponentRole, accessControlMessage } = require("@ensuro/utils/js/utils");
 
 describe("AccessManager", () => {
   let backend, signers, user;

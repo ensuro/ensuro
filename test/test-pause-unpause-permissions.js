@@ -1,13 +1,7 @@
 const { expect } = require("chai");
-const { amountFunction, grantComponentRole, grantRole, _W, accessControlMessage } = require("../js/utils");
-const {
-  initCurrency,
-  deployPool,
-  deployPremiumsAccount,
-  addRiskModule,
-  makePolicy,
-  addEToken,
-} = require("../js/test-utils");
+const { amountFunction, grantComponentRole, grantRole, _W, accessControlMessage } = require("@ensuro/utils/js/utils");
+const { initCurrency } = require("@ensuro/utils/js/test-utils");
+const { deployPool, deployPremiumsAccount, addRiskModule, makePolicy, addEToken } = require("../js/test-utils");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
 describe("Test pause, unpause and upgrade contracts", function () {

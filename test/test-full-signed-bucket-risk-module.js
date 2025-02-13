@@ -1,19 +1,16 @@
 const { expect } = require("chai");
+const { _W, accessControlMessage, amountFunction, getTransactionEvent, getRole } = require("@ensuro/utils/js/utils");
+const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const {
-  _W,
-  accessControlMessage,
-  amountFunction,
   defaultPolicyParamsWithParams,
   defaultPolicyParamsWithBucket,
-  getTransactionEvent,
-  getRole,
   makeBucketQuoteMessage,
   makeFullQuoteMessage,
   makeSignedQuote,
   recoverAddress,
 } = require("../js/utils");
 const { RiskModuleParameter } = require("../js/enums");
-const { initCurrency, deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
+const { deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");

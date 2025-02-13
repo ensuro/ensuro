@@ -6,15 +6,9 @@ const {
   grantRole,
   getTransactionEvent,
   accessControlMessage,
-} = require("../js/utils");
-const {
-  initCurrency,
-  deployPool,
-  deployPremiumsAccount,
-  addRiskModule,
-  makePolicy,
-  addEToken,
-} = require("../js/test-utils");
+} = require("@ensuro/utils/js/utils");
+const { initCurrency } = require("@ensuro/utils/js/test-utils");
+const { deployPool, deployPremiumsAccount, addRiskModule, makePolicy, addEToken } = require("../js/test-utils");
 const { ComponentKind, ComponentStatus } = require("../js/enums");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 

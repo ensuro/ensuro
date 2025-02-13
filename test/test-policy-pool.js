@@ -1,5 +1,6 @@
 const { expect } = require("chai");
-const { grantRole, amountFunction, _W, getTransactionEvent, accessControlMessage } = require("../js/utils");
+const { grantRole, amountFunction, _W, getTransactionEvent, accessControlMessage } = require("@ensuro/utils/js/utils");
+const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const {
   addEToken,
   addRiskModule,
@@ -7,7 +8,6 @@ const {
   createRiskModule,
   deployPool,
   deployPremiumsAccount,
-  initCurrency,
 } = require("../js/test-utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
