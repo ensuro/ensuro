@@ -1,6 +1,6 @@
 <?xml version="1.0" ?>
 <!DOCTYPE coverage SYSTEM "http://cobertura.sourceforge.net/xml/coverage-04.dtd">
-<coverage lines-valid="938"  lines-covered="930"  line-rate="0.9915"  branches-valid="824"  branches-covered="752"  branch-rate="0.9126000000000001"  timestamp="1739466868637" complexity="0" version="0.1">
+<coverage lines-valid="938"  lines-covered="930"  line-rate="0.9915"  branches-valid="824"  branches-covered="752"  branch-rate="0.9126000000000001"  timestamp="1739467939053" complexity="0" version="0.1">
 <sources>
 	<source>/home/runner/work/ensuro/ensuro</source>
 </sources>
@@ -1449,8 +1449,8 @@
 			<line number="534"  hits="1518"  branch="false" />
 			<line number="553"  hits="874"  branch="false" />
 			<line number="554"  hits="873"  branch="true"  condition-coverage="100% (2/2)" />
-			<line number="555"  hits="733"  branch="true"  condition-coverage="100% (2/2)" />
-			<line number="556"  hits="726"  branch="false" />
+			<line number="555"  hits="732"  branch="true"  condition-coverage="100% (2/2)" />
+			<line number="556"  hits="725"  branch="false" />
 			<line number="567"  hits="887"  branch="false" />
 			<line number="568"  hits="859"  branch="true"  condition-coverage="100% (2/2)" />
 			<line number="569"  hits="510"  branch="false" />
@@ -1460,7 +1460,7 @@
 			<line number="582"  hits="510"  branch="true"  condition-coverage="100% (2/2)" />
 			<line number="585"  hits="159"  branch="false" />
 			<line number="587"  hits="510"  branch="false" />
-			<line number="588"  hits="391"  branch="false" />
+			<line number="588"  hits="390"  branch="false" />
 			<line number="592"  hits="1455"  branch="false" />
 			<line number="593"  hits="1455"  branch="false" />
 			<line number="594"  hits="1454"  branch="false" />
