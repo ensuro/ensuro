@@ -1,7 +1,7 @@
 require("mocha");
 const { expect } = require("chai");
 
-const { getStorageLayout } = require("../js/utils");
+const { getStorageLayout } = require("@ensuro/utils/js/utils");
 
 describe("Storage Gaps", () => {
   const contracts = [

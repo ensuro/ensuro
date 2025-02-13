@@ -2,8 +2,9 @@ const { expect } = require("chai");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
-const { initCurrency, deployPremiumsAccount, deployPool } = require("../js/test-utils");
-const { amountFunction, _W } = require("../js/utils");
+const { initCurrency } = require("@ensuro/utils/js/test-utils");
+const { amountFunction, _W } = require("@ensuro/utils/js/utils");
+const { deployPremiumsAccount, deployPool } = require("../js/test-utils");
 
 describe("Test Implementation contracts can't be initialized", function () {
   const rndAddr = "0xd758af6bfc2f0908d7c5f89942be52c36a6b3cab";

@@ -2,8 +2,9 @@ const { expect } = require("chai");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
-const { amountFunction, grantRole } = require("../js/utils");
-const { initCurrency, deployPool, addEToken } = require("../js/test-utils");
+const { amountFunction, grantRole } = require("@ensuro/utils/js/utils");
+const { initCurrency } = require("@ensuro/utils/js/test-utils");
+const { deployPool, addEToken } = require("../js/test-utils");
 
 describe("Etoken", () => {
   const _A = amountFunction(6);

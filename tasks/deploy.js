@@ -3,7 +3,7 @@ const fs = require("fs");
 const ethers = require("ethers");
 const { task, types } = require("hardhat/config");
 const { WhitelistStatus } = require("../js/enums");
-const { amountFunction, _W, grantRole, grantComponentRole, getDefaultSigner } = require("../js/utils");
+const { amountFunction, _W, grantRole, grantComponentRole, getDefaultSigner } = require("@ensuro/utils/js/utils");
 
 const reservesOpts = {
   unsafeAllow: ["delegatecall"],

@@ -3,8 +3,9 @@ const { ethers } = require("hardhat");
 const { MaxUint256 } = require("ethers");
 const { RiskModuleParameter } = require("../js/enums");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
-const { grantRole, amountFunction, _W, getTransactionEvent } = require("../js/utils");
-const { initCurrency, deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
+const { grantRole, amountFunction, _W, getTransactionEvent } = require("@ensuro/utils/js/utils");
+const { initCurrency } = require("@ensuro/utils/js/test-utils");
+const { deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
 
 // NOTICE: This tests only cover the bits not already covered by the python tests in the `tests`
 // directory.

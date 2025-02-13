@@ -1,7 +1,8 @@
 const { expect } = require("chai");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
-const { grantRole, grantComponentRole, amountFunction, accessControlMessage } = require("../js/utils");
-const { initCurrency, deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
+const { grantRole, grantComponentRole, amountFunction, accessControlMessage } = require("@ensuro/utils/js/utils");
+const { initCurrency } = require("@ensuro/utils/js/test-utils");
+const { deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
 
 const { ZeroAddress } = hre.ethers;
 
