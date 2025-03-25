@@ -114,7 +114,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   /**
    * @dev Mapping of installed components (see {EToken}, {RiskModule}, {PremiumsAccount}) in the PolicyPool.
    */
-  mapping(IPolicyPoolComponent => Component) private _components;
+  mapping(IPolicyPoolComponent => Component) internal _components;
 
   /**
    * @dev Mapping that stores the active policies (the policyId is the key). It just saves the hash of the policies,
@@ -156,11 +156,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * @dev Upgrade error when the new implementation contract tries to change the `access()`
    */
   error UpgradeCannotChangeAccess();
-
-  /**
-   * @dev Upgrade error when the new implementation contract tries to change the `currency()`
-   */
-  error UpgradeCannotChangeCurrency();
 
   /**
    * @dev Error when trying to add a component that was already added to the PolicyPool
@@ -306,7 +301,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   function _authorizeUpgrade(address newImpl) internal view override onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {
     IPolicyPool newPool = IPolicyPool(newImpl);
     if (newPool.access() != _access) revert UpgradeCannotChangeAccess();
-    if (newPool.currency() != _currency) revert UpgradeCannotChangeCurrency();
+    // if (newPool.currency() != _currency) revert UpgradeCannotChangeCurrency();
+    // We now accept upgrade of the currency. This is a critical operation (as any upgrade), and should be
+    // made carefully checking that all the assets of the protocol are converted to the new currency in the
+    // migration process
   }
 
   /**

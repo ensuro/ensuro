@@ -107,17 +107,6 @@ describe("Test Upgrade contracts", function () {
     );
   });
 
-  it("Shouldn't be able to upgrade PolicyPool changing the Currency", async () => {
-    const { pool, level1, access } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
-    const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
-    const newImpl = await PolicyPool.deploy(access, access); // 2nd should be currency.address
-
-    await expect(pool.connect(level1).upgradeTo(newImpl)).to.be.revertedWithCustomError(
-      pool,
-      "UpgradeCannotChangeCurrency"
-    );
-  });
-
   it("Should be able to upgrade EToken", async () => {
     const { pool, cust, guardian, etk } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
     const EToken = await hre.ethers.getContractFactory("EToken");
