@@ -196,6 +196,24 @@ contract FullSignedBucketRiskModule is SignedBucketRiskModule {
   }
 
   /**
+   * @dev Computes the minimum premium for fully-customizable params
+   *
+   * @param payout Maximum payout of the policy
+   * @param lossProb Probability of having a loss equal to the maximum payout
+   * @param expiration Expiration date of the policy
+   * @param params The parameters for the policy creation (coll ratios, RoCs, fees, etc.)
+   * @return The minimum premium to receive
+   */
+  function getMinimumPremiumFullParams(
+    uint256 payout,
+    uint256 lossProb,
+    uint40 expiration,
+    PackedParams memory params
+  ) public view virtual returns (uint256) {
+    return _getMinimumPremium(payout, lossProb, expiration, uint40(block.timestamp), _unpackParams(params));
+  }
+
+  /**
    * @dev This empty reserved space is put in place to allow future versions to add new
    * variables without shifting down storage in the inheritance chain.
    * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps

@@ -118,6 +118,22 @@ async function defaultPolicyParamsWithBucket(opts, _A = amountFunction(6)) {
   return { bucketId: opts.bucketId || 0, ...ret };
 }
 
+function packParams(unpackedParams) {
+  const wadTo4Decimals = 10n ** 14n;
+  return {
+    moc: (unpackedParams.moc || _W(1)) / wadTo4Decimals,
+    jrCollRatio: (unpackedParams.jrCollRatio || 0n) / wadTo4Decimals,
+    collRatio: (unpackedParams.collRatio || _W(1)) / wadTo4Decimals,
+    ensuroPpFee: (unpackedParams.ensuroPpFee || 0n) / wadTo4Decimals,
+    ensuroCocFee: (unpackedParams.ensuroCocFee || 0n) / wadTo4Decimals,
+    jrRoc: (unpackedParams.jrRoc || 0n) / wadTo4Decimals,
+    srRoc: (unpackedParams.srRoc || _W("0.1")) / wadTo4Decimals, // 10%
+    maxPayoutPerPolicy: 0n, // Not used
+    exposureLimit: 0n, // Not used
+    maxDuration: 0n, // Not used
+  };
+}
+
 async function defaultPolicyParamsWithParams(opts, _A = amountFunction(6)) {
   const ret = await defaultPolicyParams(opts, _A);
   // struct PackedParams {
@@ -132,20 +148,7 @@ async function defaultPolicyParamsWithParams(opts, _A = amountFunction(6)) {
   //   uint32 exposureLimit; // Max exposure (sum of payouts) to be allocated to this module - 0 decimals
   //   uint16 maxDuration; // Max policy duration (in hours)
   // }
-  const optsParams = opts.params || {};
-  const wadTo4Decimals = 10n ** 14n;
-  const params = {
-    moc: (optsParams.moc || _W(1)) / wadTo4Decimals,
-    jrCollRatio: (optsParams.jrCollRatio || 0n) / wadTo4Decimals,
-    collRatio: (optsParams.collRatio || _W(1)) / wadTo4Decimals,
-    ensuroPpFee: (optsParams.ensuroPpFee || 0n) / wadTo4Decimals,
-    ensuroCocFee: (optsParams.ensuroCocFee || 0n) / wadTo4Decimals,
-    jrRoc: (optsParams.jrRoc || 0n) / wadTo4Decimals,
-    srRoc: (optsParams.srRoc || _W("0.1")) / wadTo4Decimals, // 10%
-    maxPayoutPerPolicy: 0n, // Not used
-    exposureLimit: 0n, // Not used
-    maxDuration: 0n, // Not used
-  };
+  const params = packParams(opts.params || {});
   return { params, ...ret };
 }
 
@@ -164,6 +167,42 @@ function defaultBucketParams({ moc, jrCollRatio, collRatio, ensuroPpFee, ensuroC
   };
 }
 
+const SECONDS_IN_YEAR = 3600n * 24n * 365n;
+
+function computePremiumComposition(payout, lossProb, expiration, params, premium = undefined, now = undefined) {
+  const purePremium = (((payout * params.moc) / _W(1)) * lossProb) / _W(1);
+  let jrScr = (payout * params.jrCollRatio) / _W(1) - purePremium;
+  if (jrScr < 0n) jrScr = 0n;
+  let srScr = (payout * params.collRatio) / _W(1) - jrScr - purePremium;
+  if (srScr < 0n) srScr = 0n;
+  if (now === undefined) now = BigInt(new Date()) / 1000n;
+  const duration = expiration - now;
+  const jrCoc = (((jrScr * duration) / SECONDS_IN_YEAR) * params.jrRoc) / _W(1);
+  const srCoc = (((srScr * duration) / SECONDS_IN_YEAR) * params.srRoc) / _W(1);
+  const ensuroCommission = ((jrCoc + srCoc) * params.ensuroCocFee) / _W(1) + (purePremium * params.ensuroPpFee) / _W(1);
+  const minPremium = purePremium + ensuroCommission + jrCoc + srCoc;
+  const totalPremium = premium || minPremium;
+  if (premium !== undefined && premium < minPremium) {
+    throw new Error(`Premium (${premium} less than minimum (${minPremium}`);
+  }
+  const partnerCommission = premium === undefined ? 0n : premium - minPremium;
+
+  return {
+    purePremium,
+    jrScr,
+    srScr,
+    jrCoc,
+    srCoc,
+    ensuroCommission,
+    partnerCommission,
+    totalPremium,
+  };
+}
+
+function computeMinimumPremium(payout, lossProb, expiration, params, now = undefined) {
+  return computePremiumComposition(payout, lossProb, expiration, params, undefined, now).totalPremium;
+}
+
 module.exports = {
   defaultPolicyParams,
   defaultPolicyParamsWithBucket,
@@ -176,4 +215,6 @@ module.exports = {
   makeQuoteMessage,
   makeSignedQuote,
   recoverAddress,
+  computeMinimumPremium,
+  packParams,
 };
