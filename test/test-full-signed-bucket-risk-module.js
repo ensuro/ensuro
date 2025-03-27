@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const { _W, accessControlMessage, amountFunction, getTransactionEvent, getRole } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
+const { DAY } = require("@ensuro/utils/js/constants");
 const {
   defaultPolicyParamsWithParams,
   defaultPolicyParamsWithBucket,
@@ -8,6 +9,8 @@ const {
   makeFullQuoteMessage,
   makeSignedQuote,
   recoverAddress,
+  computeMinimumPremium,
+  packParams,
 } = require("../js/utils");
 const { RiskModuleParameter } = require("../js/enums");
 const { deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
@@ -344,6 +347,58 @@ describe("FullSignedBucketRiskModule contract tests", function () {
         .connect(cust)
         .replacePolicyFullParams(policy, ...replacePolicyParams(replacementPolicyParams, replacementPolicySignature))
     ).to.emit(pool, "PolicyReplaced");
+  });
+
+  it("Computes the minimum premium with the send params", async () => {
+    const { rm } = await helpers.loadFixture(deployPoolFixture);
+    const defaultParams = {
+      moc: _W("1.1"),
+      jrCollRatio: _W("0.2"),
+      collRatio: _W("0.8"),
+      ensuroPpFee: _W("0.07"),
+      ensuroCocFee: _W("0.10"),
+      jrRoc: _W("0.40"),
+      srRoc: _W("0.20"),
+    };
+
+    const defaultPayout = _A(1000);
+    const defaultExpiration = 30 * DAY;
+    const defaultLossProb = _W("0.05");
+    const testCases = [
+      {},
+      {
+        params: { jrCollRatio: _W("0.04") },
+      },
+      {
+        expiration: DAY,
+      },
+      {
+        expiration: 500 * DAY,
+      },
+      {
+        payout: 0n,
+      },
+    ];
+
+    for (const testCase of testCases) {
+      const now = await helpers.time.latest();
+      const expiration = now + (testCase.expiration || defaultExpiration);
+      const params = { ...defaultParams, ...(testCase.params || {}) };
+      const minPremiumOnChain = await rm.getMinimumPremiumFullParams(
+        testCase.payout || defaultPayout,
+        testCase.lossProb || defaultLossProb,
+        expiration,
+        packParams(params)
+      );
+      const minPremiumOffChain = computeMinimumPremium(
+        testCase.payout || defaultPayout,
+        testCase.lossProb || defaultLossProb,
+        BigInt(expiration),
+        params,
+        BigInt(now)
+      );
+      expect(minPremiumOnChain).to.closeTo(minPremiumOffChain, _A("0.0001"));
+    }
   });
 });
 
