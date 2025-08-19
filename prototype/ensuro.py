@@ -72,7 +72,7 @@ def only_component_role(*roles):
                 if self.has_role(composed_role, self.running_as):
                     break
             else:
-                raise RevertError(f"AccessControl: account {self.running_as} is missing role {role}")
+                raise RevertError(f"AccessControlUnauthorizedAccount({self.running_as}, {role})")
             return method(self, *args, **kwargs)
 
         return inner
@@ -92,7 +92,7 @@ def only_component_or_global_role(*roles):
                 if self.has_role(role, self.running_as):
                     break
             else:
-                raise RevertError(f"AccessControl: account {self.running_as} is missing role {role}")
+                raise RevertError(f"AccessControlUnauthorizedAccount({self.running_as}, {role})")
             return method(self, *args, **kwargs)
 
         return inner
@@ -116,7 +116,7 @@ def only_component_or_global_or_open_role(*roles):
                 if self.has_role(role, self.running_as):
                     break
             else:
-                raise RevertError(f"AccessControl: account {self.running_as} is missing role {role}")
+                raise RevertError(f"AccessControlUnauthorizedAccount({self.running_as}, {role})")
             return method(self, *args, **kwargs)
 
         return inner
@@ -248,15 +248,14 @@ class RiskModule(AccessControlContract):
         if attr_name in self.pool_set_attr_roles:
             require(
                 self.policy_pool.access.has_role(self.pool_set_attr_roles[attr_name], self._running_as),
-                f"AccessControl: AccessControl: account {self._running_as} is missing role "
-                f"'{self.pool_set_attr_roles[attr_name]}'",
+                f"AccessControlUnauthorizedAccount({self._running_as}, "
+                f"'{self.pool_set_attr_roles[attr_name]}')",
             )
         if attr_name in self.pool_component_set_attr_roles:
             composed_role = f"{self.pool_component_set_attr_roles[attr_name]}-{self.contract_id}"
             require(
                 self.policy_pool.access.has_role(composed_role, self._running_as),
-                f"AccessControl: AccessControl: account {self._running_as} is missing role "
-                f"'{composed_role}'",
+                f"AccessControlUnauthorizedAccount({self._running_as}, '{composed_role}')",
             )
         return super()._validate_setattr(attr_name, value)
 

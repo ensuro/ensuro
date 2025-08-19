@@ -103,7 +103,10 @@ def test_premiums_account_creation(tenv):
 def test_receive_grant(tenv):
     pa = tenv.pa_class()
 
-    with pytest.raises(RevertError, match="transfer amount exceeds allowance|insufficient allowance"):
+    with pytest.raises(
+        RevertError,
+        match="transfer amount exceeds allowance|insufficient allowance|ERC20InsufficientAllowance",
+    ):
         pa.receive_grant(tenv.currency.owner, _W(1000))
 
     tenv.currency.approve(tenv.currency.owner, pa, _W(1000))
@@ -376,7 +379,7 @@ def test_create_and_expire_policy_with_sr_etk(tenv):
     pa.won_pure_premiums.assert_equal(policy.payout * policy.loss_prob * rm.moc)
 
     # Resolve policy_2
-    with pytest.raises(RevertError, match="ERC20: transfer amount exceeds balance"):
+    with pytest.raises(RevertError, match="ERC20: transfer amount exceeds balance|ERC20InsufficientBalance"):
         with pa.thru_policy_pool():
             pa.policy_resolved_with_payout(tenv.currency.owner, policy_2, _W(90))
 
@@ -425,7 +428,7 @@ def test_policy_resolved_with_payout(tenv):
     policy.pure_premium.assert_equal(policy.payout * policy.loss_prob * rm.moc)
 
     # Resolve policy
-    with pytest.raises(RevertError, match="ERC20: transfer amount exceeds balance"):
+    with pytest.raises(RevertError, match="ERC20: transfer amount exceeds balance|ERC20InsufficientBalance"):
         with pa.thru_policy_pool():
             pa.policy_resolved_with_payout(tenv.currency.owner, policy, _W(90))
 

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.28;
 
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
@@ -59,7 +60,7 @@ contract FullSignedBucketRiskModule is SignedBucketRiskModule {
      * - params: packed as a uint256
      * - quoteValidUntil: the maximum validity of the quote
      */
-    bytes32 quoteHash = ECDSA.toEthSignedMessageHash(
+    bytes32 quoteHash = MessageHashUtils.toEthSignedMessageHash(
       abi.encodePacked(
         address(this),
         payout,
@@ -106,7 +107,7 @@ contract FullSignedBucketRiskModule is SignedBucketRiskModule {
     uint40 expiration,
     address onBehalfOf,
     bytes32 policyData,
-    PackedParams memory params,
+    PackedParams calldata params,
     bytes32 quoteSignatureR,
     bytes32 quoteSignatureVS,
     uint40 quoteValidUntil
@@ -166,7 +167,7 @@ contract FullSignedBucketRiskModule is SignedBucketRiskModule {
     uint256 lossProb,
     uint40 expiration,
     bytes32 policyData,
-    PackedParams memory params,
+    PackedParams calldata params,
     bytes32 quoteSignatureR,
     bytes32 quoteSignatureVS,
     uint40 quoteValidUntil

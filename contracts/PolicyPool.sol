@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.28;
 
-import {AddressUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {ERC721Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
@@ -548,8 +547,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     return policy.id;
   }
 
+  // solhint-disable-next-line function-max-lines
   function replacePolicy(
-    Policy.PolicyData memory oldPolicy,
+    Policy.PolicyData calldata oldPolicy,
     Policy.PolicyData memory newPolicy_,
     address payer,
     uint96 internalId
@@ -589,16 +589,13 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     pa.policyReplaced(oldPolicy, newPolicy_);
 
     // Distribute the premium
-    uint256 aux = newPolicy_.purePremium - oldPolicy.purePremium;
-    if (aux > 0) _currency.safeTransferFrom(payer, address(pa), aux);
-    aux = newPolicy_.srCoc - oldPolicy.srCoc;
-    if (aux > 0) _currency.safeTransferFrom(payer, address(pa.seniorEtk()), aux);
-    aux = newPolicy_.jrCoc - oldPolicy.jrCoc;
-    if (aux > 0) _currency.safeTransferFrom(payer, address(pa.juniorEtk()), aux);
-    aux = newPolicy_.ensuroCommission - oldPolicy.ensuroCommission;
-    if (aux > 0) _currency.safeTransferFrom(payer, _treasury, aux);
-    aux = newPolicy_.partnerCommission - oldPolicy.partnerCommission;
-    if (aux > 0 && payer != rm.wallet()) _currency.safeTransferFrom(payer, rm.wallet(), aux);
+    _transferIfNonZero(payer, address(pa), newPolicy_.purePremium, oldPolicy.purePremium);
+    _transferIfNonZero(payer, address(pa.seniorEtk()), newPolicy_.srCoc, oldPolicy.srCoc);
+    _transferIfNonZero(payer, address(pa.juniorEtk()), newPolicy_.jrCoc, oldPolicy.jrCoc);
+    _transferIfNonZero(payer, _treasury, newPolicy_.ensuroCommission, oldPolicy.ensuroCommission);
+    address rmWallet = rm.wallet();
+    if (payer != rmWallet)
+      _transferIfNonZero(payer, rmWallet, newPolicy_.partnerCommission, oldPolicy.partnerCommission);
     /**
      * This code does up to 5 ERC20 transfers. This can be avoided to reduce the gas cost, by implementing delayed
      * transfers. This might be considered in the future, but to avoid increasing the complexity and since so far we
@@ -609,6 +606,13 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     emit PolicyReplaced(rm, oldPolicy.id, newPolicy_.id);
     _notifyReplacement(oldPolicy.id, newPolicy_.id);
     return newPolicy_.id;
+  }
+
+  function _transferIfNonZero(address payer, address target, uint256 new_, uint256 old_) internal {
+    uint256 aux = new_ - old_;
+    if (aux != 0) {
+      _currency.safeTransferFrom(payer, target, aux);
+    }
   }
 
   function _validatePolicy(Policy.PolicyData memory policy) internal view {
@@ -625,7 +629,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   function expirePolicies(Policy.PolicyData[] calldata policies) external whenNotPaused {
-    for (uint256 i = 0; i < policies.length; i++) {
+    for (uint256 i = 0; i < policies.length; ++i) {
       require(policies[i].expiration <= block.timestamp, "Policy not expired yet");
       _resolvePolicy(policies[i], 0, true);
     }
@@ -701,7 +705,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    */
   function _notifyPayout(uint256 policyId, uint256 payout) internal {
     address customer = ownerOf(policyId);
-    if (!AddressUpgradeable.isContract(customer)) return;
     if (!ERC165Checker.supportsInterface(customer, type(IPolicyHolder).interfaceId)) return;
 
     bytes4 retval = IPolicyHolder(customer).onPayoutReceived(_msgSender(), address(this), policyId, payout);
@@ -713,7 +716,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    */
   function _notifyExpiration(uint256 policyId) internal {
     address customer = ownerOf(policyId);
-    if (!AddressUpgradeable.isContract(customer)) return;
     if (!ERC165Checker.supportsInterface(customer, type(IPolicyHolder).interfaceId)) return;
 
     try IPolicyHolder(customer).onPolicyExpired{gas: HOLDER_GAS_LIMIT}(_msgSender(), address(this), policyId) returns (
@@ -731,7 +733,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    */
   function _notifyReplacement(uint256 oldPolicyId, uint256 newPolicyId) internal {
     address customer = ownerOf(oldPolicyId);
-    if (!AddressUpgradeable.isContract(customer)) return;
     if (!ERC165Checker.supportsInterface(customer, type(IPolicyHolderV2).interfaceId)) return;
 
     bytes4 retval = IPolicyHolderV2(customer).onPolicyReplaced(_msgSender(), address(this), oldPolicyId, newPolicyId);
@@ -757,18 +758,13 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * Events:
    * - Emits {ComponentChanged} with action = setBaseURI and the address of the caller.
    */
-  function setBaseURI(string memory nftBaseURI_) external onlyRole(LEVEL2_ROLE) {
+  function setBaseURI(string calldata nftBaseURI_) external onlyRole(LEVEL2_ROLE) {
     _nftBaseURI = nftBaseURI_;
     emit ComponentChanged(IAccessManager.GovernanceActions.setBaseURI, _msgSender());
   }
 
-  function _beforeTokenTransfer(
-    address from,
-    address to,
-    uint256 tokenId,
-    uint256 batchSize
-  ) internal override whenNotPaused {
-    super._beforeTokenTransfer(from, to, tokenId, batchSize);
+  function _update(address to, uint256 tokenId, address auth) internal override whenNotPaused returns (address) {
+    return super._update(to, tokenId, auth);
   }
 
   /**

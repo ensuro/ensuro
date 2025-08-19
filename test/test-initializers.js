@@ -65,28 +65,25 @@ describe("Test Initialize contracts", function () {
   });
 
   it("Does not allow reinitializing PolicyPool", async () => {
-    await expect(pool.initialize("PP", "PP", ZeroAddress)).to.be.revertedWith(
-      "Initializable: contract is already initialized"
-    );
+    await expect(pool.initialize("PP", "PP", ZeroAddress)).to.be.revertedWithCustomError(pool, "InvalidInitialization");
   });
 
   it("Does not allow reinitializing Etoken", async () => {
-    await expect(etk.initialize("ETK", "ETK", 0, 0)).to.be.revertedWith(
-      "Initializable: contract is already initialized"
-    );
+    await expect(etk.initialize("ETK", "ETK", 0, 0)).to.be.revertedWithCustomError(pool, "InvalidInitialization");
   });
 
   it("Does not allow reinitializing AccessManager", async () => {
-    await expect(accessManager.initialize()).to.be.revertedWith("Initializable: contract is already initialized");
+    await expect(accessManager.initialize()).to.be.revertedWithCustomError(pool, "InvalidInitialization");
   });
 
   it("Does not allow reinitializing PremiumsAccount", async () => {
-    await expect(premiumsAccount.initialize()).to.be.revertedWith("Initializable: contract is already initialized");
+    await expect(premiumsAccount.initialize()).to.be.revertedWithCustomError(pool, "InvalidInitialization");
   });
 
   it("Does not allow reinitializing RiskModule", async () => {
-    await expect(rm.initialize("RM", 0, 0, 0, 0, 0, ZeroAddress)).to.be.revertedWith(
-      "Initializable: contract is already initialized"
+    await expect(rm.initialize("RM", 0, 0, 0, 0, 0, ZeroAddress)).to.be.revertedWithCustomError(
+      pool,
+      "InvalidInitialization"
     );
   });
 
@@ -96,8 +93,9 @@ describe("Test Initialize contracts", function () {
       const initRm = await createRiskModule(pool, premiumsAccount, Factory, {
         extraConstructorArgs: contract === "SignedQuoteRiskModule" ? [false] : [],
       });
-      await expect(initRm.initialize("RM", 0, 0, 0, 0, 0, ZeroAddress)).to.be.revertedWith(
-        "Initializable: contract is already initialized"
+      await expect(initRm.initialize("RM", 0, 0, 0, 0, 0, ZeroAddress)).to.be.revertedWithCustomError(
+        pool,
+        "InvalidInitialization"
       );
     });
   });
@@ -109,6 +107,6 @@ describe("Test Initialize contracts", function () {
       kind: "uups",
       constructorArgs: [poolAddr],
     });
-    await expect(wl.initialize([2, 1, 1, 2])).to.be.revertedWith("Initializable: contract is already initialized");
+    await expect(wl.initialize([2, 1, 1, 2])).to.be.revertedWithCustomError(pool, "InvalidInitialization");
   });
 });

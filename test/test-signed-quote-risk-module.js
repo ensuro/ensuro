@@ -1,6 +1,12 @@
 const { expect } = require("chai");
 const _ = require("lodash");
-const { accessControlMessage, amountFunction, getTransactionEvent, getRole } = require("@ensuro/utils/js/utils");
+const {
+  amountFunction,
+  getTransactionEvent,
+  getRole,
+  getComponentRole,
+  getAddress,
+} = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const {
   defaultPolicyParams,
@@ -169,7 +175,7 @@ variants.forEach((variant) => {
     }
 
     it("Creates a policy if the right signature is provided", async () => {
-      const { rm, pool, currency } = await helpers.loadFixture(deployPoolFixture);
+      const { rm, pool, currency, accessManager } = await helpers.loadFixture(deployPoolFixture);
       const policyParams = await variant.defaultPolicyParams({ rm: rm });
       const signature = await variant.makeSignedQuote(signer, policyParams);
       const tx = await variant.newPolicy(rm, creator, policyParams, cust, signature);
@@ -191,9 +197,9 @@ variants.forEach((variant) => {
       const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
 
       // Tests resolution, only by an authorized role
-      await expect(rm.connect(anon).resolvePolicy([...newPolicyEvt.args[1]], policyParams.payout)).to.be.revertedWith(
-        accessControlMessage(anon, rm, "RESOLVER_ROLE")
-      );
+      await expect(
+        rm.connect(anon).resolvePolicy([...newPolicyEvt.args[1]], policyParams.payout)
+      ).to.be.revertedWithACError(accessManager, anon, getComponentRole(getAddress(rm), "RESOLVER_ROLE"));
 
       await expect(() =>
         rm.connect(resolver).resolvePolicy([...newPolicyEvt.args[1]], policyParams.payout)
@@ -201,13 +207,14 @@ variants.forEach((variant) => {
     });
 
     it("Rejects a policy if signed by unauthorized user", async () => {
-      const { rm } = await helpers.loadFixture(deployPoolFixture);
+      const { rm, accessManager } = await helpers.loadFixture(deployPoolFixture);
       const policyParams = await variant.defaultPolicyParams({ rm: rm });
       const signature = await variant.makeSignedQuote(anon, policyParams);
-      await expect(variant.newPolicy(rm, creator, policyParams, cust, signature)).to.be.revertedWith(
-        accessControlMessage(
-          anon,
-          rm,
+      await expect(variant.newPolicy(rm, creator, policyParams, cust, signature)).to.be.revertedWithACError(
+        accessManager,
+        anon,
+        getComponentRole(
+          getAddress(rm),
           variant.contract === "FullSignedBucketRiskModule" ? "FULL_PRICER_ROLE" : "PRICER_ROLE"
         )
       );
@@ -221,13 +228,14 @@ variants.forEach((variant) => {
         r: "0xbf372ca3ebecfe59ac256f17697941bbe63302aced610e8b0e3646f743c7beb2",
         yParityAndS: "0xa82e22387fca439f316d78ca566f383218ab8ae1b3e830178c9c82cbd16749c0",
       };
-      await expect(variant.newPolicy(rm, creator, policyParams, cust, signature)).to.be.revertedWith(
-        "ECDSA: invalid signature"
+      await expect(variant.newPolicy(rm, creator, policyParams, cust, signature)).to.be.revertedWithCustomError(
+        rm,
+        "ECDSAInvalidSignature"
       );
     });
 
     it("Rejects a policy if quote expired or validUntil changed", async () => {
-      const { rm } = await helpers.loadFixture(deployPoolFixture);
+      const { rm, accessManager } = await helpers.loadFixture(deployPoolFixture);
       const now = await helpers.time.latest();
       const policyParams = await variant.defaultPolicyParams({ rm: rm, validUntil: now - 1000 });
       const signature = await variant.makeSignedQuote(signer, policyParams);
@@ -240,10 +248,11 @@ variants.forEach((variant) => {
       // the required permission with a probability of (1 - 1/2**160)
       policyParams.validUntil = now + 2000;
       const recoveredAddress = variant.recoverAddress(policyParams, signature);
-      await expect(variant.newPolicy(rm, creator, policyParams, cust, signature)).to.be.revertedWith(
-        accessControlMessage(
-          recoveredAddress,
-          rm,
+      await expect(variant.newPolicy(rm, creator, policyParams, cust, signature)).to.be.revertedWithACError(
+        accessManager,
+        recoveredAddress,
+        getComponentRole(
+          getAddress(rm),
           variant.contract === "FullSignedBucketRiskModule" ? "FULL_PRICER_ROLE" : "PRICER_ROLE"
         )
       );
@@ -255,17 +264,18 @@ variants.forEach((variant) => {
       await expect(rm.connect(guardian).pause()).to.emit(rm, "Paused");
       const policyParams = await variant.defaultPolicyParams({ rm: rm });
       const signature = await variant.makeSignedQuote(anon, policyParams);
-      await expect(variant.newPolicy(rm, creator, policyParams, cust, signature)).to.be.revertedWith(
-        "Pausable: paused"
+      await expect(variant.newPolicy(rm, creator, policyParams, cust, signature)).to.be.revertedWithCustomError(
+        rm,
+        "EnforcedPause"
       );
 
       if (variant.contract === "SignedQuoteRiskModule") {
-        await expect(variant.newPolicy(rm, creator, policyParams, cust, signature, "newPolicyFull")).to.be.revertedWith(
-          "Pausable: paused"
-        );
+        await expect(
+          variant.newPolicy(rm, creator, policyParams, cust, signature, "newPolicyFull")
+        ).to.be.revertedWithCustomError(rm, "EnforcedPause");
         await expect(
           variant.newPolicy(rm, creator, policyParams, cust, signature, "newPolicyPaidByHolder")
-        ).to.be.revertedWith("Pausable: paused");
+        ).to.be.revertedWithCustomError(rm, "EnforcedPause");
       }
 
       // Unpause and create a policy
@@ -284,10 +294,11 @@ variants.forEach((variant) => {
 
       await expect(
         variant.resolvePolicyFullPayout(rm.connect(resolver), [...newPolicyEvt.args[1]], true)
-      ).to.be.revertedWith("Pausable: paused");
+      ).to.be.revertedWithCustomError(rm, "EnforcedPause");
 
-      await expect(rm.connect(resolver).resolvePolicy([...newPolicyEvt.args[1]], _A(10))).to.be.revertedWith(
-        "Pausable: paused"
+      await expect(rm.connect(resolver).resolvePolicy([...newPolicyEvt.args[1]], _A(10))).to.be.revertedWithCustomError(
+        rm,
+        "EnforcedPause"
       );
 
       await expect(rm.connect(guardian).unpause()).to.emit(rm, "Unpaused");
@@ -298,27 +309,29 @@ variants.forEach((variant) => {
     });
 
     it("Rejects policy creation for users without POLICY_CREATOR_ROLE", async () => {
-      const { rm, currency } = await helpers.loadFixture(deployPoolFixture);
+      const { rm, currency, accessManager } = await helpers.loadFixture(deployPoolFixture);
       const policyParams = await variant.defaultPolicyParams({ rm: rm });
       const signature = await variant.makeSignedQuote(signer, policyParams);
-      await expect(variant.newPolicy(rm, anon, policyParams, cust, signature)).to.be.revertedWith(
-        accessControlMessage(anon, rm, "POLICY_CREATOR_ROLE")
+      await expect(variant.newPolicy(rm, anon, policyParams, cust, signature)).to.be.revertedWithACError(
+        accessManager,
+        anon,
+        getComponentRole(getAddress(rm), "POLICY_CREATOR_ROLE")
       );
 
       if (variant.contract === "SignedQuoteRiskModule") {
         await currency.connect(cust).approve(anon, _A(500));
         await expect(
           variant.newPolicy(rm, anon, policyParams, cust, signature, "newPolicyPaidByHolder")
-        ).to.be.revertedWith(accessControlMessage(anon, rm, "POLICY_CREATOR_ROLE"));
-        await expect(variant.newPolicy(rm, anon, policyParams, cust, signature, "newPolicyFull")).to.be.revertedWith(
-          accessControlMessage(anon, rm, "POLICY_CREATOR_ROLE")
-        );
+        ).to.be.revertedWithACError(accessManager, anon, getComponentRole(getAddress(rm), "POLICY_CREATOR_ROLE"));
+        await expect(
+          variant.newPolicy(rm, anon, policyParams, cust, signature, "newPolicyFull")
+        ).to.be.revertedWithACError(accessManager, anon, getComponentRole(getAddress(rm), "POLICY_CREATOR_ROLE"));
       }
     });
 
     if (variant.contract === "SignedQuoteRiskModule") {
       it("Creates a policy where using newPolicyFull", async () => {
-        const { rm, pool, currency } = await helpers.loadFixture(deployPoolFixture);
+        const { rm, pool, currency, accessManager } = await helpers.loadFixture(deployPoolFixture);
         const policyParams = await variant.defaultPolicyParams({ rm: rm, premium: _A(200) });
         const signature = await variant.makeSignedQuote(signer, policyParams);
 
@@ -329,7 +342,7 @@ variants.forEach((variant) => {
         // Tests resolution, only by an authorized role
         await expect(
           variant.resolvePolicyFullPayout(rm.connect(anon), [...newPolicyEvt.args[1]], true)
-        ).to.be.revertedWith(accessControlMessage(anon, rm, "RESOLVER_ROLE"));
+        ).to.be.revertedWithACError(accessManager, anon, getComponentRole(getAddress(rm), "RESOLVER_ROLE"));
 
         await expect(() =>
           variant.resolvePolicyFullPayout(rm.connect(resolver), [...newPolicyEvt.args[1]], true)
@@ -351,7 +364,7 @@ variants.forEach((variant) => {
       });
 
       it("Creates a policy where payer != msg.sender using newPolicyPaidByHolder", async () => {
-        const { rm, pool, currency } = await helpers.loadFixture(deployPoolFixture);
+        const { rm, pool, currency, accessManager } = await helpers.loadFixture(deployPoolFixture);
         const policyParams = await variant.defaultPolicyParams({ rm: rm, premium: _A(200) });
         const signature = await variant.makeSignedQuote(signer, policyParams);
         await expect(
@@ -368,7 +381,7 @@ variants.forEach((variant) => {
         // Tests resolution, only by an authorized role
         await expect(
           variant.resolvePolicyFullPayout(rm.connect(anon), [...newPolicyEvt.args[1]], true)
-        ).to.be.revertedWith(accessControlMessage(anon, rm, "RESOLVER_ROLE"));
+        ).to.be.revertedWithACError(accessManager, anon, getComponentRole(getAddress(rm), "RESOLVER_ROLE"));
 
         await expect(() =>
           variant.resolvePolicyFullPayout(rm.connect(resolver), [...newPolicyEvt.args[1]], true)

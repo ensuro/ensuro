@@ -34,21 +34,23 @@ describe("PoliyHolder policy creation handling", () => {
   });
 
   it("Receiving with a holder that fails empty reverts the transaction", async () => {
-    const { rm, ph, backend } = await helpers.loadFixture(deployPoolFixture);
+    const { rm, ph, backend, pool } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
     await ph.setFail(true);
     await ph.setEmptyRevert(true);
-    await expect(rm.connect(backend).newPolicy(...policyToArgs(policy, backend, ph, 1))).to.be.revertedWith(
-      "ERC721: transfer to non ERC721Receiver implementer"
+    await expect(rm.connect(backend).newPolicy(...policyToArgs(policy, backend, ph, 1))).to.be.revertedWithCustomError(
+      pool,
+      "ERC721InvalidReceiver"
     );
   });
 
   it("Receiving with a holder that returns a bad value reverts the transaction", async () => {
-    const { rm, ph, backend } = await helpers.loadFixture(deployPoolFixture);
+    const { rm, ph, backend, pool } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
     await ph.setBadlyImplemented(true);
-    await expect(rm.connect(backend).newPolicy(...policyToArgs(policy, backend, ph, 1))).to.be.revertedWith(
-      "ERC721: transfer to non ERC721Receiver implementer"
+    await expect(rm.connect(backend).newPolicy(...policyToArgs(policy, backend, ph, 1))).to.be.revertedWithCustomError(
+      pool,
+      "ERC721InvalidReceiver"
     );
   });
 });

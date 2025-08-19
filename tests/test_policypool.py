@@ -376,7 +376,10 @@ def test_walkthrough(tenv):
 
     pool.access.grant_component_role(premiums_account, "REPAY_LOANS_ROLE", premiums_account.owner)
 
-    with pytest.raises(RevertError, match="transfer amount exceeds allowance|insufficient allowance"):
+    with pytest.raises(
+        RevertError,
+        match="transfer amount exceeds allowance|insufficient allowance|ERC20InsufficientAllowance",
+    ):
         pool.deposit("eUSD1YEAR", "LP1", _W(1000))
 
     assert pool.currency.balance_of("LP1") == _W(1000)  # unchanged
@@ -687,7 +690,7 @@ def test_nfts(tenv):
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(3503), assert_deposit=False)
     usd.approve("CUST1", pool.contract_id, _W(100))
-    with pytest.raises(RevertError, match="Already exists|token already minted"):
+    with pytest.raises(RevertError, match="Already exists|token already minted|ERC721InvalidSender"):
         policy = rm.new_policy(
             payout=_W(1800),
             premium=_W(50),

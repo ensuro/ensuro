@@ -30,7 +30,7 @@ describe("Storage Gaps", () => {
 
       // Check the storage aligns to 50 slots (+1 because of https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable/issues/182)
       const finalSlot = parseInt(gap.slot) + Math.floor(parseInt(types[gap.type].numberOfBytes) / 32);
-      expect(finalSlot % 50).to.equal(1);
+      expect(finalSlot % 50).to.equal(0);
     });
   }
 });

@@ -1,12 +1,5 @@
 const { expect } = require("chai");
-const {
-  amountFunction,
-  _W,
-  grantComponentRole,
-  grantRole,
-  getTransactionEvent,
-  accessControlMessage,
-} = require("@ensuro/utils/js/utils");
+const { amountFunction, _W, grantComponentRole, grantRole, getTransactionEvent } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { deployPool, deployPremiumsAccount, addRiskModule, makePolicy, addEToken } = require("../js/test-utils");
 const { ComponentKind, ComponentStatus } = require("../js/enums");
@@ -68,12 +61,12 @@ describe("Test add, remove and change status of PolicyPool components", function
     await expect(pool.connect(lp).deposit(etk, _A(300))).not.to.be.reverted;
 
     // Only LEVEL1 can deprecate
-    await expect(pool.connect(johndoe).changeComponentStatus(etk, ComponentStatus.deprecated)).to.be.revertedWith(
-      accessControlMessage(johndoe, null, "LEVEL1_ROLE")
-    );
-    await expect(pool.connect(guardian).changeComponentStatus(etk, ComponentStatus.deprecated)).to.be.revertedWith(
-      accessControlMessage(guardian, null, "LEVEL1_ROLE")
-    );
+    await expect(
+      pool.connect(johndoe).changeComponentStatus(etk, ComponentStatus.deprecated)
+    ).to.be.revertedWithACError(accessManager, johndoe, "LEVEL1_ROLE");
+    await expect(
+      pool.connect(guardian).changeComponentStatus(etk, ComponentStatus.deprecated)
+    ).to.be.revertedWithACError(accessManager, guardian, "LEVEL1_ROLE");
     await expect(pool.connect(level1).changeComponentStatus(etk, ComponentStatus.deprecated)).not.to.be.reverted;
     expect(await pool.getComponentStatus(etk)).to.be.equal(ComponentStatus.deprecated);
 
@@ -85,8 +78,10 @@ describe("Test add, remove and change status of PolicyPool components", function
     await expect(pool.connect(lp).withdraw(etk, _A(200))).not.to.be.reverted;
 
     // Only GUARDIAN can suspend
-    await expect(pool.connect(level1).changeComponentStatus(etk, ComponentStatus.suspended)).to.be.revertedWith(
-      accessControlMessage(level1, null, "GUARDIAN_ROLE")
+    await expect(pool.connect(level1).changeComponentStatus(etk, ComponentStatus.suspended)).to.be.revertedWithACError(
+      accessManager,
+      level1,
+      "GUARDIAN_ROLE"
     );
     await expect(pool.connect(guardian).changeComponentStatus(etk, ComponentStatus.suspended)).not.to.be.reverted;
     expect(await pool.getComponentStatus(etk)).to.be.equal(ComponentStatus.suspended);
@@ -98,8 +93,10 @@ describe("Test add, remove and change status of PolicyPool components", function
     );
 
     // Only LEVEL1 can reactivate
-    await expect(pool.connect(guardian).changeComponentStatus(etk, ComponentStatus.active)).to.be.revertedWith(
-      accessControlMessage(guardian, null, "LEVEL1_ROLE")
+    await expect(pool.connect(guardian).changeComponentStatus(etk, ComponentStatus.active)).to.be.revertedWithACError(
+      accessManager,
+      guardian,
+      "LEVEL1_ROLE"
     );
     await expect(pool.connect(level1).changeComponentStatus(etk, ComponentStatus.active)).not.to.be.reverted;
     expect(await pool.getComponentStatus(etk)).to.be.equal(ComponentStatus.active);
@@ -113,8 +110,10 @@ describe("Test add, remove and change status of PolicyPool components", function
 
     await expect(pool.connect(lp).withdraw(etk, MaxUint256)).not.to.be.reverted;
 
-    await expect(pool.connect(guardian).removeComponent(etk)).to.be.revertedWith(
-      accessControlMessage(guardian, null, "LEVEL1_ROLE") // Only LEVEL1 can remove
+    await expect(pool.connect(guardian).removeComponent(etk)).to.be.revertedWithACError(
+      accessManager,
+      guardian,
+      "LEVEL1_ROLE" // Only LEVEL1 can remove
     );
 
     await expect(pool.connect(level1).removeComponent(etk)).not.to.be.reverted;
@@ -156,8 +155,10 @@ describe("Test add, remove and change status of PolicyPool components", function
     policy = newPolicyEvt.args.policy;
 
     // Only GUARDIAN can suspend
-    await expect(pool.connect(level1).changeComponentStatus(rm, ComponentStatus.suspended)).to.be.revertedWith(
-      accessControlMessage(level1, null, "GUARDIAN_ROLE")
+    await expect(pool.connect(level1).changeComponentStatus(rm, ComponentStatus.suspended)).to.be.revertedWithACError(
+      accessManager,
+      level1,
+      "GUARDIAN_ROLE"
     );
     await expect(pool.connect(guardian).changeComponentStatus(rm, ComponentStatus.suspended)).not.to.be.reverted;
     expect(await pool.getComponentStatus(rm)).to.be.equal(ComponentStatus.suspended);

@@ -1,11 +1,12 @@
 const { expect } = require("chai");
 const {
   _W,
-  accessControlMessage,
   amountFunction,
   getTransactionEvent,
   grantRole,
   getRole,
+  getComponentRole,
+  getAddress,
 } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const {
@@ -140,22 +141,30 @@ variants.forEach((variant) => {
       const { rm, accessManager } = await helpers.loadFixture(deployPoolFixture);
 
       // level1
-      await expect(rm.connect(level1).setBucketParams(1, defaultBucketParams({}))).to.be.revertedWith(
-        accessControlMessage(level1, rm, "LEVEL2_ROLE")
+      await expect(rm.connect(level1).setBucketParams(1, defaultBucketParams({}))).to.be.revertedWithACError(
+        accessManager,
+        level1,
+        getComponentRole(getAddress(rm), "LEVEL2_ROLE")
       );
-      await expect(rm.connect(level1).deleteBucket(1)).to.be.revertedWith(
-        accessControlMessage(level1, rm, "LEVEL2_ROLE")
+      await expect(rm.connect(level1).deleteBucket(1)).to.be.revertedWithACError(
+        accessManager,
+        level1,
+        getComponentRole(getAddress(rm), "LEVEL2_ROLE")
       );
       await grantRole(hre, accessManager, "LEVEL1_ROLE", level1);
       await expect(rm.connect(level1).setBucketParams(1, defaultBucketParams({}))).not.to.be.reverted;
       await expect(rm.connect(level1).deleteBucket(1)).not.to.be.reverted;
 
       // level2
-      await expect(rm.connect(level2).setBucketParams(2, defaultBucketParams({}))).to.be.revertedWith(
-        accessControlMessage(level2, rm, "LEVEL2_ROLE")
+      await expect(rm.connect(level2).setBucketParams(2, defaultBucketParams({}))).to.be.revertedWithACError(
+        accessManager,
+        level2,
+        getComponentRole(getAddress(rm), "LEVEL2_ROLE")
       );
-      await expect(rm.connect(level2).deleteBucket(2)).to.be.revertedWith(
-        accessControlMessage(level2, rm, "LEVEL2_ROLE")
+      await expect(rm.connect(level2).deleteBucket(2)).to.be.revertedWithACError(
+        accessManager,
+        level2,
+        getComponentRole(getAddress(rm), "LEVEL2_ROLE")
       );
       await grantRole(hre, accessManager, "LEVEL2_ROLE", level2);
       await expect(rm.connect(level2).setBucketParams(2, defaultBucketParams({}))).not.to.be.reverted;
@@ -382,11 +391,11 @@ variants.forEach((variant) => {
 
       await expect(
         rm.replacePolicy(policy, ...replacePolicyParams(replacementPolicyParams, replacementPolicySignature))
-      ).to.be.revertedWith("Pausable: paused");
+      ).to.be.revertedWithCustomError(rm, "EnforcedPause");
     });
 
     it("Only allows REPLACER_ROLE to replace policies", async () => {
-      const { rm, pool, policy, policyParams } = await helpers.loadFixture(riskModuleWithPolicyFixture);
+      const { rm, pool, policy, policyParams, accessManager } = await helpers.loadFixture(riskModuleWithPolicyFixture);
 
       // Replace it with a higher payout
       const replacementPolicyParams = await defaultPolicyParamsWithBucket({
@@ -402,7 +411,7 @@ variants.forEach((variant) => {
       // Anon cannot replace
       await expect(
         rm.replacePolicy(policy, ...replacePolicyParams(replacementPolicyParams, replacementPolicySignature))
-      ).to.be.revertedWith(accessControlMessage(owner, rm, "REPLACER_ROLE"));
+      ).to.be.revertedWithACError(accessManager, owner, getComponentRole(getAddress(rm), "REPLACER_ROLE"));
 
       // Authorized user can replace
       await expect(
@@ -415,7 +424,7 @@ variants.forEach((variant) => {
     });
 
     it("Performs policy replacement when a valid signature is presented", async () => {
-      const { rm, pool, policy, policyParams } = await helpers.loadFixture(riskModuleWithPolicyFixture);
+      const { rm, pool, policy, policyParams, accessManager } = await helpers.loadFixture(riskModuleWithPolicyFixture);
 
       const replacementPolicyParams = await defaultPolicyParamsWithBucket({
         rm: rm,
@@ -432,7 +441,7 @@ variants.forEach((variant) => {
       const badAddress = recoverAddress(badParams, replacementPolicySignature, makeBucketQuoteMessage);
       await expect(
         rm.connect(cust).replacePolicy(policy, ...replacePolicyParams(badParams, replacementPolicySignature))
-      ).to.be.revertedWith(accessControlMessage(badAddress, rm, "PRICER_ROLE"));
+      ).to.be.revertedWithACError(accessManager, badAddress, getComponentRole(getAddress(rm), "PRICER_ROLE"));
 
       // Good signature is accepted
       await expect(

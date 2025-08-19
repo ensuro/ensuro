@@ -134,7 +134,7 @@ def test_getset_rm_parameters(tenv):
         old_value = getattr(rm, attr_name)
         assert old_value != new_value
         for user in non_auth_users:
-            with pytest.raises(RevertError, match="AccessControl"), rm.as_(user):
+            with pytest.raises(RevertError, match="AccessControlUnauthorizedAccount"), rm.as_(user):
                 setattr(rm, attr_name, new_value)
 
         with rm.as_(authorized_user):
@@ -162,7 +162,7 @@ def test_set_rm_parameter_overflow(tenv):
     tenv.pool_access.grant_role("LEVEL2_ROLE", "ADMIN")
     tenv.pool_access.grant_role("LEVEL1_ROLE", "ADMIN")
 
-    with rm.as_("ADMIN"), pytest.raises(RevertError, match="SafeCast: "):
+    with rm.as_("ADMIN"), pytest.raises(RevertError, match="SafeCastOverflowedUintDowncast"):
         rm.exposure_limit = tenv.A(2**40 + 1)
 
     # Verifies OK tweaks
@@ -180,7 +180,7 @@ def test_set_rm_parameter_overflow(tenv):
     ]
 
     for attr_name, attr_value in test_overflows:
-        with rm.as_("ADMIN"), pytest.raises(RevertError, match="SafeCast: "):
+        with rm.as_("ADMIN"), pytest.raises(RevertError, match="SafeCastOverflowedUintDowncast"):
             setattr(rm, attr_name, attr_value)
 
 
@@ -207,7 +207,7 @@ def test_new_policy(tenv):
 
     assert rm.ensuro_coc_fee == _W("0.03")
 
-    with rm.as_("JOHN_DOE"), pytest.raises(RevertError, match="is missing role"):
+    with rm.as_("JOHN_DOE"), pytest.raises(RevertError, match="AccessControlUnauthorizedAccount"):
         policy = rm.new_policy(tenv.A(36), tenv.A(1), _W(1 / 37), expiration, "CUST1", 123)
 
     tenv.pool_access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
@@ -236,7 +236,7 @@ def test_new_policy(tenv):
     )
     policy.sr_interest_rate.assert_equal(_W("0.01"))
 
-    with rm.as_("JOHN_DOE"), pytest.raises(RevertError, match="is missing role"):
+    with rm.as_("JOHN_DOE"), pytest.raises(RevertError, match="AccessControlUnauthorizedAccount"):
         rm.resolve_policy(policy.id, True)
 
     tenv.pool_access.grant_component_role(rm, "RESOLVER_ROLE", "JOE_THE_ORACLE")
@@ -276,7 +276,7 @@ def test_moc(tenv):
     policy.ensuro_commission.assert_equal(tenv.A(36 * 1 / 37 * 0.01))
     assert policy.id == rm.make_policy_id(111)
 
-    with pytest.raises(RevertError, match="missing role"):
+    with pytest.raises(RevertError, match="AccessControlUnauthorizedAccount"):
         rm.moc = _W("1.01")
 
     tenv.pool_access.grant_role("LEVEL2_ROLE", "DAO")

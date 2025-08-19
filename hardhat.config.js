@@ -45,7 +45,7 @@ function readEnvAccounts(network) {
  */
 module.exports = {
   solidity: {
-    version: "0.8.28",
+    version: "0.8.30",
     settings: {
       optimizer: {
         enabled: true,

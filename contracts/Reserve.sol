@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.28;
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
@@ -60,8 +60,7 @@ abstract contract Reserve is PolicyPoolComponent {
     address am = address(assetManager());
     if (am != address(0)) {
       bytes memory result = am.functionDelegateCall(
-        abi.encodeWithSelector(IAssetManager.refillWallet.selector, amount),
-        "Error refilling wallet"
+        abi.encodeWithSelector(IAssetManager.refillWallet.selector, amount)
       );
       return abi.decode(result, (uint256));
     }
@@ -214,7 +213,7 @@ abstract contract Reserve is PolicyPoolComponent {
    * @return Returns the return value of the function called, to be decoded by the receiver.
    */
   function forwardToAssetManager(
-    bytes memory functionCall
+    bytes calldata functionCall
   ) external onlyGlobalOrComponentRole(LEVEL2_ROLE) returns (bytes memory) {
     return address(assetManager()).functionDelegateCall(functionCall);
   }

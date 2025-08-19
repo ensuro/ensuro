@@ -2,7 +2,8 @@ const { expect } = require("chai");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
-const { getRole, getComponentRole, accessControlMessage } = require("@ensuro/utils/js/utils");
+const { getRole, getComponentRole } = require("@ensuro/utils/js/utils");
+require("@ensuro/utils/js/test-utils"); // To load revertedWithACError
 
 describe("AccessManager", () => {
   let backend, signers, user;
@@ -47,8 +48,10 @@ describe("AccessManager", () => {
     expect(await accessManager.hasComponentRole(someComponent, getRole("SOME_ROLE"), user, false)).to.equal(true);
 
     // backend cannot grant the role globally
-    await expect(accessManager.connect(backend).grantRole(getRole("SOME_ROLE"), user)).to.be.revertedWith(
-      accessControlMessage(backend, null, "DEFAULT_ADMIN_ROLE")
+    await expect(accessManager.connect(backend).grantRole(getRole("SOME_ROLE"), user)).to.be.revertedWithACError(
+      accessManager,
+      backend,
+      "DEFAULT_ADMIN_ROLE"
     );
   });
 
@@ -108,7 +111,7 @@ describe("AccessManager", () => {
     // random user's can't set role admin
     await expect(
       accessManager.connect(backend).setRoleAdmin(getRole("SOME_ROLE"), getRole("SOME_ROLE_ADMIN"))
-    ).to.be.revertedWith(accessControlMessage(backend, null, "DEFAULT_ADMIN_ROLE"));
+    ).to.be.revertedWithACError(accessManager, backend, "DEFAULT_ADMIN_ROLE");
 
     // current role admin can
     await accessManager.grantRole(getRole("DEFAULT_ADMIN_ROLE"), backend);
@@ -118,7 +121,7 @@ describe("AccessManager", () => {
     // once the admin was changed, old admin can't change it again
     await expect(
       accessManager.connect(backend).setRoleAdmin(getRole("SOME_ROLE"), getRole("SOME_ROLE_ADMIN"))
-    ).to.be.revertedWith(accessControlMessage(backend, null, "SOME_ROLE_ADMIN"));
+    ).to.be.revertedWithACError(accessManager, backend, "SOME_ROLE_ADMIN");
 
     // new admin can
     await accessManager.grantRole(getRole("SOME_ROLE_ADMIN"), user);

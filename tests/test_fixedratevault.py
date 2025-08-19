@@ -46,7 +46,7 @@ def test_constructor_uses_same_decimals_as_asset(tenv):
 def test_deposit_withdraw_one_lp(tenv):
     vault = tenv.FixedRateVault(asset=tenv.currency)
 
-    with pytest.raises(RevertError, match="allowance"):
+    with pytest.raises(RevertError, match="allowance|ERC20InsufficientAllowance"):
         vault.deposit(tenv.currency.owner, USD1K, "LP1")
 
     tenv.currency.approve(tenv.currency.owner, vault, USD1K)

@@ -45,6 +45,7 @@ async function createRiskModule(
     {
       kind: "uups",
       constructorArgs: [poolAddr, paAddr, ...extraConstructorArgs],
+      unsafeAllow: ["missing-initializer"],
     }
   );
 
@@ -219,7 +220,6 @@ async function makePolicy(pool, rm, cust, payout, premium, lossProb, expiration,
 
   return newPolicyEvt;
 }
-
 
 module.exports = {
   addEToken,

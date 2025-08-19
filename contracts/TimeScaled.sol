@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.28;
 
 import {WadRayMath} from "./dependencies/WadRayMath.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
@@ -37,14 +37,14 @@ library TimeScaled {
 
   function getScale(ScaledAmount storage scaledAmount, uint256 interestRate) internal view returns (uint256) {
     uint32 now_ = uint32(block.timestamp);
-    if (scaledAmount.lastUpdate >= now_) {
+    if (scaledAmount.lastUpdate < now_) {
+      return
+        uint256(scaledAmount.scale).rayMul(
+          ((interestRate.wadToRay() * uint256(now_ - scaledAmount.lastUpdate)) / SECONDS_PER_YEAR) + WadRayMath.RAY
+        );
+    } else {
       return scaledAmount.scale;
     }
-    uint256 timeDifference = uint256(now_ - scaledAmount.lastUpdate);
-    return
-      uint256(scaledAmount.scale).rayMul(
-        ((interestRate.wadToRay() * timeDifference) / SECONDS_PER_YEAR) + WadRayMath.RAY
-      );
   }
 
   function getScaledAmount(ScaledAmount storage scaledAmount, uint256 interestRate) internal view returns (uint256) {
