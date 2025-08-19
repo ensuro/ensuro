@@ -1713,7 +1713,9 @@ def test_lp_whitelist_defaults(tenv):
     for i in range(4):
         wrong_defaults = default_behavior[:i] + (WL.ST_UNDEFINED,) + default_behavior[i + 1 :]
         assert len(wrong_defaults) == 4
-        with pytest.raises(RevertError, match="define the default status"):
+        with pytest.raises(Exception, match="define the default status"):
+            # in web3=7 raise ContractLogicError instead of RevertError. Check again when we migrate
+            # to custom errors
             whitelist = tenv.module.LPManualWhitelist(pool=pool, default_status=wrong_defaults)
 
     whitelist = tenv.module.LPManualWhitelist(pool=pool, default_status=previous_behaviour)

@@ -56,6 +56,7 @@ def tenv(request):
                 forwardTo=wrappers.AddressBook.ZERO,
                 currency_=currency.contract,
                 access_=pa_access.contract,
+                owner="owner",
             )
             symbol = kwargs.pop("symbol", "ETK")
             etoken = wrappers.EToken(policy_pool=pool, symbol=symbol, **kwargs)
@@ -67,6 +68,7 @@ def tenv(request):
                 forwardTo=wrappers.AddressBook.ZERO,
                 currency_=currency.contract,
                 access_=pa_access.contract,
+                owner="owner",
             )
             pa = wrappers.PremiumsAccount(pool=pa_pool, **kwargs)
             pa_pool.setForwardTo(pa.contract, {"from": currency.owner})
