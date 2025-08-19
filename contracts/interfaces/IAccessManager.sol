@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.28;
 
-import {IAccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 
 /**
  * @title IAccessManager - Interface for the contract that handles roles for the PolicyPool and components
  * @dev Interface for the contract that handles roles for the PolicyPool and components
  * @author Ensuro
  */
-interface IAccessManager is IAccessControlUpgradeable {
+interface IAccessManager is IAccessControl {
   /**
    * @dev Enum with the different governance actions supported in the protocol.
    *      It's good to keep actions of the same component consecutive, parts of the code relay on that,

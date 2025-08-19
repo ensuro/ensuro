@@ -1,10 +1,19 @@
 const { expect } = require("chai");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
-const { grantRole, grantComponentRole, amountFunction, accessControlMessage } = require("@ensuro/utils/js/utils");
+const {
+  grantRole,
+  grantComponentRole,
+  amountFunction,
+  getComponentRole,
+  getAddress,
+} = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
 
-const { ZeroAddress } = hre.ethers;
+const { ethers } = hre;
+const { ZeroAddress } = ethers;
+
+const emptyBytes = ethers.toUtf8Bytes("");
 
 describe("Test Upgrade contracts", function () {
   async function setupFixture() {
@@ -89,11 +98,13 @@ describe("Test Upgrade contracts", function () {
     const newImpl = await PolicyPool.deploy(access, currency);
 
     // Cust cant upgrade
-    await expect(pool.connect(cust).upgradeTo(newImpl)).to.be.revertedWith(
-      accessControlMessage(cust, null, "LEVEL1_ROLE")
+    await expect(pool.connect(cust).upgradeToAndCall(newImpl, emptyBytes)).to.be.revertedWithACError(
+      access,
+      cust,
+      "LEVEL1_ROLE"
     );
 
-    await pool.connect(guardian).upgradeTo(newImpl);
+    await pool.connect(guardian).upgradeToAndCall(newImpl, emptyBytes);
   });
 
   it("Shouldn't be able to upgrade PolicyPool changing the AccessManager", async () => {
@@ -101,23 +112,25 @@ describe("Test Upgrade contracts", function () {
     const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
     const newImpl = await PolicyPool.deploy(currency, access); // Inverted addresses
 
-    await expect(pool.connect(level1).upgradeTo(newImpl)).to.be.revertedWithCustomError(
+    await expect(pool.connect(level1).upgradeToAndCall(newImpl, emptyBytes)).to.be.revertedWithCustomError(
       pool,
       "UpgradeCannotChangeAccess"
     );
   });
 
   it("Should be able to upgrade EToken", async () => {
-    const { pool, cust, guardian, etk } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
+    const { pool, cust, guardian, etk, access } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
     const EToken = await hre.ethers.getContractFactory("EToken");
     const newImpl = await EToken.deploy(pool);
 
     // Cust cant upgrade
-    await expect(etk.connect(cust).upgradeTo(newImpl)).to.be.revertedWith(
-      accessControlMessage(cust, etk, "LEVEL1_ROLE")
+    await expect(etk.connect(cust).upgradeToAndCall(newImpl, emptyBytes)).to.be.revertedWithACError(
+      access,
+      cust,
+      getComponentRole(getAddress(etk), "LEVEL1_ROLE")
     );
 
-    await etk.connect(guardian).upgradeTo(newImpl);
+    await etk.connect(guardian).upgradeToAndCall(newImpl, emptyBytes);
   });
 
   it("Can upgrade EToken with componentRole", async () => {
@@ -126,12 +139,14 @@ describe("Test Upgrade contracts", function () {
     const newEToken = await EToken.deploy(pool);
 
     // Cust cant upgrade
-    await expect(etk.connect(cust).upgradeTo(newEToken)).to.be.revertedWith(
-      accessControlMessage(cust, etk, "LEVEL1_ROLE")
+    await expect(etk.connect(cust).upgradeToAndCall(newEToken, emptyBytes)).to.be.revertedWithACError(
+      access,
+      cust,
+      getComponentRole(getAddress(etk), "LEVEL1_ROLE")
     );
 
     await grantComponentRole(hre, access, etk, "LEVEL1_ROLE", cust);
-    await etk.connect(cust).upgradeTo(newEToken);
+    await etk.connect(cust).upgradeToAndCall(newEToken, emptyBytes);
   });
 
   it("Should not be able to upgrade EToken with different pool", async () => {
@@ -146,23 +161,25 @@ describe("Test Upgrade contracts", function () {
     const EToken = await hre.ethers.getContractFactory("EToken");
     const newImpl = await EToken.deploy(newPool);
 
-    await expect(etk.connect(guardian).upgradeTo(newImpl)).to.be.revertedWithCustomError(
+    await expect(etk.connect(guardian).upgradeToAndCall(newImpl, emptyBytes)).to.be.revertedWithCustomError(
       etk,
       "UpgradeCannotChangePolicyPool"
     );
   });
 
   it("Should be able to upgrade PremiumsAccount contract", async () => {
-    const { guardian, cust, pool, premiumsAccount, etk } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
+    const { guardian, cust, pool, premiumsAccount, etk, access } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
     const PremiumsAccount = await hre.ethers.getContractFactory("PremiumsAccount");
     const newImpl = await PremiumsAccount.deploy(pool, ZeroAddress, etk);
 
     // Cust cant upgrade
-    await expect(premiumsAccount.connect(cust).upgradeTo(newImpl)).to.be.revertedWith(
-      accessControlMessage(cust, premiumsAccount, "LEVEL1_ROLE")
+    await expect(premiumsAccount.connect(cust).upgradeToAndCall(newImpl, emptyBytes)).to.be.revertedWithACError(
+      access,
+      cust,
+      getComponentRole(getAddress(premiumsAccount), "LEVEL1_ROLE")
     );
 
-    await premiumsAccount.connect(guardian).upgradeTo(newImpl);
+    await premiumsAccount.connect(guardian).upgradeToAndCall(newImpl, emptyBytes);
   });
 
   it("Can upgrade PremiumsAccount with componentRole", async () => {
@@ -171,12 +188,12 @@ describe("Test Upgrade contracts", function () {
     const newPremiumsAccount = await PremiumsAccount.deploy(pool, ZeroAddress, etk);
 
     // Cust cant upgrade
-    await expect(premiumsAccount.connect(cust).upgradeTo(newPremiumsAccount)).to.be.revertedWith(
-      accessControlMessage(cust, premiumsAccount, "LEVEL1_ROLE")
-    );
+    await expect(
+      premiumsAccount.connect(cust).upgradeToAndCall(newPremiumsAccount, emptyBytes)
+    ).to.be.revertedWithACError(access, cust, getComponentRole(getAddress(premiumsAccount), "LEVEL1_ROLE"));
 
     await grantComponentRole(hre, access, premiumsAccount, "LEVEL1_ROLE", cust);
-    await premiumsAccount.connect(cust).upgradeTo(newPremiumsAccount);
+    await premiumsAccount.connect(cust).upgradeToAndCall(newPremiumsAccount, emptyBytes);
   });
 
   it("Should not be able to upgrade PremiumsAccount with different pool or jrEtk", async () => {
@@ -191,23 +208,23 @@ describe("Test Upgrade contracts", function () {
     const PremiumsAccount = await hre.ethers.getContractFactory("PremiumsAccount");
     let newImpl = await PremiumsAccount.deploy(newPool, ZeroAddress, etk);
 
-    await expect(premiumsAccount.connect(guardian).upgradeTo(newImpl)).to.be.revertedWithCustomError(
+    await expect(premiumsAccount.connect(guardian).upgradeToAndCall(newImpl, emptyBytes)).to.be.revertedWithCustomError(
       premiumsAccount,
       "UpgradeCannotChangePolicyPool"
     );
 
     newImpl = await PremiumsAccount.deploy(pool, ZeroAddress, ZeroAddress);
-    await expect(premiumsAccount.connect(guardian).upgradeTo(newImpl)).to.be.revertedWith(
+    await expect(premiumsAccount.connect(guardian).upgradeToAndCall(newImpl, emptyBytes)).to.be.revertedWith(
       "Can't upgrade changing the Senior ETK unless to non-zero"
     );
 
     // Changing jrEtk from 0 to something is possible
     const jrEtk = await addEToken(pool, {});
     newImpl = await PremiumsAccount.deploy(pool, jrEtk, etk);
-    await premiumsAccount.connect(guardian).upgradeTo(newImpl);
+    await premiumsAccount.connect(guardian).upgradeToAndCall(newImpl, emptyBytes);
 
     newImpl = await PremiumsAccount.deploy(pool, ZeroAddress, etk);
-    await expect(premiumsAccount.connect(guardian).upgradeTo(newImpl)).to.be.revertedWith(
+    await expect(premiumsAccount.connect(guardian).upgradeToAndCall(newImpl, emptyBytes)).to.be.revertedWith(
       "Can't upgrade changing the Junior ETK unless to non-zero"
     );
   });
@@ -217,34 +234,38 @@ describe("Test Upgrade contracts", function () {
     const PremiumsAccount = await hre.ethers.getContractFactory("PremiumsAccount");
 
     let newImpl = await PremiumsAccount.deploy(pool, ZeroAddress, ZeroAddress);
-    await expect(premiumsAccount.connect(guardian).upgradeTo(newImpl)).not.to.be.reverted;
+    await expect(premiumsAccount.connect(guardian).upgradeToAndCall(newImpl, emptyBytes)).not.to.be.reverted;
 
     // Changing jrEtk from 0 to something is possible
     const jrEtk = await addEToken(pool, {});
     newImpl = await PremiumsAccount.deploy(pool, jrEtk, ZeroAddress);
-    await premiumsAccount.connect(guardian).upgradeTo(newImpl);
+    await premiumsAccount.connect(guardian).upgradeToAndCall(newImpl, emptyBytes);
 
     // Changing srEtk from 0 to something is possible
     const srEtk = await addEToken(pool, {});
     newImpl = await PremiumsAccount.deploy(pool, jrEtk, srEtk);
-    await premiumsAccount.connect(guardian).upgradeTo(newImpl);
+    await premiumsAccount.connect(guardian).upgradeToAndCall(newImpl, emptyBytes);
 
     // Changing srEtk to something else is not possible
     const otherSrEtk = await addEToken(pool, {});
     newImpl = await PremiumsAccount.deploy(pool, jrEtk, otherSrEtk);
-    await expect(premiumsAccount.connect(guardian).upgradeTo(newImpl)).to.be.revertedWith(
+    await expect(premiumsAccount.connect(guardian).upgradeToAndCall(newImpl, emptyBytes)).to.be.revertedWith(
       "Can't upgrade changing the Senior ETK unless to non-zero"
     );
   });
 
   it("Should be able to upgrade RiskModule contract", async () => {
-    const { cust, guardian, pool, premiumsAccount, TrustfulRiskModule, rm } =
+    const { cust, guardian, pool, premiumsAccount, TrustfulRiskModule, rm, access } =
       await helpers.loadFixture(setupFixtureWithPoolAndRM);
     const newRM = await TrustfulRiskModule.deploy(pool, premiumsAccount);
 
     // Cust cant upgrade
-    await expect(rm.connect(cust).upgradeTo(newRM)).to.be.revertedWith(accessControlMessage(cust, rm, "LEVEL1_ROLE"));
-    await rm.connect(guardian).upgradeTo(newRM);
+    await expect(rm.connect(cust).upgradeToAndCall(newRM, emptyBytes)).to.be.revertedWithACError(
+      access,
+      cust,
+      getComponentRole(getAddress(rm), "LEVEL1_ROLE")
+    );
+    await rm.connect(guardian).upgradeToAndCall(newRM, emptyBytes);
   });
 
   it("Can upgrade RiskModule with componentRole", async () => {
@@ -253,10 +274,14 @@ describe("Test Upgrade contracts", function () {
     const newRM = await TrustfulRiskModule.deploy(pool, premiumsAccount);
 
     // Cust cant upgrade
-    await expect(rm.connect(cust).upgradeTo(newRM)).to.be.revertedWith(accessControlMessage(cust, rm, "LEVEL1_ROLE"));
+    await expect(rm.connect(cust).upgradeToAndCall(newRM, emptyBytes)).to.be.revertedWithACError(
+      access,
+      cust,
+      getComponentRole(getAddress(rm), "LEVEL1_ROLE")
+    );
 
     await grantComponentRole(hre, access, rm, "LEVEL1_ROLE", cust);
-    await rm.connect(cust).upgradeTo(newRM);
+    await rm.connect(cust).upgradeToAndCall(newRM, emptyBytes);
   });
 
   it("Should not be able to upgrade RiskModule with different pool or PremiumsAccount", async () => {
@@ -272,26 +297,30 @@ describe("Test Upgrade contracts", function () {
 
     let newImpl = await TrustfulRiskModule.deploy(newPool, newPA);
 
-    await expect(rm.connect(guardian).upgradeTo(newImpl)).to.be.revertedWithCustomError(
+    await expect(rm.connect(guardian).upgradeToAndCall(newImpl, emptyBytes)).to.be.revertedWithCustomError(
       rm,
       "UpgradeCannotChangePolicyPool"
     );
     const newPAOrigPool = await deployPremiumsAccount(pool, {});
 
     newImpl = await TrustfulRiskModule.deploy(pool, newPAOrigPool);
-    await expect(rm.connect(guardian).upgradeTo(newImpl)).to.be.revertedWithCustomError(
+    await expect(rm.connect(guardian).upgradeToAndCall(newImpl, emptyBytes)).to.be.revertedWithCustomError(
       rm,
       "UpgradeCannotChangePremiumsAccount"
     );
   });
 
   it("Should be able to upgrade Whitelist", async () => {
-    const { pool, cust, guardian, wl, Whitelist } = await helpers.loadFixture(setupFixtureWithPoolAndWL);
+    const { pool, cust, guardian, wl, Whitelist, access } = await helpers.loadFixture(setupFixtureWithPoolAndWL);
     const newImpl = await Whitelist.deploy(pool);
 
     // Cust cant upgrade
-    await expect(wl.connect(cust).upgradeTo(newImpl)).to.be.revertedWith(accessControlMessage(cust, wl, "LEVEL1_ROLE"));
-    await wl.connect(guardian).upgradeTo(newImpl);
+    await expect(wl.connect(cust).upgradeToAndCall(newImpl, emptyBytes)).to.be.revertedWithACError(
+      access,
+      cust,
+      getComponentRole(getAddress(wl), "LEVEL1_ROLE")
+    );
+    await wl.connect(guardian).upgradeToAndCall(newImpl, emptyBytes);
   });
 
   it("Can upgrade Whitelist with componentRole", async () => {
@@ -299,10 +328,14 @@ describe("Test Upgrade contracts", function () {
     const newWL = await Whitelist.deploy(pool);
 
     // Cust cant upgrade
-    await expect(wl.connect(cust).upgradeTo(newWL)).to.be.revertedWith(accessControlMessage(cust, wl, "LEVEL1_ROLE"));
+    await expect(wl.connect(cust).upgradeToAndCall(newWL, emptyBytes)).to.be.revertedWithACError(
+      access,
+      cust,
+      getComponentRole(getAddress(wl), "LEVEL1_ROLE")
+    );
 
     await grantComponentRole(hre, access, wl, "LEVEL1_ROLE", cust);
-    await wl.connect(cust).upgradeTo(newWL);
+    await wl.connect(cust).upgradeToAndCall(newWL, emptyBytes);
   });
 
   it("Should be able to upgrade AccessManager contract", async () => {
@@ -311,9 +344,11 @@ describe("Test Upgrade contracts", function () {
     const newAM = await AccessManager.deploy();
 
     // Cust cant upgrade
-    await expect(access.connect(cust).upgradeTo(newAM)).to.be.revertedWith(
-      accessControlMessage(cust, null, "LEVEL1_ROLE")
+    await expect(access.connect(cust).upgradeToAndCall(newAM, emptyBytes)).to.be.revertedWithACError(
+      access,
+      cust,
+      "LEVEL1_ROLE"
     );
-    await access.connect(guardian).upgradeTo(newAM);
+    await access.connect(guardian).upgradeToAndCall(newAM, emptyBytes);
   });
 });

@@ -1,5 +1,5 @@
 const { expect } = require("chai");
-const { grantRole, amountFunction, _W, getTransactionEvent, accessControlMessage } = require("@ensuro/utils/js/utils");
+const { grantRole, amountFunction, _W, getTransactionEvent } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const {
   addEToken,
@@ -37,14 +37,18 @@ describe("PolicyPool contract", function () {
     const newTreasury = "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199";
 
     // User with no roles fails
-    await expect(pool.connect(backend).setTreasury(newTreasury)).to.be.revertedWith(
-      accessControlMessage(backend, null, "LEVEL1_ROLE")
+    await expect(pool.connect(backend).setTreasury(newTreasury)).to.be.revertedWithACError(
+      accessManager,
+      backend,
+      "LEVEL1_ROLE"
     );
 
     // User with LEVEL2_ROLE fails
     await grantRole(hre, accessManager, "LEVEL2_ROLE", backend);
-    await expect(pool.connect(backend).setTreasury(newTreasury)).to.be.revertedWith(
-      accessControlMessage(backend, null, "LEVEL1_ROLE")
+    await expect(pool.connect(backend).setTreasury(newTreasury)).to.be.revertedWithACError(
+      accessManager,
+      backend,
+      "LEVEL1_ROLE"
     );
 
     // User with LEVEL1_ROLE passes
@@ -63,14 +67,14 @@ describe("PolicyPool contract", function () {
     const { pool, accessManager } = await helpers.loadFixture(deployPoolFixture);
     const premiumsAccount = await deployPremiumsAccount(pool, {}, false);
 
-    await expect(pool.connect(backend).addComponent(premiumsAccount, ComponentKind.premiumsAccount)).to.be.revertedWith(
-      accessControlMessage(backend, null, "LEVEL1_ROLE")
-    );
+    await expect(
+      pool.connect(backend).addComponent(premiumsAccount, ComponentKind.premiumsAccount)
+    ).to.be.revertedWithACError(accessManager, backend, "LEVEL1_ROLE");
 
     await grantRole(hre, accessManager, "LEVEL2_ROLE", backend);
-    await expect(pool.connect(backend).addComponent(premiumsAccount, ComponentKind.premiumsAccount)).to.be.revertedWith(
-      accessControlMessage(backend, null, "LEVEL1_ROLE")
-    );
+    await expect(
+      pool.connect(backend).addComponent(premiumsAccount, ComponentKind.premiumsAccount)
+    ).to.be.revertedWithACError(accessManager, backend, "LEVEL1_ROLE");
 
     await grantRole(hre, accessManager, "LEVEL1_ROLE", backend);
     await expect(pool.connect(backend).addComponent(premiumsAccount, ComponentKind.premiumsAccount)).to.emit(
@@ -310,7 +314,10 @@ describe("PolicyPool contract", function () {
     await grantRole(hre, accessManager, "GUARDIAN_ROLE", owner);
     await expect(pool.connect(owner).pause()).to.emit(pool, "Paused");
 
-    await expect(pool.connect(backend).expirePolicies([[...policy]])).to.be.revertedWith("Pausable: paused");
+    await expect(pool.connect(backend).expirePolicies([[...policy]])).to.be.revertedWithCustomError(
+      pool,
+      "EnforcedPause"
+    );
   });
 
   it("Can't replace resolved policies", async () => {
@@ -336,8 +343,9 @@ describe("PolicyPool contract", function () {
     await grantRole(hre, accessManager, "GUARDIAN_ROLE", owner);
     await expect(pool.connect(owner).pause()).to.emit(pool, "Paused");
 
-    await expect(pool.replacePolicy([...policy], [...policy], ZeroAddress, 1234)).to.be.revertedWith(
-      "Pausable: paused"
+    await expect(pool.replacePolicy([...policy], [...policy], ZeroAddress, 1234)).to.be.revertedWithCustomError(
+      pool,
+      "EnforcedPause"
     );
   });
 
@@ -416,8 +424,10 @@ describe("PolicyPool contract", function () {
     const { policy, pool, accessManager } = await helpers.loadFixture(deployRmWithPolicyFixture);
 
     // User with no roles fails
-    await expect(pool.connect(backend).setBaseURI("foobar")).to.be.revertedWith(
-      accessControlMessage(backend, null, "LEVEL2_ROLE")
+    await expect(pool.connect(backend).setBaseURI("foobar")).to.be.revertedWithACError(
+      accessManager,
+      backend,
+      "LEVEL2_ROLE"
     );
 
     // User with LEVEL2_ROLE passes
@@ -431,7 +441,7 @@ describe("PolicyPool contract", function () {
       .withArgs(4, backend);
 
     expect(await pool.tokenURI(policy.id)).to.be.equal(`https://offchain-v2.ensuro.co/api/policies/nft/${policy.id}`);
-    await expect(pool.tokenURI(1233)).to.be.revertedWith("ERC721: invalid token ID");
+    await expect(pool.tokenURI(1233)).to.be.revertedWithCustomError(pool, "ERC721NonexistentToken").withArgs(1233);
   });
 
   it("Initialize PolicyPool without name and symbol fails", async () => {

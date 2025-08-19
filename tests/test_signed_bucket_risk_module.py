@@ -65,8 +65,8 @@ def tenv_ethereum():
     )
     access = wrappers.AccessManager(owner="owner")
 
-    pool = PolicyPoolMock(currency_=currency.contract, access_=access.contract)
-    premiums_account = PremiumsAccountMock(policyPool_=pool)
+    pool = PolicyPoolMock(currency_=currency.contract, access_=access.contract, owner="owner")
+    premiums_account = PremiumsAccountMock(policyPool_=pool, owner="owner")
 
     return TEnv(
         currency=currency,

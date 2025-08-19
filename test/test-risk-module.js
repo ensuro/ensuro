@@ -256,7 +256,7 @@ describe("RiskModule contract", function () {
       rm
         .connect(backend)
         .replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, policy.expiration, 1234)
-    ).to.be.revertedWith("Pausable: paused");
+    ).to.be.revertedWithCustomError(rm, "EnforcedPause");
   });
 
   it("Should emit PolicyReplaced when policy is replaced", async () => {

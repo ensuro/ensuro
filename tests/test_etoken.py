@@ -63,7 +63,10 @@ def tenv(request):
 
         def etoken_factory(**kwargs):
             pool = PolicyPoolMockForward(
-                forwardTo=wrappers.AddressBook.ZERO, currency_=currency.contract, access_=access.contract
+                forwardTo=wrappers.AddressBook.ZERO,
+                currency_=currency.contract,
+                access_=access.contract,
+                owner="owner",
             )
 
             symbol = kwargs.pop("symbol", "ETK")
@@ -73,7 +76,7 @@ def tenv(request):
 
         def fw_proxy_factory(name, etk):
             provider = wrappers.get_provider()
-            fw_proxy = ForwardProxy(forwardTo=etk.contract)
+            fw_proxy = ForwardProxy(forwardTo=etk.contract, owner="owner")
             # Unlock the proxy's address on the node to be able to do the approval
             provider.unlock_account(fw_proxy.contract.address)
 

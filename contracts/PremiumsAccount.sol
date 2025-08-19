@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.28;
 
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {SignedMath} from "@openzeppelin/contracts/utils/math/SignedMath.sol";
@@ -13,7 +13,6 @@ import {Reserve} from "./Reserve.sol";
 import {IAccessManager} from "./interfaces/IAccessManager.sol";
 import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
 import {Policy} from "./Policy.sol";
-import {IEToken} from "./interfaces/IEToken.sol";
 import {IAssetManager} from "./interfaces/IAssetManager.sol";
 
 /**
@@ -77,10 +76,10 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * @member srLoanLimit  This is the maximum amount that can be borrowed from the Senior eToken (without decimals)
    */
   struct PackedParams {
-    uint16 deficitRatio;
     IAssetManager assetManager;
     uint32 jrLoanLimit;
     uint32 srLoanLimit;
+    uint16 deficitRatio;
   }
 
   PackedParams internal _params;
@@ -471,15 +470,15 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     return amount;
   }
 
-  function policyCreated(Policy.PolicyData memory policy) external override onlyPolicyPool whenNotPaused {
+  function policyCreated(Policy.PolicyData calldata policy) external override onlyPolicyPool whenNotPaused {
     _activePurePremiums += policy.purePremium;
     if (policy.jrScr > 0) _juniorEtk.lockScr(policy.jrScr, policy.jrInterestRate());
     if (policy.srScr > 0) _seniorEtk.lockScr(policy.srScr, policy.srInterestRate());
   }
 
   function policyReplaced(
-    Policy.PolicyData memory oldPolicy,
-    Policy.PolicyData memory newPolicy
+    Policy.PolicyData calldata oldPolicy,
+    Policy.PolicyData calldata newPolicy
   ) external override onlyPolicyPool whenNotPaused {
     if (oldPolicy.srScr > 0 && newPolicy.srScr > 0) {
       int256 diff = int256(oldPolicy.srInterestRate()) - int256(newPolicy.srInterestRate());
@@ -503,7 +502,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
 
   function policyResolvedWithPayout(
     address policyHolder,
-    Policy.PolicyData memory policy,
+    Policy.PolicyData calldata policy,
     uint256 payout
   ) external override onlyPolicyPool whenNotPaused {
     _activePurePremiums -= policy.purePremium;
@@ -588,7 +587,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     return fundsAvailable_ - repayAmount;
   }
 
-  function policyExpired(Policy.PolicyData memory policy) external override onlyPolicyPool whenNotPaused {
+  function policyExpired(Policy.PolicyData calldata policy) external override onlyPolicyPool whenNotPaused {
     _activePurePremiums -= policy.purePremium;
     _storePurePremiumWon(policy.purePremium);
     _unlockScr(policy);

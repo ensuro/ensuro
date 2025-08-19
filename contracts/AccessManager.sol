@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.28;
 
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -82,7 +82,7 @@ contract AccessManager is Initializable, AccessControlUpgradeable, UUPSUpgradeab
 
   // solhint-disable-next-line func-name-mixedcase
   function __AccessManager_init_unchained() internal onlyInitializing {
-    _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
+    _grantRole(DEFAULT_ADMIN_ROLE, _msgSender());
   }
 
   // solhint-disable-next-line no-empty-blocks

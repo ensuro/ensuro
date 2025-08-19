@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.28;
 
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
 import {RiskModule} from "./RiskModule.sol";
@@ -88,7 +89,7 @@ contract SignedQuoteRiskModule is RiskModule {
      *   unique id (quoteId), so each policyData identifies a policy.
      * - quoteValidUntil: the maximum validity of the quote
      */
-    bytes32 quoteHash = ECDSA.toEthSignedMessageHash(
+    bytes32 quoteHash = MessageHashUtils.toEthSignedMessageHash(
       abi.encodePacked(address(this), payout, premium, lossProb, expiration, policyData, quoteValidUntil)
     );
     _policyPool.access().checkComponentRole(

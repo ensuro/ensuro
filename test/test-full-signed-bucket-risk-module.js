@@ -1,5 +1,12 @@
 const { expect } = require("chai");
-const { _W, accessControlMessage, amountFunction, getTransactionEvent, getRole } = require("@ensuro/utils/js/utils");
+const {
+  _W,
+  amountFunction,
+  getTransactionEvent,
+  getRole,
+  getComponentRole,
+  getAddress,
+} = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { DAY } = require("@ensuro/utils/js/constants");
 const {
@@ -160,7 +167,7 @@ describe("FullSignedBucketRiskModule contract tests", function () {
   });
 
   it("Only FULL_PRICER_ROLE can sign fully parametrizable policies, not PRICER_ROLE", async () => {
-    const { rm, pool, paramsSameAsDefaults } = await helpers.loadFixture(deployPoolFixture);
+    const { rm, pool, paramsSameAsDefaults, accessManager } = await helpers.loadFixture(deployPoolFixture);
 
     // Now test the same sending fullParams
     const policyParamsFull = await defaultPolicyParamsWithParams({
@@ -171,11 +178,15 @@ describe("FullSignedBucketRiskModule contract tests", function () {
     const signerSignature = await makeSignedQuote(signer, policyParamsFull, makeFullQuoteMessage);
     const fullSignerSignature = await makeSignedQuote(fullSigner, policyParamsFull, makeFullQuoteMessage);
 
-    await expect(newPolicy(rm, cust, policyParamsFull, cust, anonSignature)).to.be.revertedWith(
-      accessControlMessage(cust, rm, "FULL_PRICER_ROLE")
+    await expect(newPolicy(rm, cust, policyParamsFull, cust, anonSignature)).to.be.revertedWithACError(
+      accessManager,
+      cust,
+      getComponentRole(getAddress(rm), "FULL_PRICER_ROLE")
     );
-    await expect(newPolicy(rm, cust, policyParamsFull, cust, signerSignature)).to.be.revertedWith(
-      accessControlMessage(signer, rm, "FULL_PRICER_ROLE")
+    await expect(newPolicy(rm, cust, policyParamsFull, cust, signerSignature)).to.be.revertedWithACError(
+      accessManager,
+      signer,
+      getComponentRole(getAddress(rm), "FULL_PRICER_ROLE")
     );
     await expect(newPolicy(rm, cust, policyParamsFull, cust, fullSignerSignature)).to.emit(pool, "NewPolicy");
   });
@@ -241,11 +252,11 @@ describe("FullSignedBucketRiskModule contract tests", function () {
 
     await expect(
       rm.replacePolicyFullParams(policy, ...replacePolicyParams(replacementPolicyParams, replacementPolicySignature))
-    ).to.be.revertedWith("Pausable: paused");
+    ).to.be.revertedWithCustomError(rm, "EnforcedPause");
   });
 
   it("Only allows REPLACER_ROLE to replace policies", async () => {
-    const { rm, pool, policy, policyParams, paramsSameAsDefaults } =
+    const { rm, pool, policy, policyParams, paramsSameAsDefaults, accessManager } =
       await helpers.loadFixture(riskModuleWithPolicyFixture);
 
     // Replace it with a higher payout
@@ -263,7 +274,7 @@ describe("FullSignedBucketRiskModule contract tests", function () {
     // Anon cannot replace
     await expect(
       rm.replacePolicyFullParams(policy, ...replacePolicyParams(replacementPolicyParams, replacementPolicySignature))
-    ).to.be.revertedWith(accessControlMessage(owner, rm, "REPLACER_ROLE"));
+    ).to.be.revertedWithACError(accessManager, owner, getComponentRole(getAddress(rm), "REPLACER_ROLE"));
 
     // Authorized user can replace
     await expect(
@@ -276,7 +287,7 @@ describe("FullSignedBucketRiskModule contract tests", function () {
   });
 
   it("Performs policy replacement when a valid signature is presented - Bucket version", async () => {
-    const { rm, pool, policy, policyParams } = await helpers.loadFixture(riskModuleWithPolicyFixture);
+    const { rm, pool, policy, policyParams, accessManager } = await helpers.loadFixture(riskModuleWithPolicyFixture);
 
     // Replaces a full-params policy with a bucket one
     const replacementPolicyParams = await defaultPolicyParamsWithBucket({
@@ -294,7 +305,7 @@ describe("FullSignedBucketRiskModule contract tests", function () {
     const badAddress = recoverAddress(badParams, replacementPolicySignature, makeBucketQuoteMessage);
     await expect(
       rm.connect(cust).replacePolicy(policy, ...replacePolicyParams(badParams, replacementPolicySignature))
-    ).to.be.revertedWith(accessControlMessage(badAddress, rm, "PRICER_ROLE"));
+    ).to.be.revertedWithACError(accessManager, badAddress, getComponentRole(getAddress(rm), "PRICER_ROLE"));
 
     // Good signature is accepted
     await expect(
@@ -305,7 +316,7 @@ describe("FullSignedBucketRiskModule contract tests", function () {
   });
 
   it("Performs policy replacement when a valid signature is presented - Full x Full", async () => {
-    const { rm, pool, policy, policyParams, paramsSameAsDefaults } =
+    const { rm, pool, policy, policyParams, paramsSameAsDefaults, accessManager } =
       await helpers.loadFixture(riskModuleWithPolicyFixture);
 
     const replacementPolicyParams = await defaultPolicyParamsWithParams({
@@ -329,7 +340,7 @@ describe("FullSignedBucketRiskModule contract tests", function () {
     const badAddress = recoverAddress(badParams, replacementPolicySignature, makeFullQuoteMessage);
     await expect(
       rm.connect(cust).replacePolicyFullParams(policy, ...replacePolicyParams(badParams, replacementPolicySignature))
-    ).to.be.revertedWith(accessControlMessage(badAddress, rm, "FULL_PRICER_ROLE"));
+    ).to.be.revertedWithACError(accessManager, badAddress, getComponentRole(getAddress(rm), "FULL_PRICER_ROLE"));
 
     // Replacement signed by someone with PRICER_ROLE is rejected too
     await expect(
@@ -339,7 +350,7 @@ describe("FullSignedBucketRiskModule contract tests", function () {
           policy,
           ...replacePolicyParams(replacementPolicyParams, replacementPolicySignaturePricerSigner)
         )
-    ).to.be.revertedWith(accessControlMessage(signer, rm, "FULL_PRICER_ROLE"));
+    ).to.be.revertedWithACError(accessManager, signer, getComponentRole(getAddress(rm), "FULL_PRICER_ROLE"));
 
     // Good signature is accepted
     await expect(
