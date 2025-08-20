@@ -28,7 +28,7 @@ describe("Storage Gaps", () => {
       // Check the storage ends with a gap
       expect(gap.label).to.equal("__gap");
 
-      // Check the storage aligns to 50 slots (+1 because of https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable/issues/182)
+      // Check the storage aligns to 50 slots
       const finalSlot = parseInt(gap.slot) + Math.floor(parseInt(types[gap.type].numberOfBytes) / 32);
       expect(finalSlot % 50).to.equal(0);
     });
