@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
-const { amountFunction, _W, grantComponentRole, getTransactionEvent } = require("@ensuro/utils/js/utils");
+const { amountFunction, _W, getTransactionEvent } = require("@ensuro/utils/js/utils");
 const { deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
@@ -130,14 +130,12 @@ async function poolWithPolicies() {
 
   const pool = await deployPool({
     currency: currency,
-    grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
     treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
   });
   pool._A = _A;
 
   const etk = await addEToken(pool, {});
   const premiumsAccount = await deployPremiumsAccount(pool, { srEtk: etk });
-  const accessManager = await hre.ethers.getContractAt("AccessManager", await pool.access());
 
   const RiskModule = await hre.ethers.getContractFactory("RiskModuleMock");
   const rm = await addRiskModule(pool, premiumsAccount, RiskModule, {
@@ -151,9 +149,6 @@ async function poolWithPolicies() {
 
   // Allow pricer spending to pay for policies
   await currency.connect(pricer).approve(pool, _A(100000));
-
-  // Allow pricer to create policies
-  await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", pricer);
 
   // Create a bunch of policies
   const policies = [];
@@ -171,7 +166,6 @@ async function poolWithPolicies() {
     premiumsAccount,
     RiskModule,
     rm,
-    accessManager,
     currency,
     owner,
     lp,

@@ -253,13 +253,6 @@ class EToken(ReserveMixin, IERC20):
     scaled_balance_of = MethodAdapter((("provider", "address"),), "amount")
     get_scaled_user_balance_and_supply = MethodAdapter((("provider", "address"),), "(amount, amount)")
 
-    def grant_role(self, role, user):
-        # EToken doesn't haves grant_role
-        policy_pool = PolicyPool.connect(self._policy_pool)
-        access = policy_pool.access
-        with access.as_(self._auto_from):
-            return access.grant_role(role, user)
-
     @property
     def whitelist(self):
         if not hasattr(self, "_whitelist"):
@@ -748,26 +741,10 @@ class SignedBucketRiskModule(SignedQuoteRiskModule):
         return buckets
 
 
-class AccessManager(ETHWrapper):
-    eth_contract = "AccessManager"
-
-    proxy_kind = "uups"
-
-    initialize_args = ()
-
-    def __init__(self, owner):
-        super().__init__(owner)
-        self._auto_from = self.owner
-
-    grant_component_role = MethodAdapter(
-        (("component", "address"), ("role", "keccak256"), ("user", "address"))
-    )
-
-
 class PolicyPool(IERC721):
     eth_contract = "PolicyPool"
 
-    constructor_args = (("access", "address"), ("currency", "address"))
+    constructor_args = (("currency", "address"),)
     initialize_args = (
         ("name", "string"),
         ("symbol", "string"),
@@ -775,10 +752,9 @@ class PolicyPool(IERC721):
     )
     proxy_kind = "uups"
 
-    def __init__(self, access, currency, name="Ensuro Policy", symbol="EPOL", treasury="ENS"):
-        self._access = access
+    def __init__(self, owner, currency, name="Ensuro Policy", symbol="EPOL", treasury="ENS"):
         self._currency = currency
-        super().__init__(access.owner, access.contract, currency.contract, name, symbol, treasury)
+        super().__init__(owner, currency.contract, name, symbol, treasury)
         self._auto_from = self.owner
         self._etokens = {}
         self._risk_modules = {}
@@ -790,13 +766,6 @@ class PolicyPool(IERC721):
             return self._currency
         else:
             return IERC20.connect(eth_call(self, "currency"))
-
-    @property
-    def access(self):
-        if hasattr(self, "_access"):
-            return self._access
-        else:
-            return AccessManager.connect(eth_call(self, "access"))
 
     @property
     def etokens(self):

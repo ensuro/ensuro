@@ -17,19 +17,12 @@ describe("Test Implementation contracts can't be initialized", function () {
     const _A = amountFunction(6);
 
     const currency = await initCurrency({ name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(10000) });
-    const AccessManager = await hre.ethers.getContractFactory("AccessManager");
     const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
-
-    // Deploy AccessManager
-    const access = await hre.upgrades.deployProxy(AccessManager, [], { kind: "uups" });
-
-    await access.waitForDeployment();
 
     return {
       currency,
       _A,
       owner,
-      access,
       PolicyPool,
     };
   }
@@ -52,15 +45,9 @@ describe("Test Implementation contracts can't be initialized", function () {
     };
   }
 
-  it("Does not allow initialize AccessManager implementation", async () => {
-    const AccessManager = await hre.ethers.getContractFactory("AccessManager");
-    const access = await AccessManager.deploy();
-    await expect(access.initialize()).to.be.revertedWithCustomError(access, "InvalidInitialization");
-  });
-
   it("Does not allow initialize PolicyPool implementation", async () => {
-    const { currency, access, PolicyPool } = await helpers.loadFixture(setupFixture);
-    const pool = await PolicyPool.deploy(access, currency);
+    const { currency, PolicyPool } = await helpers.loadFixture(setupFixture);
+    const pool = await PolicyPool.deploy(currency);
     await expect(pool.initialize("Ensuro", "EPOL", rndAddr)).to.be.revertedWithCustomError(
       pool,
       "InvalidInitialization"

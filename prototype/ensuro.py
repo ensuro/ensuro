@@ -1,7 +1,6 @@
 import time
 from collections import namedtuple
 from contextlib import contextmanager
-from functools import wraps
 from hashlib import md5
 
 from ethproto.contracts import (
@@ -13,10 +12,8 @@ from ethproto.contracts import (
     ERC20Token,
     ERC721Token,
     RayField,
-    RevertError,
     WadField,
     external,
-    only_role,
     require,
     view,
 )
@@ -60,68 +57,6 @@ class TimeControl:
 
 
 time_control = TimeControl()
-
-
-def only_component_role(*roles):
-    def decorator(method):
-        @wraps(method)
-        def inner(self, *args, **kwargs):
-            contract_id = self.contract_id
-            for role in roles:
-                composed_role = f"{role}-{contract_id}"
-                if self.has_role(composed_role, self.running_as):
-                    break
-            else:
-                raise RevertError(f"AccessControlUnauthorizedAccount({self.running_as}, {role})")
-            return method(self, *args, **kwargs)
-
-        return inner
-
-    return decorator
-
-
-def only_component_or_global_role(*roles):
-    def decorator(method):
-        @wraps(method)
-        def inner(self, *args, **kwargs):
-            contract_id = self.contract_id
-            for role in roles:
-                composed_role = f"{role}-{contract_id}"
-                if self.has_role(composed_role, self.running_as):
-                    break
-                if self.has_role(role, self.running_as):
-                    break
-            else:
-                raise RevertError(f"AccessControlUnauthorizedAccount({self.running_as}, {role})")
-            return method(self, *args, **kwargs)
-
-        return inner
-
-    return decorator
-
-
-def only_component_or_global_or_open_role(*roles):
-    def decorator(method):
-        @wraps(method)
-        def inner(self, *args, **kwargs):
-            contract_id = self.contract_id
-            for role in roles:
-                composed_role = f"{role}-{contract_id}"
-                if self.has_role(composed_role, None):
-                    break
-                if self.has_role(role, None):
-                    break
-                if self.has_role(composed_role, self.running_as):
-                    break
-                if self.has_role(role, self.running_as):
-                    break
-            else:
-                raise RevertError(f"AccessControlUnauthorizedAccount({self.running_as}, {role})")
-            return method(self, *args, **kwargs)
-
-        return inner
-
-    return decorator
 
 
 class BucketParams(Model):
@@ -194,22 +129,6 @@ class RiskModule(AccessControlContract):
 
     wallet = AddressField(default="RM")
 
-    pool_component_set_attr_roles = {
-        "wallet": "RM_PROVIDER_ROLE",
-    }
-
-    pool_set_attr_roles = {
-        "moc": "LEVEL2_ROLE",
-        "jr_coll_ratio": "LEVEL2_ROLE",
-        "coll_ratio": "LEVEL2_ROLE",
-        "ensuro_pp_fee": "LEVEL2_ROLE",
-        "jr_roc": "LEVEL2_ROLE",
-        "sr_roc": "LEVEL2_ROLE",
-        "max_payout_per_policy": "LEVEL2_ROLE",
-        "exposure_limit": "LEVEL1_ROLE",
-        "max_duration": "LEVEL2_ROLE",
-    }
-
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -240,24 +159,6 @@ class RiskModule(AccessControlContract):
             "Exposure and MaxPayout must be >0",
         )
         require(self.wallet != 0, "Validation: Wallet can't be zero address")
-
-    def has_role(self, role, account):
-        return self.policy_pool.access.has_role(role, account)
-
-    def _validate_setattr(self, attr_name, value):
-        if attr_name in self.pool_set_attr_roles:
-            require(
-                self.policy_pool.access.has_role(self.pool_set_attr_roles[attr_name], self._running_as),
-                f"AccessControlUnauthorizedAccount({self._running_as}, "
-                f"'{self.pool_set_attr_roles[attr_name]}')",
-            )
-        if attr_name in self.pool_component_set_attr_roles:
-            composed_role = f"{self.pool_component_set_attr_roles[attr_name]}-{self.contract_id}"
-            require(
-                self.policy_pool.access.has_role(composed_role, self._running_as),
-                f"AccessControlUnauthorizedAccount({self._running_as}, '{composed_role}')",
-            )
-        return super()._validate_setattr(attr_name, value)
 
     def make_policy_id(self, internal_id):
         prefix = md5(self.contract_id.encode("utf-8")).hexdigest()
@@ -310,7 +211,6 @@ class RiskModule(AccessControlContract):
         return policy
 
     @external
-    @only_component_role("REPLACER_ROLE")
     def replace_policy(self, old_policy, payout, premium, loss_prob, expiration, payer, internal_id):
         assert isinstance(loss_prob, Wad), "Loss prob MUST be wad"
         start = old_policy.start
@@ -384,7 +284,6 @@ class RiskModule(AccessControlContract):
 
 
 class TrustfulRiskModule(RiskModule):
-    @only_component_role("PRICER_ROLE")
     def new_policy(self, *args, **kwargs):
         payer = kwargs.get("on_behalf_of")
         if self._running_as != payer and self.policy_pool.currency.allowance(payer, self._running_as) < (
@@ -396,7 +295,6 @@ class TrustfulRiskModule(RiskModule):
         return super().new_policy(*args, **kwargs)
 
     @external
-    @only_component_role("RESOLVER_ROLE")
     def resolve_policy(self, policy_id, customer_won):
         with self.policy_pool.as_(self.contract_id):
             return self.policy_pool.resolve_policy(policy_id, customer_won)
@@ -500,7 +398,6 @@ class ReserveMixin:
     def NEGLIGIBLE_AMOUNT(self):
         return Wad(10 ** (self.currency.decimals // 2))
 
-    @only_role("LEVEL1_ROLE", "GUARDIAN_ROLE")
     def set_asset_manager(self, asset_manager, force):
         if self.asset_manager:
             if force:
@@ -542,7 +439,6 @@ class ReserveMixin:
     def record_earnings(self):
         self.asset_manager.record_earnings()
 
-    @only_component_role("LEVEL2_ROLE")
     def forward_to_asset_manager(self, method, *args, **kwargs):
         return getattr(self.asset_manager, method)(*args, **kwargs)
 
@@ -600,24 +496,9 @@ class EToken(ReserveMixin, ERC20Token):
     internal_loan_interest_rate = WadField(default=_W("0.05"))
     loans = DictField(ContractProxyField(), CompositeField(ScaledAmount), default={})
 
-    set_attr_roles = {
-        "min_utilization_rate": "LEVEL2_ROLE",
-        "max_utilization_rate": "LEVEL2_ROLE",
-        "liquidity_requirement": "LEVEL2_ROLE",
-        "internal_loan_interest_rate": "LEVEL2_ROLE",
-    }
-
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._running_as = "ensuro"
-
-    def has_role(self, role, account):
-        return self.policy_pool.access.has_role(role, account)
-
-    def grant_role(self, role, user):
-        """Adapter to save the roles in the access, not in this object, to simplify tests"""
-        with self.policy_pool.access.as_(self.running_as):
-            self.policy_pool.access.grant_role(role, user)
 
     @property
     def currency(self):
@@ -890,15 +771,8 @@ class EToken(ReserveMixin, ERC20Token):
     def utilization_rate(self):
         return self.scr // self.total_supply()
 
-    @only_role("LEVEL1_ROLE", "GUARDIAN_ROLE")
     def set_whitelist(self, whitelist):
         self.whitelist = ContractProxy(whitelist.contract_id) if whitelist else None
-
-
-class AccessManager(AccessControlContract):
-    def grant_component_role(self, component, role, user):
-        composed_role = f"{role}-{component.contract_id}"
-        self.grant_role(composed_role, user)
 
 
 class PremiumsAccount(ReserveMixin, AccessControlContract):
@@ -914,9 +788,6 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-    def has_role(self, role, account):
-        return self.pool.access.has_role(role, account)
 
     @property
     def currency(self):
@@ -935,7 +806,6 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
         return self.surplus if self.surplus >= 0 else Wad(0)
 
     @external
-    @only_component_or_global_role("LEVEL2_ROLE")
     def set_loan_limits(self, new_jr_loan_limit, new_sr_loan_limit):
         if new_jr_loan_limit is not None:
             self.jr_loan_limit_ = new_jr_loan_limit
@@ -956,7 +826,6 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
         return self.sr_loan_limit_
 
     @external
-    @only_component_or_global_role("LEVEL2_ROLE")
     def set_deficit_ratio(self, new_ratio, adjustment):
         require(
             new_ratio <= _W(1) and new_ratio >= 0,
@@ -999,7 +868,6 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
         self._store_pure_premium_won(amount)
 
     @external
-    @only_component_role("WITHDRAW_WON_PREMIUMS_ROLE")
     def withdraw_won_premiums(self, amount, destination):
         require(destination is not None, "PremiumsAccount: destination cannot be the zero address")
         s = self.surplus if self.surplus >= 0 else 0
@@ -1049,7 +917,6 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
         return self.surplus - self._max_deficit()
 
     @external
-    @only_component_or_global_or_open_role("REPAY_LOANS_ROLE")
     def repay_loans(self):
         funds_available = self.funds_available
         if funds_available and self.senior_etk:
@@ -1147,7 +1014,6 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
 
 
 class PolicyPool(ERC721Token):
-    access = ContractProxyField()
     treasury = AddressField(default="ENS")
     currency = ContractProxyField()
     etokens = DictField(StringField(), ContractProxyField(), default={})
@@ -1162,9 +1028,6 @@ class PolicyPool(ERC721Token):
             kwargs["symbol"] = "EPOL"
         super().__init__(*args, **kwargs)
         self.NEGLIGIBLE_AMOUNT = Wad(10 ** (self.currency.decimals // 2))
-
-    def has_role(self, role, account):
-        return self.access.has_role(role, account)
 
     def add_etoken(self, etoken):
         self.etokens[etoken.name] = ContractProxy(etoken.contract_id)
@@ -1356,14 +1219,9 @@ class LPManualWhitelist(Contract):
             "You need to define the default status for all the operations",
         )
 
-    def has_role(self, role, account):
-        return self.pool.access.has_role(role, account)
-
-    @only_component_role("LP_WHITELIST_ROLE")
     def whitelist_address(self, address, whitelisted):
         self.wl_status[address] = whitelisted
 
-    @only_component_role("LP_WHITELIST_ADMIN_ROLE")
     def set_whitelist_defaults(self, new_defaults):
         self._check_defaults(new_defaults)
         self.default_status = new_defaults

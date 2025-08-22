@@ -35,13 +35,12 @@ describe("Supports interface implementation", function () {
       "IRiskModule",
       "IPremiumsAccount",
       "ILPWhitelist",
-      "IAccessManager",
       "IAssetManager",
       "IPolicyHolder",
     ];
     const iinterfaceIds = {};
     for (const iName of iinterfaces) {
-      iinterfaceIds[iName] = await iidCalculator[iName.toUpperCase() + "_INTERFACEID"]();
+      iinterfaceIds[iName] = await iidCalculator.getFunction(iName.toUpperCase() + "_INTERFACEID")();
     }
     console.log(iinterfaceIds);
     */
@@ -53,13 +52,13 @@ describe("Supports interface implementation", function () {
       IAccessControl: "0x7965db0b",
       IEToken: "0x90770621",
       // IPolicyPool: "0x3234fad6", - Up to v2.7
-      IPolicyPool: "0x0ce33b78",
+      // IPolicyPool: "0x0ce33b78", - Up to v2.9
+      IPolicyPool: "0x7d73446f",
       IPolicyPoolComponent: "0x4d15eb03",
       IRiskModule: "0xda40804f",
       // IPremiumsAccount: "0xb76712ec", - Up to v2.7
       IPremiumsAccount: "0x1ce4a652",
       ILPWhitelist: "0xf8722d89",
-      IAccessManager: "0x272b8c47",
       IAssetManager: "0x799c2a5c",
       IPolicyHolder: "0x3ece0a89",
     };
@@ -67,20 +66,13 @@ describe("Supports interface implementation", function () {
     const _A = amountFunction(6);
 
     const currency = await initCurrency({ name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(10000) });
-    const AccessManager = await hre.ethers.getContractFactory("AccessManager");
     const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
     const FixedRateVault = await hre.ethers.getContractFactory("FixedRateVault");
-
-    // Deploy AccessManager
-    const access = await hre.upgrades.deployProxy(AccessManager, [], { kind: "uups" });
-
-    await access.waitForDeployment();
 
     return {
       currency,
       _A,
       owner,
-      access,
       PolicyPool,
       interfaceIds,
       FixedRateVault,
@@ -89,7 +81,7 @@ describe("Supports interface implementation", function () {
 
   async function setupFixtureWithPool() {
     const ret = await setupFixture();
-    const policyPool = await deployPool({ currency: ret.currency, access: ret.access });
+    const policyPool = await deployPool({ currency: ret.currency });
     return { policyPool, ...ret };
   }
 
@@ -102,20 +94,11 @@ describe("Supports interface implementation", function () {
     };
   }
 
-  it("Checks AccessManager supported interfaces", async () => {
-    const { interfaceIds, access } = await helpers.loadFixture(setupFixture);
-    expect(await access.supportsInterface(interfaceIds.IERC165)).to.be.true;
-    expect(await access.supportsInterface(interfaceIds.IAccessControl)).to.be.true;
-    expect(await access.supportsInterface(interfaceIds.IAccessManager)).to.be.true;
-    expect(await access.supportsInterface(invalidInterfaceId)).to.be.false;
-  });
-
   it("Checks PolicyPool supported interfaces", async () => {
     const { policyPool, interfaceIds } = await helpers.loadFixture(setupFixtureWithPool);
     expect(await policyPool.supportsInterface(interfaceIds.IERC165)).to.be.true;
     expect(await policyPool.supportsInterface(interfaceIds.IPolicyPool)).to.be.true;
     expect(await policyPool.supportsInterface(interfaceIds.IERC721)).to.be.true;
-    expect(await policyPool.supportsInterface(interfaceIds.IAccessManager)).to.be.false;
     expect(await policyPool.supportsInterface(invalidInterfaceId)).to.be.false;
   });
 

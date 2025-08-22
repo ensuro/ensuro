@@ -6,7 +6,7 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
 import {IAssetManager} from "./interfaces/IAssetManager.sol";
-import {IAccessManager} from "./interfaces/IAccessManager.sol";
+import {Governance} from "./Governance.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 /**
@@ -25,7 +25,7 @@ abstract contract LiquidityThresholdAssetManager is IAssetManager {
   using SafeCast for uint256;
 
   IERC20Metadata internal immutable _asset;
-  event GovernanceAction(IAccessManager.GovernanceActions indexed action, uint256 value);
+  event GovernanceAction(Governance.GovernanceActions indexed action, uint256 value);
 
   struct DiamondStorage {
     uint32 liquidityMin; // stored with 0 decimals
@@ -150,15 +150,15 @@ abstract contract LiquidityThresholdAssetManager is IAssetManager {
     DiamondStorage storage ds = diamondStorage();
     if (min != type(uint256).max) {
       ds.liquidityMin = (min / 10 ** _asset.decimals()).toUint32();
-      emit GovernanceAction(IAccessManager.GovernanceActions.setLiquidityMin, min);
+      emit GovernanceAction(Governance.GovernanceActions.setLiquidityMin, min);
     }
     if (middle != type(uint256).max) {
       ds.liquidityMiddle = (middle / 10 ** _asset.decimals()).toUint32();
-      emit GovernanceAction(IAccessManager.GovernanceActions.setLiquidityMiddle, middle);
+      emit GovernanceAction(Governance.GovernanceActions.setLiquidityMiddle, middle);
     }
     if (max != type(uint256).max) {
       ds.liquidityMax = (max / 10 ** _asset.decimals()).toUint32();
-      emit GovernanceAction(IAccessManager.GovernanceActions.setLiquidityMax, max);
+      emit GovernanceAction(Governance.GovernanceActions.setLiquidityMax, max);
     }
   }
 

@@ -27,6 +27,7 @@
   "dependencies": {
     "@ensuro/utils": "^0.2.9",
     "@openzeppelin/contracts": "^5.4.0",
-    "@openzeppelin/contracts-upgradeable": "^5.4.0"
+    "@openzeppelin/contracts-upgradeable": "^5.4.0",
+    "@ensuro/access-managed-proxy": "^0.2.0"
   }
 }

@@ -1,5 +1,5 @@
 const { expect } = require("chai");
-const { amountFunction, _W, grantComponentRole, grantRole, getTransactionEvent } = require("@ensuro/utils/js/utils");
+const { amountFunction, _W, getTransactionEvent } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { deployPool, deployPremiumsAccount, addRiskModule, makePolicy, addEToken } = require("../js/test-utils");
 const { ComponentKind, ComponentStatus } = require("../js/enums");
@@ -12,14 +12,13 @@ describe("Test add, remove and change status of PolicyPool components", function
   let pool;
   let premiumsAccount;
   let TrustfulRiskModule;
-  let cust, guardian, johndoe, level1, lp;
+  let cust, guardian, level1, lp;
   let _A;
   let etk;
-  let accessManager;
   let rm;
 
   beforeEach(async () => {
-    [, lp, cust, guardian, level1, johndoe] = await hre.ethers.getSigners();
+    [, lp, cust, guardian, level1] = await hre.ethers.getSigners();
 
     _A = amountFunction(6);
 
@@ -31,7 +30,6 @@ describe("Test add, remove and change status of PolicyPool components", function
 
     pool = await deployPool({
       currency: currency,
-      grantRoles: [],
       treasuryAddress: "0x87c47c9a5a2aa74ae714857d64911d9a091c25b1", // Random address
     });
     pool._A = _A;
@@ -39,16 +37,8 @@ describe("Test add, remove and change status of PolicyPool components", function
     etk = await addEToken(pool, {});
 
     premiumsAccount = await deployPremiumsAccount(pool, { srEtk: etk });
-    accessManager = await hre.ethers.getContractAt("AccessManager", await pool.access());
     TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
     rm = await addRiskModule(pool, premiumsAccount, TrustfulRiskModule, {});
-
-    await grantRole(hre, accessManager, "GUARDIAN_ROLE", guardian);
-    await grantRole(hre, accessManager, "LEVEL1_ROLE", level1);
-
-    // Roles to create and resolve policies
-    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", cust);
-    await grantComponentRole(hre, accessManager, rm, "RESOLVER_ROLE", cust);
 
     await currency.connect(lp).approve(pool, _A(3000));
     await pool.connect(lp).deposit(etk, _A(3000));
@@ -60,13 +50,6 @@ describe("Test add, remove and change status of PolicyPool components", function
     await currency.connect(lp).approve(pool, _A(500));
     await expect(pool.connect(lp).deposit(etk, _A(300))).not.to.be.reverted;
 
-    // Only LEVEL1 can deprecate
-    await expect(
-      pool.connect(johndoe).changeComponentStatus(etk, ComponentStatus.deprecated)
-    ).to.be.revertedWithACError(accessManager, johndoe, "LEVEL1_ROLE");
-    await expect(
-      pool.connect(guardian).changeComponentStatus(etk, ComponentStatus.deprecated)
-    ).to.be.revertedWithACError(accessManager, guardian, "LEVEL1_ROLE");
     await expect(pool.connect(level1).changeComponentStatus(etk, ComponentStatus.deprecated)).not.to.be.reverted;
     expect(await pool.getComponentStatus(etk)).to.be.equal(ComponentStatus.deprecated);
 
@@ -77,12 +60,6 @@ describe("Test add, remove and change status of PolicyPool components", function
     );
     await expect(pool.connect(lp).withdraw(etk, _A(200))).not.to.be.reverted;
 
-    // Only GUARDIAN can suspend
-    await expect(pool.connect(level1).changeComponentStatus(etk, ComponentStatus.suspended)).to.be.revertedWithACError(
-      accessManager,
-      level1,
-      "GUARDIAN_ROLE"
-    );
     await expect(pool.connect(guardian).changeComponentStatus(etk, ComponentStatus.suspended)).not.to.be.reverted;
     expect(await pool.getComponentStatus(etk)).to.be.equal(ComponentStatus.suspended);
 
@@ -92,12 +69,6 @@ describe("Test add, remove and change status of PolicyPool components", function
       "ComponentMustBeActiveOrDeprecated"
     );
 
-    // Only LEVEL1 can reactivate
-    await expect(pool.connect(guardian).changeComponentStatus(etk, ComponentStatus.active)).to.be.revertedWithACError(
-      accessManager,
-      guardian,
-      "LEVEL1_ROLE"
-    );
     await expect(pool.connect(level1).changeComponentStatus(etk, ComponentStatus.active)).not.to.be.reverted;
     expect(await pool.getComponentStatus(etk)).to.be.equal(ComponentStatus.active);
 
@@ -109,12 +80,6 @@ describe("Test add, remove and change status of PolicyPool components", function
       .withArgs(ComponentKind.eToken, await etk.totalSupply());
 
     await expect(pool.connect(lp).withdraw(etk, MaxUint256)).not.to.be.reverted;
-
-    await expect(pool.connect(guardian).removeComponent(etk)).to.be.revertedWithACError(
-      accessManager,
-      guardian,
-      "LEVEL1_ROLE" // Only LEVEL1 can remove
-    );
 
     await expect(pool.connect(level1).removeComponent(etk)).not.to.be.reverted;
     expect(await pool.getComponentStatus(etk)).to.be.equal(ComponentStatus.inactive);
@@ -154,12 +119,6 @@ describe("Test add, remove and change status of PolicyPool components", function
     newPolicyEvt = await makePolicy(pool, rm, cust, _A(36), _A(1), _W(1 / 37), start + 3600, 3);
     policy = newPolicyEvt.args.policy;
 
-    // Only GUARDIAN can suspend
-    await expect(pool.connect(level1).changeComponentStatus(rm, ComponentStatus.suspended)).to.be.revertedWithACError(
-      accessManager,
-      level1,
-      "GUARDIAN_ROLE"
-    );
     await expect(pool.connect(guardian).changeComponentStatus(rm, ComponentStatus.suspended)).not.to.be.reverted;
     expect(await pool.getComponentStatus(rm)).to.be.equal(ComponentStatus.suspended);
 

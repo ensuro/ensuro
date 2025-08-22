@@ -1,13 +1,6 @@
 const { expect } = require("chai");
-const {
-  _W,
-  amountFunction,
-  getTransactionEvent,
-  grantRole,
-  getRole,
-  getComponentRole,
-  getAddress,
-} = require("@ensuro/utils/js/utils");
+const { _W, amountFunction, getTransactionEvent, setupAMRole } = require("@ensuro/utils/js/utils");
+const { getAccessManager, makeSelector } = require("@ensuro/access-managed-proxy/js/deployProxy");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const {
   defaultPolicyParamsWithBucket,
@@ -21,6 +14,11 @@ const { deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require(
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
+
+const PRICER_ROLE = 1234n;
+const ROLES = {
+  PRICER: PRICER_ROLE,
+};
 
 // Test the two variant to check the FullSignedBucketRiskModule also behaves exactly the same way as
 // SignedBucketRiskModule, unless for the new methods that are tested in a new test file
@@ -36,10 +34,10 @@ const variants = [
 variants.forEach((variant) => {
   describe(`SignedBucketRiskModule contract tests - ${variant.contract}`, function () {
     let _A;
-    let cust, level1, level2, lp, owner, resolver, signer;
+    let cust, level1, level2, lp, signer;
 
     beforeEach(async () => {
-      [owner, lp, cust, signer, resolver, level1, level2] = await hre.ethers.getSigners();
+      [, lp, cust, signer, level1, level2] = await hre.ethers.getSigners();
 
       _A = amountFunction(6);
     });
@@ -53,12 +51,11 @@ variants.forEach((variant) => {
 
       const pool = await deployPool({
         currency: currency,
-        grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
         treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
       });
       pool._A = _A;
 
-      const accessManager = await hre.ethers.getContractAt("AccessManager", await pool.access());
+      const acMgr = await getAccessManager(pool);
 
       // Setup the liquidity sources
       const srEtk = await addEToken(pool, {});
@@ -81,15 +78,13 @@ variants.forEach((variant) => {
       await rm.setParam(RiskModuleParameter.jrCollRatio, _W("0.3"));
       await rm.setParam(RiskModuleParameter.jrRoc, _W("0.1"));
 
-      await accessManager.grantComponentRole(rm, getRole("PRICER_ROLE"), signer);
-      await accessManager.grantComponentRole(rm, getRole("RESOLVER_ROLE"), resolver);
-      await accessManager.grantComponentRole(rm, getRole("POLICY_CREATOR_ROLE"), cust);
-      await accessManager.grantComponentRole(rm, getRole("REPLACER_ROLE"), cust);
-      return { srEtk, jrEtk, premiumsAccount, rm, pool, accessManager, currency };
+      await setupAMRole(acMgr, rm, ROLES, "PRICER", [makeSelector("PRICER_ROLE")]);
+      await acMgr.grantRole(PRICER_ROLE, signer, 0);
+      return { srEtk, jrEtk, premiumsAccount, rm, pool, acMgr, currency };
     }
 
     async function riskModuleWithPolicyFixture() {
-      const { srEtk, jrEtk, premiumsAccount, rm, pool, accessManager, currency } = await deployPoolFixture();
+      const { srEtk, jrEtk, premiumsAccount, rm, pool, currency } = await deployPoolFixture();
       const policyParams = await defaultPolicyParamsWithBucket({ rm: rm, payout: _A("793") });
 
       const signature = await makeSignedQuote(signer, policyParams, makeBucketQuoteMessage);
@@ -99,7 +94,7 @@ variants.forEach((variant) => {
 
       const policy = [...newPolicyEvt.args.policy];
 
-      return { srEtk, jrEtk, premiumsAccount, rm, pool, accessManager, currency, policy, policyParams };
+      return { srEtk, jrEtk, premiumsAccount, rm, pool, currency, policy, policyParams };
     }
 
     function newPolicy(rm, sender, policyParams, onBehalfOf, signature, method) {
@@ -138,43 +133,19 @@ variants.forEach((variant) => {
     });
 
     it("Only allows LEVEL1 and LEVEL2 to add/delete buckets", async () => {
-      const { rm, accessManager } = await helpers.loadFixture(deployPoolFixture);
+      const { rm } = await helpers.loadFixture(deployPoolFixture);
 
-      // level1
-      await expect(rm.connect(level1).setBucketParams(1, defaultBucketParams({}))).to.be.revertedWithACError(
-        accessManager,
-        level1,
-        getComponentRole(getAddress(rm), "LEVEL2_ROLE")
-      );
-      await expect(rm.connect(level1).deleteBucket(1)).to.be.revertedWithACError(
-        accessManager,
-        level1,
-        getComponentRole(getAddress(rm), "LEVEL2_ROLE")
-      );
-      await grantRole(hre, accessManager, "LEVEL1_ROLE", level1);
       await expect(rm.connect(level1).setBucketParams(1, defaultBucketParams({}))).not.to.be.reverted;
       await expect(rm.connect(level1).deleteBucket(1)).not.to.be.reverted;
 
       // level2
-      await expect(rm.connect(level2).setBucketParams(2, defaultBucketParams({}))).to.be.revertedWithACError(
-        accessManager,
-        level2,
-        getComponentRole(getAddress(rm), "LEVEL2_ROLE")
-      );
-      await expect(rm.connect(level2).deleteBucket(2)).to.be.revertedWithACError(
-        accessManager,
-        level2,
-        getComponentRole(getAddress(rm), "LEVEL2_ROLE")
-      );
-      await grantRole(hre, accessManager, "LEVEL2_ROLE", level2);
       await expect(rm.connect(level2).setBucketParams(2, defaultBucketParams({}))).not.to.be.reverted;
       await expect(rm.connect(level2).deleteBucket(2)).not.to.be.reverted;
     });
 
     it("Can't set or delete bucketId = 0", async () => {
-      const { rm, accessManager } = await helpers.loadFixture(deployPoolFixture);
+      const { rm } = await helpers.loadFixture(deployPoolFixture);
 
-      await grantRole(hre, accessManager, "LEVEL1_ROLE", level1);
       await expect(rm.connect(level1).setBucketParams(0, defaultBucketParams({}))).to.be.revertedWithCustomError(
         rm,
         "BucketCannotBeZero"
@@ -183,8 +154,7 @@ variants.forEach((variant) => {
     });
 
     it("Can't delete non-existing bucket", async () => {
-      const { rm, accessManager } = await helpers.loadFixture(deployPoolFixture);
-      await grantRole(hre, accessManager, "LEVEL1_ROLE", level1);
+      const { rm } = await helpers.loadFixture(deployPoolFixture);
 
       await expect(rm.connect(level1).deleteBucket(101)).to.be.revertedWithCustomError(rm, "BucketNotFound");
     });
@@ -381,9 +351,8 @@ variants.forEach((variant) => {
 
     it("Does not allow policy replacement when paused", async () => {
       //
-      const { rm, policy, accessManager } = await helpers.loadFixture(riskModuleWithPolicyFixture);
+      const { rm, policy } = await helpers.loadFixture(riskModuleWithPolicyFixture);
 
-      await accessManager.grantComponentRole(rm, getRole("GUARDIAN_ROLE"), owner);
       await rm.pause();
 
       const replacementPolicyParams = await defaultPolicyParamsWithBucket({ rm });
@@ -395,7 +364,7 @@ variants.forEach((variant) => {
     });
 
     it("Only allows REPLACER_ROLE to replace policies", async () => {
-      const { rm, pool, policy, policyParams, accessManager } = await helpers.loadFixture(riskModuleWithPolicyFixture);
+      const { rm, pool, policy, policyParams } = await helpers.loadFixture(riskModuleWithPolicyFixture);
 
       // Replace it with a higher payout
       const replacementPolicyParams = await defaultPolicyParamsWithBucket({
@@ -408,11 +377,6 @@ variants.forEach((variant) => {
       });
       const replacementPolicySignature = await makeSignedQuote(signer, replacementPolicyParams, makeBucketQuoteMessage);
 
-      // Anon cannot replace
-      await expect(
-        rm.replacePolicy(policy, ...replacePolicyParams(replacementPolicyParams, replacementPolicySignature))
-      ).to.be.revertedWithACError(accessManager, owner, getComponentRole(getAddress(rm), "REPLACER_ROLE"));
-
       // Authorized user can replace
       await expect(
         rm
@@ -424,7 +388,7 @@ variants.forEach((variant) => {
     });
 
     it("Performs policy replacement when a valid signature is presented", async () => {
-      const { rm, pool, policy, policyParams, accessManager } = await helpers.loadFixture(riskModuleWithPolicyFixture);
+      const { rm, pool, policy, policyParams } = await helpers.loadFixture(riskModuleWithPolicyFixture);
 
       const replacementPolicyParams = await defaultPolicyParamsWithBucket({
         rm: rm,
@@ -441,7 +405,7 @@ variants.forEach((variant) => {
       const badAddress = recoverAddress(badParams, replacementPolicySignature, makeBucketQuoteMessage);
       await expect(
         rm.connect(cust).replacePolicy(policy, ...replacePolicyParams(badParams, replacementPolicySignature))
-      ).to.be.revertedWithACError(accessManager, badAddress, getComponentRole(getAddress(rm), "PRICER_ROLE"));
+      ).to.be.revertedWithAMError(rm, badAddress);
 
       // Good signature is accepted
       await expect(

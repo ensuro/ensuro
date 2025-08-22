@@ -16,10 +16,6 @@ import {IERC721} from "@openzeppelin/contracts/interfaces/IERC721.sol";
  */
 
 contract TrustfulRiskModule is RiskModule {
-  bytes32 public constant PRICER_ROLE = keccak256("PRICER_ROLE");
-  bytes32 public constant RESOLVER_ROLE = keccak256("RESOLVER_ROLE");
-  bytes32 public constant REPLACER_ROLE = keccak256("REPLACER_ROLE");
-
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
   constructor(IPolicyPool policyPool_, IPremiumsAccount premiumsAccount_) RiskModule(policyPool_, premiumsAccount_) {}
@@ -70,7 +66,7 @@ contract TrustfulRiskModule is RiskModule {
     uint40 expiration,
     address onBehalfOf,
     uint96 internalId
-  ) external whenNotPaused onlyComponentRole(PRICER_ROLE) returns (uint256) {
+  ) external whenNotPaused returns (uint256) {
     return _newPolicy(payout, premium, lossProb, expiration, _getPayer(onBehalfOf, premium), onBehalfOf, internalId).id;
   }
 
@@ -98,7 +94,7 @@ contract TrustfulRiskModule is RiskModule {
     uint40 expiration,
     address onBehalfOf,
     uint96 internalId
-  ) external whenNotPaused onlyComponentRole(PRICER_ROLE) returns (Policy.PolicyData memory createdPolicy) {
+  ) external whenNotPaused returns (Policy.PolicyData memory createdPolicy) {
     return _newPolicy(payout, premium, lossProb, expiration, _getPayer(onBehalfOf, premium), onBehalfOf, internalId);
   }
 
@@ -125,7 +121,7 @@ contract TrustfulRiskModule is RiskModule {
     uint256 lossProb,
     uint40 expiration,
     uint96 internalId
-  ) external whenNotPaused onlyComponentRole(REPLACER_ROLE) returns (uint256) {
+  ) external whenNotPaused returns (uint256) {
     address onBehalfOf = IERC721(address(_policyPool)).ownerOf(oldPolicy.id);
     return
       _replacePolicy(
@@ -162,7 +158,6 @@ contract TrustfulRiskModule is RiskModule {
    * @dev Resolves a policy, if payout > 0, it pays to the policy holder.
    *
    * Requirements:
-   * - The caller has been granted componentRole(RESOLVER_ROLE)
    * - payout <= policy.payout
    * - block.timestamp >= policy.expiration
    *
@@ -172,10 +167,7 @@ contract TrustfulRiskModule is RiskModule {
    * @param policy The policy previously created (from {NewPolicy} event)
    * @param payout The payout to transfer to the policy holder
    */
-  function resolvePolicy(
-    Policy.PolicyData calldata policy,
-    uint256 payout
-  ) external onlyComponentRole(RESOLVER_ROLE) whenNotPaused {
+  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external whenNotPaused {
     _policyPool.resolvePolicy(policy, payout);
   }
 
@@ -183,7 +175,6 @@ contract TrustfulRiskModule is RiskModule {
    * @dev Resolves a policy with full payout (policy.payout) if customerWon == true
    *
    * Requirements:
-   * - The caller has been granted componentRole(RESOLVER_ROLE)
    * - block.timestamp >= policy.expiration
    *
    * Emits:
@@ -193,10 +184,7 @@ contract TrustfulRiskModule is RiskModule {
    * @param customerWon If true, policy.payout is transferred to the policy holder. If false, the policy is resolved
    * without payout and can't be longer claimed.
    */
-  function resolvePolicyFullPayout(
-    Policy.PolicyData calldata policy,
-    bool customerWon
-  ) external onlyComponentRole(RESOLVER_ROLE) whenNotPaused {
+  function resolvePolicyFullPayout(Policy.PolicyData calldata policy, bool customerWon) external whenNotPaused {
     _policyPool.resolvePolicyFullPayout(policy, customerWon);
   }
 

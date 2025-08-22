@@ -8,6 +8,7 @@ import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
 import {Policy} from "./Policy.sol";
 import {SignedBucketRiskModule} from "./SignedBucketRiskModule.sol";
+import {AMPUtils} from "@ensuro/access-managed-proxy/contracts/AMPUtils.sol";
 
 /**
  * @title FullSignedBucket Risk Module
@@ -18,7 +19,7 @@ import {SignedBucketRiskModule} from "./SignedBucketRiskModule.sol";
  * @author Ensuro
  */
 contract FullSignedBucketRiskModule is SignedBucketRiskModule {
-  bytes32 internal constant FULL_PRICER_ROLE = keccak256("FULL_PRICER_ROLE");
+  bytes4 internal constant FULL_PRICER_ROLE = bytes4(keccak256("FULL_PRICER_ROLE"));
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(
@@ -72,8 +73,7 @@ contract FullSignedBucketRiskModule is SignedBucketRiskModule {
         quoteValidUntil
       )
     );
-    address signer = ECDSA.recover(quoteHash, quoteSignatureR, quoteSignatureVS);
-    _policyPool.access().checkComponentRole(address(this), FULL_PRICER_ROLE, signer, false);
+    AMPUtils.checkCanCall(ECDSA.recover(quoteHash, quoteSignatureR, quoteSignatureVS), FULL_PRICER_ROLE);
   }
 
   /**
@@ -111,7 +111,7 @@ contract FullSignedBucketRiskModule is SignedBucketRiskModule {
     bytes32 quoteSignatureR,
     bytes32 quoteSignatureVS,
     uint40 quoteValidUntil
-  ) external whenNotPaused onlyComponentRole(POLICY_CREATOR_ROLE) returns (Policy.PolicyData memory createdPolicy) {
+  ) external whenNotPaused returns (Policy.PolicyData memory createdPolicy) {
     _checkFullSignature(
       payout,
       premium,
@@ -171,7 +171,7 @@ contract FullSignedBucketRiskModule is SignedBucketRiskModule {
     bytes32 quoteSignatureR,
     bytes32 quoteSignatureVS,
     uint40 quoteValidUntil
-  ) external whenNotPaused onlyComponentRole(REPLACER_ROLE) returns (uint256) {
+  ) external whenNotPaused returns (uint256) {
     _checkFullSignature(
       payout,
       premium,
