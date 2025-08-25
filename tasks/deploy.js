@@ -1,9 +1,19 @@
-const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const fs = require("fs");
 const ethers = require("ethers");
 const { task, types } = require("hardhat/config");
 const { WhitelistStatus } = require("../js/enums");
-const { amountFunction, _W, grantRole, grantComponentRole, getDefaultSigner } = require("@ensuro/utils/js/utils");
+const { ampConfig } = require("../js/ampConfig");
+const {
+  amountFunction,
+  _W,
+  grantComponentRole,
+  getDefaultSigner,
+  setupAMRole,
+  getAccessManagerRole,
+  getAddress,
+} = require("@ensuro/utils/js/utils");
+
+const { ZeroAddress } = ethers;
 
 const reservesOpts = {
   unsafeAllow: ["delegatecall"],
@@ -130,20 +140,30 @@ async function deployProxyContract(
   return { ContractFactory, contract };
 }
 
-async function grantRoleTask({ contractAddress, role, account, component, impersonate, impersonateBalance }, hre) {
-  let contract = await hre.ethers.getContractAt("AccessManager", contractAddress);
-  if (impersonate !== undefined) {
-    const signer = await hre.ethers.getImpersonatedSigner(impersonate);
-    if (impersonateBalance !== undefined) {
-      await helpers.setBalance(signer.address, hre.ethers.utils.parseEther(impersonateBalance));
-    }
-    contract = contract.connect(signer);
-  }
-  if (component === ethers.ZeroAddress) {
-    await grantRole(hre, contract, role, account, txOverrides(), console.log);
+async function deployAMPProxyContract(
+  { saveAddr, verify, contractClass, constructorArgs, initializeArgs, initializer, deployProxyArgs, acMgr },
+  hre
+) {
+  // eslint-disable-next-line global-require
+  const { deployAMPProxy } = require("@ensuro/access-managed-proxy/js/deployProxy");
+  const ContractFactory = await hre.ethers.getContractFactory(contractClass);
+  const contract = await deployAMPProxy(ContractFactory, initializeArgs || [], {
+    constructorArgs: constructorArgs,
+    initializer: initializer,
+    acMgr: acMgr,
+    ...ampConfig[contractClass],
+    ...deployProxyArgs,
+  });
+  const contractAddr = await ethers.resolveAddress(contract);
+  if (verify) {
+    await contract.deploymentTransaction().wait(6);
   } else {
-    await grantComponentRole(hre, contract, component, role, account, txOverrides(), console.log);
+    await contract.waitForDeployment();
   }
+  await logContractCreated(hre, contractClass, contractAddr);
+  saveAddress(saveAddr, contractAddr);
+  if (verify) await verifyContract(hre, contract, true, constructorArgs);
+  return { ContractFactory, contract };
 }
 
 async function deployTestCurrency({ currName, currSymbol, initialSupply, ...opts }, hre) {
@@ -160,33 +180,47 @@ async function deployTestCurrency({ currName, currSymbol, initialSupply, ...opts
 }
 
 async function deployAccessManager(opts, hre) {
-  return (await deployProxyContract({ contractClass: "AccessManager", ...opts }, hre)).contract;
+  const admin = opts.admin === undefined ? await getDefaultSigner(hre) : opts.admin;
+  const { contract } = await deployContract({ contractClass: "AccessManager", constructorArgs: [admin], ...opts }, hre);
+  return contract;
 }
 
-async function deployPolicyPool({ accessAddress, currencyAddress, nftName, nftSymbol, treasuryAddress, ...opts }, hre) {
-  return (
-    await deployProxyContract(
-      {
-        contractClass: "PolicyPool",
-        constructorArgs: [accessAddress, currencyAddress],
-        initializeArgs: [nftName, nftSymbol, treasuryAddress],
-        ...opts,
-      },
-      hre
-    )
-  ).contract;
+async function deployPolicyPool(
+  { acMgr, currencyAddress, nftName, nftSymbol, treasuryAddress, setupInternalPermissions, ...opts },
+  hre
+) {
+  const { contract } = await deployAMPProxyContract(
+    {
+      contractClass: "PolicyPool",
+      constructorArgs: [currencyAddress],
+      initializeArgs: [nftName, nftSymbol, treasuryAddress],
+      acMgr,
+      ...opts,
+    },
+    hre
+  );
+  if (setupInternalPermissions) {
+    acMgr = await hre.ethers.getContractAt("AccessManager", acMgr);
+    await acMgr.grantRole(getAccessManagerRole("POOL_ROLE"), contract, 0);
+  }
+  return contract;
+}
+
+function borrowerRole(etkAddr) {
+  return `BORROWER_FOR_ETK_${etkAddr.slice(0, 8)}_ROLE`;
 }
 
 async function deployEToken(
-  { poolAddress, etkName, etkSymbol, maxUtilizationRate, poolLoanInterestRate, runAs, ...opts },
+  { poolAddress, acMgr, etkName, etkSymbol, maxUtilizationRate, poolLoanInterestRate, runAs, ...opts },
   hre
 ) {
-  const { contract } = await deployProxyContract(
+  const { contract } = await deployAMPProxyContract(
     {
       contractClass: "EToken",
       constructorArgs: [poolAddress],
       initializeArgs: [etkName, etkSymbol, _W(maxUtilizationRate), _W(poolLoanInterestRate)],
       deployProxyArgs: reservesOpts,
+      acMgr,
       ...opts,
     },
     hre
@@ -196,16 +230,32 @@ async function deployEToken(
     if (runAs) policyPool = policyPool.connect(runAs);
     await policyPool.addComponent(contract, 1);
   }
+  if (opts.setupInternalPermissions) {
+    acMgr = await hre.ethers.getContractAt("AccessManager", acMgr);
+    await setupAMRole(acMgr, contract, undefined, "POOL_ROLE", [
+      "deposit",
+      "withdraw",
+      "addBorrower",
+      "removeBorrower",
+    ]);
+    await setupAMRole(acMgr, contract, undefined, borrowerRole(getAddress(contract)), [
+      "repayLoan",
+      "internalLoan",
+      "lockScr",
+      "unlockScr",
+    ]);
+  }
   return contract;
 }
 
-async function deployPremiumsAccount({ poolAddress, juniorEtk, seniorEtk, runAs, ...opts }, hre) {
-  const { contract } = await deployProxyContract(
+async function deployPremiumsAccount({ poolAddress, acMgr, juniorEtk, seniorEtk, runAs, ...opts }, hre) {
+  const { contract } = await deployAMPProxyContract(
     {
       contractClass: "PremiumsAccount",
       constructorArgs: [poolAddress, juniorEtk, seniorEtk],
       initializeArgs: [],
       deployProxyArgs: reservesOpts,
+      acMgr,
       ...opts,
     },
     hre
@@ -215,6 +265,15 @@ async function deployPremiumsAccount({ poolAddress, juniorEtk, seniorEtk, runAs,
     if (runAs) policyPool = policyPool.connect(runAs);
     await policyPool.addComponent(contract, 3);
   }
+  if (opts.setupInternalPermissions) {
+    acMgr = await hre.ethers.getContractAt("AccessManager", acMgr);
+    if (juniorEtk !== ZeroAddress) {
+      await acMgr.grantRole(getAccessManagerRole(borrowerRole(juniorEtk)), contract, 0);
+    }
+    if (seniorEtk !== ZeroAddress) {
+      await acMgr.grantRole(getAccessManagerRole(borrowerRole(seniorEtk)), contract, 0);
+    }
+  }
   return contract;
 }
 
@@ -223,6 +282,7 @@ async function deployRiskModule(
     rmClass,
     rmName,
     poolAddress,
+    acMgr,
     paAddress,
     collRatio,
     jrCollRatio,
@@ -247,7 +307,7 @@ async function deployRiskModule(
   extraConstructorArgs =
     typeof extraConstructorArgs === "string" ? JSON.parse(extraConstructorArgs) : extraConstructorArgs || [];
 
-  const { contract } = await deployProxyContract(
+  const { contract } = await deployAMPProxyContract(
     {
       contractClass: rmClass,
       constructorArgs: [poolAddress, paAddress, ...extraConstructorArgs],
@@ -261,6 +321,7 @@ async function deployRiskModule(
         wallet,
         ...extraArgs,
       ],
+      acMgr,
       ...opts,
     },
     hre
@@ -289,6 +350,10 @@ async function deployRiskModule(
     let policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
     if (runAs) policyPool = policyPool.connect(runAs);
     await policyPool.addComponent(contract, 2);
+  }
+  if (opts.setupInternalPermissions) {
+    acMgr = await hre.ethers.getContractAt("AccessManager", acMgr);
+    await setupAMRole(acMgr, rm, undefined, "POOL_ROLE", ["releaseExposure"]);
   }
   return contract;
 }
@@ -347,7 +412,7 @@ async function deployAaveAssetManager({ asset, aave, amClass, ...opts }, hre) {
 }
 
 async function deployWhitelist(
-  { wlClass, poolAddress, extraConstructorArgs, extraArgs, eToken, eToken2, eToken3, defaultStatus, ...opts },
+  { wlClass, poolAddress, acMgr, extraConstructorArgs, extraArgs, eToken, eToken2, eToken3, defaultStatus, ...opts },
   hre
 ) {
   extraArgs = extraArgs || [];
@@ -364,6 +429,7 @@ async function deployWhitelist(
       constructorArgs: [poolAddress, ...extraConstructorArgs],
       initializeArgs: [...extraArgs],
       initializer: opts.initializer,
+      acMgr,
       ...opts,
     },
     hre
@@ -424,37 +490,6 @@ async function resolvePolicy({ rmAddress, payout, fullPayout, policyId }, hre) {
   console.log(tx);
 }
 
-async function flightDelayPolicy(
-  { rmAddress, flight, departure, expectedArrival, tolerance, payout, premium, lossProb, customer },
-  hre
-) {
-  const rm = await hre.ethers.getContractAt("FlightDelayRiskModule", rmAddress);
-  const policyPool = await hre.ethers.getContractAt("PolicyPool", await rm.policyPool());
-  const access = await hre.ethers.getContractAt("AccessManager", await policyPool.access());
-  const currency = await hre.ethers.getContractAt("IERC20Metadata", await policyPool.currency());
-
-  await grantComponentRole(hre, access, rm, "PRICER_ROLE");
-  customer = customer || (await getDefaultSigner(hre));
-  premium = _A(premium);
-
-  await currency.approve(policyPool, premium);
-  lossProb = _W(lossProb);
-  payout = _A(payout);
-
-  const tx = await rm.newPolicy(
-    flight,
-    departure,
-    expectedArrival,
-    tolerance,
-    payout,
-    premium,
-    lossProb,
-    customer.address,
-    { gasLimit: 999999 }
-  );
-  console.log(tx);
-}
-
 async function listETokens({ poolAddress }, hre) {
   const policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
   const etkCount = await policyPool.getETokenCount();
@@ -487,7 +522,14 @@ function add_task() {
     .addOptionalParam("nftName", "Name of Policies NFT Token", "Ensuro Policies NFT", types.str)
     .addOptionalParam("nftSymbol", "Symbol of Policies NFT Token", "EPOL", types.str)
     .addOptionalParam("currencyAddress", "Currency Address", undefined, types.address)
-    .addOptionalParam("accessAddress", "AccessManager Address", undefined, types.address)
+    .addOptionalParam("admin", "AccessManager's admin", undefined, types.address)
+    .addOptionalParam("acMgr", "AccessManager Address", undefined, types.address)
+    .addOptionalParam(
+      "setupInternalPermissions",
+      "Sets up PolicyPool permissions on ACCESSMANAGER",
+      true,
+      types.boolean
+    )
     .addParam("treasuryAddress", "Treasury Address", types.address)
     .setAction(async function (taskArgs, hre) {
       if (taskArgs.currencyAddress === undefined) {
@@ -495,10 +537,10 @@ function add_task() {
         const currency = await deployTestCurrency(taskArgs, hre);
         taskArgs.currencyAddress = await ethers.resolveAddress(currency);
       }
-      if (taskArgs.accessAddress === undefined) {
+      if (taskArgs.acMgr === undefined) {
         taskArgs.saveAddr = "ACCESSMANAGER";
         const access = await deployAccessManager(taskArgs, hre);
-        taskArgs.accessAddress = await ethers.resolveAddress(access);
+        taskArgs.acMgr = await ethers.resolveAddress(access);
       }
       taskArgs.saveAddr = "POOL";
       await deployPolicyPool(taskArgs, hre);
@@ -512,8 +554,9 @@ function add_task() {
     .addOptionalParam("initialSupply", "Initial supply in the test currency", 2000, types.int)
     .setAction(deployTestCurrency);
 
-  task("deploy:accessManager", "Deploys the AccessManager")
+  task("deploy:accessManager", "Deploys an OZ 5.x AccessManager")
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
+    .addOptionalParam("admin", "Address of the admin of the AM (default: deployer's address)", undefined, types.address)
     .addOptionalParam("saveAddr", "Save created contract address", "ACCESSMANAGER", types.str)
     .setAction(deployAccessManager);
 
@@ -522,16 +565,29 @@ function add_task() {
     .addOptionalParam("saveAddr", "Save created contract address", "POOL", types.str)
     .addOptionalParam("nftName", "Name of Policies NFT Token", "Ensuro Policies NFT", types.str)
     .addOptionalParam("nftSymbol", "Symbol of Policies NFT Token", "EPOL", types.str)
-    .addOptionalParam("treasuryAddress", "Treasury Address", ethers.ZeroAddress, types.address)
+    .addOptionalParam("treasuryAddress", "Treasury Address", ZeroAddress, types.address)
+    .addOptionalParam(
+      "setupInternalPermissions",
+      "Sets up internal protocol permissions on ACCESSMANAGER",
+      true,
+      types.boolean
+    )
     .addParam("currencyAddress", "Currency Address", types.address)
-    .addParam("accessAddress", "AccessManager Address", types.address)
+    .addParam("acMgr", "AccessManager Address", types.address)
     .setAction(deployPolicyPool);
 
   task("deploy:eToken", "Deploy an EToken and adds it to the pool")
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addOptionalParam("saveAddr", "Save created contract address", "ETOKEN", types.str)
     .addOptionalParam("addComponent", "Adds the new component to the pool", true, types.boolean)
+    .addOptionalParam(
+      "setupInternalPermissions",
+      "Sets up internal protocol permissions on ACCESSMANAGER",
+      true,
+      types.boolean
+    )
     .addParam("poolAddress", "PolicyPool Address", types.address)
+    .addParam("acMgr", "AccessManager Address", types.address)
     .addParam("etkName", "Name of EToken", types.str)
     .addParam("etkSymbol", "Symbol of EToken", types.str)
     .addOptionalParam("maxUtilizationRate", "Max Utilization Rate", 1.0, types.float)
@@ -542,7 +598,14 @@ function add_task() {
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addOptionalParam("saveAddr", "Save created contract address", "PA", types.str)
     .addOptionalParam("addComponent", "Adds the new component to the pool", true, types.boolean)
+    .addOptionalParam(
+      "setupInternalPermissions",
+      "Sets up internal protocol permissions on ACCESSMANAGER",
+      true,
+      types.boolean
+    )
     .addParam("poolAddress", "PolicyPool Address", types.address)
+    .addParam("acMgr", "AccessManager Address", types.address)
     .addParam("juniorEtk", "Junior EToken Address", types.address)
     .addParam("seniorEtk", "Senior EToken Address", types.address)
     .setAction(deployPremiumsAccount);
@@ -551,7 +614,14 @@ function add_task() {
     .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
     .addOptionalParam("saveAddr", "Save created contract address", "RM", types.str)
     .addOptionalParam("addComponent", "Adds the new component to the pool", true, types.boolean)
+    .addOptionalParam(
+      "setupInternalPermissions",
+      "Sets up internal protocol permissions on ACCESSMANAGER",
+      true,
+      types.boolean
+    )
     .addParam("poolAddress", "PolicyPool Address", types.address)
+    .addParam("acMgr", "AccessManager Address", types.address)
     .addParam("paAddress", "PremiumsAccount Address", types.address)
     .addOptionalParam("rmClass", "RiskModule contract", "TrustfulRiskModule", types.str)
     .addOptionalParam("rmName", "Name of the RM", "Test RM", types.str)
@@ -625,6 +695,7 @@ function add_task() {
     .addOptionalParam("eToken3", "Set the Whitelist to a given eToken", undefined, types.address)
     .addOptionalParam("defaultStatus", "Default Status Ej: 'BWWB'", "BWWB", types.str)
     .addParam("poolAddress", "PolicyPool Address", types.address)
+    .addParam("acMgr", "AccessManager Address", types.address)
     .setAction(deployWhitelist);
 
   task("ens:trustfullPolicy", "Creates a TrustfulRiskModule Policy")
@@ -643,23 +714,6 @@ function add_task() {
     .addOptionalParam("fullPayout", "Full payout or not", undefined, types.boolean)
     .setAction(resolvePolicy);
 
-  task("ens:flightDelayPolicy", "Creates a Flight Delay Policy")
-    .addParam("rmAddress", "RiskModule address", types.address)
-    .addParam("flight", "Flight Number as String (ex: NAX105)", types.str)
-    .addParam("departure", "Departure in epoch seconds (ex: 1631817600)", undefined, types.int)
-    .addParam("expectedArrival", "Expected arrival in epoch seconds (ex: 1631824800)", undefined, types.int)
-    .addOptionalParam(
-      "tolerance",
-      "In seconds, the tolerance margin after expectedArrival before trigger the policy",
-      12 * 3600,
-      types.int
-    )
-    .addParam("payout", "Payout for customer in case policy is triggered", undefined, types.int)
-    .addParam("premium", "Premium the customer pays", undefined, types.int)
-    .addParam("lossProb", "Probability of policy being triggered", undefined, types.float)
-    .addOptionalParam("customer", "Customer", undefined, types.address)
-    .setAction(flightDelayPolicy);
-
   task("ens:listETokens", "Lists eTokens")
     .addParam("poolAddress", "PolicyPool Address", types.address)
     .setAction(listETokens);
@@ -668,20 +722,6 @@ function add_task() {
     .addParam("etkAddress", "EToken address", types.address)
     .addParam("amount", "Amount to Deposit", undefined, types.int)
     .setAction(deposit);
-
-  task("ens:grantRole", "Grants a given role")
-    .addParam("contractAddress", "Contract", undefined, types.address)
-    .addParam("role", "Role", types.str)
-    .addOptionalParam("impersonate", "Impersonate account before granting", undefined, types.address)
-    .addOptionalParam("impersonateBalance", "Impersonate setBalance", undefined, types.str)
-    .addOptionalParam("account", "Account", undefined, types.address)
-    .addOptionalParam(
-      "component",
-      "Address of the component if it's a component role",
-      ethers.ZeroAddress,
-      types.address
-    )
-    .setAction(grantRoleTask);
 }
 
 module.exports = {

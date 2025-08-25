@@ -1,5 +1,11 @@
 const { expect } = require("chai");
-const { _W, amountFunction, getTransactionEvent, setupAMRole } = require("@ensuro/utils/js/utils");
+const {
+  _W,
+  amountFunction,
+  getTransactionEvent,
+  setupAMRole,
+  getAccessManagerRole,
+} = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { DAY } = require("@ensuro/utils/js/constants");
 const {
@@ -19,12 +25,8 @@ const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 
-const PRICER_ROLE = 1234n;
-const FULL_PRICER_ROLE = 2345n;
-const ROLES = {
-  PRICER: PRICER_ROLE,
-  FULL_PRICER: FULL_PRICER_ROLE,
-};
+const PRICER_ROLE = getAccessManagerRole("PRICER_ROLE");
+const FULL_PRICER_ROLE = getAccessManagerRole("FULL_PRICER_ROLE");
 
 describe("FullSignedBucketRiskModule contract tests", function () {
   let _A;
@@ -72,9 +74,9 @@ describe("FullSignedBucketRiskModule contract tests", function () {
     await rm.setParam(RiskModuleParameter.jrCollRatio, _W("0.3"));
     await rm.setParam(RiskModuleParameter.jrRoc, _W("0.1"));
 
-    await setupAMRole(acMgr, rm, ROLES, "PRICER", [makeSelector("PRICER_ROLE")]);
+    await setupAMRole(acMgr, rm, undefined, "PRICER_ROLE", [makeSelector("PRICER_ROLE")]);
     await acMgr.grantRole(PRICER_ROLE, signer, 0);
-    await setupAMRole(acMgr, rm, ROLES, "FULL_PRICER", [makeSelector("FULL_PRICER_ROLE")]);
+    await setupAMRole(acMgr, rm, undefined, "FULL_PRICER_ROLE", [makeSelector("FULL_PRICER_ROLE")]);
     await acMgr.grantRole(FULL_PRICER_ROLE, fullSigner, 0);
 
     const paramsSameAsDefaults = { jrRoc: _W("0.1"), jrCollRatio: _W("0.3") };

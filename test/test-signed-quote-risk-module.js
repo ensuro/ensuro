@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const _ = require("lodash");
-const { amountFunction, getTransactionEvent, setupAMRole } = require("@ensuro/utils/js/utils");
+const { amountFunction, getTransactionEvent, setupAMRole, getAccessManagerRole } = require("@ensuro/utils/js/utils");
 const { getAccessManager, makeSelector } = require("@ensuro/access-managed-proxy/js/deployProxy");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const {
@@ -18,12 +18,8 @@ const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
 const _A = amountFunction(6);
 
-const PRICER_ROLE = 1234n;
-const FULL_PRICER_ROLE = 2345n;
-const ROLES = {
-  PRICER: PRICER_ROLE,
-  FULL_PRICER: FULL_PRICER_ROLE,
-};
+const PRICER_ROLE = getAccessManagerRole("PRICER_ROLE");
+const FULL_PRICER_ROLE = getAccessManagerRole("FULL_PRICER_ROLE");
 
 async function makeBucketSignedQuote(signer, policyParams) {
   return makeSignedQuote(signer, policyParams, makeBucketQuoteMessage);
@@ -167,10 +163,10 @@ variants.forEach((variant) => {
         extraConstructorArgs: variant.contract === "SignedQuoteRiskModule" ? [creationIsOpen] : [],
       });
 
-      await setupAMRole(acMgr, rm, ROLES, "PRICER", [makeSelector("PRICER_ROLE")]);
+      await setupAMRole(acMgr, rm, undefined, "PRICER_ROLE", [makeSelector("PRICER_ROLE")]);
       await acMgr.grantRole(PRICER_ROLE, signer, 0);
       if (variant.contract === "FullSignedBucketRiskModule") {
-        await setupAMRole(acMgr, rm, ROLES, "FULL_PRICER", [makeSelector("FULL_PRICER_ROLE")]);
+        await setupAMRole(acMgr, rm, undefined, "FULL_PRICER_ROLE", [makeSelector("FULL_PRICER_ROLE")]);
         await acMgr.grantRole(FULL_PRICER_ROLE, signer, 0);
       }
 

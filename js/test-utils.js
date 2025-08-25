@@ -1,5 +1,5 @@
 const hre = require("hardhat");
-const { _W, getTransactionEvent } = require("@ensuro/utils/js/utils");
+const { _W, getTransactionEvent, AM_ROLES } = require("@ensuro/utils/js/utils");
 const { deployAMPProxy, attachAsAMP, getAccessManager } = require("@ensuro/access-managed-proxy/js/deployProxy");
 const { RiskModuleParameter } = require("./enums");
 const { ampConfig } = require("./ampConfig");
@@ -7,7 +7,6 @@ const { ampConfig } = require("./ampConfig");
 const { ethers } = hre;
 const { ZeroAddress } = ethers;
 
-const PUBLIC_ROLE = BigInt("0xffffffffffffffff");
 const randomAddress = "0x89cDb70Fee571251a66E34caa1673cE40f7549Dc";
 
 async function makeAllPublic(contract, accessManager) {
@@ -15,7 +14,7 @@ async function makeAllPublic(contract, accessManager) {
   const selectors = contract.interface.fragments
     .filter((fragment) => fragment.type === "function" && skipSelectors.indexOf(fragment.selector) < 0)
     .map((fragment) => fragment.selector);
-  await accessManager.setTargetFunctionRole(contract, selectors, PUBLIC_ROLE);
+  await accessManager.setTargetFunctionRole(contract, selectors, AM_ROLES.PUBLIC_ROLE);
 }
 
 async function createRiskModule(

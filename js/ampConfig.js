@@ -31,6 +31,7 @@ const ampConfig = {
       "lockScr",
       "unlockScr",
       // internalLoan, - Moderate frequency, high risk, better to keep AC to enable pause or other security
+      // repayLoan, - Moderate frequency, high risk, better to keep AC to enable pause or other security
     ],
   },
   LPManualWhitelist: {
@@ -38,6 +39,11 @@ const ampConfig = {
     skipMethods: [],
   },
 };
+
+ampConfig.FullSignedBucketRiskModule = ampConfig.RiskModule;
+ampConfig.SignedBucketRiskModule = ampConfig.RiskModule;
+ampConfig.SignedQuoteRiskModule = ampConfig.RiskModule;
+ampConfig.TrustfulRiskModule = ampConfig.RiskModule;
 
 module.exports = {
   ampConfig,

@@ -1,5 +1,11 @@
 const { expect } = require("chai");
-const { _W, amountFunction, getTransactionEvent, setupAMRole } = require("@ensuro/utils/js/utils");
+const {
+  _W,
+  amountFunction,
+  getTransactionEvent,
+  setupAMRole,
+  getAccessManagerRole,
+} = require("@ensuro/utils/js/utils");
 const { getAccessManager, makeSelector } = require("@ensuro/access-managed-proxy/js/deployProxy");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const {
@@ -15,10 +21,7 @@ const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 
-const PRICER_ROLE = 1234n;
-const ROLES = {
-  PRICER: PRICER_ROLE,
-};
+const PRICER_ROLE = getAccessManagerRole("PRICER_ROLE");
 
 // Test the two variant to check the FullSignedBucketRiskModule also behaves exactly the same way as
 // SignedBucketRiskModule, unless for the new methods that are tested in a new test file
@@ -78,7 +81,7 @@ variants.forEach((variant) => {
       await rm.setParam(RiskModuleParameter.jrCollRatio, _W("0.3"));
       await rm.setParam(RiskModuleParameter.jrRoc, _W("0.1"));
 
-      await setupAMRole(acMgr, rm, ROLES, "PRICER", [makeSelector("PRICER_ROLE")]);
+      await setupAMRole(acMgr, rm, undefined, "PRICER_ROLE", [makeSelector("PRICER_ROLE")]);
       await acMgr.grantRole(PRICER_ROLE, signer, 0);
       return { srEtk, jrEtk, premiumsAccount, rm, pool, acMgr, currency };
     }
