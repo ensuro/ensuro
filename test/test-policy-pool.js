@@ -1,5 +1,5 @@
 const { expect } = require("chai");
-const { grantRole, amountFunction, _W, getTransactionEvent } = require("@ensuro/utils/js/utils");
+const { amountFunction, _W, getTransactionEvent } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const {
   addEToken,
@@ -32,51 +32,22 @@ describe("PolicyPool contract", function () {
     _A = amountFunction(6);
   });
 
-  it("Only allows LEVEL1_ROLE to change the treasury", async () => {
-    const { pool, accessManager } = await helpers.loadFixture(deployPoolFixture);
+  it("can change the treasury", async () => {
+    const { pool } = await helpers.loadFixture(deployPoolFixture);
     const newTreasury = "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199";
 
-    // User with no roles fails
-    await expect(pool.connect(backend).setTreasury(newTreasury)).to.be.revertedWithACError(
-      accessManager,
-      backend,
-      "LEVEL1_ROLE"
-    );
-
-    // User with LEVEL2_ROLE fails
-    await grantRole(hre, accessManager, "LEVEL2_ROLE", backend);
-    await expect(pool.connect(backend).setTreasury(newTreasury)).to.be.revertedWithACError(
-      accessManager,
-      backend,
-      "LEVEL1_ROLE"
-    );
-
-    // User with LEVEL1_ROLE passes
-    await grantRole(hre, accessManager, "LEVEL1_ROLE", backend);
-
     // Cant set treasury to 0x0
-    const zeroAddress = "0x0000000000000000000000000000000000000000";
-    await expect(pool.connect(backend).setTreasury(zeroAddress)).to.be.revertedWithCustomError(pool, "NoZeroTreasury");
+    await expect(pool.connect(backend).setTreasury(ZeroAddress)).to.be.revertedWithCustomError(pool, "NoZeroTreasury");
 
     await expect(pool.connect(backend).setTreasury(newTreasury)).to.emit(pool, "ComponentChanged");
 
     expect(await pool.treasury()).to.equal(newTreasury);
   });
 
-  it("Only allows LEVEL1_ROLE to add components", async () => {
-    const { pool, accessManager } = await helpers.loadFixture(deployPoolFixture);
+  it("can add components", async () => {
+    const { pool } = await helpers.loadFixture(deployPoolFixture);
     const premiumsAccount = await deployPremiumsAccount(pool, {}, false);
 
-    await expect(
-      pool.connect(backend).addComponent(premiumsAccount, ComponentKind.premiumsAccount)
-    ).to.be.revertedWithACError(accessManager, backend, "LEVEL1_ROLE");
-
-    await grantRole(hre, accessManager, "LEVEL2_ROLE", backend);
-    await expect(
-      pool.connect(backend).addComponent(premiumsAccount, ComponentKind.premiumsAccount)
-    ).to.be.revertedWithACError(accessManager, backend, "LEVEL1_ROLE");
-
-    await grantRole(hre, accessManager, "LEVEL1_ROLE", backend);
     await expect(pool.connect(backend).addComponent(premiumsAccount, ComponentKind.premiumsAccount)).to.emit(
       pool,
       "ComponentStatusChanged"
@@ -124,7 +95,6 @@ describe("PolicyPool contract", function () {
     const { pool, currency } = await helpers.loadFixture(deployPoolFixture);
     const pool2 = await deployPool({
       currency: currency,
-      grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
       treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199",
     });
 
@@ -181,10 +151,8 @@ describe("PolicyPool contract", function () {
   });
 
   it("Does not allow suspending unknown components", async () => {
-    const { pool, accessManager } = await helpers.loadFixture(deployPoolFixture);
+    const { pool } = await helpers.loadFixture(deployPoolFixture);
     const premiumsAccount = await deployPremiumsAccount(pool, {}, false);
-
-    await grantRole(hre, accessManager, "GUARDIAN_ROLE", owner);
 
     await expect(pool.changeComponentStatus(premiumsAccount, 1)).to.be.revertedWithCustomError(
       pool,
@@ -227,13 +195,11 @@ describe("PolicyPool contract", function () {
 
     const pool = await deployPool({
       currency: currency,
-      grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
       treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
     });
     pool._A = _A;
 
-    const accessManager = await hre.ethers.getContractAt("AccessManager", await pool.access());
-    return { pool, accessManager, currency };
+    return { pool, currency };
   }
 
   async function deployRiskModuleFixture() {
@@ -262,9 +228,6 @@ describe("PolicyPool contract", function () {
     await currency.connect(cust).approve(pool, _A(110));
     await currency.connect(cust).approve(backend, _A(110));
 
-    await accessManager.grantComponentRole(rm, await rm.PRICER_ROLE(), backend);
-    await accessManager.grantComponentRole(rm, await rm.RESOLVER_ROLE(), backend);
-    await accessManager.grantComponentRole(rm, await rm.REPLACER_ROLE(), backend);
     const tx = await rm.connect(backend).newPolicy(
       _A(1000), // payout
       _A(10), // premium
@@ -309,9 +272,8 @@ describe("PolicyPool contract", function () {
   });
 
   it("Can't expire policies when the pool is paused", async () => {
-    const { accessManager, policy, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
+    const { policy, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
 
-    await grantRole(hre, accessManager, "GUARDIAN_ROLE", owner);
     await expect(pool.connect(owner).pause()).to.emit(pool, "Paused");
 
     await expect(pool.connect(backend).expirePolicies([[...policy]])).to.be.revertedWithCustomError(
@@ -338,9 +300,8 @@ describe("PolicyPool contract", function () {
   });
 
   it("Rejects replace policy if the pool is paused", async () => {
-    const { accessManager, policy, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
+    const { policy, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
 
-    await grantRole(hre, accessManager, "GUARDIAN_ROLE", owner);
     await expect(pool.connect(owner).pause()).to.emit(pool, "Paused");
 
     await expect(pool.replacePolicy([...policy], [...policy], ZeroAddress, 1234)).to.be.revertedWithCustomError(
@@ -420,18 +381,8 @@ describe("PolicyPool contract", function () {
     ).to.be.revertedWith("Policy already exists");
   });
 
-  it("Only LEVEL2_ROLE can change the baseURI and after the change the tokenURI works", async () => {
-    const { policy, pool, accessManager } = await helpers.loadFixture(deployRmWithPolicyFixture);
-
-    // User with no roles fails
-    await expect(pool.connect(backend).setBaseURI("foobar")).to.be.revertedWithACError(
-      accessManager,
-      backend,
-      "LEVEL2_ROLE"
-    );
-
-    // User with LEVEL2_ROLE passes
-    await grantRole(hre, accessManager, "LEVEL2_ROLE", backend);
+  it("Can change the baseURI and after the change the tokenURI works", async () => {
+    const { policy, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
 
     expect(await pool.tokenURI(policy.id)).to.be.equal("");
 
@@ -456,7 +407,6 @@ describe("PolicyPool contract", function () {
       deployPool({
         nftName: "",
         currency: currency,
-        grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
         treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
       })
     ).to.be.revertedWithCustomError(PolicyPool, "NoEmptyName");
@@ -465,7 +415,6 @@ describe("PolicyPool contract", function () {
       deployPool({
         nftSymbol: "",
         currency: currency,
-        grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
         treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
       })
     ).to.be.revertedWithCustomError(PolicyPool, "NoEmptySymbol");

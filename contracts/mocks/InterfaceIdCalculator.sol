@@ -13,7 +13,6 @@ import {IRiskModule} from "../interfaces/IRiskModule.sol";
 import {IPolicyHolder} from "../interfaces/IPolicyHolder.sol";
 import {IPremiumsAccount} from "../interfaces/IPremiumsAccount.sol";
 import {ILPWhitelist} from "../interfaces/ILPWhitelist.sol";
-import {IAccessManager} from "../interfaces/IAccessManager.sol";
 import {IAssetManager} from "../interfaces/IAssetManager.sol";
 
 contract InterfaceIdCalculator {
@@ -28,7 +27,6 @@ contract InterfaceIdCalculator {
   bytes4 public constant IRISKMODULE_INTERFACEID = type(IRiskModule).interfaceId;
   bytes4 public constant IPREMIUMSACCOUNT_INTERFACEID = type(IPremiumsAccount).interfaceId;
   bytes4 public constant ILPWHITELIST_INTERFACEID = type(ILPWhitelist).interfaceId;
-  bytes4 public constant IACCESSMANAGER_INTERFACEID = type(IAccessManager).interfaceId;
   bytes4 public constant IASSETMANAGER_INTERFACEID = type(IAssetManager).interfaceId;
   bytes4 public constant IPOLICYHOLDER_INTERFACEID = type(IPolicyHolder).interfaceId;
 }

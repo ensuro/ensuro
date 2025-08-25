@@ -9,7 +9,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {Reserve} from "./Reserve.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
-import {IAccessManager} from "./interfaces/IAccessManager.sol";
+import {Governance} from "./Governance.sol";
 import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
 import {ILPWhitelist} from "./interfaces/ILPWhitelist.sol";
 import {IAssetManager} from "./interfaces/IAssetManager.sol";
@@ -697,7 +697,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     return _4toWad(_params.internalLoanInterestRate);
   }
 
-  function setParam(Parameter param, uint256 newValue) external onlyGlobalOrComponentRole(LEVEL2_ROLE) {
+  function setParam(Parameter param, uint256 newValue) external {
     if (param == Parameter.liquidityRequirement) {
       _params.liquidityRequirement = _wadTo4(newValue);
     } else if (param == Parameter.minUtilizationRate) {
@@ -712,20 +712,18 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
       _params.internalLoanInterestRate = _wadTo4(newValue);
     }
     _parameterChanged(
-      IAccessManager.GovernanceActions(
-        uint256(IAccessManager.GovernanceActions.setLiquidityRequirement) + uint256(param)
-      ),
+      Governance.GovernanceActions(uint256(Governance.GovernanceActions.setLiquidityRequirement) + uint256(param)),
       newValue
     );
   }
 
-  function setWhitelist(ILPWhitelist lpWhitelist_) external onlyGlobalOrComponentRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {
+  function setWhitelist(ILPWhitelist lpWhitelist_) external {
     require(
       address(lpWhitelist_) == address(0) || IPolicyPoolComponent(address(lpWhitelist_)).policyPool() == _policyPool,
       "Component not linked to this PolicyPool"
     );
     _params.whitelist = lpWhitelist_;
-    _componentChanged(IAccessManager.GovernanceActions.setLPWhitelist, address(lpWhitelist_));
+    _componentChanged(Governance.GovernanceActions.setLPWhitelist, address(lpWhitelist_));
   }
 
   function whitelist() external view returns (ILPWhitelist) {

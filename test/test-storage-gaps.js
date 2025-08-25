@@ -6,7 +6,6 @@ const { getStorageLayout } = require("@ensuro/utils/js/utils");
 describe("Storage Gaps", () => {
   const contracts = [
     "EToken",
-    "AccessManager",
     "LPManualWhitelist",
     "PolicyPool",
     "PolicyPoolComponent",

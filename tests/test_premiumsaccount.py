@@ -16,18 +16,16 @@ from . import TEST_VARIANTS
 from .contracts import PolicyPoolMockForward
 
 MAX_UINT = Wad(2**256 - 1)
-TEnv = namedtuple("TEnv", "currency time_control pool_access kind pa_class etk module")
+TEnv = namedtuple("TEnv", "currency time_control kind pa_class etk module")
 
 
 @pytest.fixture(params=TEST_VARIANTS)
 def tenv(request):
     if request.param == "prototype":
         currency = ERC20Token(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(10000))
-        pool_access = ensuro.AccessManager()
 
         class PolicyPoolMock(Contract):
             currency = ContractProxyField()
-            access = pool_access
 
             def new_policy(self, policy, customer, internal_id):
                 return policy.risk_module.make_policy_id(internal_id)
@@ -40,7 +38,6 @@ def tenv(request):
         return TEnv(
             currency=currency,
             time_control=ensuro.time_control,
-            pool_access=pool_access,
             kind="prototype",
             etk=partial(ensuro.EToken, policy_pool=pool),
             pa_class=partial(ensuro.PremiumsAccount, pool=pool),
@@ -48,14 +45,11 @@ def tenv(request):
         )
     elif request.param == "ethereum":
         currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(10000))
-        pa_access = wrappers.AccessManager(owner="owner")
 
         def etoken_factory(**kwargs):
-            wrappers.AccessManager(owner="owner")
             pool = PolicyPoolMockForward(
                 forwardTo=wrappers.AddressBook.ZERO,
                 currency_=currency.contract,
-                access_=pa_access.contract,
                 owner="owner",
             )
             symbol = kwargs.pop("symbol", "ETK")
@@ -67,7 +61,6 @@ def tenv(request):
             pa_pool = PolicyPoolMockForward(
                 forwardTo=wrappers.AddressBook.ZERO,
                 currency_=currency.contract,
-                access_=pa_access.contract,
                 owner="owner",
             )
             pa = wrappers.PremiumsAccount(pool=pa_pool, **kwargs)
@@ -77,7 +70,6 @@ def tenv(request):
         return TEnv(
             currency=currency,
             time_control=get_provider().time_control,
-            pool_access=pa_access,
             kind="ethereum",
             etk=etoken_factory,
             pa_class=pa_factory,
@@ -127,7 +119,6 @@ def test_receive_grant(tenv):
 def test_withdraw_won_premiums(tenv):
     pa = tenv.pa_class()
     treasury = "ENS"
-    tenv.pool_access.grant_component_role(pa, "WITHDRAW_WON_PREMIUMS_ROLE", tenv.currency.owner)
 
     with pytest.raises(RevertError, match="PremiumsAccount: destination cannot be the zero address"):
         pa.withdraw_won_premiums(_W(100), None)
@@ -156,7 +147,6 @@ def test_withdraw_won_premiums_with_borrowed_active_pp(tenv):
     # Create policy
     senior_etk = tenv.etk(name="eUSD1YEAR")
     pa = tenv.pa_class(senior_etk=senior_etk)
-    tenv.pool_access.grant_role("WITHDRAW_WON_PREMIUMS_ROLE", tenv.currency.owner)
     start = tenv.time_control.now
     expiration = tenv.time_control.now + WEEK
 
@@ -249,10 +239,6 @@ def test_withdraw_won_premiums_with_borrowed_active_pp(tenv):
     assert pa.funds_available == policy.pure_premium
     senior_etk.get_loan(pa).assert_equal(senior_loan)
 
-    with pytest.raises(RevertError, match="AccessControl"):
-        pa.repay_loans()
-    # Grant REPAY_LOANS_ROLE to address(0) as global role
-    tenv.pool_access.grant_role("REPAY_LOANS_ROLE", None)
     pa.repay_loans()
     senior_etk.get_loan(pa).assert_equal(senior_loan - policy.pure_premium)
     assert pa.funds_available == _W(0)
@@ -474,7 +460,6 @@ def test_policy_created_with_jr_etoken(tenv):
     )
 
     rm.coll_ratio.assert_equal(_W("0.5"))
-    tenv.pool_access.grant_role("LEVEL2_ROLE", tenv.currency.owner)
 
     rm.jr_coll_ratio.assert_equal(_W("0.4"))
     policy = ensuro.Policy(
@@ -588,7 +573,6 @@ def test_policy_created_with_jr_and_sr_etoken(tenv):
         coll_ratio=_W("0.95"),
         jr_coll_ratio=_W("0.1"),
     )
-    tenv.pool_access.grant_role("LEVEL2_ROLE", tenv.currency.owner)
     rm.jr_coll_ratio.assert_equal(_W("0.1"))
     rm.coll_ratio.assert_equal(_W("0.95"))
 
@@ -770,11 +754,6 @@ def test_set_loan_limits(tenv):
     assert pa.jr_loan_limit == MAX_UINT
     assert pa.sr_loan_limit == MAX_UINT
 
-    with pytest.raises(RevertError, match="AccessControl"):
-        pa.set_loan_limits(_W(1), _W(2))
-
-    tenv.pool_access.grant_component_role(pa, "LEVEL2_ROLE", "ADMIN")
-
     with pa.as_("ADMIN"):
         pa.set_loan_limits(_W(1), _W(2))
 
@@ -814,8 +793,6 @@ def test_set_loan_limits(tenv):
     with pa.as_("ADMIN"), pytest.raises(RevertError, match="Validation: no decimals allowed"):
         pa.set_loan_limits(None, _W("13.12"))
 
-    tenv.pool_access.grant_role("LEVEL2_ROLE", "GLOBAL_ADMIN")
-
     with pa.as_("ADMIN"):
         pa.set_loan_limits(_W(21), _W(12))
 
@@ -828,11 +805,6 @@ def test_set_deficit_ratio(tenv):
         junior_etk=tenv.etk(name="eUSD1MONTH", symbol="ETK1"),
         senior_etk=tenv.etk(name="eUSD1YEAR", symbol="ETK2"),
     )
-
-    with pytest.raises(RevertError, match="AccessControl"):
-        pa.set_deficit_ratio(_W("0.7"), True)
-
-    tenv.pool_access.grant_component_role(pa, "LEVEL2_ROLE", tenv.currency.owner)
 
     with pytest.raises(RevertError, match="Validation: deficitRatio must be <= 1"):
         pa.set_deficit_ratio(_W("1.7"), True)
@@ -876,11 +848,6 @@ def test_set_deficit_ratio_without_adjustment(tenv):
     pa.active_pure_premiums.assert_equal(_W(10))
 
     pa.funds_available.assert_equal(_W(10))
-
-    with pytest.raises(RevertError, match="AccessControl"):
-        pa.set_deficit_ratio(_W("0.7"), False)
-
-    tenv.pool_access.grant_component_role(pa, "LEVEL2_ROLE", tenv.currency.owner)
 
     senior_etk.balance_of("LP1").assert_equal(_W(500))
     senior_etk.get_loan(pa).assert_equal(_W(0))
@@ -963,8 +930,6 @@ def test_ratio_adjustment(tenv):
     with pa.thru_policy_pool():
         pa.policy_resolved_with_payout(tenv.currency.owner, policy_2, _W(20))
 
-    tenv.pool_access.grant_component_role(pa, "LEVEL2_ROLE", tenv.currency.owner)
-
     pa.active_pure_premiums.assert_equal(_W(10))
     pa.borrowed_active_pp.assert_equal(_W(10))
     pa.won_pure_premiums.assert_equal(_W(0))
@@ -1025,9 +990,6 @@ def test_ratio_adjustment(tenv):
     pa.funds_available.assert_equal(_W(3))
     pa.funds_available.assert_equal(_W("0.3") * policy_4.pure_premium)
 
-    with pytest.raises(RevertError, match="AccessControl"):
-        pa.repay_loans()
-    tenv.pool_access.grant_component_role(pa, "REPAY_LOANS_ROLE", None)
     pa.repay_loans()
 
 
@@ -1038,7 +1000,6 @@ def test_set_deficit_ratio_and_create_policy(tenv):
     pa = tenv.pa_class(
         senior_etk=senior_etk,
     )
-    tenv.pool_access.grant_component_role(pa, "LEVEL2_ROLE", tenv.currency.owner)
     pa.set_deficit_ratio(_W("0.3"), True)
     pa.deficit_ratio.assert_equal(_W("0.3"))
 
@@ -1108,7 +1069,6 @@ def test_set_deficit_ratio_refuses_loss_of_precision(tenv):
         junior_etk=tenv.etk(name="eUSD1MONTH", symbol="ETK1"),
         senior_etk=tenv.etk(name="eUSD1YEAR", symbol="ETK2"),
     )
-    tenv.pool_access.grant_component_role(pa, "LEVEL2_ROLE", tenv.currency.owner)
 
     with pytest.raises(RevertError, match="Validation: only up to 4 decimals allowed"):
         pa.set_deficit_ratio(_W("0.12345"), True)
@@ -1154,19 +1114,10 @@ def test_pa_asset_manager(tenv):
         reserve=pa,
     )
 
-    with pytest.raises(RevertError, match="AccessControl"):
-        pa.set_asset_manager(asset_manager, False)
-
-    tenv.pool_access.grant_role("LEVEL1_ROLE", "ADMIN")
-
     # Set asset manager
     with pa.as_("ADMIN"):
         pa.set_asset_manager(asset_manager, False)
 
-    with pytest.raises(RevertError, match="AccessControl"):
-        pa.forward_to_asset_manager("set_liquidity_thresholds", _W(100), _W(160), _W(200))
-
-    tenv.pool_access.grant_component_role(pa, "LEVEL2_ROLE", "ADMIN")
     with pa.as_("ADMIN"):
         pa.forward_to_asset_manager("set_liquidity_thresholds", _W(100), _W(160), _W(200))
 

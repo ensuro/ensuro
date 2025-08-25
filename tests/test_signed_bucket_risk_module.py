@@ -12,7 +12,7 @@ from prototype.utils import WEEK
 from . import TEST_VARIANTS
 from .contracts import PolicyPoolMock, PremiumsAccountMock
 
-TEnv = namedtuple("TEnv", ["time_control", "currency", "rm_class", "pool_access", "kind", "A"])
+TEnv = namedtuple("TEnv", ["time_control", "currency", "rm_class", "kind", "A"])
 
 
 USDC = make_integer_float(6, "USDC")
@@ -31,11 +31,9 @@ def tenv_prototype():
     currency = ERC20Token(
         owner="owner", name="TEST", symbol="TEST", initial_supply=_A(1000), decimals=decimals
     )
-    pool_access = ensuro.AccessManager()
 
     class PolicyPoolMock(Contract):
         currency = ContractProxyField()
-        access = pool_access
 
         def new_policy(self, policy, caller, customer, internal_id):
             return policy.risk_module.make_policy_id(internal_id)
@@ -51,7 +49,6 @@ def tenv_prototype():
     return TEnv(
         currency=currency,
         time_control=ensuro.time_control,
-        pool_access=pool_access,
         kind="prototype",
         rm_class=partial(ensuro.SignedBucketRiskModule, policy_pool=pool, premiums_account=premiums_account),
         A=_A,
@@ -63,15 +60,12 @@ def tenv_ethereum():
     currency = wrappers.TestCurrency(
         owner="owner", name="TEST", symbol="TEST", initial_supply=_A(1000), decimals=decimals
     )
-    access = wrappers.AccessManager(owner="owner")
-
-    pool = PolicyPoolMock(currency_=currency.contract, access_=access.contract, owner="owner")
+    pool = PolicyPoolMock(currency_=currency.contract, owner="owner")
     premiums_account = PremiumsAccountMock(policyPool_=pool, owner="owner")
 
     return TEnv(
         currency=currency,
         time_control=get_provider().time_control,
-        pool_access=access,
         kind="ethereum",
         rm_class=partial(
             wrappers.SignedBucketRiskModule,
@@ -142,7 +136,6 @@ def test_wrapper_allows_obtaining_buckets(tenv_ethereum: TEnv):
         exposure_limit=_A(1000000),
         wallet="CASINO",
     )
-    tenv_ethereum.pool_access.grant_role("LEVEL1_ROLE", "owner")
 
     rm.set_bucket_params(
         _W(20),
@@ -161,11 +154,9 @@ def test_wrapper_allows_obtaining_buckets(tenv_ethereum: TEnv):
     currency = ERC20Token(
         owner="owner", name="TEST", symbol="TEST", initial_supply=_A(1000), decimals=decimals
     )
-    pool_access = ensuro.AccessManager()
 
     class PolicyPoolMock(Contract):
         currency = ContractProxyField()
-        access = pool_access
 
         def new_policy(self, policy, caller, customer, internal_id):
             return policy.risk_module.make_policy_id(internal_id)

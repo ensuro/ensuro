@@ -1,12 +1,5 @@
 const { expect } = require("chai");
-const {
-  amountFunction,
-  grantComponentRole,
-  grantRole,
-  _W,
-  getComponentRole,
-  getAddress,
-} = require("@ensuro/utils/js/utils");
+const { amountFunction, _W } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { deployPool, deployPremiumsAccount, addRiskModule, makePolicy, addEToken } = require("../js/test-utils");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
@@ -19,7 +12,6 @@ describe("Test pause, unpause and upgrade contracts", function () {
   let cust, guardian, level1, lp, owner;
   let _A;
   let etk;
-  let accessManager;
   let rm;
 
   beforeEach(async () => {
@@ -35,7 +27,6 @@ describe("Test pause, unpause and upgrade contracts", function () {
 
     pool = await deployPool({
       currency: currency,
-      grantRoles: [],
       treasuryAddress: "0x87c47c9a5a2aa74ae714857d64911d9a091c25b1", // Random address
     });
     pool._A = _A;
@@ -43,16 +34,8 @@ describe("Test pause, unpause and upgrade contracts", function () {
     etk = await addEToken(pool, {});
 
     premiumsAccount = await deployPremiumsAccount(pool, { srEtk: etk });
-    accessManager = await hre.ethers.getContractAt("AccessManager", await pool.access());
     TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
     rm = await addRiskModule(pool, premiumsAccount, TrustfulRiskModule, {});
-
-    await grantRole(hre, accessManager, "GUARDIAN_ROLE", guardian);
-    await grantRole(hre, accessManager, "LEVEL1_ROLE", level1);
-
-    // Roles to create and resolve policies
-    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", cust);
-    await grantComponentRole(hre, accessManager, rm, "RESOLVER_ROLE", cust);
 
     await currency.connect(lp).approve(pool, _A(3000));
     await pool.connect(lp).deposit(etk, _A(3000));
@@ -62,7 +45,6 @@ describe("Test pause, unpause and upgrade contracts", function () {
     const start = await helpers.time.latest();
 
     // Try to pause PolicyPool without permissions
-    await expect(pool.pause()).to.be.revertedWithACError(accessManager, owner, "GUARDIAN_ROLE");
     expect(await pool.paused()).to.be.equal(false);
     await currency.connect(cust).approve(pool, _A(100));
 
@@ -79,7 +61,6 @@ describe("Test pause, unpause and upgrade contracts", function () {
     ).to.be.revertedWithCustomError(rm, "EnforcedPause");
 
     // UnPause PolicyPool
-    await expect(pool.connect(cust).unpause()).to.be.revertedWithACError(accessManager, cust, "LEVEL1_ROLE");
     await pool.connect(level1).unpause();
     expect(await pool.paused()).to.be.equal(false);
 
@@ -185,12 +166,6 @@ describe("Test pause, unpause and upgrade contracts", function () {
   });
 
   it("Pause and Unpause EToken", async function () {
-    // Try to pause EToken  without permissions
-    await expect(etk.pause()).to.be.revertedWithACError(
-      accessManager,
-      owner,
-      getComponentRole(getAddress(etk), "GUARDIAN_ROLE")
-    );
     expect(await etk.paused()).to.be.equal(false);
     expect(await etk.balanceOf(lp)).to.be.equal(_A(3000));
     expect(await etk.balanceOf(cust)).to.be.equal(_A(0));
@@ -215,26 +190,12 @@ describe("Test pause, unpause and upgrade contracts", function () {
     expect(await etk.balanceOf(lp)).to.be.equal(_A(2500));
     expect(await etk.balanceOf(cust)).to.be.equal(_A(500));
 
-    await expect(etk.connect(cust).pause()).to.be.revertedWithACError(
-      accessManager,
-      cust,
-      getComponentRole(getAddress(etk), "GUARDIAN_ROLE")
-    );
-    await grantComponentRole(hre, accessManager, etk, "GUARDIAN_ROLE", cust);
     await expect(etk.connect(cust).pause()).not.to.be.reverted;
-    // The permission is not global, it's only for this component
-    await expect(pool.connect(cust).pause()).to.be.revertedWithACError(accessManager, cust, "GUARDIAN_ROLE");
   });
 
   it("Pause and Unpause RiskModule resolve policy", async function () {
     const start = await helpers.time.latest();
 
-    // Try to pause RiskModule  without permissions
-    await expect(rm.pause()).to.be.revertedWithACError(
-      accessManager,
-      owner,
-      getComponentRole(getAddress(rm), "GUARDIAN_ROLE")
-    );
     expect(await rm.paused()).to.be.equal(false);
 
     await currency.connect(cust).approve(pool, _A(1));
@@ -249,13 +210,6 @@ describe("Test pause, unpause and upgrade contracts", function () {
       rm,
       "EnforcedPause"
     );
-    // UnPause RiskModule
-    await expect(rm.connect(lp).unpause()).to.be.revertedWithACError(
-      accessManager,
-      lp,
-      getComponentRole(getAddress(rm), "LEVEL1_ROLE")
-    );
-    await grantComponentRole(hre, accessManager, rm, "LEVEL1_ROLE", lp);
     await rm.connect(lp).unpause();
     expect(await rm.paused()).to.be.equal(false);
 
@@ -266,12 +220,6 @@ describe("Test pause, unpause and upgrade contracts", function () {
   it("Pause and Unpause RiskModule resolve policy full payout", async function () {
     const start = await helpers.time.latest();
 
-    // Try to pause RiskModule  without permissions
-    await expect(rm.pause()).to.be.revertedWithACError(
-      accessManager,
-      owner,
-      getComponentRole(getAddress(rm), "GUARDIAN_ROLE")
-    );
     expect(await rm.paused()).to.be.equal(false);
 
     await currency.connect(cust).approve(pool, _A(1));
@@ -298,12 +246,6 @@ describe("Test pause, unpause and upgrade contracts", function () {
   it("Pause and Unpause PremiumsAccount policyExpired", async function () {
     const start = await helpers.time.latest();
 
-    // Try to pause PremiumsAccount  without permissions
-    await expect(premiumsAccount.pause()).to.be.revertedWithACError(
-      accessManager,
-      owner,
-      getComponentRole(getAddress(premiumsAccount), "GUARDIAN_ROLE")
-    );
     expect(await premiumsAccount.paused()).to.be.equal(false);
 
     await currency.connect(cust).approve(pool, _A(1));
@@ -338,12 +280,6 @@ describe("Test pause, unpause and upgrade contracts", function () {
   it("Pause and Unpause PremiumsAccount policyResolvedWithPayout", async function () {
     const start = await helpers.time.latest();
 
-    // Try to pause PremiumsAccount  without permissions
-    await expect(premiumsAccount.pause()).to.be.revertedWithACError(
-      accessManager,
-      owner,
-      getComponentRole(getAddress(premiumsAccount), "GUARDIAN_ROLE")
-    );
     expect(await premiumsAccount.paused()).to.be.equal(false);
 
     await currency.connect(cust).approve(pool, _A(1));
@@ -380,7 +316,6 @@ describe("Test pause, unpause and upgrade contracts", function () {
     // Pause PremiumsAccount again
     await premiumsAccount.connect(guardian).pause();
 
-    await grantComponentRole(hre, accessManager, premiumsAccount, "REPAY_LOANS_ROLE", cust);
     // Can't resolve repayLoans
     await expect(premiumsAccount.connect(cust).repayLoans()).to.be.revertedWithCustomError(
       premiumsAccount,

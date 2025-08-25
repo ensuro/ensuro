@@ -13,9 +13,6 @@ import {IEToken} from "./interfaces/IEToken.sol";
  * @author Ensuro
  */
 contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
-  bytes32 public constant LP_WHITELIST_ROLE = keccak256("LP_WHITELIST_ROLE");
-  bytes32 public constant LP_WHITELIST_ADMIN_ROLE = keccak256("LP_WHITELIST_ADMIN_ROLE");
-
   /**
    * @dev Enum with the different options for whitelisting status
    */
@@ -60,10 +57,7 @@ contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
     emit LPWhitelistStatusChanged(address(0), defaultStatus);
   }
 
-  function whitelistAddress(
-    address provider,
-    WhitelistStatus calldata newStatus
-  ) external onlyComponentRole(LP_WHITELIST_ROLE) {
+  function whitelistAddress(address provider, WhitelistStatus calldata newStatus) external {
     require(provider != address(0), "You can't change the defaults");
     _whitelistAddress(provider, newStatus);
   }
@@ -78,9 +72,7 @@ contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
     );
   }
 
-  function setWhitelistDefaults(
-    WhitelistStatus calldata newStatus
-  ) external onlyComponentRole(LP_WHITELIST_ADMIN_ROLE) {
+  function setWhitelistDefaults(WhitelistStatus calldata newStatus) external {
     _checkDefaultStatus(newStatus);
     _whitelistAddress(address(0), newStatus);
   }

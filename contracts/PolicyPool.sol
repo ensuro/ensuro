@@ -8,7 +8,7 @@ import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Pau
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-import {IAccessManager} from "./interfaces/IAccessManager.sol";
+import {Governance} from "./Governance.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
 import {IPolicyHolderV2} from "./interfaces/IPolicyHolderV2.sol";
 import {IPolicyHolder} from "./interfaces/IPolicyHolder.sol";
@@ -38,17 +38,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   using Policy for Policy.PolicyData;
   using SafeERC20 for IERC20Metadata;
 
-  bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
-  bytes32 public constant LEVEL1_ROLE = keccak256("LEVEL1_ROLE");
-  bytes32 public constant LEVEL2_ROLE = keccak256("LEVEL2_ROLE");
-
   uint256 internal constant HOLDER_GAS_LIMIT = 150000;
-
-  /**
-   * @dev {AccessManager} that handles the access permissions for the PolicyPool and its components.
-   */
-  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
-  IAccessManager internal immutable _access;
 
   /**
    * @dev {ERC20} token used in PolicyPool as currency. Usually it will be a stablecoin such as USDC.
@@ -152,11 +142,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   error NoEmptySymbol();
 
   /**
-   * @dev Upgrade error when the new implementation contract tries to change the `access()`
-   */
-  error UpgradeCannotChangeAccess();
-
-  /**
    * @dev Error when trying to add a component that was already added to the PolicyPool
    */
   error ComponentAlreadyInThePool();
@@ -219,7 +204,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * @param action The type of governance action (setTreasury or setBaseURI for now)
    * @param value  The address of the new treasury or the address of the caller (for setBaseURI)
    */
-  event ComponentChanged(IAccessManager.GovernanceActions indexed action, address value);
+  event ComponentChanged(Governance.GovernanceActions indexed action, address value);
 
   /**
    * @dev Event emitted when a new component added/removed to the pool or the status changes.
@@ -237,21 +222,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * @param holder The address of the contract that owns the policy
    */
   event ExpirationNotificationFailed(uint256 indexed policyId, IPolicyHolder holder);
-  /**
-   * @dev Modifier that checks the caller has a given role
-   */
-  modifier onlyRole(bytes32 role) {
-    _access.checkRole(role, _msgSender());
-    _;
-  }
-
-  /**
-   * @dev Modifier that checks the caller has any of the given roles
-   */
-  modifier onlyRole2(bytes32 role1, bytes32 role2) {
-    _access.checkRole2(role1, role2, _msgSender());
-    _;
-  }
 
   /**
    * @dev Instantiates a Policy Pool. Sets immutable fields.
@@ -261,11 +231,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * @param currency_ The {ERC20} token that's used as a currency in the protocol. Usually a stablecoin such as USDC.
    */
   /// @custom:oz-upgrades-unsafe-allow constructor
-  constructor(IAccessManager access_, IERC20Metadata currency_) {
-    if (address(access_) == address(0)) revert NoZeroAccess();
+  constructor(IERC20Metadata currency_) {
     if (address(currency_) == address(0)) revert NoZeroCurrency();
     _disableInitializers();
-    _access = access_;
     _currency = currency_;
   }
 
@@ -297,38 +265,22 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     _setTreasury(treasury_);
   }
 
-  function _authorizeUpgrade(address newImpl) internal view override onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {
-    IPolicyPool newPool = IPolicyPool(newImpl);
-    if (newPool.access() != _access) revert UpgradeCannotChangeAccess();
-    // if (newPool.currency() != _currency) revert UpgradeCannotChangeCurrency();
-    // We now accept upgrade of the currency. This is a critical operation (as any upgrade), and should be
-    // made carefully checking that all the assets of the protocol are converted to the new currency in the
-    // migration process
-  }
+  // solhint-disable-next-line no-empty-blocks
+  function _authorizeUpgrade(address newImpl) internal view override {}
 
   /**
    * @dev Pauses the contract. When the contract is paused, several operations are rejected: deposits, withdrawals, new
    * policies, policy resolution and expiration, nft transfers.
-   *
-   * Requirements:
-   * - Must be executed by a user with the {GUARDIAN_ROLE}.
    */
-  function pause() public onlyRole(GUARDIAN_ROLE) {
+  function pause() public {
     _pause();
   }
 
   /**
    * @dev Unpauses the contract. All the operations disabled when the contract was paused are re-enabled.
-   *
-   * Requirements:
-   * - Must be called by a user with either the {GUARDIAN_ROLE} or a {LEVEL1_ROLE}.
    */
-  function unpause() public onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {
+  function unpause() public {
     _unpause();
-  }
-
-  function access() external view virtual override returns (IAccessManager) {
-    return _access;
   }
 
   function currency() external view virtual override returns (IERC20Metadata) {
@@ -338,19 +290,16 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   function _setTreasury(address treasury_) internal {
     if (treasury_ == address(0)) revert NoZeroTreasury();
     _treasury = treasury_;
-    emit ComponentChanged(IAccessManager.GovernanceActions.setTreasury, _treasury);
+    emit ComponentChanged(Governance.GovernanceActions.setTreasury, _treasury);
   }
 
   /**
    * @dev Changes the address of the treasury, the one that receives the protocol fees.
    *
-   * Requirements:
-   * - Must be called by a user with the {LEVEL1_ROLE}.
-   *
    * Events:
    * - Emits {ComponentChanged} with action = setTreasury and the address of the new treasury.
    */
-  function setTreasury(address treasury_) external onlyRole(LEVEL1_ROLE) {
+  function setTreasury(address treasury_) external {
     _setTreasury(treasury_);
   }
 
@@ -365,10 +314,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * @dev Adds a new component (either an {EToken}, {RiskModule} or {PremiumsAccount}) to the protocol. The component
    * status will be `active`.
    *
-   * Requirements:
-   * - Must be called by a user with the {LEVEL1_ROLE}
-   * - The component wasn't added before.
-   *
    * Events:
    * - Emits {ComponentStatusChanged} with status active.
    *
@@ -376,7 +321,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * to this specific {PolicyPool} and matching the `kind` specified in the next paramter.
    * @param kind The type of component to be added.
    */
-  function addComponent(IPolicyPoolComponent component, ComponentKind kind) external onlyRole(LEVEL1_ROLE) {
+  function addComponent(IPolicyPoolComponent component, ComponentKind kind) external {
     Component storage comp = _components[component];
     if (comp.status != ComponentStatus.inactive) revert ComponentAlreadyInThePool();
     if (component.policyPool() != this) revert ComponentNotLinkedToThisPool();
@@ -407,16 +352,12 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * @dev Removes a component from the protocol. The component needs to be in `deprecated` status before doing this
    * operation.
    *
-   * Requirements:
-   * - Must be called by a user with the {LEVEL1_ROLE}
-   * - The component status is `deprecated`.
-   *
    * Events:
    * - Emits {ComponentStatusChanged} with status inactive.
    *
    * @param component The address of component contract. Must be a component added before.
    */
-  function removeComponent(IPolicyPoolComponent component) external onlyRole(LEVEL1_ROLE) {
+  function removeComponent(IPolicyPoolComponent component) external {
     Component storage comp = _components[component];
     if (comp.status != ComponentStatus.deprecated) revert ComponentNotDeprecated();
     if (comp.kind == ComponentKind.eToken) {
@@ -444,28 +385,26 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   /**
    * @dev Changes the status of a component.
    *
-   * Requirements:
-   * - Must be called by a user with the {LEVEL1_ROLE} if the new status is `active` or `deprecated`.
-   * - Must be called by a user with the {GUARDIAN_ROLE} if the new status is `suspended`.
-   *
    * Events:
    * - Emits {ComponentStatusChanged} with the new status.
    *
    * @param component The address of component contract. Must be a component added before.
    * @param newStatus The new status, must be either `active`, `deprecated` or `suspended`.
    */
-  function changeComponentStatus(
-    IPolicyPoolComponent component,
-    ComponentStatus newStatus
-  ) external onlyRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {
+  function changeComponentStatus(IPolicyPoolComponent component, ComponentStatus newStatus) external {
     Component storage comp = _components[component];
     if (comp.status == ComponentStatus.inactive) revert ComponentNotFound();
+    // TODO: re-add custom access checks?
+    // Only LEVEL1_ROLE canCall if newStatus = active or deprecated
+    // Only GUARDIAN_ROLE canCall if newStatus = suspended
+    /*
     if (newStatus == ComponentStatus.active || newStatus == ComponentStatus.deprecated) {
       _access.checkRole(LEVEL1_ROLE, _msgSender());
     } else {
       // ComponentStatus.suspended requires GUARDIAN_ROLE
       _access.checkRole(GUARDIAN_ROLE, _msgSender());
     }
+    */
     comp.status = newStatus;
     emit ComponentStatusChanged(component, comp.kind, newStatus);
   }
@@ -752,15 +691,12 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   /**
    * @dev Changes the baseURI of the minted policy NFTs
    *
-   * Requirements:
-   * - Must be called by a user with the {LEVEL2_ROLE}.
-   *
    * Events:
    * - Emits {ComponentChanged} with action = setBaseURI and the address of the caller.
    */
-  function setBaseURI(string calldata nftBaseURI_) external onlyRole(LEVEL2_ROLE) {
+  function setBaseURI(string calldata nftBaseURI_) external {
     _nftBaseURI = nftBaseURI_;
-    emit ComponentChanged(IAccessManager.GovernanceActions.setBaseURI, _msgSender());
+    emit ComponentChanged(Governance.GovernanceActions.setBaseURI, _msgSender());
   }
 
   function _update(address to, uint256 tokenId, address auth) internal override whenNotPaused returns (address) {

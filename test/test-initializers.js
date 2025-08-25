@@ -2,9 +2,11 @@ const { expect } = require("chai");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
-const { grantRole, amountFunction } = require("@ensuro/utils/js/utils");
+const { amountFunction } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { deployPool, deployPremiumsAccount, addRiskModule, createRiskModule, addEToken } = require("../js/test-utils");
+const { deployAMPProxy, getAccessManager } = require("@ensuro/access-managed-proxy/js/deployProxy");
+const { ampConfig } = require("../js/ampConfig");
 
 const { ZeroAddress } = hre.ethers;
 
@@ -30,11 +32,8 @@ describe("Test Initialize contracts", function () {
     const etk = await addEToken(pool, {});
 
     const premiumsAccount = await deployPremiumsAccount(pool, { srEtk: etk });
-    const accessManager = await hre.ethers.getContractAt("AccessManager", await pool.access());
     const TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
     const rm = await addRiskModule(pool, premiumsAccount, TrustfulRiskModule, {});
-
-    await grantRole(hre, accessManager, "GUARDIAN_ROLE", guardian);
 
     await currency.connect(lp).approve(pool, _A(5000));
     await pool.connect(lp).deposit(etk, _A(3000));
@@ -49,19 +48,17 @@ describe("Test Initialize contracts", function () {
       guardian,
       _A,
       etk,
-      accessManager,
       rm,
     };
   }
 
   let pool;
-  let accessManager;
   let premiumsAccount;
   let etk;
   let rm;
 
   beforeEach(async () => {
-    ({ pool, premiumsAccount, etk, accessManager, rm } = await helpers.loadFixture(protocolFixture));
+    ({ pool, premiumsAccount, etk, rm } = await helpers.loadFixture(protocolFixture));
   });
 
   it("Does not allow reinitializing PolicyPool", async () => {
@@ -70,10 +67,6 @@ describe("Test Initialize contracts", function () {
 
   it("Does not allow reinitializing Etoken", async () => {
     await expect(etk.initialize("ETK", "ETK", 0, 0)).to.be.revertedWithCustomError(pool, "InvalidInitialization");
-  });
-
-  it("Does not allow reinitializing AccessManager", async () => {
-    await expect(accessManager.initialize()).to.be.revertedWithCustomError(pool, "InvalidInitialization");
   });
 
   it("Does not allow reinitializing PremiumsAccount", async () => {
@@ -103,9 +96,12 @@ describe("Test Initialize contracts", function () {
   it("Does not allow reinitializing Whitelist", async () => {
     const Whitelist = await hre.ethers.getContractFactory("LPManualWhitelist");
     const poolAddr = await hre.ethers.resolveAddress(pool);
-    const wl = await hre.upgrades.deployProxy(Whitelist, [[2, 1, 1, 2]], {
+    const acMgr = await getAccessManager(pool);
+    const wl = await deployAMPProxy(Whitelist, [[2, 1, 1, 2]], {
       kind: "uups",
       constructorArgs: [poolAddr],
+      acMgr,
+      ...ampConfig.LPManualWhitelist,
     });
     await expect(wl.initialize([2, 1, 1, 2])).to.be.revertedWithCustomError(pool, "InvalidInitialization");
   });

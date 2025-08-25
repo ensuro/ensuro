@@ -6,7 +6,7 @@ import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {IAssetManager} from "./interfaces/IAssetManager.sol";
-import {IAccessManager} from "./interfaces/IAccessManager.sol";
+import {Governance} from "./Governance.sol";
 import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
 
 /**
@@ -117,9 +117,6 @@ abstract contract Reserve is PolicyPoolComponent {
    * @dev Sets the asset manager for this reserve. If the reserve had previously an asset manager, it will deinvest all
    * the funds, making all of the liquid in the reserve balance.
    *
-   * Requirements:
-   * - The caller must have been granted of global or component roles GUARDIAN_ROLE or LEVEL1_ROLE.
-   *
    * Events:
    * - Emits ComponentChanged with action setAssetManager or setAssetManagerForced
    *
@@ -129,16 +126,13 @@ abstract contract Reserve is PolicyPoolComponent {
    * `force` is true, an error in the deinvestAll() operation is ignored. When `force` is false, if `deinvestAll()`
    * fails, it reverts.
    */
-  function setAssetManager(
-    IAssetManager newAM,
-    bool force
-  ) external onlyGlobalOrComponentRole2(GUARDIAN_ROLE, LEVEL1_ROLE) {
+  function setAssetManager(IAssetManager newAM, bool force) external {
     require(
       address(newAM) == address(0) || newAM.supportsInterface(type(IAssetManager).interfaceId),
       "Reserve: asset manager doesn't implements the required interface"
     );
     address am = address(assetManager());
-    IAccessManager.GovernanceActions action = IAccessManager.GovernanceActions.setAssetManager;
+    Governance.GovernanceActions action = Governance.GovernanceActions.setAssetManager;
     if (am != address(0)) {
       if (force) {
         // Ignores success or not
@@ -147,7 +141,7 @@ abstract contract Reserve is PolicyPoolComponent {
           abi.encodeWithSelector(IAssetManager.deinvestAll.selector)
         );
         if (!success) {
-          action = IAccessManager.GovernanceActions.setAssetManagerForced;
+          action = Governance.GovernanceActions.setAssetManagerForced;
         } else {
           _assetEarnings(abi.decode(result, (int256)));
         }
@@ -206,15 +200,10 @@ abstract contract Reserve is PolicyPoolComponent {
    * @dev This function allows to call custom functions of the asset manager (for example for setting parameters).
    *      This functions will be called with `delegatecall`, in the context of the reserve.
    *
-   * Requirements:
-   * - The caller must have been granted of global or component roles LEVEL2_ROLE.
-   *
    * @param functionCall Abi encoded function call to make.
    * @return Returns the return value of the function called, to be decoded by the receiver.
    */
-  function forwardToAssetManager(
-    bytes calldata functionCall
-  ) external onlyGlobalOrComponentRole(LEVEL2_ROLE) returns (bytes memory) {
+  function forwardToAssetManager(bytes calldata functionCall) external returns (bytes memory) {
     return address(assetManager()).functionDelegateCall(functionCall);
   }
 

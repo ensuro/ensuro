@@ -10,7 +10,7 @@ import {WadRayMath} from "./dependencies/WadRayMath.sol";
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
 import {Reserve} from "./Reserve.sol";
-import {IAccessManager} from "./interfaces/IAccessManager.sol";
+import {Governance} from "./Governance.sol";
 import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
 import {Policy} from "./Policy.sol";
 import {IAssetManager} from "./interfaces/IAssetManager.sol";
@@ -34,8 +34,6 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   using SafeERC20 for IERC20Metadata;
   using SafeCast for uint256;
 
-  bytes32 public constant WITHDRAW_WON_PREMIUMS_ROLE = keccak256("WITHDRAW_WON_PREMIUMS_ROLE");
-  bytes32 public constant REPAY_LOANS_ROLE = keccak256("REPAY_LOANS_ROLE");
   uint256 internal constant FOUR_DECIMAL_TO_WAD = 1e14;
   uint16 internal constant HUNDRED_PERCENT = 1e4;
 
@@ -92,19 +90,6 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * @param value The amount of money received or given
    */
   event WonPremiumsInOut(bool moneyIn, uint256 value);
-
-  /**
-   * @dev Modifier to make a function callable only by a certain global or component role.
-   * In addition to checking the sender's role, `address(0)` 's role is also
-   * considered. Granting a role to `address(0)` (at global or component level) is equivalent
-   * to enabling this role for everyone.
-   */
-  modifier onlyGlobalOrComponentOrOpenRole(bytes32 role) {
-    if (!_policyPool.access().hasComponentRole(address(this), role, address(0), true)) {
-      _policyPool.access().checkComponentRole(address(this), role, _msgSender(), true);
-    }
-    _;
-  }
 
   /**
    * @dev Constructor of the contract, sets the immutable fields.
@@ -301,9 +286,6 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   /**
    * @dev Changes the `deficitRatio` parameter.
    *
-   * Requirements:
-   * - onlyGlobalOrComponentRole(LEVEL2_ROLE)
-   *
    * Events:
    * - Emits GovernanceAction with action = setDeficitRatio or setDeficitRatioWithAdjustment if an adjustment was made.
    *
@@ -311,7 +293,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    *                   `_maxDeficit()` and borrows the difference from the eTokens.
    *                   If false and the new ratio leaves `_surplus < -_maxDeficit()`, the operation is reverted.
    */
-  function setDeficitRatio(uint256 newRatio, bool adjustment) external onlyGlobalOrComponentRole(LEVEL2_ROLE) {
+  function setDeficitRatio(uint256 newRatio, bool adjustment) external {
     uint16 truncatedRatio = (newRatio / FOUR_DECIMAL_TO_WAD).toUint16();
     require(uint256(truncatedRatio) * FOUR_DECIMAL_TO_WAD == newRatio, "Validation: only up to 4 decimals allowed");
 
@@ -320,22 +302,19 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     _params.deficitRatio = truncatedRatio;
     _validateParameters();
 
-    IAccessManager.GovernanceActions action = IAccessManager.GovernanceActions.setDeficitRatio;
+    Governance.GovernanceActions action = Governance.GovernanceActions.setDeficitRatio;
     if (_surplus < maxDeficit) {
       // Do the adjustment
       uint256 borrow = uint256(-_surplus + maxDeficit);
       _surplus = maxDeficit;
       _borrowFromEtk(borrow, address(this), address(_juniorEtk) != address(0));
-      action = IAccessManager.GovernanceActions.setDeficitRatioWithAdjustment;
+      action = Governance.GovernanceActions.setDeficitRatioWithAdjustment;
     }
     _parameterChanged(action, newRatio);
   }
 
   /**
    * @dev Changes the `jrLoanLimit` or `srLoanLimit` parameter.
-   *
-   * Requirements:
-   * - onlyGlobalOrComponentRole(LEVEL2_ROLE)
    *
    * Events:
    * - Emits GovernanceAction with action = setDeficitRatio or setDeficitRatioWithAdjustment if an adjustment was made.
@@ -345,16 +324,16 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * @param newLimitSr     The new limit to be set for the loans taken from the Senior eToken.
                            If newLimitSr == MAX_UINT, it's ignored. If == 0, means the loans are unbounded.
    */
-  function setLoanLimits(uint256 newLimitJr, uint256 newLimitSr) external onlyGlobalOrComponentRole(LEVEL2_ROLE) {
+  function setLoanLimits(uint256 newLimitJr, uint256 newLimitSr) external {
     if (newLimitJr != type(uint256).max) {
       _params.jrLoanLimit = _toZeroDecimals(newLimitJr);
       require(_toAmount(_params.jrLoanLimit) == newLimitJr, "Validation: no decimals allowed");
-      _parameterChanged(IAccessManager.GovernanceActions.setJrLoanLimit, newLimitJr);
+      _parameterChanged(Governance.GovernanceActions.setJrLoanLimit, newLimitJr);
     }
     if (newLimitSr != type(uint256).max) {
       _params.srLoanLimit = _toZeroDecimals(newLimitSr);
       require(_toAmount(_params.srLoanLimit) == newLimitSr, "Validation: no decimals allowed");
-      _parameterChanged(IAccessManager.GovernanceActions.setSrLoanLimit, newLimitSr);
+      _parameterChanged(Governance.GovernanceActions.setSrLoanLimit, newLimitSr);
     }
   }
 
@@ -443,7 +422,6 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * are needed to compensate something. Shouldn't be used. Can be disabled revoking role WITHDRAW_WON_PREMIUMS_ROLE
    *
    * Requirements:
-   * - onlyGlobalOrComponentRole(WITHDRAW_WON_PREMIUMS_ROLE)
    * - _surplus > 0
    *
    * Events:
@@ -453,10 +431,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * @param destination The address that will receive the transferred funds.
    * @return Returns the actual amount withdrawn.
    */
-  function withdrawWonPremiums(
-    uint256 amount,
-    address destination
-  ) external onlyGlobalOrComponentRole(WITHDRAW_WON_PREMIUMS_ROLE) returns (uint256) {
+  function withdrawWonPremiums(uint256 amount, address destination) external returns (uint256) {
     require(destination != address(0), "PremiumsAccount: destination cannot be the zero address");
     if (_surplus <= 0) {
       amount = 0;
@@ -543,12 +518,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    *
    * @return available The funds still available after repayment
    */
-  function repayLoans()
-    external
-    onlyGlobalOrComponentOrOpenRole(REPAY_LOANS_ROLE)
-    whenNotPaused
-    returns (uint256 available)
-  {
+  function repayLoans() external whenNotPaused returns (uint256 available) {
     available = fundsAvailable();
     if (available != 0 && address(_seniorEtk) != address(0)) available = _repayLoan(available, _seniorEtk);
     if (available != 0 && address(_juniorEtk) != address(0)) available = _repayLoan(available, _juniorEtk);

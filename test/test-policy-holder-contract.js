@@ -330,7 +330,6 @@ async function deployPoolFixture() {
 
   const pool = await deployPool({
     currency: currency,
-    grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
     treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
   });
   pool._A = _A;
@@ -338,8 +337,6 @@ async function deployPoolFixture() {
   const etk = await addEToken(pool, {});
 
   const premiumsAccount = await deployPremiumsAccount(pool, { srEtk: etk });
-
-  const accessManager = await ethers.getContractAt("AccessManager", await pool.access());
 
   const RiskModule = await ethers.getContractFactory("RiskModuleMock");
 
@@ -350,9 +347,6 @@ async function deployPoolFixture() {
   const rm = await addRiskModule(pool, premiumsAccount, RiskModule, {
     extraArgs: [],
   });
-  await accessManager.grantComponentRole(rm, await rm.PRICER_ROLE(), backend);
-  await accessManager.grantComponentRole(rm, await rm.RESOLVER_ROLE(), backend);
-  await accessManager.grantComponentRole(rm, await rm.REPLACER_ROLE(), backend);
 
   const PolicyHolderMock = await ethers.getContractFactory("PolicyHolderMock");
   const ph = await PolicyHolderMock.deploy();

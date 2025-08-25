@@ -82,18 +82,12 @@ def load_config(yaml_config=None, module=None):
     for balance in initial_balances:
         currency.transfer(currency.owner, balance["user"], to_wad(balance["amount"]))
 
-    access_mgr_params = config.get("access_manager", {})
-    access_mgr_params.setdefault("owner", "owner")
-    access_mgr = module.AccessManager(**access_mgr_params)
-
     pool_params = config.get("policy_pool", {})
+    pool_params.setdefault("owner", "owner")
     pool_params.setdefault("name", "Ensuro Policy")
     pool_params.setdefault("symbol", "EPOLI")
     pool_params["currency"] = currency
-    pool_params["access"] = access_mgr
     pool = module.PolicyPool(**pool_params)
-    pool.access.grant_role("LEVEL1_ROLE", access_mgr.owner)
-    pool.access.grant_role("LEVEL2_ROLE", access_mgr.owner)
 
     default_etk = None
 
@@ -101,7 +95,7 @@ def load_config(yaml_config=None, module=None):
         if "symbol" not in etoken_dict:
             etoken_dict["symbol"] = etoken_dict["name"]
         etoken_dict["policy_pool"] = pool
-        etoken_dict["owner"] = access_mgr.owner
+        etoken_dict["owner"] = "owner"
         etk = module.EToken(**etoken_dict)
         pool.add_etoken(etk)
         if default_etk is None:
@@ -110,7 +104,7 @@ def load_config(yaml_config=None, module=None):
     default_premiums_account = None
     for premiums_account_dict in config.get("premiums_accounts", []):
         premiums_account_dict["pool"] = pool
-        premiums_account_dict["owner"] = access_mgr.owner
+        premiums_account_dict["owner"] = "owner"
         if "senior_etk" in premiums_account_dict:
             premiums_account_dict["senior_etk"] = pool.etokens[premiums_account_dict["senior_etk"]]
         else:
@@ -142,7 +136,7 @@ def load_config(yaml_config=None, module=None):
         pool.add_premiums_account(default_premiums_account)
 
     for risk_module_dict in config.get("risk_modules", []):
-        role_assignments = risk_module_dict.pop("roles", [])
+        risk_module_dict.pop("roles", [])
 
         risk_module_dict["policy_pool"] = pool
         if "premiums_account" not in risk_module_dict:
@@ -156,12 +150,6 @@ def load_config(yaml_config=None, module=None):
         for key, value in post_init_attributes.items():
             setattr(rm, key, value)
 
-        for role_assignment in role_assignments:
-            pool.access.grant_component_role(rm, role_assignment["role"], role_assignment["user"])
-
         pool.add_risk_module(rm)
-
-    for role_assignment in config.get("roles", []):
-        pool.access.grant_role(role_assignment["role"], role_assignment["user"])
 
     return pool

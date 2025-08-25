@@ -7,7 +7,7 @@ import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
 import {IRiskModule} from "./interfaces/IRiskModule.sol";
 import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
-import {IAccessManager} from "./interfaces/IAccessManager.sol";
+import {Governance} from "./Governance.sol";
 import {Policy} from "./Policy.sol";
 
 /**
@@ -206,7 +206,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     return _wallet;
   }
 
-  function setParam(Parameter param, uint256 newValue) external onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE) {
+  function setParam(Parameter param, uint256 newValue) external {
     if (param == Parameter.moc) {
       _params.moc = _wadTo4(newValue);
     } else if (param == Parameter.jrCollRatio) {
@@ -225,13 +225,14 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
       _params.maxPayoutPerPolicy = _amountToX(2, newValue);
     } else if (param == Parameter.exposureLimit) {
       require(newValue >= _activeExposure, "Can't set exposureLimit less than active exposure");
-      require(newValue <= exposureLimit() || hasPoolRole(LEVEL1_ROLE), "Increase requires LEVEL1_ROLE");
+      // TODO: restore custom validation for increasing exposure??a
+      // require(newValue <= exposureLimit() || hasPoolRole(LEVEL1_ROLE), "Increase requires LEVEL1_ROLE");
       _params.exposureLimit = _amountToX(0, newValue);
     } else if (param == Parameter.maxDuration) {
       _params.maxDuration = newValue.toUint16();
     }
     _parameterChanged(
-      IAccessManager.GovernanceActions(uint256(IAccessManager.GovernanceActions.setMoc) + uint256(param)),
+      Governance.GovernanceActions(uint256(Governance.GovernanceActions.setMoc) + uint256(param)),
       newValue
     );
   }
@@ -257,12 +258,12 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     return uint96(uint256(policyData) % 2 ** 96);
   }
 
-  function setWallet(address wallet_) external onlyComponentRole(RM_PROVIDER_ROLE) {
+  function setWallet(address wallet_) external {
     if (wallet_ == address(0)) {
       revert NoZeroWallet();
     }
     _wallet = wallet_;
-    _parameterChanged(IAccessManager.GovernanceActions.setWallet, uint256(uint160(wallet_)));
+    _parameterChanged(Governance.GovernanceActions.setWallet, uint256(uint160(wallet_)));
   }
 
   function getMinimumPremium(

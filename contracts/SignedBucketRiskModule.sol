@@ -8,6 +8,7 @@ import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
 import {Policy} from "./Policy.sol";
 import {RiskModule} from "./RiskModule.sol";
+import {AMPUtils} from "@ensuro/access-managed-proxy/contracts/AMPUtils.sol";
 
 /**
  * @title SignedBucket Risk Module
@@ -19,10 +20,7 @@ import {RiskModule} from "./RiskModule.sol";
  * @author Ensuro
  */
 contract SignedBucketRiskModule is RiskModule {
-  bytes32 internal constant POLICY_CREATOR_ROLE = keccak256("POLICY_CREATOR_ROLE");
-  bytes32 internal constant REPLACER_ROLE = keccak256("REPLACER_ROLE");
-  bytes32 internal constant PRICER_ROLE = keccak256("PRICER_ROLE");
-  bytes32 internal constant RESOLVER_ROLE = keccak256("RESOLVER_ROLE");
+  bytes4 internal constant PRICER_ROLE = bytes4(keccak256("PRICER_ROLE"));
 
   mapping(uint256 => PackedParams) internal _buckets;
 
@@ -101,8 +99,7 @@ contract SignedBucketRiskModule is RiskModule {
     bytes32 quoteHash = MessageHashUtils.toEthSignedMessageHash(
       abi.encodePacked(address(this), payout, premium, lossProb, expiration, policyData, bucketId, quoteValidUntil)
     );
-    address signer = ECDSA.recover(quoteHash, quoteSignatureR, quoteSignatureVS);
-    _policyPool.access().checkComponentRole(address(this), PRICER_ROLE, signer, false);
+    AMPUtils.checkCanCall(ECDSA.recover(quoteHash, quoteSignatureR, quoteSignatureVS), PRICER_ROLE);
   }
 
   function _newPolicySigned(
@@ -163,7 +160,7 @@ contract SignedBucketRiskModule is RiskModule {
     bytes32 quoteSignatureR,
     bytes32 quoteSignatureVS,
     uint40 quoteValidUntil
-  ) external whenNotPaused onlyComponentRole(POLICY_CREATOR_ROLE) returns (uint256) {
+  ) external whenNotPaused returns (uint256) {
     _checkSignature(
       payout,
       premium,
@@ -184,7 +181,6 @@ contract SignedBucketRiskModule is RiskModule {
    * Requirements:
    * - The caller approved the spending of the premium to the PolicyPool
    * - The quote has been signed by an address with the component role PRICER_ROLE
-   * - The caller has been granted component role REPLACER_ROLE or creation is open
    *
    * Emits:
    * - {PolicyPool.PolicyReplaced}
@@ -213,7 +209,7 @@ contract SignedBucketRiskModule is RiskModule {
     bytes32 quoteSignatureR,
     bytes32 quoteSignatureVS,
     uint40 quoteValidUntil
-  ) external whenNotPaused onlyComponentRole(REPLACER_ROLE) returns (uint256) {
+  ) external whenNotPaused returns (uint256) {
     _checkSignature(
       payout,
       premium,
@@ -238,10 +234,7 @@ contract SignedBucketRiskModule is RiskModule {
       ).id;
   }
 
-  function resolvePolicy(
-    Policy.PolicyData calldata policy,
-    uint256 payout
-  ) external onlyComponentRole(RESOLVER_ROLE) whenNotPaused {
+  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external whenNotPaused {
     _policyPool.resolvePolicy(policy, payout);
   }
 
@@ -250,15 +243,10 @@ contract SignedBucketRiskModule is RiskModule {
    *
    * Requirements:
    *
-   * - The caller must have the LEVEL1_ROLE or LEVEL2_ROLE
-   *
    * @param bucketId Group identifier for the policies that will have these parameters
    * @param params_ The parameters of the new bucket.
    */
-  function setBucketParams(
-    uint256 bucketId,
-    Params calldata params_
-  ) external onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE) {
+  function setBucketParams(uint256 bucketId, Params calldata params_) external {
     if (bucketId == 0) revert BucketCannotBeZero();
     _buckets[bucketId] = PackedParams({
       moc: _wadTo4(params_.moc),
@@ -281,11 +269,9 @@ contract SignedBucketRiskModule is RiskModule {
    *
    * Requirements:
    *
-   * - The caller must have the LEVEL1_ROLE or LEVEL2_ROLE
-   *
    * @param bucketId Group identifier for the policies that will have these parameters
    */
-  function deleteBucket(uint256 bucketId) external onlyGlobalOrComponentRole2(LEVEL1_ROLE, LEVEL2_ROLE) {
+  function deleteBucket(uint256 bucketId) external {
     if (bucketId == 0) revert BucketCannotBeZero();
     if (_buckets[bucketId].moc == 0) revert BucketNotFound();
     delete _buckets[bucketId];
