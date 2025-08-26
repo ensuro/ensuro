@@ -132,7 +132,6 @@ async function createEToken(
     ],
     {
       kind: "uups",
-      unsafeAllow: ["delegatecall"], // This holds, because EToken is a reserve and uses delegatecall
       constructorArgs: [poolAddr, ...extraConstructorArgs],
       acMgr: accessManager,
       ...ampConfig.EToken,
@@ -223,7 +222,6 @@ async function deployPremiumsAccount(pool, options, addToPool = true) {
   const premiumsAccount = await deployAMPProxy(PremiumsAccount, [], {
     constructorArgs: [poolAddr, jrEtkAddr, srEtkAddr],
     kind: "uups",
-    unsafeAllow: ["delegatecall"], // This holds, because PremiumsAccount is a reserve and uses delegatecall
     acMgr: accessManager,
     ...ampConfig.PremiumsAccount,
   });

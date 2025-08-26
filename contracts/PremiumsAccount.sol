@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {SignedMath} from "@openzeppelin/contracts/utils/math/SignedMath.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {WadRayMath} from "./dependencies/WadRayMath.sol";
@@ -13,7 +14,6 @@ import {Reserve} from "./Reserve.sol";
 import {Governance} from "./Governance.sol";
 import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
 import {Policy} from "./Policy.sol";
-import {IAssetManager} from "./interfaces/IAssetManager.sol";
 
 /**
  * @title Ensuro Premiums Account
@@ -68,19 +68,21 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * @dev This struct has the parameters that can be modified by governance
    * @member deficitRatio A value between [0, 1] that defines the percentage of active pure premiums that can be used
    *                      to cover losses.
-   * @member assetManager This is the implementation contract that manages the PremiumsAccount's funds. See
-   *                      {IAssetManager}
+   * @member yieldVault   This is the implementation contract that manages the PremiumsAccount's funds. See
+   *                      {yieldVault()}
    * @member jrLoanLimit  This is the maximum amount that can be borrowed from the Junior eToken (without decimals)
    * @member srLoanLimit  This is the maximum amount that can be borrowed from the Senior eToken (without decimals)
    */
   struct PackedParams {
-    IAssetManager assetManager;
+    IERC4626 yieldVault;
     uint32 jrLoanLimit;
     uint32 srLoanLimit;
     uint16 deficitRatio;
   }
 
   PackedParams internal _params;
+
+  error LossesCannotExceedMaxDeficit(uint256 losses, uint256 excess);
 
   /**
    * Premiums can come in (for "free", without liability) with receiveGrant.
@@ -126,7 +128,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     */
     _params = PackedParams({
       deficitRatio: HUNDRED_PERCENT,
-      assetManager: IAssetManager(address(0)),
+      yieldVault: IERC4626(address(0)),
       jrLoanLimit: 0,
       srLoanLimit: 0
     });
@@ -153,12 +155,12 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     return super.supportsInterface(interfaceId) || interfaceId == type(IPremiumsAccount).interfaceId;
   }
 
-  function assetManager() public view override returns (IAssetManager) {
-    return _params.assetManager;
+  function yieldVault() public view override returns (IERC4626) {
+    return _params.yieldVault;
   }
 
-  function _setAssetManager(IAssetManager newAM) internal override {
-    _params.assetManager = newAM;
+  function _setYieldVault(IERC4626 newYV) internal override {
+    _params.yieldVault = newYV;
   }
 
   /**
@@ -169,12 +171,14 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * - If negative (losses) substracts it from surplus. It never can exceed _maxDeficit and doesn't takes
    *   loans to cover asset losses.
    */
-  function _assetEarnings(int256 earningsOrLosses) internal override {
+  function _yieldEarnings(int256 earningsOrLosses) internal override {
     if (earningsOrLosses >= 0) {
       _storePurePremiumWon(uint256(earningsOrLosses));
     } else {
-      require(_payFromPremiums(-earningsOrLosses) == 0, "Losses can't exceed maxDeficit");
+      uint256 excess = _payFromPremiums(-earningsOrLosses);
+      require(excess == 0, LossesCannotExceedMaxDeficit(uint256(-earningsOrLosses), excess));
     }
+    super._yieldEarnings(earningsOrLosses);
   }
 
   function _validateParameters() internal view override {
@@ -357,12 +361,12 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
         left = loanExcess + _juniorEtk.internalLoan(borrow - loanExcess, receiver);
       }
     }
-    if (left > NEGLIGIBLE_AMOUNT) {
+    if (left != 0) {
       // Consume Senior Pool only up to SCR
       if (_seniorEtk.getLoan(address(this)) + left < srLoanLimit()) {
         left = _seniorEtk.internalLoan(left, receiver);
       } // in the senior eToken doesn't make sense to handle partial loan
-      require(left <= NEGLIGIBLE_AMOUNT, "Don't know where to source the rest of the money");
+      require(left == 0, "Don't know where to source the rest of the money");
     }
   }
 
@@ -538,15 +542,8 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     uint256 repayAmount = Math.min(fundsAvailable_, borrowedFromEtk);
     _surplus -= int256(repayAmount);
 
-    // If not enough liquidity, it deinvests from the asset manager
-    if (currency().balanceOf(address(this)) < repayAmount) {
-      /**
-       * I send `repayAmount` because the IAssetManager expects the full amount that's needed, not the missing one.
-       * It uses the value of the full amount to optimize the deinvestment leaving more liquidity if possible to avoid
-       * future deinvestment. It will only fail if it can't refill `repayAmount - currency().balanceOf(address(this))`
-       */
-      _refillWallet(repayAmount);
-    }
+    // Makes sure there's enough liquidity for repayAmount
+    _transferTo(address(this), repayAmount);
     // Checks the allowance before repayment
     if (currency().allowance(address(this), address(etk)) < repayAmount) {
       // If I have to approve, I approve for all the pending debt (not just repayAmount), this way I avoid some

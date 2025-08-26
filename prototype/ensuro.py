@@ -394,53 +394,18 @@ def non_negative(value):
 
 
 class ReserveMixin:
-    @property
-    def NEGLIGIBLE_AMOUNT(self):
-        return Wad(10 ** (self.currency.decimals // 2))
-
-    def set_asset_manager(self, asset_manager, force):
-        if self.asset_manager:
-            if force:
-                try:
-                    self.asset_manager.deinvest_all()
-                except Exception:
-                    pass
-            else:
-                self.asset_manager.deinvest_all()
-        self.asset_manager = asset_manager
+    def set_yield_vault(self, yield_vault, force):
+        raise NotImplementedError()
 
     def _transfer_to(self, target, amount):
         require(target != 0, "Reserve: transfer to the zero address")
         if amount == _W(0):
             return
-        balance = self.currency.balance_of(self.contract_id)
-
-        if self.asset_manager and balance < amount:
-            self.asset_manager.refill_wallet(amount)
-
-        if balance < amount and (amount - balance) < self.NEGLIGIBLE_AMOUNT:
-            amount = balance
-
         return self.currency.transfer(self.contract_id, target, amount)
 
-    def asset_earnings(self, amount):
+    def yield_earnings(self, amount):
         """Called from the asset_manager to record the earnings - Must be implemented"""
         raise NotImplementedError()
-
-    @external
-    def checkpoint(self):
-        self.asset_manager.checkpoint()
-
-    @external
-    def rebalance(self):
-        self.asset_manager.rebalance()
-
-    @external
-    def record_earnings(self):
-        self.asset_manager.record_earnings()
-
-    def forward_to_asset_manager(self, method, *args, **kwargs):
-        return getattr(self.asset_manager, method)(*args, **kwargs)
 
 
 class ScaledAmount(Model):
@@ -481,7 +446,7 @@ class ScaledAmount(Model):
 class EToken(ReserveMixin, ERC20Token):
     MIN_SCALE = _R("0.0000000001")  # 1e-10
     policy_pool = ContractProxyField()
-    asset_manager = ContractProxyField(default=None, allow_none=True)
+    yield_vault = ContractProxyField(default=None, allow_none=True)
     scale_factor = RayField(default=_R(1), validation_hook=non_negative)
     last_scale_update = IntField(default=time_control.now)
 
@@ -610,7 +575,7 @@ class EToken(ReserveMixin, ERC20Token):
         self._discrete_earning(adjustment)
         self._check_balance()
 
-    def asset_earnings(self, amount):
+    def yield_earnings(self, amount):
         self._discrete_earning(amount)
 
     def _discrete_earning(self, amount):
@@ -626,15 +591,13 @@ class EToken(ReserveMixin, ERC20Token):
     def _check_balance(self):
         if hasattr(self, "_check_balance_disabled"):
             return
-        if self.asset_manager:
-            return
         balance = self.currency.balance_of(self)
         # This validation doesn't make sense in general, because if you are late to expire policies and
         # there are many policies, then this will fail (because total_supply keeps accruing interests
         # besides the CoC received in premiums). Anyway I keep the validation (only in the prototype code)
         # because it can help to find other potential issues
         require(
-            balance >= self.total_supply() or (self.total_supply() - balance) < self.NEGLIGIBLE_AMOUNT,
+            balance >= self.total_supply() or (self.total_supply() - balance) < Wad(0),
             f"Cash balance under total_supply {balance} {self.total_supply()}",
         )
 
@@ -777,7 +740,7 @@ class EToken(ReserveMixin, ERC20Token):
 
 class PremiumsAccount(ReserveMixin, AccessControlContract):
     pool = ContractProxyField()
-    asset_manager = ContractProxyField(default=None, allow_none=True)
+    yield_vault = ContractProxyField(default=None, allow_none=True)
     junior_etk = ContractProxyField(allow_none=True, default=None)
     senior_etk = ContractProxyField(allow_none=True, default=None)
     active_pure_premiums = WadField(default=Wad(0))
@@ -855,7 +818,7 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
             return
         self.surplus += pure_premium_won
 
-    def asset_earnings(self, amount):
+    def yield_earnings(self, amount):
         if amount >= 0:
             self._store_pure_premium_won(amount)
         else:
@@ -890,12 +853,12 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
                 amount_left = loan_excess + self.junior_etk.internal_loan(
                     self, borrow - loan_excess, receiver
                 )
-        if amount_left > self.NEGLIGIBLE_AMOUNT:
+        if amount_left:
             if self.senior_etk.get_loan(self) + amount_left <= self.sr_loan_limit:
                 # In the senior doesn't make sense to handle partial loan
                 amount_left = self.senior_etk.internal_loan(self, amount_left, receiver)
             require(
-                amount_left <= self.NEGLIGIBLE_AMOUNT,
+                amount_left == Wad(0),
                 "Don't know where to source the rest of the money",
             )
 
@@ -973,16 +936,12 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
         return borrow_from_scr
 
     def _repay_loan(self, funds_available, etk):
-        if funds_available < self.NEGLIGIBLE_AMOUNT:
+        if funds_available == Wad(0):
             return funds_available
         borrowed_from_etk = etk.get_loan(self)
         if not borrowed_from_etk:
             return funds_available
         repay_amount = min(borrowed_from_etk, funds_available)
-
-        # If not enough liquidity, it deinvests from the asset manager
-        if self.currency.balance_of(self) < repay_amount:
-            self.asset_manager.refill_wallet(repay_amount)
 
         if self.currency.allowance(self, etk) < repay_amount:
             self.currency.approve(self, etk.contract_id, borrowed_from_etk)
@@ -1027,7 +986,6 @@ class PolicyPool(ERC721Token):
         if "symbol" not in kwargs:
             kwargs["symbol"] = "EPOL"
         super().__init__(*args, **kwargs)
-        self.NEGLIGIBLE_AMOUNT = Wad(10 ** (self.currency.decimals // 2))
 
     def add_etoken(self, etoken):
         self.etokens[etoken.name] = ContractProxy(etoken.contract_id)
@@ -1206,13 +1164,6 @@ class LPManualWhitelist(Contract):
         super().__init__(**kwargs)
         self._check_defaults(self.default_status)
 
-        if "name" not in kwargs:
-            kwargs["name"] = "Test Vault"
-        if "symbol" not in kwargs:
-            kwargs["symbol"] = "TVAULT"
-        kwargs["decimals"] = 18
-        kwargs["total_assets_"] = ScaledAmount()
-
     def _check_defaults(self, default_status):
         require(
             all(st != self.ST_UNDEFINED for st in default_status),
@@ -1246,234 +1197,3 @@ class LPManualWhitelist(Contract):
             self._get_status(from_, self.OP_SEND_TRANSFER) == self.ST_WHITELISTED
             and self._get_status(to_, self.OP_RECEIVE_TRANSFER) == self.ST_WHITELISTED
         )
-
-
-class FixedRateVault(ERC20Token):
-    """Vault following ERC4626 interface that generates returns at `interest_rate`"""
-
-    asset = ContractProxyField()
-    interest_rate = WadField(default=_W("0.05"))
-    total_assets_ = CompositeField(ScaledAmount)
-    broken = IntField(default=0)
-
-    def __init__(self, **kwargs):
-        if "name" not in kwargs:
-            kwargs["name"] = "Test Vault"
-        if "symbol" not in kwargs:
-            kwargs["symbol"] = "TVAULT"
-        kwargs["decimals"] = kwargs["asset"].decimals
-        kwargs["total_assets_"] = ScaledAmount()
-        super().__init__(**kwargs)
-
-    @view
-    def total_assets(self):
-        require(not self.broken, "Vault it's broken")
-        return self.total_assets_.get_scaled_amount(self.interest_rate)
-
-    @view
-    def convert_to_shares(self, assets):
-        supply = self.total_supply()
-        if supply == 0 or assets == 0:
-            return Wad(int(assets) * (10**self.decimals) // (10**self.asset.decimals))
-        else:
-            return Wad(int(assets) * int(supply) // int(self.total_assets()))
-
-    @view
-    def convert_to_assets(self, shares):
-        supply = self.total_supply()
-        if supply == 0:
-            return Wad(int(shares) * (10**self.asset.decimals) // (10**self.decimals))
-        else:
-            return Wad(int(shares) * self.total_assets() // int(supply))
-
-    @external
-    def deposit(self, caller, assets, receiver):
-        shares = self.convert_to_shares(assets)
-        self.total_assets_.add(assets, self.interest_rate)
-        self.asset.transfer_from(self, caller, self, assets)
-        self.mint(receiver, shares)
-        return shares
-
-    @external
-    def withdraw(self, caller, assets, receiver, owner):
-        require(not self.broken, "Vault it's broken")
-        shares = self.convert_to_shares(assets)
-        self.total_assets_.sub(assets, self.interest_rate)
-        balance = self.asset.balance_of(self)
-        if balance < assets:
-            self.asset.mint(self.contract_id, assets - balance)
-        require(caller == owner, "Only owner can withdraw for now")  # TODO: allowance
-        self.burn(owner, shares)
-        if assets:
-            self.asset.transfer(self, receiver, assets)
-
-    @external
-    def discrete_earning(self, assets):
-        if assets > 0:
-            self.total_assets_.add(assets, self.interest_rate)
-        else:
-            self.total_assets_.sub(-assets, self.interest_rate)
-
-    @view
-    def max_withdraw(self, owner):
-        return self.convert_to_assets(self.balance_of(owner))
-
-
-class AssetManager(Contract):
-    reserve = ContractProxyField()
-
-    @external
-    def rebalance(self):
-        """Called externally to give the chance to rebalance liquid and invested money"""
-        raise NotImplementedError()
-
-    @external
-    def record_earnings(self):
-        """Called externally to update the reserve with the returns/losses comming from investment"""
-        raise NotImplementedError()
-
-    @external
-    def checkpoint(self):
-        self.record_earnings()
-        self.rebalance()
-
-    def refill_wallet(self, payment_amount):
-        """
-        Called from the reserve when the balance of the reserve is not enough to cover `payment_amount`
-        """
-        raise NotImplementedError()
-
-    def deinvest_all(self):
-        """
-        Called from the reserve when the asset manager is unplugged to unwind all the investment
-        """
-        raise NotImplementedError()
-
-
-class LiquidityThresholdAssetManager(AssetManager):
-    """Asset management strategy that manages cash liquidity with thresholds"""
-
-    liquidity_min = WadField(default=Wad(0))
-    liquidity_middle = WadField(default=Wad(0))
-    liquidity_max = WadField(default=Wad(0))
-
-    # Any time balance_of(PolicyPool) < liquidity_min we refill up to liquidity_middle
-    # Any time balance_of(PolicyPool) > liquidity_max take liquidity up liquidity_middle
-    last_investment_value = WadField(default=Wad(0))
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self._validate_params()
-
-    def _validate_params(self):
-        require(
-            self.liquidity_min <= self.liquidity_middle and self.liquidity_middle <= self.liquidity_max,
-            "Validation: Liquidity limits are invalid",
-        )
-
-    def set_liquidity_thresholds(self, liquidity_min, liquidity_middle, liquidity_max):
-        if liquidity_min is not None:
-            self.liquidity_min = liquidity_min
-        if liquidity_middle is not None:
-            self.liquidity_middle = liquidity_middle
-        if liquidity_max is not None:
-            self.liquidity_max = liquidity_max
-        self._validate_params()
-
-    def record_earnings(self):
-        investment_value = self.get_investment_value()
-        earnings = investment_value - self.last_investment_value
-        self.reserve.asset_earnings(earnings)
-        self.last_investment_value = investment_value
-
-    def get_investment_value(self):
-        """Returns the value in `reserve.currency` of the assets invested"""
-        raise NotImplementedError()
-
-    def rebalance(self):
-        cash = self.reserve.currency.balance_of(self.reserve)
-
-        if cash > self.liquidity_max:
-            self._invest(cash - self.liquidity_middle)
-        elif cash < self.liquidity_min:
-            deinvest_amount = min(self.liquidity_middle - cash, self.get_investment_value())
-            if deinvest_amount > 0:
-                self._deinvest(deinvest_amount)
-        # else:
-        # pool_cash between [self.liquidity_min, self.liquidity_max]
-        # No need to transfer
-
-    def refill_wallet(self, payment_amount):
-        cash = self.reserve.currency.balance_of(self.reserve)
-        investment_value = self.get_investment_value()
-        # try to leave the pool balance at liquidity_middle after the payment
-        deinvest = payment_amount + self.liquidity_middle - cash
-        if deinvest > investment_value:
-            deinvest = investment_value
-
-        self._deinvest(deinvest)
-
-    def _invest(self, amount):
-        self.last_investment_value += amount
-        # Must be reimplemented and do the actual cash movement
-
-    def _deinvest(self, amount):
-        self.last_investment_value -= amount
-        # Must be reimplemented and do the actual cash movement
-
-    def deinvest_all(self):
-        self._deinvest(self.get_investment_value())
-
-
-class ERC4626AssetManager(LiquidityThresholdAssetManager):
-    vault = ContractProxyField()
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        assert self.vault.asset.contract_id == self.reserve.currency.contract_id
-        self.reserve.currency.approve(self.reserve, self.vault, Wad(2**256 - 1))
-
-    def _invest(self, amount):
-        super()._invest(amount)
-        self.vault.deposit(self.reserve, amount, self.reserve)
-
-    def _deinvest(self, amount):
-        super()._deinvest(amount)
-        self.vault.withdraw(self.reserve, amount, self.reserve, self.reserve)
-
-    def get_investment_value(self):
-        return self.vault.convert_to_assets(self.vault.balance_of(self.reserve))
-
-
-class ERC4626PlusVaultAssetManager(ERC4626AssetManager):
-    discretionary_vault = ContractProxyField()
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        assert self.discretionary_vault.asset.contract_id == self.reserve.currency.contract_id
-        self.reserve.currency.approve(self.reserve, self.discretionary_vault, Wad(2**256 - 1))
-
-    def _deinvest(self, amount):
-        super(ERC4626AssetManager, self)._deinvest(amount)
-        vault_amount = min(amount, self.vault.max_withdraw(self.reserve))
-        if vault_amount:
-            self.vault.withdraw(self.reserve, vault_amount, self.reserve, self.reserve)
-        if amount - vault_amount:
-            self.discretionary_vault.withdraw(self.reserve, amount - vault_amount, self.reserve, self.reserve)
-
-    def get_investment_value(self):
-        return self.vault.convert_to_assets(
-            self.vault.balance_of(self.reserve)
-        ) + self.discretionary_vault.convert_to_assets(self.discretionary_vault.balance_of(self.reserve))
-
-    def vault_to_discretionary(self, amount):
-        if amount is None or amount == MAX_UINT:
-            amount = self.vault.max_withdraw(self.reserve)
-        self.vault.withdraw(self.reserve, amount, self.reserve, self.reserve)
-        self.discretionary_vault.deposit(self.reserve, amount, self.reserve)
-
-    def discretionary_to_vault(self, amount):
-        if amount is None or amount == MAX_UINT:
-            amount = self.discretionary_vault.max_withdraw(self.reserve)
-        self.discretionary_vault.withdraw(self.reserve, amount, self.reserve, self.reserve)
-        self.vault.deposit(self.reserve, amount, self.reserve)

@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
-const { amountFunction, _W } = require("@ensuro/utils/js/utils");
+const { amountFunction } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { deployPool, deployPremiumsAccount } = require("../js/test-utils");
 
@@ -137,45 +137,5 @@ describe("Constructor validations", function () {
     await expect(
       hre.upgrades.deployProxy(LPManualWhitelist, [], { constructorArgs: [ZeroAddress], ...deployProxyArgs })
     ).to.be.revertedWithCustomError(LPManualWhitelist, "NoZeroPolicyPool");
-  });
-
-  it("Checks ERC4626AssetManager constructor validations", async () => {
-    const { currency, FixedRateVault } = await helpers.loadFixture(setupFixtureWithPool);
-    const ERC4626AssetManager = await hre.ethers.getContractFactory("ERC4626AssetManager");
-    await expect(ERC4626AssetManager.deploy(ZeroAddress, rndAddr)).to.be.revertedWith(
-      "LiquidityThresholdAssetManager: asset cannot be zero address"
-    );
-    await expect(ERC4626AssetManager.deploy(rndAddr, ZeroAddress)).to.be.revertedWith(
-      "ERC4626AssetManager: vault cannot be zero address"
-    );
-    const vault = await FixedRateVault.deploy("MyVault", "MYV", currency, _W(1));
-    await expect(ERC4626AssetManager.deploy(rndAddr, vault)).to.be.revertedWith(
-      "ERC4626AssetManager: vault must have the same asset"
-    );
-  });
-
-  it("Checks ERC4626PlusVaultAssetManager constructor validations", async () => {
-    const { currency, FixedRateVault } = await helpers.loadFixture(setupFixtureWithPool);
-    const ERC4626PlusVaultAssetManager = await hre.ethers.getContractFactory("ERC4626PlusVaultAssetManager");
-    const vault = await FixedRateVault.deploy("MyVault", "MYV", currency, _W(1));
-    await expect(ERC4626PlusVaultAssetManager.deploy(ZeroAddress, rndAddr, ZeroAddress)).to.be.revertedWith(
-      "LiquidityThresholdAssetManager: asset cannot be zero address"
-    );
-    await expect(ERC4626PlusVaultAssetManager.deploy(rndAddr, ZeroAddress, rndAddr)).to.be.revertedWith(
-      "ERC4626AssetManager: vault cannot be zero address"
-    );
-    await expect(ERC4626PlusVaultAssetManager.deploy(currency, vault, ZeroAddress)).to.be.revertedWith(
-      "ERC4626PlusVaultAssetManager: vault cannot be zero address"
-    );
-    await expect(ERC4626PlusVaultAssetManager.deploy(rndAddr, vault, vault)).to.be.revertedWith(
-      "ERC4626AssetManager: vault must have the same asset"
-    );
-    const vault2 = await FixedRateVault.deploy("MyVault", "MYV", rndAddr, _W(1));
-    await expect(ERC4626PlusVaultAssetManager.deploy(currency, vault, vault2)).to.be.revertedWith(
-      "ERC4626PlusVaultAssetManager: vault must have the same asset"
-    );
-    await expect(ERC4626PlusVaultAssetManager.deploy(currency, vault, vault)).to.be.revertedWith(
-      "ERC4626PlusVaultAssetManager: vaults must be different"
-    );
   });
 });

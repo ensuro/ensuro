@@ -10,7 +10,7 @@ from ethproto.wrappers import get_provider
 
 from prototype import ensuro, wrappers
 from prototype.ensuro import RiskModule
-from prototype.utils import DAY, MONTH, WEEK
+from prototype.utils import DAY, WEEK
 
 from . import TEST_VARIANTS
 from .contracts import PolicyPoolMockForward
@@ -1072,92 +1072,3 @@ def test_set_deficit_ratio_refuses_loss_of_precision(tenv):
 
     with pytest.raises(RevertError, match="Validation: only up to 4 decimals allowed"):
         pa.set_deficit_ratio(_W("0.12345"), True)
-
-
-def test_pa_asset_manager(tenv):
-    senior_etk = tenv.etk(name="eUSD1YEAR", symbol="ETK1")
-    pa = tenv.pa_class(senior_etk=senior_etk)
-    start = tenv.time_control.now
-    expiration = tenv.time_control.now + WEEK
-
-    tenv.currency.transfer(tenv.currency.owner, senior_etk, _W(1000))
-    with senior_etk.thru_policy_pool():
-        assert senior_etk.deposit("LP1", _W(1000)) == _W(1000)
-        senior_etk.add_borrower(pa)
-
-    rm = RiskModule(
-        premiums_account="dummy",
-        name="Roulette",
-        policy_pool="dummy",
-    )
-
-    policy = ensuro.Policy(
-        id=1,
-        risk_module=rm,
-        payout=_W(600),
-        premium=_W(400),
-        loss_prob=_W("0.5"),
-        start=start,
-        expiration=expiration,
-    )
-
-    tenv.currency.transfer(tenv.currency.owner, pa, _W(300))
-    with pa.thru_policy_pool():
-        pa.policy_created(policy)
-
-    pa.active_pure_premiums.assert_equal(_W(300))
-    tenv.currency.balance_of(pa).assert_equal(_W(300))
-
-    vault = tenv.module.FixedRateVault(asset=tenv.currency)
-    asset_manager = tenv.module.ERC4626AssetManager(
-        vault=vault,
-        reserve=pa,
-    )
-
-    # Set asset manager
-    with pa.as_("ADMIN"):
-        pa.set_asset_manager(asset_manager, False)
-
-    with pa.as_("ADMIN"):
-        pa.forward_to_asset_manager("set_liquidity_thresholds", _W(100), _W(160), _W(200))
-
-    vault.total_assets().assert_equal(_W(0))
-
-    # After checkpoint the cash should be rebalanced
-    pa.checkpoint()
-    vault.total_assets().assert_equal(_W(140))
-    tenv.currency.balance_of(pa).assert_equal(_W(160))
-    pa.pure_premiums.assert_equal(_W(300))
-
-    vault.balance_of(pa).assert_equal(_W(140))
-
-    # After one month record the earnings
-    tenv.time_control.fast_forward(MONTH)
-    interest_earnings = _W(140 * 0.05 * 30 / 365)
-    vault.total_assets().assert_equal(_W(140) + interest_earnings)
-    pa.record_earnings()
-
-    pa.pure_premiums.assert_equal(_W(300) + interest_earnings)
-    pa.surplus.assert_equal(interest_earnings)
-
-    # Resolve the policy with an amount that requires deinvestment
-    with pa.thru_policy_pool():
-        pa.policy_resolved_with_payout("USER", policy, _W(200))
-
-    tenv.currency.balance_of("USER").assert_equal(_W(200))
-    vault.total_assets().assert_equal(_W(0))  # All the assets deinvested
-    pa.pure_premiums.assert_equal(_W(100) + interest_earnings)
-    tenv.currency.balance_of(pa).assert_equal(_W(100) + interest_earnings)
-
-    with pa.as_("ADMIN"):
-        pa.forward_to_asset_manager("set_liquidity_thresholds", _W(10), _W(20), _W(50))
-
-    pa.checkpoint()
-    tenv.currency.balance_of(pa).assert_equal(_W(20))
-    vault.total_assets().assert_equal(_W(80) + interest_earnings)
-    vault.discrete_earning(-_W(50))
-    pa.checkpoint()
-    pa.pure_premiums.assert_equal(_W(50) + interest_earnings)
-
-    with pa.as_("ADMIN"):
-        pa.set_asset_manager(None, True)
