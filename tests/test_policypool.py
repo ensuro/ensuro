@@ -243,9 +243,6 @@ def test_not_accept_rm(tenv):
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
     rm = pool.risk_modules["Roulette"]
-    pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
-    pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
-    pool.access.grant_role("LEVEL2_ROLE", rm.owner)
 
     eUSD1MONTH = pool.etokens["eUSD1MONTH"]
     eUSD1WEEK = pool.etokens["eUSD1WEEK"]
@@ -294,7 +291,6 @@ def test_not_accept_rm(tenv):
 
     # After four days, now the policy expires in less than a week. Anyway still RM is exclusive, nothing
     # changes
-    pool.access.grant_role("REBALANCE_ROLE", "REBALANCER_USER")
     with pool.as_("REBALANCER_USER"):
         pool.rebalance_policy(policy.id)
 
@@ -373,8 +369,6 @@ def test_walkthrough(tenv):
     timecontrol = tenv.time_control
     rm = pool.risk_modules["Roulette"]
     premiums_account = rm.premiums_account
-
-    pool.access.grant_component_role(premiums_account, "REPAY_LOANS_ROLE", premiums_account.owner)
 
     with pytest.raises(
         RevertError,
@@ -994,8 +988,6 @@ def test_asset_manager(tenv, asset_manager):
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
     rm = pool.risk_modules["Roulette"]
-    pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
-    pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
 
     USD = pool.currency
     etk = pool.etokens["eUSD1YEAR"]
@@ -1004,13 +996,9 @@ def test_asset_manager(tenv, asset_manager):
     am = asset_manager(reserve=etk, asset=USD)
     vault, asset_manager = am.vault, am.am
 
-    pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
-
     # Set asset manager
     with etk.as_("ADMIN"):
         etk.set_asset_manager(asset_manager, False)
-
-    pool.access.grant_component_role(etk, "LEVEL2_ROLE", "ADMIN")
 
     with etk.as_("ADMIN"):
         etk.forward_to_asset_manager("set_liquidity_thresholds", _W(1000), _W(1500), _W(2000))
@@ -1175,11 +1163,7 @@ def test_assets_under_liquidity_middle(tenv):
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
     rm = pool.risk_modules["Roulette"]
-    pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
-    pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
     premiums_account = rm.premiums_account
-
-    pool.access.grant_role("LEVEL2_ROLE", rm.owner)  # For setting moc
 
     with rm.as_(rm.owner):
         rm.moc = _W("1.285")
@@ -1188,7 +1172,6 @@ def test_assets_under_liquidity_middle(tenv):
 
     USD = pool.currency
     etk = pool.etokens["eUSD1YEAR"]
-    asset_manager = pool.access.asset_manager
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(100))
 
@@ -1261,9 +1244,6 @@ def test_distribute_negative_earnings(tenv, asset_manager):
     """
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
-    rm = pool.risk_modules["Roulette"]
-    pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
-    pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
 
     USD = pool.currency
     etk = pool.etokens["eUSD1YEAR"]
@@ -1272,13 +1252,9 @@ def test_distribute_negative_earnings(tenv, asset_manager):
     am = asset_manager(asset=USD, reserve=etk)
     vault, asset_manager = am.vault, am.am
 
-    pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
-
     # Set asset manager
     with etk.as_("ADMIN"):
         etk.set_asset_manager(asset_manager, False)
-
-    pool.access.grant_component_role(etk, "LEVEL2_ROLE", "ADMIN")
 
     with etk.as_("ADMIN"):
         etk.forward_to_asset_manager("set_liquidity_thresholds", _W(1000), _W(1500), _W(2000))
@@ -1327,8 +1303,6 @@ def test_distribute_negative_earnings_full_capital_from_etokens(tenv, asset_mana
     timecontrol = tenv.time_control
     rm = pool.risk_modules["Roulette"]
     premiums_account = rm.premiums_account
-    pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
-    pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
 
     USD = pool.currency
     etk = pool.etokens["eUSD1YEAR"]
@@ -1336,13 +1310,9 @@ def test_distribute_negative_earnings_full_capital_from_etokens(tenv, asset_mana
     am = asset_manager(asset=USD, reserve=etk)
     vault, asset_manager = am.vault, am.am
 
-    pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
-
     # Set asset manager
     with etk.as_("ADMIN"):
         etk.set_asset_manager(asset_manager, False)
-
-    pool.access.grant_component_role(etk, "LEVEL2_ROLE", "ADMIN")
 
     with etk.as_("ADMIN"):
         etk.forward_to_asset_manager("set_liquidity_thresholds", _W(1000), _W(1500), _W(2000))
@@ -1440,12 +1410,9 @@ def test_distribute_negative_earnings_from_pool_and_etokens(tenv):
     timecontrol = tenv.time_control
     rm = pool.risk_modules["Roulette"]
     premiums_account = rm.premiums_account
-    pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
-    pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
 
     USD = pool.currency
     etk = pool.etokens["eUSD1YEAR"]
-    asset_manager = pool.access.asset_manager
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(10000))
 
@@ -1535,10 +1502,6 @@ def test_lp_whitelist(tenv):
 
     whitelist = tenv.module.LPManualWhitelist(pool=pool, default_status=previous_behaviour)
 
-    with pool.access.as_("johndoe"), pytest.raises(RevertError, match="AccessControl"):
-        etk.set_whitelist(whitelist)
-
-    pool.access.grant_role("GUARDIAN_ROLE", "admin")
     with etk.as_("admin"):
         etk.set_whitelist(whitelist)
 
@@ -1548,10 +1511,6 @@ def test_lp_whitelist(tenv):
         pool.deposit("eUSD1YEAR", "LP2", _W(1000))
 
     # Whitelisting requires permission
-    with whitelist.as_("johndoe"), pytest.raises(RevertError, match="AccessControl"):
-        whitelist.whitelist_address("LP2", all_whitelisted)
-
-    pool.access.grant_component_role(whitelist, "LP_WHITELIST_ROLE", "amlcompliance")
     with whitelist.as_("amlcompliance"):
         whitelist.whitelist_address("LP2", all_whitelisted)
 
@@ -1637,7 +1596,6 @@ def test_lp_whitelist_transfers_open(tenv):
 
     whitelist = tenv.module.LPManualWhitelist(pool=pool, default_status=default_behavior)
 
-    pool.access.grant_role("GUARDIAN_ROLE", "admin")
     with etk.as_("admin"):
         etk.set_whitelist(whitelist)
 
@@ -1646,7 +1604,6 @@ def test_lp_whitelist_transfers_open(tenv):
     with pytest.raises(RevertError, match="Liquidity Provider not whitelisted"):
         pool.deposit("eUSD1YEAR", "LP2", _W(1000))
 
-    pool.access.grant_component_role(whitelist, "LP_WHITELIST_ROLE", "amlcompliance")
     with whitelist.as_("amlcompliance"):
         whitelist.whitelist_address("LP2", (WL.ST_WHITELISTED,) + (WL.ST_UNDEFINED,) * 3)
 
@@ -1721,11 +1678,6 @@ def test_lp_whitelist_defaults(tenv):
     whitelist = tenv.module.LPManualWhitelist(pool=pool, default_status=previous_behaviour)
 
     assert whitelist.get_whitelist_defaults() == previous_behaviour
-
-    with pool.access.as_("johndoe"), pytest.raises(RevertError, match="AccessControl"):
-        whitelist.set_whitelist_defaults(default_behavior)
-
-    pool.access.grant_component_role(whitelist, "LP_WHITELIST_ADMIN_ROLE", "admin")
 
     with whitelist.as_("admin"):
         whitelist.set_whitelist_defaults(default_behavior)
@@ -2070,11 +2022,6 @@ def test_replace_policy(tenv):
         internal_id=123,
     )
 
-    with pytest.raises(RevertError, match="AccessControl"):
-        rm.replace_policy(**replace_kwargs)
-
-    pool.access.grant_component_role(rm, "REPLACER_ROLE", "owner")
-
     with pytest.raises(RevertError, match="You must allow ENSURO"):
         rm.replace_policy(**replace_kwargs)
 
@@ -2201,7 +2148,6 @@ def test_replace_policy_two_times(tenv):
         internal_id=123,
     )
 
-    pool.access.grant_component_role(rm, "REPLACER_ROLE", "owner")
     balance_before = {
         "JR": USD.balance_of(etkJR),
         "SR": USD.balance_of(etkSR),
@@ -2349,7 +2295,6 @@ def test_replace_policy_same_params(tenv):
         internal_id=123,
     )
 
-    pool.access.grant_component_role(rm, "REPLACER_ROLE", "owner")
     balance_before = {
         "JR": USD.balance_of(etkJR),
         "SR": USD.balance_of(etkSR),
@@ -2455,7 +2400,6 @@ def test_replace_policy_not_enough_money(tenv):
         internal_id=123,
     )
 
-    pool.access.grant_component_role(rm, "REPLACER_ROLE", "owner")
     with pytest.raises(RevertError, match="Not enough funds available to cover the SCR"):
         rm.replace_policy(**replace_kwargs)
 
@@ -2539,7 +2483,6 @@ def test_replace_policy_zero_sr_scr(tenv):
         internal_id=123,
     )
 
-    pool.access.grant_component_role(rm, "REPLACER_ROLE", "owner")
     balance_before = {
         "SR": USD.balance_of(etkSR),
         "PA": USD.balance_of(premiums_account),
@@ -2565,10 +2508,6 @@ def test_withdraw_won_premiums(tenv):
     treasury_balance = USD.balance_of("ENS")
     won_pure_premiums = premiums_account.won_pure_premiums
 
-    with pytest.raises(RevertError, match="AccessControl"):
-        premiums_account.withdraw_won_premiums(_W(1), "ENS")
-
-    pool.access.grant_component_role(premiums_account, "WITHDRAW_WON_PREMIUMS_ROLE", "PREMIUM_WITHDRAWER")
     with premiums_account.as_("PREMIUM_WITHDRAWER"):
         premiums_account.withdraw_won_premiums(_W(10), "ENS").assert_equal(_W(10))
 
@@ -2615,7 +2554,6 @@ def test_risk_provider_cant_drain_liquidity_provider(tenv):
 
     # Risk Provider creates a policy on behalf of LP1
     rm = pool.risk_modules["Roulette"]
-    pool.access.grant_component_role(rm, "PRICER_ROLE", "JOHN_SELLER")
     USD.approve("JOHN_SELLER", pool.contract_id, _W(10))
 
     with rm.as_("JOHN_SELLER"):
@@ -2664,9 +2602,6 @@ def test_same_asset_manager_for_etk_and_pa(tenv, asset_manager):
     timecontrol = tenv.time_control
     rm = pool.risk_modules["Roulette"]
     pa = rm.premiums_account
-    pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
-    pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
-
     USD = pool.currency
     etk = pool.etokens["eUSD1YEAR"]
 
@@ -2675,13 +2610,9 @@ def test_same_asset_manager_for_etk_and_pa(tenv, asset_manager):
     asset_manager_etk = asset_manager(asset=USD, reserve=etk, vault=vault).am
     asset_manager_pa = asset_manager(asset=USD, reserve=pa, vault=vault).am
 
-    pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
-
     # Set asset manager for etk
     with etk.as_("ADMIN"):
         etk.set_asset_manager(asset_manager_etk, False)
-
-    pool.access.grant_component_role(etk, "LEVEL2_ROLE", "ADMIN")
 
     with etk.as_("ADMIN"):
         etk.forward_to_asset_manager("set_liquidity_thresholds", _W(1000), _W(1500), _W(2000))
@@ -2700,8 +2631,6 @@ def test_same_asset_manager_for_etk_and_pa(tenv, asset_manager):
     # Set asset manager for pa
     with pa.as_("ADMIN"):
         pa.set_asset_manager(asset_manager_pa, False)
-
-    pool.access.grant_component_role(pa, "LEVEL2_ROLE", "ADMIN")
 
     with pa.as_("ADMIN"):
         pa.forward_to_asset_manager("set_liquidity_thresholds", _W(100), _W(160), _W(200))
@@ -2755,9 +2684,6 @@ def test_same_asset_manager_for_etk_and_pa_with_policy(tenv, asset_manager):
     timecontrol = tenv.time_control
     rm = pool.risk_modules["Roulette"]
     pa = rm.premiums_account
-    pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
-    pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
-
     USD = pool.currency
     etk = pool.etokens["eUSD1YEAR"]
 
@@ -2766,13 +2692,9 @@ def test_same_asset_manager_for_etk_and_pa_with_policy(tenv, asset_manager):
     asset_manager_etk = asset_manager(asset=USD, reserve=etk, vault=vault).am
     asset_manager_pa = asset_manager(asset=USD, reserve=pa, vault=vault).am
 
-    pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
-
     # Set asset manager for etk
     with etk.as_("ADMIN"):
         etk.set_asset_manager(asset_manager_etk, False)
-
-    pool.access.grant_component_role(etk, "LEVEL2_ROLE", "ADMIN")
 
     with etk.as_("ADMIN"):
         etk.forward_to_asset_manager("set_liquidity_thresholds", _W(1000), _W(1500), _W(2000))
@@ -2791,8 +2713,6 @@ def test_same_asset_manager_for_etk_and_pa_with_policy(tenv, asset_manager):
     # Set asset manager for pa
     with pa.as_("ADMIN"):
         pa.set_asset_manager(asset_manager_pa, False)
-
-    pool.access.grant_component_role(pa, "LEVEL2_ROLE", "ADMIN")
 
     with pa.as_("ADMIN"):
         pa.forward_to_asset_manager("set_liquidity_thresholds", _W(100), _W(160), _W(200))
@@ -2875,8 +2795,6 @@ def test_same_asset_manager_for_etk_and_pa_resolve_policy(tenv, asset_manager):
     timecontrol = tenv.time_control
     rm = pool.risk_modules["Roulette"]
     pa = rm.premiums_account
-    pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
-    pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
 
     USD = pool.currency
     etk = pool.etokens["eUSD1YEAR"]
@@ -2886,13 +2804,9 @@ def test_same_asset_manager_for_etk_and_pa_resolve_policy(tenv, asset_manager):
     asset_manager_etk = asset_manager(asset=USD, reserve=etk, vault=vault).am
     asset_manager_pa = asset_manager(asset=USD, reserve=pa, vault=vault).am
 
-    pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
-
     # Set asset manager for etk
     with etk.as_("ADMIN"):
         etk.set_asset_manager(asset_manager_etk, False)
-
-    pool.access.grant_component_role(etk, "LEVEL2_ROLE", "ADMIN")
 
     with etk.as_("ADMIN"):
         etk.forward_to_asset_manager("set_liquidity_thresholds", _W(1000), _W(1500), _W(2000))
@@ -2911,8 +2825,6 @@ def test_same_asset_manager_for_etk_and_pa_resolve_policy(tenv, asset_manager):
     # Set asset manager for pa
     with pa.as_("ADMIN"):
         pa.set_asset_manager(asset_manager_pa, False)
-
-    pool.access.grant_component_role(pa, "LEVEL2_ROLE", "ADMIN")
 
     with pa.as_("ADMIN"):
         pa.forward_to_asset_manager("set_liquidity_thresholds", _W(100), _W(160), _W(200))
@@ -2985,26 +2897,19 @@ def test_repay_loan(tenv, asset_manager):
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
     rm = pool.risk_modules["Roulette"]
-    pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
-    pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
-    pool.access.grant_role("REPAY_LOANS_ROLE", rm.owner)
     pa = rm.premiums_account
 
     USD = pool.currency
     etk = pool.etokens["eUSD1YEAR"]
 
-    pool.access.grant_component_role(pa, "LEVEL2_ROLE", USD.owner)
     pa.set_deficit_ratio(_W(0), True)
 
     # Create vault and asset manager
     am = asset_manager(asset=USD, reserve=pa).am
 
-    pool.access.grant_role("LEVEL1_ROLE", "ADMIN")
     # Set asset manager
     with pa.as_("ADMIN"):
         pa.set_asset_manager(am, False)
-
-    pool.access.grant_component_role(pa, "LEVEL2_ROLE", "ADMIN")
 
     with pa.as_("ADMIN"):
         pa.forward_to_asset_manager("set_liquidity_thresholds", _W(10), _W(100), _W(150))
@@ -3109,10 +3014,7 @@ def test_loss_propagation_limits(tenv):
     timecontrol = tenv.time_control
     rm = pool.risk_modules["Roulette"]
 
-    pool.access.grant_component_role(rm, "PRICER_ROLE", rm.owner)
-    pool.access.grant_component_role(rm, "RESOLVER_ROLE", rm.owner)
     pa = rm.premiums_account
-    pool.access.grant_component_role(pa, "REPAY_LOANS_ROLE", pa.owner)
 
     USD = pool.currency
     etkSr = pool.etokens["eUSDSr"]

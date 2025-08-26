@@ -5,7 +5,6 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import {Policy} from "../Policy.sol";
 import {IEToken} from "./IEToken.sol";
 import {IRiskModule} from "./IRiskModule.sol";
-import {IAccessManager} from "./IAccessManager.sol";
 
 interface IPolicyPool {
   /**
@@ -42,12 +41,6 @@ interface IPolicyPool {
    * @return The address of the currency (e.g. USDC) token used in the protocol
    */
   function currency() external view returns (IERC20Metadata);
-
-  /**
-   * @dev Reference to the {AccessManager} contract, this contract manages the access controls.
-   * @return The address of the AccessManager contract
-   */
-  function access() external view returns (IAccessManager);
 
   /**
    * @dev Address of the treasury, that receives protocol fees.

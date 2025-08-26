@@ -13,9 +13,7 @@ from prototype.utils import DAY, MONTH, WEEK
 from . import TEST_VARIANTS
 from .contracts import ForwardProxy, PolicyPoolMockForward
 
-TEnv = namedtuple(
-    "TEnv", "time_control etoken_class policy_factory kind currency fw_proxy_factory module pool_access"
-)
+TEnv = namedtuple("TEnv", "time_control etoken_class policy_factory kind currency fw_proxy_factory module")
 SECONDS_IN_YEAR = 365 * 3600 * 24
 
 
@@ -35,10 +33,8 @@ def tenv(request):
             )
 
     if request.param == "prototype":
-        pp_access = ensuro.AccessManager()
         currency = ensuro.ERC20Token(name="Test", symbol="TEST", initial_supply=_W(10000))
         policy_pool = ensuro.PolicyPool(
-            access=pp_access,
             currency=currency,
         )
         FakePolicy.time_control = ensuro.time_control
@@ -49,7 +45,6 @@ def tenv(request):
 
         return TEnv(
             time_control=ensuro.time_control,
-            pool_access=pp_access,
             policy_factory=FakePolicy,
             etoken_class=partial(ensuro.EToken, policy_pool=policy_pool),
             currency=currency,
@@ -59,13 +54,11 @@ def tenv(request):
         )
     elif request.param == "ethereum":
         currency = wrappers.TestCurrency(owner="owner", name="TEST", symbol="TEST", initial_supply=_W(10000))
-        access = wrappers.AccessManager(owner="owner")
 
         def etoken_factory(**kwargs):
             pool = PolicyPoolMockForward(
                 forwardTo=wrappers.AddressBook.ZERO,
                 currency_=currency.contract,
-                access_=access.contract,
                 owner="owner",
             )
 
@@ -89,7 +82,6 @@ def tenv(request):
 
         return TEnv(
             time_control=FakePolicy.time_control,
-            pool_access=access,
             policy_factory=FakePolicy,
             etoken_class=etoken_factory,
             currency=currency,
@@ -450,9 +442,6 @@ def test_internal_loan(tenv):
     internal_loan = _W(400) + _W(300) * _W(0.0002 * 8) + _W(100) * _W(0.0002)
     etk.get_loan(pa).assert_equal(internal_loan)
 
-    with etk.as_("owner"):
-        etk.grant_role("LEVEL2_ROLE", "SETRATE")
-
     etk.repay_loan(pa, Wad(1), pa)  # Does a minimal payment, so scale is updated
     with etk.as_("SETRATE"):
         etk.set_internal_loan_interest_rate(_W("0.0365"))
@@ -498,19 +487,9 @@ def test_etk_asset_manager(tenv):
         reserve=etk,
     )
 
-    with pytest.raises(RevertError, match="AccessControl"):
-        etk.set_asset_manager(asset_manager, False)
-
-    tenv.pool_access.grant_role("LEVEL1_ROLE", "ADMIN")
-
     # Set asset manager
     with etk.as_("ADMIN"):
         etk.set_asset_manager(asset_manager, False)
-
-    with pytest.raises(RevertError, match="AccessControl"):
-        etk.forward_to_asset_manager("set_liquidity_thresholds", _W(100), _W(160), _W(200))
-
-    tenv.pool_access.grant_component_role(etk, "LEVEL2_ROLE", "ADMIN")
 
     with etk.as_("ADMIN"):
         etk.forward_to_asset_manager("set_liquidity_thresholds", _W(100), _W(160), _W(200))
@@ -621,13 +600,9 @@ def test_etk_change_asset_manager(tenv):
         reserve=etk,
     )
 
-    tenv.pool_access.grant_role("LEVEL1_ROLE", "ADMIN")
-
     # Set asset manager
     with etk.as_("ADMIN"):
         etk.set_asset_manager(asset_manager, False)
-
-    tenv.pool_access.grant_component_role(etk, "LEVEL2_ROLE", "ADMIN")
 
     with etk.as_("ADMIN"):
         etk.forward_to_asset_manager("set_liquidity_thresholds", _W(100), _W(160), _W(200))
@@ -678,8 +653,6 @@ def test_etk_asset_manager_without_movements(tenv):
         reserve=etk,
     )
 
-    tenv.pool_access.grant_role("LEVEL1_ROLE", "ADMIN")
-
     # Set asset manager
     with etk.as_("ADMIN"):
         etk.set_asset_manager(asset_manager, False)
@@ -715,19 +688,9 @@ def test_etk_asset_manager_liquidity_under_minimum(tenv):
         reserve=etk,
     )
 
-    with pytest.raises(RevertError, match="AccessControl"):
-        etk.set_asset_manager(asset_manager, False)
-
-    tenv.pool_access.grant_role("LEVEL1_ROLE", "ADMIN")
-
     # Set asset manager
     with etk.as_("ADMIN"):
         etk.set_asset_manager(asset_manager, False)
-
-    with pytest.raises(RevertError, match="AccessControl"):
-        etk.forward_to_asset_manager("set_liquidity_thresholds", _W(100), _W(200), _W(250))
-
-    tenv.pool_access.grant_component_role(etk, "LEVEL2_ROLE", "ADMIN")
 
     with etk.as_("ADMIN"):
         etk.forward_to_asset_manager("set_liquidity_thresholds", _W(100), _W(200), _W(250))
@@ -782,8 +745,6 @@ def test_max_utilization_rate(tenv):
     assert etk.funds_available == _W(1000)
     assert etk.funds_available_to_lock == _W(900)
 
-    with etk.as_("owner"):
-        etk.grant_role("LEVEL2_ROLE", "SETRATE")
     with etk.as_("SETRATE"):
         etk.set_max_utilization_rate(_W("0.95"))
 

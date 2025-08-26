@@ -23,21 +23,15 @@ describe("Constructor validations", function () {
     const _A = amountFunction(6);
 
     const currency = await initCurrency({ name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(10000) });
-    const AccessManager = await hre.ethers.getContractFactory("AccessManager");
     const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
     const FixedRateVault = await hre.ethers.getContractFactory("FixedRateVault");
 
-    // Deploy AccessManager
-    const access = await hre.upgrades.deployProxy(AccessManager, [], { kind: "uups" });
-
-    await access.waitForDeployment();
-
-    return { currency, _A, owner, access, PolicyPool, FixedRateVault };
+    return { currency, _A, owner, PolicyPool, FixedRateVault };
   }
 
   async function setupFixtureWithPool() {
     const ret = await setupFixture();
-    const policyPool = await deployPool({ currency: ret.currency, access: ret.access });
+    const policyPool = await deployPool({ currency: ret.currency });
     return { policyPool, ...ret };
   }
 
@@ -47,22 +41,12 @@ describe("Constructor validations", function () {
     return { premiumsAccount, ...ret };
   }
 
-  // Nothing to check in AccessManager constructor
-
   it("Checks PolicyPool constructor validations", async () => {
-    const { access, PolicyPool, currency } = await helpers.loadFixture(setupFixtureWithPool);
+    const { PolicyPool } = await helpers.loadFixture(setupFixtureWithPool);
     const initArgs = ["foo", "bar", rndAddr];
-    const currencyAddr = await hre.ethers.resolveAddress(currency);
-    const accessAddr = await hre.ethers.resolveAddress(access);
     await expect(
       hre.upgrades.deployProxy(PolicyPool, initArgs, {
-        constructorArgs: [ZeroAddress, currencyAddr],
-        ...deployProxyArgs,
-      })
-    ).to.be.revertedWithCustomError(PolicyPool, "NoZeroAccess");
-    await expect(
-      hre.upgrades.deployProxy(PolicyPool, initArgs, {
-        constructorArgs: [accessAddr, ZeroAddress],
+        constructorArgs: [ZeroAddress],
         ...deployProxyArgs,
       })
     ).to.be.revertedWithCustomError(PolicyPool, "NoZeroCurrency");
@@ -87,7 +71,7 @@ describe("Constructor validations", function () {
   });
 
   it("Checks TrustfulRiskModule constructor validations", async () => {
-    const { premiumsAccount, policyPool, currency, access } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
+    const { premiumsAccount, policyPool, currency } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
     const TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
     const initArgs = ["foo", 0, 0, 0, 0, 0, rndAddr];
     const paAddr = await hre.ethers.resolveAddress(premiumsAccount);
@@ -106,8 +90,6 @@ describe("Constructor validations", function () {
     ).to.be.reverted;
     const anotherPool = await deployPool({
       currency: currency,
-      access: access,
-      dontGrantL123Roles: true,
     });
     const anotherPA = await deployPremiumsAccount(anotherPool, {});
     const anotherPAAddr = await hre.ethers.resolveAddress(anotherPA);
@@ -120,7 +102,7 @@ describe("Constructor validations", function () {
   });
 
   it("Checks SignedQuoteRiskModule constructor validations", async () => {
-    const { premiumsAccount, policyPool, currency, access } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
+    const { premiumsAccount, policyPool, currency } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
     const SignedQuoteRiskModule = await hre.ethers.getContractFactory("SignedQuoteRiskModule");
     const initArgs = ["foo", 0, 0, 0, 0, 0, rndAddr];
     const poolAddr = await hre.ethers.resolveAddress(policyPool);
@@ -139,8 +121,6 @@ describe("Constructor validations", function () {
     ).to.be.reverted;
     const anotherPool = await deployPool({
       currency: currency,
-      access: access,
-      dontGrantL123Roles: true,
     });
     const anotherPA = await deployPremiumsAccount(anotherPool, {});
     const anotherPaAddr = await hre.ethers.resolveAddress(anotherPA);

@@ -16,10 +16,6 @@ import {IERC721} from "@openzeppelin/contracts/interfaces/IERC721.sol";
  */
 
 contract RiskModuleMock is RiskModule {
-  bytes32 public constant PRICER_ROLE = keccak256("PRICER_ROLE");
-  bytes32 public constant RESOLVER_ROLE = keccak256("RESOLVER_ROLE");
-  bytes32 public constant REPLACER_ROLE = keccak256("REPLACER_ROLE");
-
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
   constructor(IPolicyPool policyPool_, IPremiumsAccount premiumsAccount_) RiskModule(policyPool_, premiumsAccount_) {}
@@ -54,7 +50,7 @@ contract RiskModuleMock is RiskModule {
     address payer,
     address onBehalfOf,
     uint96 internalId
-  ) external onlyComponentRole(PRICER_ROLE) returns (uint256) {
+  ) external returns (uint256) {
     return _newPolicy(payout, premium, lossProb, expiration, payer, onBehalfOf, internalId).id;
   }
 
@@ -67,7 +63,7 @@ contract RiskModuleMock is RiskModule {
     return _policyPool.newPolicy(policy, payer, policyHolder, internalId);
   }
 
-  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external onlyComponentRole(RESOLVER_ROLE) {
+  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external {
     _policyPool.resolvePolicy(policy, payout);
   }
 
@@ -82,7 +78,7 @@ contract RiskModuleMock is RiskModule {
     uint256 lossProb,
     uint40 expiration,
     uint96 internalId
-  ) external whenNotPaused onlyComponentRole(REPLACER_ROLE) returns (uint256) {
+  ) external whenNotPaused returns (uint256) {
     address onBehalfOf = IERC721(address(_policyPool)).ownerOf(oldPolicy.id);
     return _replacePolicy(oldPolicy, payout, premium, lossProb, expiration, onBehalfOf, internalId, params()).id;
   }

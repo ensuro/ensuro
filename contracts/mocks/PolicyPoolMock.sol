@@ -4,7 +4,6 @@ pragma solidity ^0.8.28;
 import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {IRiskModule} from "../interfaces/IRiskModule.sol";
 import {IEToken} from "../interfaces/IEToken.sol";
-import {IAccessManager} from "../interfaces/IAccessManager.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {Policy} from "../Policy.sol";
 import {ForwardProxy} from "./ForwardProxy.sol";
@@ -15,22 +14,16 @@ contract PolicyPoolMock is IPolicyPool {
   uint256 public constant MAX_INT = 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
 
   IERC20Metadata internal _currency;
-  IAccessManager internal _access;
 
   mapping(uint256 => Policy.PolicyData) internal policies;
   mapping(uint256 => bytes32) internal policyHashes;
 
-  constructor(IERC20Metadata currency_, IAccessManager access_) {
+  constructor(IERC20Metadata currency_) {
     _currency = currency_;
-    _access = access_;
   }
 
   function currency() external view override returns (IERC20Metadata) {
     return _currency;
-  }
-
-  function access() external view override returns (IAccessManager) {
-    return _access;
   }
 
   function treasury() external pure override returns (address) {
@@ -135,18 +128,12 @@ contract PolicyPoolMockForward is ForwardProxy {
   uint256 public constant MAX_INT = 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
 
   IERC20Metadata internal _currency;
-  IAccessManager internal _access;
 
-  constructor(address forwardTo, IERC20Metadata currency_, IAccessManager access_) ForwardProxy(forwardTo) {
+  constructor(address forwardTo, IERC20Metadata currency_) ForwardProxy(forwardTo) {
     _currency = currency_;
-    _access = access_;
   }
 
   function currency() external view returns (IERC20Metadata) {
     return _currency;
-  }
-
-  function access() external view returns (IAccessManager) {
-    return _access;
   }
 }

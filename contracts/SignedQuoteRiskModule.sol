@@ -7,6 +7,7 @@ import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
 import {RiskModule} from "./RiskModule.sol";
 import {Policy} from "./Policy.sol";
+import {AMPUtils} from "@ensuro/access-managed-proxy/contracts/AMPUtils.sol";
 
 /**
  * @title SignedQuote Risk Module
@@ -16,9 +17,7 @@ import {Policy} from "./Policy.sol";
  * @author Ensuro
  */
 contract SignedQuoteRiskModule is RiskModule {
-  bytes32 public constant POLICY_CREATOR_ROLE = keccak256("POLICY_CREATOR_ROLE");
-  bytes32 public constant PRICER_ROLE = keccak256("PRICER_ROLE");
-  bytes32 public constant RESOLVER_ROLE = keccak256("RESOLVER_ROLE");
+  bytes4 internal constant PRICER_ROLE = bytes4(keccak256("PRICER_ROLE"));
 
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   bool internal immutable _creationIsOpen;
@@ -76,8 +75,6 @@ contract SignedQuoteRiskModule is RiskModule {
     address payer,
     address onBehalfOf
   ) internal returns (Policy.PolicyData memory createdPolicy) {
-    if (!_creationIsOpen)
-      _policyPool.access().checkComponentRole(address(this), POLICY_CREATOR_ROLE, _msgSender(), false);
     if (quoteValidUntil < block.timestamp) revert QuoteExpired();
 
     /**
@@ -92,13 +89,7 @@ contract SignedQuoteRiskModule is RiskModule {
     bytes32 quoteHash = MessageHashUtils.toEthSignedMessageHash(
       abi.encodePacked(address(this), payout, premium, lossProb, expiration, policyData, quoteValidUntil)
     );
-    _policyPool.access().checkComponentRole(
-      address(this),
-      PRICER_ROLE,
-      ECDSA.recover(quoteHash, quoteSignatureR, quoteSignatureVS),
-      false
-    );
-
+    AMPUtils.checkCanCall(ECDSA.recover(quoteHash, quoteSignatureR, quoteSignatureVS), PRICER_ROLE);
     createdPolicy = _newPolicy(payout, premium, lossProb, expiration, payer, onBehalfOf, _makeInternalId(policyData));
     emit NewSignedPolicy(createdPolicy.id, policyData);
     return createdPolicy;
@@ -262,17 +253,11 @@ contract SignedQuoteRiskModule is RiskModule {
       ).id;
   }
 
-  function resolvePolicy(
-    Policy.PolicyData calldata policy,
-    uint256 payout
-  ) external onlyComponentRole(RESOLVER_ROLE) whenNotPaused {
+  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external whenNotPaused {
     _policyPool.resolvePolicy(policy, payout);
   }
 
-  function resolvePolicyFullPayout(
-    Policy.PolicyData calldata policy,
-    bool customerWon
-  ) external onlyComponentRole(RESOLVER_ROLE) whenNotPaused {
+  function resolvePolicyFullPayout(Policy.PolicyData calldata policy, bool customerWon) external whenNotPaused {
     _policyPool.resolvePolicyFullPayout(policy, customerWon);
   }
 

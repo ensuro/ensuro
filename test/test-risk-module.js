@@ -3,7 +3,7 @@ const { ethers } = require("hardhat");
 const { MaxUint256 } = require("ethers");
 const { RiskModuleParameter } = require("../js/enums");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
-const { grantRole, amountFunction, _W, getTransactionEvent } = require("@ensuro/utils/js/utils");
+const { amountFunction, _W, getTransactionEvent } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
 
@@ -32,17 +32,15 @@ describe("RiskModule contract", function () {
 
     const pool = await deployPool({
       currency: currency,
-      grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
       treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
     });
     pool._A = _A;
 
-    const accessManager = await hre.ethers.getContractAt("AccessManager", await pool.access());
-    return { pool, accessManager, currency };
+    return { pool, currency };
   }
 
   async function deployRiskModuleFixture() {
-    const { pool, accessManager, currency } = await helpers.loadFixture(deployPoolFixture);
+    const { pool, currency } = await helpers.loadFixture(deployPoolFixture);
     // Setup the liquidity sources
     const etk = await addEToken(pool, {});
     const premiumsAccount = await deployPremiumsAccount(pool, { srEtk: etk });
@@ -56,15 +54,11 @@ describe("RiskModule contract", function () {
       extraArgs: [],
     });
 
-    await accessManager.grantComponentRole(rm, await rm.PRICER_ROLE(), backend);
-    await accessManager.grantComponentRole(rm, await rm.RESOLVER_ROLE(), backend);
-    await accessManager.grantComponentRole(rm, await rm.REPLACER_ROLE(), backend);
-
-    return { etk, premiumsAccount, rm, RiskModule, pool, accessManager, currency };
+    return { etk, premiumsAccount, rm, RiskModule, pool, currency };
   }
 
   async function deployRmWithPolicyFixture() {
-    const { rm, pool, currency, accessManager, premiumsAccount } = await helpers.loadFixture(deployRiskModuleFixture);
+    const { rm, pool, currency, premiumsAccount } = await helpers.loadFixture(deployRiskModuleFixture);
     const now = await helpers.time.latest();
 
     // Deploy a new policy
@@ -86,7 +80,7 @@ describe("RiskModule contract", function () {
     // Try to resolve it without going through the riskModule
     const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
 
-    return { policy: newPolicyEvt.args.policy, receipt, rm, currency, accessManager, pool, premiumsAccount };
+    return { policy: newPolicyEvt.args.policy, receipt, rm, currency, pool, premiumsAccount };
   }
 
   it("Set params jrCollRatio validations", async () => {
@@ -247,9 +241,8 @@ describe("RiskModule contract", function () {
   });
 
   it("Rejects replace policy if the RM is paused", async () => {
-    const { policy, rm, accessManager } = await helpers.loadFixture(deployRmWithPolicyFixture);
+    const { policy, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
 
-    await grantRole(hre, accessManager, "GUARDIAN_ROLE", owner);
     await expect(rm.connect(owner).pause()).to.emit(rm, "Paused");
 
     await expect(

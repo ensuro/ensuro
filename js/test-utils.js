@@ -1,9 +1,21 @@
 const hre = require("hardhat");
-const { _W, grantRole, getTransactionEvent } = require("@ensuro/utils/js/utils");
+const { _W, getTransactionEvent, AM_ROLES } = require("@ensuro/utils/js/utils");
+const { deployAMPProxy, attachAsAMP, getAccessManager } = require("@ensuro/access-managed-proxy/js/deployProxy");
 const { RiskModuleParameter } = require("./enums");
+const { ampConfig } = require("./ampConfig");
 
 const { ethers } = hre;
 const { ZeroAddress } = ethers;
+
+const randomAddress = "0x89cDb70Fee571251a66E34caa1673cE40f7549Dc";
+
+async function makeAllPublic(contract, accessManager) {
+  const skipSelectors = await (await attachAsAMP(contract)).PASS_THRU_METHODS();
+  const selectors = contract.interface.fragments
+    .filter((fragment) => fragment.type === "function" && skipSelectors.indexOf(fragment.selector) < 0)
+    .map((fragment) => fragment.selector);
+  await accessManager.setTargetFunctionRole(contract, selectors, AM_ROLES.PUBLIC_ROLE);
+}
 
 async function createRiskModule(
   pool,
@@ -20,6 +32,8 @@ async function createRiskModule(
     wallet,
     extraArgs,
     extraConstructorArgs,
+    contractName,
+    disableAC,
   }
 ) {
   extraArgs = extraArgs || [];
@@ -27,10 +41,12 @@ async function createRiskModule(
   const _A = pool._A || _W;
   maxPayoutPerPolicy = maxPayoutPerPolicy !== undefined ? _A(maxPayoutPerPolicy) : _A(1000);
   exposureLimit = exposureLimit !== undefined ? _A(exposureLimit) : _A(1000000);
+  contractName = contractName || "RiskModule";
 
+  const accessManager = await getAccessManager(pool);
   const poolAddr = await ethers.resolveAddress(pool);
   const paAddr = await ethers.resolveAddress(premiumsAccount);
-  const rm = await hre.upgrades.deployProxy(
+  const rm = await deployAMPProxy(
     contractFactory,
     [
       rmName || "RiskModule",
@@ -46,10 +62,14 @@ async function createRiskModule(
       kind: "uups",
       constructorArgs: [poolAddr, paAddr, ...extraConstructorArgs],
       unsafeAllow: ["missing-initializer"],
+      acMgr: accessManager,
+      ...ampConfig[contractName],
     }
   );
 
   await rm.waitForDeployment();
+
+  if (disableAC || disableAC === undefined) await makeAllPublic(rm, accessManager);
 
   if (moc !== undefined && moc != 1.0) {
     moc = _W(moc);
@@ -94,13 +114,14 @@ async function addRiskModule(
 
 async function createEToken(
   pool,
-  { etkName, etkSymbol, maxUtilizationRate, poolLoanInterestRate, extraArgs, extraConstructorArgs }
+  { etkName, etkSymbol, maxUtilizationRate, poolLoanInterestRate, extraArgs, extraConstructorArgs, disableAC }
 ) {
   const EToken = await ethers.getContractFactory("EToken");
   extraArgs = extraArgs || [];
   extraConstructorArgs = extraConstructorArgs || [];
   const poolAddr = await ethers.resolveAddress(pool);
-  const etk = await hre.upgrades.deployProxy(
+  const accessManager = await getAccessManager(pool);
+  const etk = await deployAMPProxy(
     EToken,
     [
       etkName === undefined ? "EToken" : etkName,
@@ -113,10 +134,14 @@ async function createEToken(
       kind: "uups",
       unsafeAllow: ["delegatecall"], // This holds, because EToken is a reserve and uses delegatecall
       constructorArgs: [poolAddr, ...extraConstructorArgs],
+      acMgr: accessManager,
+      ...ampConfig.EToken,
     }
   );
 
   await etk.waitForDeployment();
+
+  if (disableAC || disableAC === undefined) await makeAllPublic(etk, accessManager);
   return etk;
 }
 
@@ -136,8 +161,6 @@ async function addEToken(
   return etk;
 }
 
-const randomAddress = "0x89cDb70Fee571251a66E34caa1673cE40f7549Dc";
-
 /**
  * Deploys the PolicyPool contract and AccessManager
  *
@@ -145,30 +168,32 @@ const randomAddress = "0x89cDb70Fee571251a66E34caa1673cE40f7549Dc";
  *
  * options:
  * - .currency: mandatory, the address of the currency used in the PolicyPool
- * - .access: if specified, doesn't create an AccessManager, uses this address.toLowerCase
  * - .nftName: default "Policy NFT"
  * - .nftSymbol: default "EPOL"
  * - .treasuryAddress: default randomAddress
- * - .grantRoles: default []. List of additional roles to grant
- * - .dontGrantL123Roles: if specified, doesn't grants LEVEL1, 2 and 3 roles.
+ * - .disableAC: default true. If true, disables the access control making all non skipped methods accessible by
+ *               anyone (PUBLIC_ROLE)
  */
 async function deployPool(options) {
   const PolicyPool = await ethers.getContractFactory("PolicyPool");
-  const AccessManager = await ethers.getContractFactory("AccessManager");
 
   let accessManager;
 
   if (options.access === undefined) {
+    const AccessManager = await ethers.getContractFactory("AccessManager");
+    let admin = options.admin;
+    if (admin === undefined) {
+      [admin] = await ethers.getSigners();
+    }
     // Deploy AccessManager
-    accessManager = await hre.upgrades.deployProxy(AccessManager, [], { kind: "uups" });
+    accessManager = await AccessManager.deploy(admin);
     await accessManager.waitForDeployment();
   } else {
     accessManager = await ethers.getContractAt("AccessManager", options.access);
   }
 
   const currencyAddr = await ethers.resolveAddress(options.currency);
-  const amAddr = await ethers.resolveAddress(accessManager);
-  const policyPool = await hre.upgrades.deployProxy(
+  const policyPool = await deployAMPProxy(
     PolicyPool,
     [
       options.nftName === undefined ? "Policy NFT" : options.nftName,
@@ -176,21 +201,15 @@ async function deployPool(options) {
       options.treasuryAddress || randomAddress,
     ],
     {
-      constructorArgs: [amAddr, currencyAddr],
-      kind: "uups",
+      constructorArgs: [currencyAddr],
+      acMgr: accessManager,
+      ...ampConfig.PolicyPool,
     }
   );
 
   await policyPool.waitForDeployment();
 
-  for (const role of options.grantRoles || []) {
-    await grantRole(hre, accessManager, role);
-  }
-
-  if (options.dontGrantL123Roles === undefined) {
-    await grantRole(hre, accessManager, "LEVEL1_ROLE");
-    await grantRole(hre, accessManager, "LEVEL2_ROLE");
-  }
+  if (options.disableAC || options.disableAC === undefined) await makeAllPublic(policyPool, accessManager);
 
   return policyPool;
 }
@@ -200,13 +219,17 @@ async function deployPremiumsAccount(pool, options, addToPool = true) {
   const poolAddr = await ethers.resolveAddress(pool);
   const jrEtkAddr = options.jrEtk ? await ethers.resolveAddress(options.jrEtk) : ZeroAddress;
   const srEtkAddr = options.srEtk ? await ethers.resolveAddress(options.srEtk) : ZeroAddress;
-  const premiumsAccount = await hre.upgrades.deployProxy(PremiumsAccount, [], {
+  const accessManager = await getAccessManager(pool);
+  const premiumsAccount = await deployAMPProxy(PremiumsAccount, [], {
     constructorArgs: [poolAddr, jrEtkAddr, srEtkAddr],
     kind: "uups",
-    unsafeAllow: ["delegatecall"], // This holds, because EToken is a reserve and uses delegatecall
+    unsafeAllow: ["delegatecall"], // This holds, because PremiumsAccount is a reserve and uses delegatecall
+    acMgr: accessManager,
+    ...ampConfig.PremiumsAccount,
   });
 
   await premiumsAccount.waitForDeployment();
+  if (options.disableAC || options.disableAC === undefined) await makeAllPublic(premiumsAccount, accessManager);
 
   if (addToPool) await pool.addComponent(premiumsAccount, 3);
 
@@ -229,4 +252,5 @@ module.exports = {
   deployPool,
   deployPremiumsAccount,
   makePolicy,
+  makeAllPublic,
 };

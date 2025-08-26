@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
-const { amountFunction, grantRole } = require("@ensuro/utils/js/utils");
+const { amountFunction } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { deployPool, addEToken } = require("../js/test-utils");
 
@@ -49,11 +49,9 @@ describe("Etoken", () => {
   });
 
   it("Allows setting whitelist to null", async () => {
-    const { etk, pool } = await helpers.loadFixture(etokenFixture);
+    const { etk } = await helpers.loadFixture(etokenFixture);
 
-    grantRole(hre, await pool.access(), "GUARDIAN_ROLE");
-
-    expect(await etk.setWhitelist(hre.ethers.ZeroAddress)).to.emit(await pool.access(), "ComponentChanged");
+    expect(await etk.setWhitelist(hre.ethers.ZeroAddress)).to.emit(etk, "ComponentChanged");
 
     expect(await etk.whitelist()).to.equal(hre.ethers.ZeroAddress);
   });
@@ -74,7 +72,6 @@ describe("Etoken", () => {
 
     const pool = await deployPool({
       currency: currency,
-      grantRoles: [],
       treasuryAddress: "0x87c47c9a5a2aa74ae714857d64911d9a091c25b1", // Random address
     });
     pool._A = _A;
