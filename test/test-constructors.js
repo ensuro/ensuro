@@ -24,9 +24,8 @@ describe("Constructor validations", function () {
 
     const currency = await initCurrency({ name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(10000) });
     const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
-    const FixedRateVault = await hre.ethers.getContractFactory("FixedRateVault");
 
-    return { currency, _A, owner, PolicyPool, FixedRateVault };
+    return { currency, _A, owner, PolicyPool };
   }
 
   async function setupFixtureWithPool() {

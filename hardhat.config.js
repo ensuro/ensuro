@@ -119,6 +119,8 @@ module.exports = {
     paths: [
       "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol",
       "@openzeppelin/contracts/access/manager/AccessManager.sol",
+      "@ensuro/utils/contracts/TestERC4626.sol",
+      "@ensuro/utils/contracts/TestCurrency.sol",
       "@ensuro/access-managed-proxy/contracts/amps/AccessManagedProxyS1.sol",
       "@ensuro/access-managed-proxy/contracts/amps/AccessManagedProxyS2.sol",
       "@ensuro/access-managed-proxy/contracts/amps/AccessManagedProxyS3.sol",

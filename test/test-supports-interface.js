@@ -65,7 +65,6 @@ describe("Supports interface implementation", function () {
 
     const currency = await initCurrency({ name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(10000) });
     const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
-    const FixedRateVault = await hre.ethers.getContractFactory("FixedRateVault");
 
     return {
       currency,
@@ -73,7 +72,6 @@ describe("Supports interface implementation", function () {
       owner,
       PolicyPool,
       interfaceIds,
-      FixedRateVault,
     };
   }
 
