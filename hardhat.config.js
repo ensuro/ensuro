@@ -146,6 +146,7 @@ module.exports = {
       "@ensuro/access-managed-proxy/contracts/amps/AccessManagedProxyS23.sol",
       "@ensuro/access-managed-proxy/contracts/amps/AccessManagedProxyS24.sol",
       "@ensuro/access-managed-proxy/contracts/amps/AccessManagedProxyS35.sol",
+      "@ensuro/access-managed-proxy/contracts/amps/AccessManagedProxyS36.sol",
     ],
   },
 };

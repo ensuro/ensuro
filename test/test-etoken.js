@@ -2,18 +2,16 @@ const { expect } = require("chai");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
-const { amountFunction } = require("@ensuro/utils/js/utils");
+const { amountFunction, captureAny, newCaptureAny, _W, _R } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
+const { DAY } = require("@ensuro/utils/js/constants");
 const { deployPool, addEToken } = require("../js/test-utils");
 
+const { ethers } = hre;
+const { ZeroAddress, MaxUint256 } = ethers;
+
+const _A = amountFunction(6);
 describe("Etoken", () => {
-  const _A = amountFunction(6);
-  let lp, lp2;
-
-  beforeEach(async () => {
-    [, lp, lp2] = await hre.ethers.getSigners();
-  });
-
   it("Refuses transfers to null address", async () => {
     const { etk } = await helpers.loadFixture(etokenFixture);
     await expect(etk.transfer(hre.ethers.ZeroAddress, _A(10))).to.be.revertedWith(
@@ -22,13 +20,13 @@ describe("Etoken", () => {
   });
 
   it("Checks user balance", async () => {
-    const { etk } = await helpers.loadFixture(etokenFixture);
+    const { etk, lp, lp2 } = await helpers.loadFixture(etokenFixture);
 
     await expect(etk.connect(lp2).transfer(lp, _A(10))).to.be.revertedWith("EToken: transfer amount exceeds balance");
   });
 
   it("Returns the available funds", async () => {
-    const { etk, pool } = await helpers.loadFixture(etokenFixture);
+    const { etk, pool, lp } = await helpers.loadFixture(etokenFixture);
     expect(await etk.fundsAvailable()).to.equal(_A(3000));
 
     await pool.connect(lp).withdraw(etk, _A(3000));
@@ -37,13 +35,13 @@ describe("Etoken", () => {
   });
 
   it("Only allows PolicyPool to add new borrowers", async () => {
-    const { etk } = await helpers.loadFixture(etokenFixture);
+    const { etk, lp } = await helpers.loadFixture(etokenFixture);
 
     await expect(etk.addBorrower(lp)).to.be.revertedWithCustomError(etk, "OnlyPolicyPool");
   });
 
   it("Only allows PolicyPool to remove borrowers", async () => {
-    const { etk } = await helpers.loadFixture(etokenFixture);
+    const { etk, lp } = await helpers.loadFixture(etokenFixture);
 
     await expect(etk.removeBorrower(lp)).to.be.revertedWithCustomError(etk, "OnlyPolicyPool");
   });
@@ -63,11 +61,112 @@ describe("Etoken", () => {
     await expect(addEToken(pool, { etkSymbol: "" })).to.be.revertedWith("EToken: symbol cannot be empty");
   });
 
+  it("Can assign a yieldVault and rebalance funds there", async () => {
+    const { etk, yieldVault, lp, pool } = await helpers.loadFixture(etkFixtureWithVault);
+
+    await expect(etk.setYieldVault(yieldVault, false))
+      .to.emit(etk, "YieldVaultChanged")
+      .withArgs(ZeroAddress, yieldVault, false);
+
+    await expect(etk.depositIntoYieldVault(_A(1200)))
+      .to.emit(yieldVault, "Deposit")
+      .withArgs(etk, etk, _A(1200), _A(1200));
+
+    expect(await etk.balanceOf(lp)).to.equal(_A(3000)); // unchanged
+
+    await yieldVault.discreteEarning(_A(300));
+
+    await expect(etk.recordEarnings())
+      .to.emit(etk, "EarningsRecorded")
+      .withArgs(_A(300) - 1n);
+
+    expect(await etk.balanceOf(lp)).to.equal(_A(3300) - 1n);
+
+    await expect(pool.connect(lp).withdraw(etk, _A(2000)))
+      .to.emit(etk, "Transfer")
+      .withArgs(lp, ZeroAddress, _A(2000))
+      .to.emit(yieldVault, "Withdraw")
+      .withArgs(etk, etk, etk, _A(200), captureAny.uint);
+    expect(captureAny.lastUint).to.closeTo(await yieldVault.convertToShares(_A(200)), 2n);
+  });
+
+  it("Can combines returns from locked SCR and from YV", async () => {
+    const { etk, yieldVault, lp, fakePA, currency, pool } = await helpers.loadFixture(etkFixtureWithVault);
+
+    await expect(etk.setYieldVault(yieldVault, false))
+      .to.emit(etk, "YieldVaultChanged")
+      .withArgs(ZeroAddress, yieldVault, false);
+
+    await expect(etk.depositIntoYieldVault(_A(1200)))
+      .to.emit(yieldVault, "Deposit")
+      .withArgs(etk, etk, _A(1200), _A(1200));
+
+    expect(await etk.getCurrentScale(false)).to.equal(_R(1));
+
+    await yieldVault.discreteEarning(_A(300));
+
+    await expect(etk.recordEarnings())
+      .to.emit(etk, "EarningsRecorded")
+      .withArgs(_A(300) - 1n);
+
+    expect(await etk.getCurrentScale(false)).to.closeTo(_R("1.1"), _R("0.0000001"));
+
+    await expect(etk.connect(fakePA).lockScr(_A(2000), _W("0.1")))
+      .to.emit(etk, "SCRLocked")
+      .withArgs(_W("0.1"), _A(2000));
+    await currency.connect(fakePA).transfer(etk, _A(200)); // transfer the CoC
+
+    expect(await etk.balanceOf(lp)).to.closeTo(_A(3300), 10n);
+    // scale doesn't change yet
+    expect(await etk.getCurrentScale(false)).to.closeTo(_R("1.1"), _R("0.0000001"));
+    expect(await etk.getCurrentScale(true)).to.closeTo(_R("1.1"), _R("0.0000001"));
+
+    // 73 days later (20% of the yeae), 20% of the interest has been accrued
+    await helpers.time.increase(DAY * 73);
+    expect(await etk.balanceOf(lp)).to.closeTo(_A(3340), 10n);
+    // now the updated scale is affected
+    expect(await etk.getCurrentScale(false)).to.closeTo(_R("1.1"), _R("0.0000001"));
+    expect(await etk.getCurrentScale(true)).to.closeTo(_R("1.1133"), _R("0.0001"));
+
+    // Go to the end of the year, unlock and withdraw all
+    await helpers.time.increase(DAY * (365 - 73));
+
+    await expect(etk.connect(fakePA).unlockScr(_A(2000), _W("0.1"), _A(0)))
+      .to.emit(etk, "SCRUnlocked")
+      .withArgs(_W("0.1"), _A(2000));
+
+    expect(await etk.balanceOf(lp)).to.closeTo(_A(3500), 20n);
+    // now the updated scale is affected
+    expect(await etk.getCurrentScale(false)).to.closeTo(_R("1.1666"), _R("0.0001"));
+    expect(await etk.getCurrentScale(true)).to.closeTo(_R("1.1666"), _R("0.0001"));
+
+    // Full withdrawl fails due to rounding error
+    await expect(pool.connect(lp).withdraw(etk, MaxUint256)).to.be.revertedWithCustomError(
+      yieldVault,
+      "ERC4626ExceededMaxWithdraw"
+    );
+
+    await currency.connect(fakePA).transfer(etk, _A("0.001")); // transfer pennies to fix the rounding error
+
+    const etkBurned = newCaptureAny();
+    const yvWithdraw = newCaptureAny();
+    const yvWithdrawShares = newCaptureAny();
+    await expect(pool.connect(lp).withdraw(etk, MaxUint256))
+      .to.emit(etk, "Transfer")
+      .withArgs(lp, ZeroAddress, etkBurned.uint)
+      .to.emit(yieldVault, "Withdraw")
+      .withArgs(etk, etk, etk, yvWithdraw.uint, yvWithdrawShares.uint);
+    expect(etkBurned.lastUint).to.closeTo(_A(3500), 20n);
+    expect(yvWithdraw.lastUint).to.closeTo(_A(1500), _A("0.001"));
+    expect(yvWithdrawShares.lastUint).to.closeTo(_A(1200), _A("0.001"));
+  });
+
   async function etokenFixture() {
+    const [, lp, lp2, fakePA] = await hre.ethers.getSigners();
     const currency = await initCurrency(
       { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(10000) },
-      [lp],
-      [_A(5000)]
+      [lp, fakePA],
+      [_A(5000), _A(2000)]
     );
 
     const pool = await deployPool({
@@ -81,6 +180,24 @@ describe("Etoken", () => {
     await currency.connect(lp).approve(pool, _A(5000));
     await pool.connect(lp).deposit(etk, _A(3000));
 
-    return { currency, pool, etk };
+    return { currency, pool, etk, lp, lp2, fakePA };
+  }
+
+  async function etkFixtureWithVault() {
+    const ret = await etokenFixture();
+    const { pool, currency, fakePA, etk } = ret;
+    const TestERC4626 = await ethers.getContractFactory("TestERC4626");
+    const yieldVault = await TestERC4626.deploy("Yield Vault", "YIELD", currency);
+
+    // Impersonate pool and add fakePA as borrower
+    const poolAddr = await ethers.resolveAddress(pool);
+    await helpers.impersonateAccount(poolAddr);
+    await helpers.setBalance(poolAddr, ethers.parseEther("100"));
+    const poolImpersonated = await ethers.getSigner(poolAddr);
+    await expect(etk.connect(poolImpersonated).addBorrower(fakePA))
+      .to.emit(etk, "InternalBorrowerAdded")
+      .withArgs(fakePA);
+
+    return { poolImpersonated, TestERC4626, yieldVault, ...ret };
   }
 });
