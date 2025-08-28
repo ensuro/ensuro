@@ -11,6 +11,7 @@ const { ethers } = hre;
 const { ZeroAddress, MaxUint256 } = ethers;
 
 const _A = amountFunction(6);
+
 describe("Etoken", () => {
   it("Refuses transfers to null address", async () => {
     const { etk } = await helpers.loadFixture(etokenFixture);
@@ -159,6 +160,68 @@ describe("Etoken", () => {
     expect(etkBurned.lastUint).to.closeTo(_A(3500), 20n);
     expect(yvWithdraw.lastUint).to.closeTo(_A(1500), _A("0.001"));
     expect(yvWithdrawShares.lastUint).to.closeTo(_A(1200), _A("0.001"));
+  });
+
+  it("Checks loans can be paid from the yieldVault if needed", async () => {
+    const { etk, yieldVault, fakePA, currency } = await helpers.loadFixture(etkFixtureWithVault);
+
+    await expect(etk.setYieldVault(yieldVault, false))
+      .to.emit(etk, "YieldVaultChanged")
+      .withArgs(ZeroAddress, yieldVault, false);
+
+    await expect(etk.depositIntoYieldVault(_A(1200)))
+      .to.emit(yieldVault, "Deposit")
+      .withArgs(etk, etk, _A(1200), _A(1200));
+
+    await expect(etk.connect(fakePA).internalLoan(_A(2000), fakePA))
+      .to.emit(etk, "InternalLoan")
+      .withArgs(fakePA, _A(2000), _A(2000))
+      .to.emit(yieldVault, "Withdraw")
+      .withArgs(etk, etk, etk, _A(200), _A(200));
+
+    await helpers.time.increase(90 * DAY);
+    const loan = await etk.getLoan(fakePA);
+    expect(loan).to.closeTo(_A(2000 + 2000 * 0.05 * (90 / 365)), _A("0.001"));
+
+    await currency.connect(fakePA).approve(etk, MaxUint256);
+
+    await expect(etk.connect(fakePA).repayLoan(loan, fakePA)).to.emit(etk, "InternalLoanRepaid").withArgs(fakePA, loan);
+
+    const yvDeposit = newCaptureAny();
+    const yvDepositShares = newCaptureAny();
+    await expect(etk.depositIntoYieldVault(MaxUint256))
+      .to.emit(yieldVault, "Deposit")
+      .withArgs(etk, etk, yvDeposit.uint, yvDepositShares.uint);
+
+    expect(yvDeposit.lastUint).to.closeTo(loan, _A("0.001"));
+    expect(yvDepositShares.lastUint).to.closeTo(loan, _A("0.001"));
+  });
+
+  it("Checks asset earning when totalSupply() == 0", async () => {
+    const { etk, yieldVault, lp, fakePA, currency, pool } = await helpers.loadFixture(etkFixtureWithVault);
+
+    await expect(etk.setYieldVault(yieldVault, false))
+      .to.emit(etk, "YieldVaultChanged")
+      .withArgs(ZeroAddress, yieldVault, false);
+
+    await pool.connect(lp).withdraw(etk, MaxUint256);
+    expect(await etk.totalSupply()).to.equal(0);
+
+    // Mint 1 share for etk and generate 100 in earnings
+    await currency.connect(fakePA).approve(yieldVault, MaxUint256);
+    await yieldVault.connect(fakePA).mint(1n, etk);
+    await yieldVault.discreteEarning(_A(100));
+
+    await expect(etk.recordEarnings())
+      .to.emit(etk, "EarningsRecorded")
+      .withArgs(_A(50) + 1n); // The vault has one virtual share, so the etk gets 50% of the earning
+
+    expect(await etk.totalSupply()).to.equal(_A(50) + 1n);
+    await pool.connect(lp).deposit(etk, _A(1000));
+    await expect(pool.connect(lp).withdraw(etk, MaxUint256)).to.emit(currency, "Transfer").withArgs(etk, lp, _A(1000));
+
+    // Check BEFORE RELEASE: is this correct? Who owns this total supply?
+    expect(await etk.totalSupply()).to.equal(_A(50) + 1n);
   });
 
   async function etokenFixture() {
