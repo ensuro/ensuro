@@ -47,8 +47,48 @@ library TimeScaled {
     }
   }
 
-  function getScaledAmount(ScaledAmount storage scaledAmount, uint256 interestRate) internal view returns (uint256) {
-    return uint256(scaledAmount.amount).wadToRay().rayMul(getScale(scaledAmount, interestRate)).rayToWad();
+  /**
+   * @dev Converts a "scaled amount" (raw value, without applying interest scaling) to the current value after
+   *      after applying the scale.
+   * @param scaledAmount The `scaled amount` as the ones stored in `$._balances`
+   * @param scale        The scale to apply.
+   * @return The current amount, that results of `scaledAmount * scale`
+   */
+  function _scaledToCurrent(uint256 scaledAmount, uint256 scale) internal pure returns (uint256) {
+    return scaledAmount.wadToRay().rayMul(scale).rayToWad();
+  }
+
+  /**
+   * @dev Converts a "current amount" (end user value, after applying interests) to the scaled amount (raw value)
+   * @param currentAmount The `current amount` as the ones obtainted by the user in balanceOf or totalSupply()
+   * @param scale        The scale to un-apply.
+   * @return The scaled amount, that results of `currentAmount / scale`
+   */
+  function _currentToScale(uint256 currentAmount, uint256 scale) internal pure returns (uint256) {
+    return currentAmount.wadToRay().rayDiv(scale).rayToWad();
+  }
+
+  /**
+   * @dev Returns the current amount (up to now) of the timescaled value
+   */
+  function getCurrentAmount(ScaledAmount storage scaledAmount, uint256 interestRate) internal view returns (uint256) {
+    return _scaledToCurrent(uint256(scaledAmount.amount), getScale(scaledAmount, interestRate));
+  }
+
+  function currentToScaledNow(
+    ScaledAmount storage scaledAmount,
+    uint256 interestRate,
+    uint256 currentAmount
+  ) internal view returns (uint256) {
+    return _currentToScale(currentAmount, getScale(scaledAmount, interestRate));
+  }
+
+  function scaledToCurrentNow(
+    ScaledAmount storage scaledAmount,
+    uint256 interestRate,
+    uint256 scaledAmountToConvert
+  ) internal view returns (uint256) {
+    return _scaledToCurrent(scaledAmountToConvert, getScale(scaledAmount, interestRate));
   }
 
   function init(ScaledAmount storage scaledAmount) internal {
@@ -57,28 +97,16 @@ library TimeScaled {
     scaledAmount.lastUpdate = uint32(block.timestamp);
   }
 
-  function scaleAmount(ScaledAmount storage scaledAmount, uint256 toScale) internal view returns (uint256) {
-    return toScale.wadToRay().rayDiv(uint256(scaledAmount.scale)).rayToWad();
-  }
-
-  function scaleAmountNow(
-    ScaledAmount storage scaledAmount,
-    uint256 interestRate,
-    uint256 toScale
-  ) internal view returns (uint256) {
-    return toScale.wadToRay().rayDiv(getScale(scaledAmount, interestRate)).rayToWad();
-  }
-
   function add(ScaledAmount storage scaledAmount, uint256 amount, uint256 interestRate) internal returns (uint256) {
     updateScale(scaledAmount, interestRate);
-    uint256 scaledAdd = scaleAmount(scaledAmount, amount);
+    uint256 scaledAdd = _currentToScale(amount, uint256(scaledAmount.scale));
     scaledAmount.amount += scaledAdd.toUint96();
     return scaledAdd;
   }
 
   function sub(ScaledAmount storage scaledAmount, uint256 amount, uint256 interestRate) internal returns (uint256) {
     updateScale(scaledAmount, interestRate);
-    uint256 scaledSub = scaleAmount(scaledAmount, amount);
+    uint256 scaledSub = _currentToScale(amount, uint256(scaledAmount.scale));
     scaledAmount.amount -= scaledSub.toUint96();
     if (scaledAmount.amount == 0) {
       // Reset scale if amount == 0
@@ -93,8 +121,10 @@ library TimeScaled {
       return;
     }
     updateScale(scaledAmount, interestRate);
-    uint256 newScaledAmount = uint256(int256(getScaledAmount(scaledAmount, interestRate)) + amount);
-    scaledAmount.scale = newScaledAmount.wadToRay().rayDiv(uint256(scaledAmount.amount).wadToRay()).toUint112();
+    uint256 newCurrentAmount = uint256(int256(getCurrentAmount(scaledAmount, interestRate)) + amount);
+    scaledAmount.scale = newCurrentAmount.wadToRay().rayDiv(uint256(scaledAmount.amount).wadToRay()).toUint112();
+    // Consistency check - Uncomment for testing
+    // require(newCurrentAmount == getCurrentAmount(scaledAmount, interestRate), "Error");
     require(scaledAmount.scale >= MIN_SCALE, "Scale too small, can lead to rounding errors");
   }
 

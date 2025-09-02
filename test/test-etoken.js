@@ -15,15 +15,17 @@ const _A = amountFunction(6);
 describe("Etoken", () => {
   it("Refuses transfers to null address", async () => {
     const { etk } = await helpers.loadFixture(etokenFixture);
-    await expect(etk.transfer(hre.ethers.ZeroAddress, _A(10))).to.be.revertedWith(
-      "EToken: transfer to the zero address"
-    );
+    await expect(etk.transfer(hre.ethers.ZeroAddress, _A(10)))
+      .to.be.revertedWithCustomError(etk, "ERC20InvalidReceiver")
+      .withArgs(ZeroAddress);
   });
 
   it("Checks user balance", async () => {
     const { etk, lp, lp2 } = await helpers.loadFixture(etokenFixture);
 
-    await expect(etk.connect(lp2).transfer(lp, _A(10))).to.be.revertedWith("EToken: transfer amount exceeds balance");
+    await expect(etk.connect(lp2).transfer(lp, _A(10)))
+      .to.be.revertedWithCustomError(etk, "ERC20InsufficientBalance")
+      .withArgs(lp2, _A(0), _A(10));
   });
 
   it("Returns the available funds", async () => {
@@ -53,13 +55,6 @@ describe("Etoken", () => {
     expect(await etk.setWhitelist(hre.ethers.ZeroAddress)).to.emit(etk, "ComponentChanged");
 
     expect(await etk.whitelist()).to.equal(hre.ethers.ZeroAddress);
-  });
-
-  it("Can't create etoken without name or symbol", async () => {
-    const { pool } = await helpers.loadFixture(etokenFixture);
-
-    await expect(addEToken(pool, { etkName: "" })).to.be.revertedWith("EToken: name cannot be empty");
-    await expect(addEToken(pool, { etkSymbol: "" })).to.be.revertedWith("EToken: symbol cannot be empty");
   });
 
   it("Can assign a yieldVault and rebalance funds there", async () => {

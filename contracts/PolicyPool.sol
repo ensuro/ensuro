@@ -361,8 +361,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     Component storage comp = _components[component];
     if (comp.status != ComponentStatus.deprecated) revert ComponentNotDeprecated();
     if (comp.kind == ComponentKind.eToken) {
-      if (IEToken(address(component)).totalSupply() != 0)
-        revert ComponentInUseCannotRemove(comp.kind, IEToken(address(component)).totalSupply());
+      if (IERC20Metadata(address(component)).totalSupply() != 0)
+        revert ComponentInUseCannotRemove(comp.kind, IERC20Metadata(address(component)).totalSupply());
     } else if (comp.kind == ComponentKind.riskModule) {
       if (IRiskModule(address(component)).activeExposure() != 0)
         revert ComponentInUseCannotRemove(comp.kind, IRiskModule(address(component)).activeExposure());

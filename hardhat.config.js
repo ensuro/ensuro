@@ -3,6 +3,7 @@ require("@nomicfoundation/hardhat-chai-matchers");
 require("@openzeppelin/hardhat-upgrades");
 require("hardhat-contract-sizer");
 require("hardhat-dependency-compiler");
+require("hardhat-ignore-warnings");
 require("hardhat-gas-reporter");
 require("hardhat-tracer");
 require("solidity-coverage");
@@ -148,5 +149,21 @@ module.exports = {
       "@ensuro/access-managed-proxy/contracts/amps/AccessManagedProxyS35.sol",
       "@ensuro/access-managed-proxy/contracts/amps/AccessManagedProxyS36.sol",
     ],
+  },
+  warnings: {
+    "@ensuro/access-managed-proxy/contracts/AccessManagedProxy.sol": {
+      "missing-receive": "off",
+      "unused-param": "off",
+    },
+    "@ensuro/access-managed-proxy/contracts/amps/AccessManagedProxyS*.sol": {
+      "missing-receive": "off",
+      "unused-param": "off",
+    },
+    "contracts/mocks/PolicyPoolMock.sol": {
+      "missing-receive": "off",
+    },
+    "contracts/mocks/ForwardProxy.sol": {
+      "missing-receive": "off",
+    },
   },
 };

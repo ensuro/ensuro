@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
@@ -26,7 +27,7 @@ import {TimeScaled} from "./TimeScaled.sol";
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
-contract EToken is Reserve, IERC20Metadata, IEToken {
+contract EToken is Reserve, ERC20Upgradeable, IEToken {
   using WadRayMath for uint256;
   using TimeScaled for TimeScaled.ScaledAmount;
   using SafeERC20 for IERC20Metadata;
@@ -38,13 +39,6 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   uint16 internal constant LIQ_REQ_MIN = 8e3; // 80%
   uint16 internal constant LIQ_REQ_MAX = 13e3; // 130%
   uint16 internal constant INT_LOAN_IR_MAX = 5e3; // 50% - Maximum value for InternalLoan interest rate
-
-  // Attributes taken from ERC20
-  mapping(address => uint256) private _balances;
-  mapping(address => mapping(address => uint256)) private _allowances;
-
-  string private _name;
-  string private _symbol;
 
   TimeScaled.ScaledAmount internal _tsScaled; // Total Supply scaled
 
@@ -60,11 +54,11 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   mapping(address => TimeScaled.ScaledAmount) internal _loans;
 
   struct PackedParams {
+    ILPWhitelist whitelist; // Whitelist for deposits and transfers
     uint16 liquidityRequirement; // Liquidity requirement to lock more/less than SCR - 4 decimals
     uint16 minUtilizationRate; // Min utilization rate, to reject deposits that leave UR under this value - 4 decimals
     uint16 maxUtilizationRate; // Max utilization rate, to reject lockScr that leave UR above this value - 4 decimals
     uint16 internalLoanInterestRate; // Annualized interest rate charged to internal borrowers (premiums accounts) - 4dec
-    ILPWhitelist whitelist; // Whitelist for deposits and transfers
   }
 
   PackedParams internal _params;
@@ -79,6 +73,17 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
   modifier onlyBorrower() {
     require(_loans[_msgSender()].scale != 0, "The caller must be a borrower");
     _;
+  }
+
+  // keccak256(abi.encode(uint256(keccak256("openzeppelin.storage.ERC20")) - 1)) & ~bytes32(uint256(0xff))
+  // solhint-disable-next-line const-name-snakecase
+  bytes32 private constant ERC20StorageLocation = 0x52c63247e1f47db19d5ce0460030c497f067ca4cebf71ba98eeadabe20bace00;
+
+  function _getERC20StorageFromEToken() private pure returns (ERC20Storage storage $) {
+    // solhint-disable-next-line no-inline-assembly
+    assembly {
+      $.slot := ERC20StorageLocation
+    }
   }
 
   /// @custom:oz-upgrades-unsafe-allow constructor
@@ -98,21 +103,16 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     uint256 maxUtilizationRate_,
     uint256 internalLoanInterestRate_
   ) public initializer {
+    __ERC20_init(name_, symbol_);
     __Reserve_init();
-    __EToken_init_unchained(name_, symbol_, maxUtilizationRate_, internalLoanInterestRate_);
+    __EToken_init_unchained(maxUtilizationRate_, internalLoanInterestRate_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
   function __EToken_init_unchained(
-    string memory name_,
-    string memory symbol_,
     uint256 maxUtilizationRate_,
     uint256 internalLoanInterestRate_
   ) internal onlyInitializing {
-    require(bytes(name_).length > 0, "EToken: name cannot be empty");
-    require(bytes(symbol_).length > 0, "EToken: symbol cannot be empty");
-    _name = name_;
-    _symbol = symbol_;
     _tsScaled.init();
     /* _scr = Scr({
       scr: 0,
@@ -164,57 +164,75 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     require(_params.internalLoanInterestRate <= INT_LOAN_IR_MAX, "Validation: internalLoanInterestRate must be <= 50%");
   }
 
-  /*** BEGIN ERC20 methods - mainly copied from OpenZeppelin but changes in events and scaledAmount */
+  /*** BEGIN ERC20 methods - changes required to customize OZ's ERC20 implementation */
 
-  /**
-   * @dev Returns the name of the token.
-   */
-  function name() public view virtual override returns (string memory) {
-    return _name;
-  }
-
-  /**
-   * @dev Returns the symbol of the token, usually a shorter version of the
-   * name.
-   */
-  function symbol() public view virtual override returns (string memory) {
-    return _symbol;
-  }
-
-  /**
-   * @dev Returns the number of decimals used to get its user representation.
-   * For example, if `decimals` equals `2`, a balance of `505` tokens should
-   * be displayed to a user as `5,05` (`505 / 10 ** 2`).
-   *
-   * Tokens usually opt for a value of 18, imitating the relationship between
-   * Ether and Wei. This is the value {ERC20} uses, unless this function is
-   * overloaded;
-   *
-   * NOTE: This information is only used for _display_ purposes: it in
-   * no way affects any of the arithmetic of the contract, including
-   * {IERC20-balanceOf} and {IERC20-transfer}.
-   */
+  /// @inheritdoc IERC20Metadata
   function decimals() public view virtual override returns (uint8) {
     return _policyPool.currency().decimals();
   }
 
-  /**
-   * @dev See {IERC20-totalSupply}.
-   */
+  /// @inheritdoc IERC20
   function totalSupply() public view virtual override returns (uint256) {
-    return _tsScaled.getScaledAmount(tokenInterestRate());
+    return _tsScaled.getCurrentAmount(tokenInterestRate());
   }
 
   /**
    * @dev See {IERC20-balanceOf}.
    */
   function balanceOf(address account) public view virtual override returns (uint256) {
-    uint256 principalBalance = _balances[account];
-    if (principalBalance == 0) return 0;
-    return _tsScaled.getScale(tokenInterestRate()).rayMul(principalBalance.wadToRay()).rayToWad();
+    return _tsScaled.scaledToCurrentNow(tokenInterestRate(), super.balanceOf(account));
   }
 
-  // Methods following AAVE's IScaledBalanceToken, to simplify future integrations
+  /**
+   * @dev Transfers a `value` amount of tokens from `from` to `to`, or alternatively mints (or burns) if `from`
+   * (or `to`) is the zero address. All customizations to transfers, mints, and burns should be done by overriding
+   * this function.
+   *
+   * Emits a {Transfer} event.
+   */
+  function _update(address from, address to, uint256 value) internal virtual override whenNotPaused {
+    uint256 valueScaled;
+    // TODO: whitelist checks acceptsTransfer
+    if (from == address(0)) {
+      // Mint
+      valueScaled = _tsScaled.add(value, tokenInterestRate());
+    } else if (to == address(0)) {
+      // Burn
+      valueScaled = _tsScaled.sub(value, tokenInterestRate());
+    } else {
+      // Transfer
+      require(
+        address(_params.whitelist) == address(0) || _params.whitelist.acceptsTransfer(this, from, to, value),
+        "Transfer not allowed - Liquidity Provider not whitelisted"
+      );
+      valueScaled = _tsScaled.currentToScaledNow(tokenInterestRate(), value);
+    }
+
+    ERC20Storage storage $ = _getERC20StorageFromEToken();
+    if (from != address(0)) {
+      uint256 fromBalance = $._balances[from];
+      if (fromBalance < valueScaled) {
+        revert ERC20InsufficientBalance(from, _tsScaled.scaledToCurrentNow(tokenInterestRate(), fromBalance), value);
+      }
+      unchecked {
+        // Overflow not possible: value <= fromBalance <= totalSupply.
+        $._balances[from] = fromBalance - valueScaled;
+      }
+    }
+
+    if (to != address(0)) {
+      unchecked {
+        // Overflow not possible: balance + value is at most totalSupply, which we know fits into a uint256.
+        $._balances[to] += valueScaled;
+      }
+    }
+
+    emit Transfer(from, to, value);
+  }
+
+  /*** END ERC20 methods */
+
+  /** BEGIN Methods following AAVE's IScaledBalanceToken, to simplify future integrations */
 
   /**
    * @dev Returns the scaled balance of the user. The scaled balance is the sum of all the
@@ -223,7 +241,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
    * @return The scaled balance of the user
    **/
   function scaledBalanceOf(address user) external view returns (uint256) {
-    return _balances[user];
+    return super.balanceOf(user);
   }
 
   /**
@@ -233,7 +251,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
    * @return The scaled balance and the scaled total supply
    **/
   function getScaledUserBalanceAndSupply(address user) external view returns (uint256, uint256) {
-    return (_balances[user], uint256(_tsScaled.amount));
+    return (super.balanceOf(user), uint256(_tsScaled.amount));
   }
 
   /**
@@ -244,232 +262,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     return uint256(_tsScaled.amount);
   }
 
-  /**
-   * @dev See {IERC20-transfer}.
-   *
-   * Requirements:
-   *
-   * - `recipient` cannot be the zero address.
-   * - the caller must have a balance of at least `amount`.
-   */
-  function transfer(address recipient, uint256 amount) public virtual override returns (bool) {
-    _transfer(_msgSender(), recipient, amount);
-    return true;
-  }
-
-  /**
-   * @dev See {IERC20-allowance}.
-   */
-  function allowance(address owner, address spender) public view virtual override returns (uint256) {
-    return _allowances[owner][spender];
-  }
-
-  /**
-   * @dev See {IERC20-approve}.
-   *
-   * Requirements:
-   *
-   * - `spender` cannot be the zero address.
-   */
-  function approve(address spender, uint256 amount) public virtual override returns (bool) {
-    _approve(_msgSender(), spender, amount);
-    return true;
-  }
-
-  /**
-   * @dev See {IERC20-transferFrom}.
-   *
-   * Emits an {Approval} event indicating the updated allowance. This is not
-   * required by the EIP. See the note at the beginning of {ERC20}.
-   *
-   * Requirements:
-   *
-   * - `sender` and `recipient` cannot be the zero address.
-   * - `sender` must have a balance of at least `amount`.
-   * - the caller must have allowance for ``sender``'s tokens of at least
-   * `amount`.
-   */
-  function transferFrom(address sender, address recipient, uint256 amount) public virtual override returns (bool) {
-    address spender = _msgSender();
-    _spendAllowance(sender, spender, amount);
-    _transfer(sender, recipient, amount);
-    return true;
-  }
-
-  /**
-   * @dev Updates `owner` s allowance for `spender` based on spent `amount`.
-   *
-   * Does not update the allowance amount in case of infinite allowance.
-   * Revert if not enough allowance is available.
-   *
-   * Might emit an {Approval} event.
-   */
-  function _spendAllowance(address owner, address spender, uint256 amount) internal virtual {
-    uint256 currentAllowance = allowance(owner, spender);
-    if (currentAllowance != type(uint256).max) {
-      require(currentAllowance >= amount, "EToken: insufficient allowance");
-      unchecked {
-        _approve(owner, spender, currentAllowance - amount);
-      }
-    }
-  }
-
-  /**
-   * @dev Atomically increases the allowance granted to `spender` by the caller.
-   *
-   * This is an alternative to {approve} that can be used as a mitigation for
-   * problems described in {IERC20-approve}.
-   *
-   * Emits an {Approval} event indicating the updated allowance.
-   *
-   * Requirements:
-   *
-   * - `spender` cannot be the zero address.
-   */
-  function increaseAllowance(address spender, uint256 addedValue) public virtual returns (bool) {
-    _approve(_msgSender(), spender, allowance(_msgSender(), spender) + addedValue);
-    return true;
-  }
-
-  /**
-   * @dev Atomically decreases the allowance granted to `spender` by the caller.
-   *
-   * This is an alternative to {approve} that can be used as a mitigation for
-   * problems described in {IERC20-approve}.
-   *
-   * Emits an {Approval} event indicating the updated allowance.
-   *
-   * Requirements:
-   *
-   * - `spender` cannot be the zero address.
-   * - `spender` must have allowance for the caller of at least
-   * `subtractedValue`.
-   */
-  function decreaseAllowance(address spender, uint256 subtractedValue) public virtual returns (bool) {
-    uint256 currentAllowance = _allowances[_msgSender()][spender];
-    require(currentAllowance >= subtractedValue, "EToken: decreased allowance below zero");
-    _approve(_msgSender(), spender, currentAllowance - subtractedValue);
-
-    return true;
-  }
-
-  /**
-   * @dev Moves tokens `amount` from `sender` to `recipient`.
-   *
-   * This is internal function is equivalent to {transfer}, and can be used to
-   * e.g. implement automatic token fees, slashing mechanisms, etc.
-   *
-   * Emits a {Transfer} event.
-   *
-   * Requirements:
-   *
-   * - `sender` cannot be the zero address.
-   * - `recipient` cannot be the zero address.
-   * - `sender` must have a balance of at least `amount`.
-   */
-  function _transfer(address sender, address recipient, uint256 amount) internal virtual {
-    require(sender != address(0), "EToken: transfer from the zero address");
-    require(recipient != address(0), "EToken: transfer to the zero address");
-
-    _beforeTokenTransfer(sender, recipient, amount);
-    uint256 scaledAmount = _tsScaled.scaleAmountNow(tokenInterestRate(), amount);
-
-    uint256 senderBalance = _balances[sender];
-    require(senderBalance >= scaledAmount, "EToken: transfer amount exceeds balance");
-    _balances[sender] = senderBalance - scaledAmount;
-    _balances[recipient] += scaledAmount;
-
-    emit Transfer(sender, recipient, amount);
-  }
-
-  /** @dev Creates `amount` tokens and assigns them to `account`, increasing
-   * the total supply.
-   *
-   * Emits a {Transfer} event with `from` set to the zero address.
-   *
-   * Requirements:
-   *
-   * - `to` cannot be the zero address.
-   */
-  function _mint(address account, uint256 amount) internal virtual {
-    require(account != address(0), "EToken: mint to the zero address");
-    require(amount > 0, "EToken: amount to mint should be greater than zero");
-
-    _beforeTokenTransfer(address(0), account, amount);
-    uint256 scaledAmount = _tsScaled.add(amount, tokenInterestRate());
-    _balances[account] += scaledAmount;
-    emit Transfer(address(0), account, amount);
-  }
-
-  /**
-   * @dev Destroys `amount` tokens from `account`, reducing the
-   * total supply.
-   *
-   * Emits a {Transfer} event with `to` set to the zero address.
-   *
-   * Requirements:
-   *
-   * - `account` cannot be the zero address.
-   * - `account` must have at least `amount` tokens.
-   */
-  function _burn(address account, uint256 amount) internal virtual {
-    require(account != address(0), "EToken: burn from the zero address");
-    _beforeTokenTransfer(account, address(0), amount);
-
-    uint256 scaledAmount = _tsScaled.sub(amount, tokenInterestRate());
-    uint256 accountBalance = _balances[account];
-    require(accountBalance >= scaledAmount, "EToken: burn amount exceeds balance");
-    _balances[account] = accountBalance - scaledAmount;
-
-    emit Transfer(account, address(0), amount);
-  }
-
-  /**
-   * @dev Sets `amount` as the allowance of `spender` over the `owner` s tokens.
-   *
-   * This internal function is equivalent to `approve`, and can be used to
-   * e.g. set automatic allowances for certain subsystems, etc.
-   *
-   * Emits an {Approval} event.
-   *
-   * Requirements:
-   *
-   * - `owner` cannot be the zero address.
-   * - `spender` cannot be the zero address.
-   */
-  function _approve(address owner, address spender, uint256 amount) internal virtual {
-    require(owner != address(0), "EToken: approve from the zero address");
-    require(spender != address(0), "EToken: approve to the zero address");
-
-    _allowances[owner][spender] = amount;
-    emit Approval(owner, spender, amount);
-  }
-
-  /**
-   * @dev Hook that is called before any transfer of tokens. This includes
-   * minting and burning.
-   *
-   * Calling conditions:
-   *
-   * - when `from` and `to` are both non-zero, `amount` of ``from``'s tokens
-   * will be to transferred to `to`.
-   * - when `from` is zero, `amount` tokens will be minted for `to`.
-   * - when `to` is zero, `amount` of ``from``'s tokens will be burned.
-   * - `from` and `to` are never both zero.
-   *
-   * To learn more about hooks, head to xref:ROOT:extending-contracts.adoc#using-hooks[Using Hooks].
-   */
-  function _beforeTokenTransfer(address from, address to, uint256 amount) internal virtual whenNotPaused {
-    require(
-      from == address(0) ||
-        to == address(0) ||
-        address(_params.whitelist) == address(0) ||
-        _params.whitelist.acceptsTransfer(this, from, to, amount),
-      "Transfer not allowed - Liquidity Provider not whitelisted"
-    );
-  }
-
-  /*** END ERC20 methods - mainly copied from OpenZeppelin but changes in events and scaledAmount */
+  /** END Methods following AAVE's IScaledBalanceToken */
 
   function _updateTokenInterestRate() internal {
     uint256 totalSupply_ = this.totalSupply();
@@ -691,7 +484,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
 
   function getLoan(address borrower) public view virtual override returns (uint256) {
     TimeScaled.ScaledAmount storage loan = _loans[borrower];
-    return loan.getScaledAmount(internalLoanInterestRate());
+    return loan.getCurrentAmount(internalLoanInterestRate());
   }
 
   function internalLoanInterestRate() public view returns (uint256) {
@@ -736,5 +529,5 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
    * variables without shifting down storage in the inheritance chain.
    * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
    */
-  uint256[41] private __gap;
+  uint256[45] private __gap;
 }
