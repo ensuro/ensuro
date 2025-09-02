@@ -12,7 +12,7 @@ import {IEToken} from "./interfaces/IEToken.sol";
 import {Governance} from "./Governance.sol";
 import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
 import {ILPWhitelist} from "./interfaces/ILPWhitelist.sol";
-import {IAssetManager} from "./interfaces/IAssetManager.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {WadRayMath} from "./dependencies/WadRayMath.sol";
 import {TimeScaled} from "./TimeScaled.sol";
 
@@ -69,7 +69,7 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
 
   PackedParams internal _params;
 
-  IAssetManager internal _assetManager;
+  IERC4626 internal _yieldVault;
 
   event InternalLoan(address indexed borrower, uint256 value, uint256 amountAsked);
   event InternalLoanRepaid(address indexed borrower, uint256 value);
@@ -501,12 +501,12 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     else return 0;
   }
 
-  function assetManager() public view override returns (IAssetManager) {
-    return _assetManager;
+  function yieldVault() public view override returns (IERC4626) {
+    return _yieldVault;
   }
 
-  function _setAssetManager(IAssetManager newAM) internal override {
-    _assetManager = newAM;
+  function _setYieldVault(IERC4626 newYV) internal override {
+    _yieldVault = newYV;
   }
 
   // solhint-disable-next-line func-name-mixedcase
@@ -589,8 +589,9 @@ contract EToken is Reserve, IERC20Metadata, IEToken {
     _discreteChange(adjustment);
   }
 
-  function _assetEarnings(int256 earnings) internal override {
+  function _yieldEarnings(int256 earnings) internal override {
     _discreteChange(earnings);
+    super._yieldEarnings(earnings);
   }
 
   function _discreteChange(int256 amount) internal {

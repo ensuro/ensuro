@@ -82,17 +82,6 @@ abstract contract PolicyPoolComponent is UUPSUpgradeable, PausableUpgradeable, I
     return _policyPool.currency();
   }
 
-  function _isTweakWad(uint256 oldValue, uint256 newValue, uint256 maxTweak) internal pure returns (bool) {
-    if (oldValue == newValue) return true;
-    if (oldValue == 0) return maxTweak >= WadRayMath.WAD;
-    if (newValue == 0) return false;
-    if (oldValue < newValue) {
-      return (newValue.wadDiv(oldValue) - WadRayMath.WAD) <= maxTweak;
-    } else {
-      return (WadRayMath.WAD - newValue.wadDiv(oldValue)) <= maxTweak;
-    }
-  }
-
   // solhint-disable-next-line no-empty-blocks
   function _validateParameters() internal view virtual {} // Must be reimplemented with specific validations
 

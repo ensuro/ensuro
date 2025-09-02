@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
-const { amountFunction, _W } = require("@ensuro/utils/js/utils");
+const { amountFunction } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { deployPool, deployPremiumsAccount } = require("../js/test-utils");
 
@@ -35,7 +35,6 @@ describe("Supports interface implementation", function () {
       "IRiskModule",
       "IPremiumsAccount",
       "ILPWhitelist",
-      "IAssetManager",
       "IPolicyHolder",
     ];
     const iinterfaceIds = {};
@@ -59,7 +58,6 @@ describe("Supports interface implementation", function () {
       // IPremiumsAccount: "0xb76712ec", - Up to v2.7
       IPremiumsAccount: "0x1ce4a652",
       ILPWhitelist: "0xf8722d89",
-      IAssetManager: "0x799c2a5c",
       IPolicyHolder: "0x3ece0a89",
     };
 
@@ -67,7 +65,6 @@ describe("Supports interface implementation", function () {
 
     const currency = await initCurrency({ name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(10000) });
     const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
-    const FixedRateVault = await hre.ethers.getContractFactory("FixedRateVault");
 
     return {
       currency,
@@ -75,7 +72,6 @@ describe("Supports interface implementation", function () {
       owner,
       PolicyPool,
       interfaceIds,
-      FixedRateVault,
     };
   }
 
@@ -124,15 +120,6 @@ describe("Supports interface implementation", function () {
     expect(await premiumsAccount.supportsInterface(invalidInterfaceId)).to.be.false;
   });
 
-  it("Checks Reserves reject invalid asset manager", async () => {
-    const { premiumsAccount, policyPool } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
-    const TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
-    const rm = await TrustfulRiskModule.deploy(policyPool, premiumsAccount);
-    await expect(premiumsAccount.setAssetManager(rm, true)).to.be.revertedWith(
-      "Reserve: asset manager doesn't implements the required interface"
-    );
-  });
-
   it("Checks TrustfulRiskModule supported interfaces", async () => {
     const { interfaceIds, premiumsAccount, policyPool } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
     const TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
@@ -162,28 +149,5 @@ describe("Supports interface implementation", function () {
     expect(await wh.supportsInterface(interfaceIds.ILPWhitelist)).to.be.true;
     expect(await wh.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.false;
     expect(await wh.supportsInterface(invalidInterfaceId)).to.be.false;
-  });
-
-  it("Checks ERC4626AssetManager supported interfaces", async () => {
-    const { currency, interfaceIds, FixedRateVault } = await helpers.loadFixture(setupFixtureWithPool);
-    const vault = await FixedRateVault.deploy("MyVault", "MYV", currency, _W(1));
-    const ERC4626AssetManager = await hre.ethers.getContractFactory("ERC4626AssetManager");
-    const am = await ERC4626AssetManager.deploy(currency, vault);
-    expect(await am.supportsInterface(interfaceIds.IERC165)).to.be.true;
-    expect(await am.supportsInterface(interfaceIds.IAssetManager)).to.be.true;
-    expect(await am.supportsInterface(interfaceIds.IERC20)).to.be.false;
-    expect(await am.supportsInterface(invalidInterfaceId)).to.be.false;
-  });
-
-  it("Checks ERC4626PlusVaultAssetManager supported interfaces", async () => {
-    const { currency, interfaceIds, FixedRateVault } = await helpers.loadFixture(setupFixtureWithPool);
-    const vault = await FixedRateVault.deploy("MyVault", "MYV", currency, _W(1));
-    const discVault = await FixedRateVault.deploy("My Other Vault", "MOV", currency, _W(1));
-    const ERC4626PlusVaultAssetManager = await hre.ethers.getContractFactory("ERC4626PlusVaultAssetManager");
-    const am = await ERC4626PlusVaultAssetManager.deploy(currency, vault, discVault);
-    expect(await am.supportsInterface(interfaceIds.IERC165)).to.be.true;
-    expect(await am.supportsInterface(interfaceIds.IAssetManager)).to.be.true;
-    expect(await am.supportsInterface(interfaceIds.IERC20)).to.be.false;
-    expect(await am.supportsInterface(invalidInterfaceId)).to.be.false;
   });
 });

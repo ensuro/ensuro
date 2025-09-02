@@ -15,10 +15,6 @@ const {
 
 const { ZeroAddress } = ethers;
 
-const reservesOpts = {
-  unsafeAllow: ["delegatecall"],
-};
-
 function amountDecimals() {
   let decimals = Number.parseInt(process.env.DEPLOY_AMOUNT_DECIMALS);
   console.assert(decimals >= 6);
@@ -219,7 +215,6 @@ async function deployEToken(
       contractClass: "EToken",
       constructorArgs: [poolAddress],
       initializeArgs: [etkName, etkSymbol, _W(maxUtilizationRate), _W(poolLoanInterestRate)],
-      deployProxyArgs: reservesOpts,
       acMgr,
       ...opts,
     },
@@ -254,7 +249,6 @@ async function deployPremiumsAccount({ poolAddress, acMgr, juniorEtk, seniorEtk,
       contractClass: "PremiumsAccount",
       constructorArgs: [poolAddress, juniorEtk, seniorEtk],
       initializeArgs: [],
-      deployProxyArgs: reservesOpts,
       acMgr,
       ...opts,
     },

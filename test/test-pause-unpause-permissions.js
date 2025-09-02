@@ -44,7 +44,6 @@ describe("Test pause, unpause and upgrade contracts", function () {
   it("Pause and Unpause PolicyPool", async function () {
     const start = await helpers.time.latest();
 
-    // Try to pause PolicyPool without permissions
     expect(await pool.paused()).to.be.equal(false);
     await currency.connect(cust).approve(pool, _A(100));
 

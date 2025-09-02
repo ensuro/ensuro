@@ -2,11 +2,9 @@
 pragma solidity ^0.8.28;
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
-import {IAssetManager} from "./interfaces/IAssetManager.sol";
-import {Governance} from "./Governance.sol";
 import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
 
 /**
@@ -23,21 +21,34 @@ import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
  */
 abstract contract Reserve is PolicyPoolComponent {
   using SafeERC20 for IERC20Metadata;
-  using Address for address;
-
-  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
-  // solhint-disable-next-line var-name-mixedcase
-  uint256 internal immutable NEGLIGIBLE_AMOUNT; // init as 10**(decimals/2) == 0.001 USD
 
   /**
-   * @dev Reserve constructor. Calculates NEGLIGIBLE_AMOUNT to avoid rounding errors.
+   * @dev Tracks the amount of assets invested in the yieldVault, up to the last time it was recorded
+   */
+  uint256 internal _invested;
+
+  error InvalidYieldVault();
+  error NotEnoughCash(uint256 required, uint256 available);
+  error ReserveInvalidReceiver(address receiver);
+
+  event YieldVaultChanged(IERC4626 indexed oldVault, IERC4626 indexed newVault, bool forced);
+  event ErrorIgnoredDeinvestingVault(IERC4626 indexed oldVault, uint256 shares);
+
+  /**
+   * @dev Event emitted when investment yields are accounted in the reserve
+   *
+   * @param earnings The amount of earnings generated since last record. It's positive in the case of earnings or
+   * negative when there are losses.
+   */
+  event EarningsRecorded(int256 earnings);
+
+  /**
+   * @dev Reserve constructor
    *
    * @param policyPool_ The {PolicyPool} where this reserve will be plugged
    */
   /// @custom:oz-upgrades-unsafe-allow constructor
-  constructor(IPolicyPool policyPool_) PolicyPoolComponent(policyPool_) {
-    NEGLIGIBLE_AMOUNT = 10 ** (policyPool_.currency().decimals() / 2);
-  }
+  constructor(IPolicyPool policyPool_) PolicyPoolComponent(policyPool_) {}
 
   /**
    * @dev Initializes the Reserve (to be called by subclasses)
@@ -48,163 +59,194 @@ abstract contract Reserve is PolicyPoolComponent {
   }
 
   /**
-   * @dev Refills the reserve's balance, deinvesting from the asset manager to be able to make a payment
+   * @dev Internal function that transfers money to a destination. It might need to call `_deinvest` to deinvest
+   *      some money to have enough liquidity for the payment.
    *
-   * @param amount The amount of the payment that needs to be made
-   * @return Returns the actual amount deinvested (how much the `currency().balanceof(this)` was increased). It might be
-   * more than `amount` because the asset manager might want to give more liquidity to the reserve to avoid further
-   * deinvestments. After the call, the `currency().balanceof(this)` should be greater than `amount` (unless unsolvency
-   * problem).
-   */
-  function _refillWallet(uint256 amount) internal returns (uint256) {
-    address am = address(assetManager());
-    if (am != address(0)) {
-      bytes memory result = am.functionDelegateCall(
-        abi.encodeWithSelector(IAssetManager.refillWallet.selector, amount)
-      );
-      return abi.decode(result, (uint256));
-    }
-    return 0;
-  }
-
-  /**
-   * @dev Internal function that transfers money to a destination. It might need to call `_refillWallet` to deinvest
-   * some money to have enough liquidity for the payment.
-   *
-   * @param destination The destination of the transfer.
+   * @param destination The destination of the transfer. If destination == address(this) it doesn't transfer, just
+   *                    makes sure the amount is available.
    * @param amount The amount to be transferred.
    */
   function _transferTo(address destination, uint256 amount) internal {
-    require(destination != address(0), "Reserve: transfer to the zero address");
+    require(destination != address(0), ReserveInvalidReceiver(destination));
     if (amount == 0) return;
-    uint256 balance = currency().balanceOf(address(this));
+    uint256 balance = _balance();
     if (balance < amount) {
-      balance += _refillWallet(amount);
-      if (amount > balance) {
-        if ((amount - balance) < NEGLIGIBLE_AMOUNT) {
-          amount = balance;
-        } // else - No need to do anything since safeTransfer will fail anyway
+      IERC4626 yv = yieldVault();
+      if (address(yv) != address(0)) {
+        _deinvest(yv, amount - balance);
       }
+      // If balance still < amount, it will fail later...
     }
-    currency().safeTransfer(destination, amount);
+    if (destination != address(this)) currency().safeTransfer(destination, amount);
   }
 
   /**
-   * @dev Returns the address of the asset manager for this reserve. The asset manager is the contract that manages the
-   * funds to generate additional yields. Can be `address(0)` if no asset manager has been set.
+   * @dev Returns the address of the yield vault, where the part of the funds are invested to generate additional
+   *      yields. Can be `address(0)` if no yieldVault has been set.
    */
-  function assetManager() public view virtual returns (IAssetManager);
+  function yieldVault() public view virtual returns (IERC4626);
 
   /**
-   * @dev Internal function that needs to be implemented by child contracts because they might store the asset manager
-   * address in a different way. This function just stores the value, doesn't do any validation (validations are done on
-   * `setAssetManager`.
+   * @dev Internal function that needs to be implemented by child contracts because they might store the yield vault
+   * address in a different way. This function just stores the value, doesn't do any validation (validations are done
+   * on `setYieldVault`.
    *
-   * @param newAM The address of the new asset manager for the reserve.
+   * @param newYieldVault The address of the new Yield vault. The yield vault is an ERC-4626 compatible vault
    */
-  function _setAssetManager(IAssetManager newAM) internal virtual;
+  function _setYieldVault(IERC4626 newYieldVault) internal virtual;
+
+  /**
+   * @dev Returns the amount of funds that were invested in the yieldVault, up to the last recorded earnings / losses
+   */
+  function investedInYV() public view returns (uint256) {
+    return _invested;
+  }
 
   /**
    * @dev Internal function that needs to be implemented by child contracts to record the earnings (or losses if
-   * negative) generated by the asset management.
+   * negative) generated by the yield vault
    *
    * @param earnings The amount of earnings (or losses if negative) generated since last time the earnings were
    * recorded.
    */
-  function _assetEarnings(int256 earnings) internal virtual;
+  function _yieldEarnings(int256 earnings) internal virtual {
+    emit EarningsRecorded(earnings);
+  }
 
   /**
-   * @dev Sets the asset manager for this reserve. If the reserve had previously an asset manager, it will deinvest all
+   * @dev Sets the new yield vault for this reserve. If the reserve had previously a yield vault, it will deinvest all
    * the funds, making all of the liquid in the reserve balance.
    *
    * Events:
-   * - Emits ComponentChanged with action setAssetManager or setAssetManagerForced
+   * - Emits YieldVaultChanged
    *
-   * @param newAM The address of the new asset manager to assign to the reserve. If is `address(0)` it means the reserve
-   * will not have an asset manager. If not `address(0)` it MUST be a contract following the IAssetManager interface.
-   * @param force When a previous asset manager exists, before setting the new one, the funds are deinvested. When
-   * `force` is true, an error in the deinvestAll() operation is ignored. When `force` is false, if `deinvestAll()`
-   * fails, it reverts.
+   * @param newYieldVault The address of the new yield vault to assign to the reserve. If is `address(0)` it means
+   *                      the reserve will not have a yield vault. If not `address(0)` it MUST be an IERC4626
+   *                      where `newYieldVault.asset()` equals `.currency()`
+   * @param force When a previous yield vault exists, before setting the new one, the funds are deinvested. When
+   *              `force` is true, an error in the deinvestment of the assets (or some assets not withdrawable)
+   *              will be ignored. When `force` is false, it will revert if `oldVault.balanceOf(address(this)) != 0`.
    */
-  function setAssetManager(IAssetManager newAM, bool force) external {
-    require(
-      address(newAM) == address(0) || newAM.supportsInterface(type(IAssetManager).interfaceId),
-      "Reserve: asset manager doesn't implements the required interface"
-    );
-    address am = address(assetManager());
-    Governance.GovernanceActions action = Governance.GovernanceActions.setAssetManager;
-    if (am != address(0)) {
-      if (force) {
-        // Ignores success or not
-        // solhint-disable-next-line avoid-low-level-calls
-        (bool success, bytes memory result) = am.delegatecall(
-          abi.encodeWithSelector(IAssetManager.deinvestAll.selector)
-        );
-        if (!success) {
-          action = Governance.GovernanceActions.setAssetManagerForced;
+  function setYieldVault(IERC4626 newYieldVault, bool force) external {
+    bool forced;
+    IERC20Metadata asset = currency();
+    require(address(newYieldVault) == address(0) || newYieldVault.asset() == address(asset), InvalidYieldVault());
+    IERC4626 oldYV = yieldVault();
+    uint256 deinvested;
+
+    if (address(oldYV) != address(0)) {
+      uint256 yvShares = oldYV.balanceOf(address(this));
+      if (yvShares != 0) {
+        if (force) {
+          // Never fails, honors maxRedeem and deinvest as much as possible
+          (deinvested, forced) = _safeDeInvestAll(oldYV, yvShares);
         } else {
-          _assetEarnings(abi.decode(result, (int256)));
+          // Redeems ALL the shares, otherwise, it fails
+          deinvested = oldYV.redeem(yvShares, address(this), address(this));
         }
-        /**
-         * WARNING: if you are doing a forced replacement of the AM and you want the new AM
-         * to inherit the storage (just fixing the code), make sure the code of the new AM doesn't clean
-         * the storage in the connect() method (as it is the recommended practice in normal changes of AM).
-         */
-      } else {
-        bytes memory result = am.functionDelegateCall(abi.encodeWithSelector(IAssetManager.deinvestAll.selector));
-        _assetEarnings(abi.decode(result, (int256)));
       }
+      asset.approve(address(oldYV), 0); // Reset allowance
     }
-    _setAssetManager(newAM);
-    am = address(assetManager());
-    if (am != address(0)) {
-      am.functionDelegateCall(abi.encodeWithSelector(IAssetManager.connect.selector));
+    _setYieldVault(newYieldVault); // Stores the new YV
+
+    // Records the earnings
+    _yieldEarnings(int256(deinvested) - int256(_invested));
+    _invested = 0;
+    if (address(newYieldVault) != address(0)) {
+      asset.approve(address(newYieldVault), type(uint256).max);
     }
-    _componentChanged(action, address(newAM));
+    emit YieldVaultChanged(oldYV, newYieldVault, forced);
+  }
+
+  function _deinvest(IERC4626 yieldVault_, uint256 amount) internal {
+    yieldVault_.withdraw(amount, address(this), address(this));
+    if (amount > _invested) {
+      // If deinvests more than was already invested, then there's an earning and we have to record it.
+      _yieldEarnings(int256(amount - _invested));
+      _invested = 0;
+    } else {
+      _invested -= amount;
+    }
   }
 
   /**
-   * @dev Calls {IAssetManager-rebalance} of the assigned asset manager (fails if no asset manager). This operation is
-   * intended to give the opportunity to rebalance the liquid and invested for better returns and/or gas optimization.
-   *
-   * - Emits {IAssetManager-MoneyInvested} or {IAssetManager-MoneyDeinvested}
+   * @dev Deinvests all the funds or as much as possible, without failing.
+   * @param yieldVault_ The yield vault
+   * @return deinvested The amount that was withdrawn from the vault
+   * @return forced If true, it indicates that something failed and it wasn't able to withdraw all the funds
    */
-  function rebalance() public whenNotPaused {
-    address(assetManager()).functionDelegateCall(abi.encodeWithSelector(IAssetManager.rebalance.selector));
+  function _safeDeInvestAll(
+    IERC4626 yieldVault_,
+    uint256 sharesToRedeem
+  ) internal returns (uint256 deinvested, bool forced) {
+    try yieldVault_.maxRedeem(address(this)) returns (uint256 result) {
+      if (result < sharesToRedeem) {
+        forced = true;
+        sharesToRedeem = result;
+      }
+      // solhint-disable-next-line no-empty-blocks
+    } catch {}
+    try yieldVault_.redeem(sharesToRedeem, address(this), address(this)) returns (uint256 result) {
+      deinvested = result;
+    } catch {
+      emit ErrorIgnoredDeinvestingVault(yieldVault_, sharesToRedeem);
+      forced = true;
+    }
+  }
+
+  function _balance() internal view returns (uint256) {
+    return IERC20Metadata(currency()).balanceOf(address(this));
   }
 
   /**
-   * @dev Calls {IAssetManager-recordEarnings} of the assigned asset manager (fails if no asset manager). The asset
-   * manager will return the earnings since last time the earnings where recorded. It then calls `_assetEarnings` to
-   * reflect the earnings in the way defined for each reserve.
+   * @dev Deinvest from the vault a given amount.
    *
-   * - Emits {IAssetManager-EarningsRecorded}
+   *      Requires yieldVault() != address(0) and yieldVault().maxWithdraw() <= amount
+   *
+   * @param amount Amount to withdraw from the `yieldVault()`. If equal type(uint256).max, deinvests maxWithdraw()
+   * @return deinvested The amount that was deinvested and added as liquid funds to the reserve
+   */
+  function withdrawFromYieldVault(uint256 amount) external returns (uint256 deinvested) {
+    IERC4626 yv = yieldVault();
+    require(address(yv) != address(0), InvalidYieldVault());
+    if (amount == type(uint256).max) amount = yv.maxWithdraw(address(this));
+    _deinvest(yv, amount);
+    return amount;
+  }
+
+  /**
+   * @dev Moves money that's liquid in the contract to the yield vault, to generate yields
+   *
+   *      Requires _balance() >= amount
+   *
+   * @param amount Amount to transfer to the `$._yieldVault`. If equal type(uint256).max, transfers `_balance()`
+   */
+  function depositIntoYieldVault(uint256 amount) external {
+    IERC4626 yv = yieldVault();
+    require(address(yv) != address(0), InvalidYieldVault());
+    uint256 balance = _balance();
+    if (amount == type(uint256).max) {
+      amount = balance;
+    } else {
+      require(amount <= balance, NotEnoughCash(amount, balance));
+    }
+    _invested += amount;
+    yv.deposit(amount, address(this));
+  }
+
+  /**
+   * @dev Computes the value of the assets invested in the yieldVault() and then calls `_assetEarnings` to
+   *      reflect the earnings in the way defined for each reserve.
+   *
+   * - Emits {EarningsRecorded}
    */
   function recordEarnings() public whenNotPaused {
-    bytes memory result = address(assetManager()).functionDelegateCall(
-      abi.encodeWithSelector(IAssetManager.recordEarnings.selector)
-    );
-    _assetEarnings(abi.decode(result, (int256)));
-  }
-
-  /**
-   * @dev Function that calls both `recordEarnings()` and `rebalance()` (in that order). Usually scheduled to run once a
-   * day by a keeper or crontask.
-   */
-  function checkpoint() external whenNotPaused {
-    recordEarnings();
-    rebalance();
-  }
-
-  /**
-   * @dev This function allows to call custom functions of the asset manager (for example for setting parameters).
-   *      This functions will be called with `delegatecall`, in the context of the reserve.
-   *
-   * @param functionCall Abi encoded function call to make.
-   * @return Returns the return value of the function called, to be decoded by the receiver.
-   */
-  function forwardToAssetManager(bytes calldata functionCall) external returns (bytes memory) {
-    return address(assetManager()).functionDelegateCall(functionCall);
+    IERC4626 yv = yieldVault();
+    require(address(yv) != address(0), InvalidYieldVault());
+    uint256 assetsInvested = yv.convertToAssets(yv.balanceOf(address(this)));
+    int256 earned = int256(assetsInvested) - int256(_invested);
+    _invested = assetsInvested;
+    _yieldEarnings(earned);
   }
 
   /**
@@ -212,5 +254,5 @@ abstract contract Reserve is PolicyPoolComponent {
    * variables without shifting down storage in the inheritance chain.
    * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
    */
-  uint256[50] private __gap;
+  uint256[49] private __gap;
 }

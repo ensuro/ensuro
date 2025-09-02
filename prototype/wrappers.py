@@ -1,7 +1,5 @@
 from contextlib import contextmanager
 
-from eth_abi import encode
-from eth_utils import keccak
 from ethproto.wadray import _W, Wad
 from ethproto.wrappers import AddressBook  # noqa: F401
 from ethproto.wrappers import IERC20, IERC721, ETHWrapper, MethodAdapter, get_provider
@@ -74,32 +72,10 @@ def _adapt_signed_amount(args, kwargs):
 
 class ReserveMixin:
     currency = MethodAdapter((), "address", is_property=True)
-    forward_to_asset_manager_ = MethodAdapter((("functionCall", "bytes"),))
 
-    set_asset_manager = MethodAdapter((("assetManager", "address"), ("force", "bool")))
-    asset_manager = MethodAdapter((), "address", is_property=True)
-    checkpoint = MethodAdapter(())
+    set_yield_vault = MethodAdapter((("yield_vault", "address"), ("force", "bool")))
+    yield_vault = MethodAdapter((), "address", is_property=True)
     record_earnings = MethodAdapter(())
-    rebalance = MethodAdapter(())
-
-    def forward_to_asset_manager(self, method, *args, **kwargs):
-        if method == "set_liquidity_thresholds":
-            min, middle, max = [MAX_UINT if arg is None else arg for arg in args]
-            selector = keccak(b"setLiquidityThresholds(uint256,uint256,uint256)")[:4]
-            data = encode(["uint256", "uint256", "uint256"], [min, middle, max])
-            return self.forward_to_asset_manager_((selector + data))
-        elif method == "vault_to_discretionary":
-            selector = keccak(b"vaultToDiscretionary(uint256)")[:4]
-            amount = args[0]
-            data = encode(["uint256"], [MAX_UINT if amount is None else amount])
-            return self.forward_to_asset_manager_((selector + data))
-        elif method == "discretionary_to_vault":
-            selector = keccak(b"discretionaryToVault(uint256)")[:4]
-            amount = args[0]
-            data = encode(["uint256"], [MAX_UINT if amount is None else amount])
-            return self.forward_to_asset_manager_((selector + data))
-        else:
-            raise NotImplementedError()
 
 
 class EToken(ReserveMixin, IERC20):
@@ -1041,81 +1017,3 @@ class LPManualWhitelist(ETHWrapper):
 
 
 ERC20Token = TestCurrency
-
-
-class FixedRateVault(IERC20):
-    eth_contract = "FixedRateVault"
-
-    constructor_args = (
-        ("name", "string"),
-        ("symbol", "string"),
-        ("asset", "address"),
-        ("interest_rate", "wad"),
-    )
-
-    def __init__(
-        self,
-        asset,
-        owner="owner",
-        name="Test Vault",
-        symbol="TVAULT",
-        interest_rate=_W("0.05"),
-    ):
-        interest_rate = _W(interest_rate)
-        super().__init__(owner, name, symbol, asset, interest_rate)
-
-    total_assets = MethodAdapter((), "amount")
-    convert_to_assets = MethodAdapter((("shares", "wad"),), "amount")
-    convert_to_shares = MethodAdapter((("assets", "amount"),), "wad")
-    deposit = MethodAdapter(
-        (
-            ("caller", "msg.sender"),
-            ("assets", "amount"),
-            ("receiver", "address"),
-        )
-    )
-    withdraw = MethodAdapter(
-        (
-            ("caller", "msg.sender"),
-            ("assets", "amount"),
-            ("receiver", "address"),
-            ("owner", "address"),
-        )
-    )
-    discrete_earning = MethodAdapter((("assets", "amount"),))
-    broken = MethodAdapter((), "bool", is_property=True)
-
-
-class LiquidityThresholdAssetManager(ETHWrapper):
-    def _set_liquidity(self, reserve, liquidity_min, liquidity_middle, liquidity_max):
-        liquidity_min = liquidity_min if liquidity_min is None else _W(liquidity_min)
-        liquidity_middle = liquidity_middle if liquidity_middle is None else _W(liquidity_middle)
-        liquidity_max = liquidity_max if liquidity_max is None else _W(liquidity_max)
-        reserve.forward_to_asset_manager(
-            "set_liquidity_thresholds", liquidity_min, liquidity_middle, liquidity_max
-        )
-
-
-class ERC4626AssetManager(LiquidityThresholdAssetManager):
-    eth_contract = "ERC4626AssetManager"
-
-    constructor_args = (
-        ("asset", "address"),
-        ("vault", "address"),
-    )
-
-    def __init__(self, reserve, vault):
-        super().__init__(reserve.owner, reserve.currency, vault)
-
-
-class ERC4626PlusVaultAssetManager(ERC4626AssetManager):
-    eth_contract = "ERC4626PlusVaultAssetManager"
-
-    constructor_args = (
-        ("asset", "address"),
-        ("vault", "address"),
-        ("discretionary_vault", "address"),
-    )
-
-    def __init__(self, reserve, vault, discretionary_vault):
-        super(ERC4626AssetManager, self).__init__(reserve.owner, reserve.currency, vault, discretionary_vault)
