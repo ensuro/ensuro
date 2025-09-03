@@ -76,7 +76,7 @@ describe("Etoken", () => {
       .to.emit(etk, "EarningsRecorded")
       .withArgs(_A(300) - 1n);
 
-    expect(await etk.balanceOf(lp)).to.equal(_A(3300) - 1n);
+    expect(await etk.balanceOf(lp)).to.equal(_A(3300) - 2n);
 
     await expect(pool.connect(lp).withdraw(etk, _A(2000)))
       .to.emit(etk, "Transfer")

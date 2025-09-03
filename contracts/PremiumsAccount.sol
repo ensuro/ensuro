@@ -7,7 +7,6 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
-import {WadRayMath} from "./dependencies/WadRayMath.sol";
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
 import {Reserve} from "./Reserve.sol";
@@ -30,10 +29,11 @@ import {Policy} from "./Policy.sol";
  */
 contract PremiumsAccount is IPremiumsAccount, Reserve {
   using Policy for Policy.PolicyData;
-  using WadRayMath for uint256;
+  using Math for uint256;
   using SafeERC20 for IERC20Metadata;
   using SafeCast for uint256;
 
+  uint256 internal constant WAD = 1e18;
   uint256 internal constant FOUR_DECIMAL_TO_WAD = 1e14;
   uint16 internal constant HUNDRED_PERCENT = 1e4;
 
@@ -253,7 +253,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * one or the new one when it's being modified).
    */
   function _maxDeficit(uint256 ratio) internal view returns (int256) {
-    return -int256(_activePurePremiums.wadMul(ratio));
+    return -int256(_activePurePremiums.mulDiv(ratio, WAD));
   }
 
   function _toAmount(uint32 value) internal view returns (uint256) {

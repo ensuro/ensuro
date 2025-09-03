@@ -8,7 +8,6 @@ import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
 import {Governance} from "./Governance.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
-import {WadRayMath} from "./dependencies/WadRayMath.sol";
 
 /**
  * @title Base class for PolicyPool components
@@ -21,8 +20,6 @@ import {WadRayMath} from "./dependencies/WadRayMath.sol";
  * @author Ensuro
  */
 abstract contract PolicyPoolComponent is UUPSUpgradeable, PausableUpgradeable, IPolicyPoolComponent {
-  using WadRayMath for uint256;
-
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IPolicyPool internal immutable _policyPool;
 

@@ -597,7 +597,7 @@ def test_walkthrough(tenv):
         )
         pool_loan = eUSD1YEAR.get_loan(premiums_account)
 
-    assert eUSD1YEAR.get_loan(premiums_account) == _W(0)
+    eUSD1YEAR.get_loan(premiums_account).assert_equal(_W(0))
     premiums_account.pure_premiums.assert_equal(
         _W("21.315047620842662122"), decimals=2
     )  # from jypiter prints
@@ -613,16 +613,7 @@ def test_walkthrough(tenv):
     USD.balance_of(premiums_account).assert_equal(premiums_account.pure_premiums)
 
     pool.withdraw("eUSD1YEAR", "LP1", None).assert_equal(_W("1005.638186186546873425"), decimals=2)
-    if tenv.kind == "ethereum":
-        # Last withdrawal fails because of rounding error
-        with pytest.raises(RevertError, match="ERC20InsufficientBalance"):
-            pool.withdraw("eUSD1YEAR", "LP3", None).assert_equal(_W("2011.253509103164142865"), decimals=2)
-        # Gift some pennies to eUSD1YEAR - This was previously handled by NEGLIGIBLE_AMOUNT
-        USD.transfer("CUST3", eUSD1YEAR, _W("0.000001"))
-        # Try again
-        pool.withdraw("eUSD1YEAR", "LP3", None).assert_equal(_W("2011.253509103164142865"), decimals=2)
-    else:
-        pool.withdraw("eUSD1YEAR", "LP3", None).assert_equal(_W("2011.253509103164142865"), decimals=2)
+    pool.withdraw("eUSD1YEAR", "LP3", None).assert_equal(_W("2011.253509103164142865"), decimals=2)
     USD.balance_of(premiums_account.contract_id).assert_equal(_W("21.315047620842662122"), decimals=2)
 
     USD.balance_of(pool.contract_id).assert_equal(_W(0))

@@ -2,7 +2,7 @@
 
 pragma solidity ^0.8.28;
 
-import {WadRayMath} from "./dependencies/WadRayMath.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 /**
@@ -12,17 +12,33 @@ import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
  * @author Ensuro
  */
 library TimeScaled {
-  using WadRayMath for uint256;
+  using Math for uint256;
   using SafeCast for uint256;
 
   uint256 private constant SECONDS_PER_YEAR = 365 days;
   uint112 private constant MIN_SCALE = 1e17; // 0.0000000001 == 1e-10 in ray
+  uint112 private constant MIN_SCALE_WAD = 1e8; // 0.0000000001 == 1e-10 in wad
   uint112 private constant RAY112 = 1e27;
+  uint256 internal constant WAD = 1e18;
+  uint256 internal constant RAY = 1e27;
+  uint256 internal constant WAD_RAY_RATIO = 1e9;
 
   struct ScaledAmount {
     uint112 scale;
     uint112 amount;
     uint32 lastUpdate;
+  }
+
+  function _wadToRay(uint256 amountInWad) internal pure returns (uint256) {
+    unchecked {
+      return amountInWad * WAD_RAY_RATIO;
+    }
+  }
+
+  function _rayToWad(uint256 amountInRay) internal pure returns (uint256) {
+    unchecked {
+      return amountInRay / WAD_RAY_RATIO;
+    }
   }
 
   function updateScale(ScaledAmount storage scaledAmount, uint256 interestRate) internal {
@@ -39,8 +55,9 @@ library TimeScaled {
     uint32 now_ = uint32(block.timestamp);
     if (scaledAmount.lastUpdate < now_) {
       return
-        uint256(scaledAmount.scale).rayMul(
-          ((interestRate.wadToRay() * uint256(now_ - scaledAmount.lastUpdate)) / SECONDS_PER_YEAR) + WadRayMath.RAY
+        uint256(scaledAmount.scale).mulDiv(
+          ((_wadToRay(interestRate) * uint256(now_ - scaledAmount.lastUpdate)) / SECONDS_PER_YEAR) + RAY,
+          RAY
         );
     } else {
       return scaledAmount.scale;
@@ -55,7 +72,7 @@ library TimeScaled {
    * @return The current amount, that results of `scaledAmount * scale`
    */
   function _scaledToCurrent(uint256 scaledAmount, uint256 scale) internal pure returns (uint256) {
-    return scaledAmount.wadToRay().rayMul(scale).rayToWad();
+    return _rayToWad(_wadToRay(scaledAmount).mulDiv(scale, RAY));
   }
 
   /**
@@ -65,7 +82,7 @@ library TimeScaled {
    * @return The scaled amount, that results of `currentAmount / scale`
    */
   function _currentToScale(uint256 currentAmount, uint256 scale) internal pure returns (uint256) {
-    return currentAmount.wadToRay().rayDiv(scale).rayToWad();
+    return _rayToWad(_wadToRay(currentAmount).mulDiv(RAY, scale));
   }
 
   /**
@@ -122,13 +139,13 @@ library TimeScaled {
     }
     updateScale(scaledAmount, interestRate);
     uint256 newCurrentAmount = uint256(int256(getCurrentAmount(scaledAmount, interestRate)) + amount);
-    scaledAmount.scale = newCurrentAmount.wadToRay().rayDiv(uint256(scaledAmount.amount).wadToRay()).toUint112();
+    scaledAmount.scale = _wadToRay(newCurrentAmount).mulDiv(RAY, _wadToRay(uint256(scaledAmount.amount))).toUint112();
     // Consistency check - Uncomment for testing
     // require(newCurrentAmount == getCurrentAmount(scaledAmount, interestRate), "Error");
     require(scaledAmount.scale >= MIN_SCALE, "Scale too small, can lead to rounding errors");
   }
 
   function minValue(ScaledAmount storage scaledAmount) internal view returns (uint256) {
-    return uint256(scaledAmount.amount).wadToRay().rayMul(MIN_SCALE).rayToWad();
+    return uint256(scaledAmount.amount).mulDiv(MIN_SCALE_WAD, WAD);
   }
 }

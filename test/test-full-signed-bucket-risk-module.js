@@ -147,7 +147,7 @@ describe("FullSignedBucketRiskModule contract tests", function () {
     expect(policyData.purePremium).to.equal(_A("100"));
     expect(policyData.jrScr).to.equal(_A("200"));
     expect(policyData.srScr).to.equal(_A("700"));
-    expect(policyData.jrCoc).to.equal(_A("1.643835"));
+    expect(policyData.jrCoc).to.equal(_A("1.643834"));
     expect(policyData.srCoc).to.equal(_A("5.753422"));
 
     // Now test the same sending fullParams
@@ -163,7 +163,7 @@ describe("FullSignedBucketRiskModule contract tests", function () {
     expect(policyData.purePremium).to.equal(_A("100"));
     expect(policyData.jrScr).to.equal(_A("200"));
     expect(policyData.srScr).to.equal(_A("700"));
-    expect(policyData.jrCoc).to.equal(_A("1.643835"));
+    expect(policyData.jrCoc).to.equal(_A("1.643834"));
     expect(policyData.srCoc).to.equal(_A("5.753422"));
   });
 

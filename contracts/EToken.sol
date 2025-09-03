@@ -13,7 +13,6 @@ import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {ILPWhitelist} from "./interfaces/ILPWhitelist.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
 import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
-import {WadRayMath} from "./dependencies/WadRayMath.sol";
 import {TimeScaled} from "./TimeScaled.sol";
 import {Governance} from "./Governance.sol";
 import {Reserve} from "./Reserve.sol";
@@ -29,11 +28,12 @@ import {Reserve} from "./Reserve.sol";
  * @author Ensuro
  */
 contract EToken is Reserve, ERC20Upgradeable, IEToken {
-  using WadRayMath for uint256;
+  using Math for uint256;
   using TimeScaled for TimeScaled.ScaledAmount;
   using SafeERC20 for IERC20Metadata;
   using SafeCast for uint256;
 
+  uint256 internal constant WAD = 1e18;
   uint256 internal constant FOUR_DECIMAL_TO_WAD = 1e14;
   uint16 internal constant HUNDRED_PERCENT = 1e4;
   uint16 internal constant MAX_UR_MIN = 5e3; // 50% - Minimum value for Max Utilization Rate
@@ -258,7 +258,7 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
     uint256 totalSupply_ = this.totalSupply();
     if (totalSupply_ == 0) _scr.tokenInterestRate = 0;
     else {
-      uint256 newTokenInterestRate = uint256(_scr.interestRate).wadMul(uint256(_scr.scr)).wadDiv(totalSupply_);
+      uint256 newTokenInterestRate = uint256(_scr.interestRate).mulDiv(uint256(_scr.scr), totalSupply_);
       _scr.tokenInterestRate = (newTokenInterestRate > type(uint64).max)
         ? type(uint64).max
         : newTokenInterestRate.toUint64();
@@ -279,7 +279,7 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
   }
 
   function fundsAvailableToLock() public view returns (uint256) {
-    uint256 supply = this.totalSupply().wadMul(maxUtilizationRate());
+    uint256 supply = this.totalSupply().mulDiv(maxUtilizationRate(), WAD);
     if (supply > uint256(_scr.scr)) return supply - uint256(_scr.scr);
     else return 0;
   }
@@ -328,7 +328,7 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
   }
 
   function utilizationRate() public view returns (uint256) {
-    return uint256(_scr.scr).wadDiv(this.totalSupply());
+    return uint256(_scr.scr).mulDiv(WAD, this.totalSupply());
   }
 
   function lockScr(uint256 scrAmount, uint256 policyInterestRate) external override onlyBorrower whenNotPaused {
@@ -340,8 +340,9 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
     } else {
       uint256 origScr = uint256(_scr.scr);
       uint256 newScr = origScr + scrAmount;
-      _scr.interestRate = (uint256(_scr.interestRate).wadMul(origScr) + policyInterestRate.wadMul(scrAmount))
-        .wadDiv(newScr)
+      // newInterestRate = (oldInterestRate * oldScr + policyInterestRate * scrAmount) / newScr
+      _scr.interestRate = (uint256(_scr.interestRate).mulDiv(origScr, WAD) + policyInterestRate.mulDiv(scrAmount, WAD))
+        .mulDiv(WAD, newScr)
         .toUint64();
       _scr.scr = newScr.toUint128();
     }
@@ -363,8 +364,9 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
     } else {
       uint256 origScr = uint256(_scr.scr);
       uint256 newScr = origScr - scrAmount;
-      _scr.interestRate = (uint256(_scr.interestRate).wadMul(origScr) - policyInterestRate.wadMul(scrAmount))
-        .wadDiv(newScr)
+      // newInterestRate = (oldInterestRate * oldScr - scrAmount * policyInterestRate) / newScr
+      _scr.interestRate = (uint256(_scr.interestRate).mulDiv(origScr, WAD) - policyInterestRate.mulDiv(scrAmount, WAD))
+        .mulDiv(WAD, newScr)
         .toUint64();
       _scr.scr = newScr.toUint128();
     }
@@ -394,7 +396,7 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
   }
 
   function totalWithdrawable() public view virtual override returns (uint256) {
-    uint256 locked = uint256(_scr.scr).wadMul(liquidityRequirement());
+    uint256 locked = uint256(_scr.scr).mulDiv(liquidityRequirement(), WAD);
     uint256 totalSupply_ = totalSupply();
     if (totalSupply_ >= locked) return totalSupply_ - locked;
     else return 0;
