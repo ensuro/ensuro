@@ -2,20 +2,21 @@
 pragma solidity ^0.8.28;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
-import {Reserve} from "./Reserve.sol";
-import {IEToken} from "./interfaces/IEToken.sol";
-import {Governance} from "./Governance.sol";
-import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
 import {ILPWhitelist} from "./interfaces/ILPWhitelist.sol";
-import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import {IEToken} from "./interfaces/IEToken.sol";
+import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
 import {WadRayMath} from "./dependencies/WadRayMath.sol";
 import {TimeScaled} from "./TimeScaled.sol";
+import {Governance} from "./Governance.sol";
+import {Reserve} from "./Reserve.sol";
 
 /**
  * @title Ensuro ERC20 EToken - interest-bearing token
@@ -130,9 +131,7 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
     _validateParameters();
   }
 
-  /**
-   * @dev See {IERC165-supportsInterface}.
-   */
+  /// @inheritdoc IERC165
   function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
     return
       super.supportsInterface(interfaceId) ||
@@ -176,23 +175,14 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
     return _tsScaled.getCurrentAmount(tokenInterestRate());
   }
 
-  /**
-   * @dev See {IERC20-balanceOf}.
-   */
+  /// @inheritdoc IERC20
   function balanceOf(address account) public view virtual override returns (uint256) {
     return _tsScaled.scaledToCurrentNow(tokenInterestRate(), super.balanceOf(account));
   }
 
-  /**
-   * @dev Transfers a `value` amount of tokens from `from` to `to`, or alternatively mints (or burns) if `from`
-   * (or `to`) is the zero address. All customizations to transfers, mints, and burns should be done by overriding
-   * this function.
-   *
-   * Emits a {Transfer} event.
-   */
+  /// @inheritdoc ERC20Upgradeable
   function _update(address from, address to, uint256 value) internal virtual override whenNotPaused {
     uint256 valueScaled;
-    // TODO: whitelist checks acceptsTransfer
     if (from == address(0)) {
       // Mint
       valueScaled = _tsScaled.add(value, tokenInterestRate());
@@ -215,14 +205,14 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
         revert ERC20InsufficientBalance(from, _tsScaled.scaledToCurrentNow(tokenInterestRate(), fromBalance), value);
       }
       unchecked {
-        // Overflow not possible: value <= fromBalance <= totalSupply.
+        // Overflow not possible: valueScaled <= fromBalance <= totalSupply.
         $._balances[from] = fromBalance - valueScaled;
       }
     }
 
     if (to != address(0)) {
       unchecked {
-        // Overflow not possible: balance + value is at most totalSupply, which we know fits into a uint256.
+        // Overflow not possible: balance + valueScaled is at most totalSupply, which we know fits into a uint256.
         $._balances[to] += valueScaled;
       }
     }
