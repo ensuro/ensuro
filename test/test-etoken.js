@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
-const { amountFunction, captureAny, newCaptureAny, _W, _R } = require("@ensuro/utils/js/utils");
+const { amountFunction, captureAny, newCaptureAny, _W } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { DAY } = require("@ensuro/utils/js/constants");
 const { deployPool, addEToken } = require("../js/test-utils");
@@ -97,7 +97,7 @@ describe("Etoken", () => {
       .to.emit(yieldVault, "Deposit")
       .withArgs(etk, etk, _A(1200), _A(1200));
 
-    expect(await etk.getCurrentScale(false)).to.equal(_R(1));
+    expect(await etk.getCurrentScale(false)).to.equal(_W(1));
 
     await yieldVault.discreteEarning(_A(300));
 
@@ -105,7 +105,7 @@ describe("Etoken", () => {
       .to.emit(etk, "EarningsRecorded")
       .withArgs(_A(300) - 1n);
 
-    expect(await etk.getCurrentScale(false)).to.closeTo(_R("1.1"), _R("0.0000001"));
+    expect(await etk.getCurrentScale(false)).to.closeTo(_W("1.1"), _W("0.0000001"));
 
     await expect(etk.connect(fakePA).lockScr(_A(2000), _W("0.1")))
       .to.emit(etk, "SCRLocked")
@@ -114,15 +114,15 @@ describe("Etoken", () => {
 
     expect(await etk.balanceOf(lp)).to.closeTo(_A(3300), 10n);
     // scale doesn't change yet
-    expect(await etk.getCurrentScale(false)).to.closeTo(_R("1.1"), _R("0.0000001"));
-    expect(await etk.getCurrentScale(true)).to.closeTo(_R("1.1"), _R("0.0000001"));
+    expect(await etk.getCurrentScale(false)).to.closeTo(_W("1.1"), _W("0.0000001"));
+    expect(await etk.getCurrentScale(true)).to.closeTo(_W("1.1"), _W("0.0000001"));
 
     // 73 days later (20% of the yeae), 20% of the interest has been accrued
     await helpers.time.increase(DAY * 73);
     expect(await etk.balanceOf(lp)).to.closeTo(_A(3340), 10n);
     // now the updated scale is affected
-    expect(await etk.getCurrentScale(false)).to.closeTo(_R("1.1"), _R("0.0000001"));
-    expect(await etk.getCurrentScale(true)).to.closeTo(_R("1.1133"), _R("0.0001"));
+    expect(await etk.getCurrentScale(false)).to.closeTo(_W("1.1"), _W("0.0000001"));
+    expect(await etk.getCurrentScale(true)).to.closeTo(_W("1.1133"), _W("0.0001"));
 
     // Go to the end of the year, unlock and withdraw all
     await helpers.time.increase(DAY * (365 - 73));
@@ -133,8 +133,8 @@ describe("Etoken", () => {
 
     expect(await etk.balanceOf(lp)).to.closeTo(_A(3500), 20n);
     // now the updated scale is affected
-    expect(await etk.getCurrentScale(false)).to.closeTo(_R("1.1666"), _R("0.0001"));
-    expect(await etk.getCurrentScale(true)).to.closeTo(_R("1.1666"), _R("0.0001"));
+    expect(await etk.getCurrentScale(false)).to.closeTo(_W("1.1666"), _W("0.0001"));
+    expect(await etk.getCurrentScale(true)).to.closeTo(_W("1.1666"), _W("0.0001"));
 
     // Full withdrawl fails due to rounding error
     await expect(pool.connect(lp).withdraw(etk, MaxUint256)).to.be.revertedWithCustomError(

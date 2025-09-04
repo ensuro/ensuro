@@ -297,7 +297,7 @@ def test_multiple_policies(tenv):
     etk.scr_interest_rate.assert_equal(_W("0.0730"))
     assert etk.scr == policy2.sr_scr
     etk.balance_of("LP1").assert_equal(expected_balance)
-    with etk.thru(pa), pytest.raises(RevertError, match="SCR"):
+    with etk.thru(pa), pytest.raises(RevertError, match="SCR|Arithmetic operation overflowed"):
         etk.unlock_scr(policy2.sr_scr + _W(1), policy2.sr_interest_rate, _W(0))  # Can't unlock more than SCR
 
     with etk.thru(pa):

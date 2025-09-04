@@ -11,13 +11,12 @@ from ethproto.contracts import (
     ContractProxyField,
     ERC20Token,
     ERC721Token,
-    RayField,
     WadField,
     external,
     require,
     view,
 )
-from ethproto.wadray import _R, _W, RAY, Ray, Wad
+from ethproto.wadray import _W, Wad
 from m9g import Model
 from m9g.fields import (
     CompositeField,
@@ -410,12 +409,12 @@ class ReserveMixin:
 
 class ScaledAmount(Model):
     amount = WadField(default=_W(0))
-    scale = RayField(default=_R(1))
+    scale = WadField(default=_W(1))
     last_update = IntField(default=None, allow_none=True)
 
     def _update_scale(self, interest_rate):
         if not self.last_update:
-            self.scale = _R(1)
+            self.scale = _W(1)
         else:
             self.scale = self._get_scale(interest_rate)
         self.last_update = time_control.now
@@ -424,30 +423,28 @@ class ScaledAmount(Model):
         seconds = time_control.now - self.last_update
         if seconds <= 0:
             return self.scale
-        increment = Ray.from_value(seconds) * interest_rate.to_ray() // Ray.from_value(SECONDS_IN_YEAR)
-        return self.scale * (Ray(RAY) + increment)
+        increment = Wad.from_value(seconds) * interest_rate // Wad.from_value(SECONDS_IN_YEAR)
+        return self.scale * (_W(1) + increment)
 
     def get_scaled_amount(self, interest_rate):
         if self.amount == 0:
             return self.amount
-        return (self.amount.to_ray() * self._get_scale(interest_rate)).to_wad()
+        return self.amount * self._get_scale(interest_rate)
 
     def add(self, scaled_amount, interest_rate):
         self._update_scale(interest_rate)
-        self.amount += (scaled_amount.to_ray() // self.scale).to_wad()
+        self.amount += scaled_amount // self.scale
 
     def sub(self, scaled_amount, interest_rate):
         self._update_scale(interest_rate)
-        self.amount = (
-            (self.get_scaled_amount(interest_rate) - scaled_amount).to_ray() // self.scale
-        ).to_wad()
+        self.amount = (self.get_scaled_amount(interest_rate) - scaled_amount) // self.scale
 
 
 class EToken(ReserveMixin, ERC20Token):
-    MIN_SCALE = _R("0.0000000001")  # 1e-10
+    MIN_SCALE = _W("0.0000000001")  # 1e-10
     policy_pool = ContractProxyField()
     yield_vault = ContractProxyField(default=None, allow_none=True)
-    scale_factor = RayField(default=_R(1), validation_hook=non_negative)
+    scale_factor = WadField(default=_W(1), validation_hook=non_negative)
     last_scale_update = IntField(default=time_control.now)
 
     scr = WadField(default=_W(0))
@@ -489,10 +486,8 @@ class EToken(ReserveMixin, ERC20Token):
         seconds = time_control.now - self.last_scale_update
         if seconds <= 0:
             return self.scale_factor
-        increment = (
-            Ray.from_value(seconds) * self.token_interest_rate.to_ray() // Ray.from_value(SECONDS_IN_YEAR)
-        )
-        return self.scale_factor * (Ray(RAY) + increment)
+        increment = Wad.from_value(seconds) * self.token_interest_rate // Wad.from_value(SECONDS_IN_YEAR)
+        return self.scale_factor * (_W(1) + increment)
 
     @contextmanager
     def thru_policy_pool(self):
@@ -514,7 +509,7 @@ class EToken(ReserveMixin, ERC20Token):
 
     @view
     def total_supply(self):
-        return (super().total_supply().to_ray() * self._calculate_current_scale()).to_wad()
+        return super().total_supply() * self._calculate_current_scale()
 
     # Methods following AAVE's IScaledBalanceToken, to simplify future integrations
     @view
@@ -581,7 +576,7 @@ class EToken(ReserveMixin, ERC20Token):
     def _discrete_earning(self, amount):
         self._update_current_scale()
         new_total_supply = amount + self.total_supply()
-        self.scale_factor = new_total_supply.to_ray() // self._base_supply().to_ray()
+        self.scale_factor = new_total_supply // self._base_supply()
         require(
             self.scale_factor >= self.MIN_SCALE,
             "Scale too small, can lead to rounding errors",
@@ -609,7 +604,7 @@ class EToken(ReserveMixin, ERC20Token):
             "Liquidity Provider not whitelisted",
         )
         self._update_current_scale()
-        scaled_amount = (amount.to_ray() // self.scale_factor).to_wad()
+        scaled_amount = amount // self.scale_factor
         self.mint(provider, scaled_amount)
         self._update_token_interest_rate()
         self._check_balance()
@@ -624,14 +619,14 @@ class EToken(ReserveMixin, ERC20Token):
         if not principal_balance:
             return Wad(0)
         scale_factor = self._calculate_current_scale()
-        return (principal_balance.to_ray() * scale_factor).to_wad()
+        return principal_balance * scale_factor
 
     def _transfer(self, sender, recipient, amount):
         require(
             self.whitelist is None or self.whitelist.accepts_transfer(self, sender, recipient, amount),
             "Transfer not allowed - Liquidity Provider not whitelisted",
         )
-        scaled_amount = (amount.to_ray() // self._calculate_current_scale()).to_wad()
+        scaled_amount = amount // self._calculate_current_scale()
         super()._transfer(sender, recipient, scaled_amount)
 
     @view
@@ -655,7 +650,7 @@ class EToken(ReserveMixin, ERC20Token):
             "Liquidity Provider not whitelisted",
         )
 
-        scaled_amount = (amount.to_ray() // self.scale_factor).to_wad()
+        scaled_amount = amount // self.scale_factor
         self.burn(provider, scaled_amount)
         self._update_token_interest_rate()
 
@@ -674,7 +669,7 @@ class EToken(ReserveMixin, ERC20Token):
     @view
     def max_negative_adjustment(self):
         return max(
-            self.total_supply() - (self.MIN_SCALE * _R(10) * self._base_supply().to_ray()).to_wad(),
+            self.total_supply() - (self.MIN_SCALE * _W(10) * self._base_supply()),
             _W(0),
         )
 
