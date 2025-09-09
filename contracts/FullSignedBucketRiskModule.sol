@@ -111,7 +111,7 @@ contract FullSignedBucketRiskModule is SignedBucketRiskModule {
     bytes32 quoteSignatureR,
     bytes32 quoteSignatureVS,
     uint40 quoteValidUntil
-  ) external whenNotPaused returns (Policy.PolicyData memory createdPolicy) {
+  ) external returns (Policy.PolicyData memory createdPolicy) {
     _checkFullSignature(
       payout,
       premium,
@@ -128,7 +128,7 @@ contract FullSignedBucketRiskModule is SignedBucketRiskModule {
       premium,
       lossProb,
       expiration,
-      _msgSender(),
+      msg.sender,
       onBehalfOf,
       _makeInternalId(policyData),
       _unpackParams(params)
@@ -171,7 +171,7 @@ contract FullSignedBucketRiskModule is SignedBucketRiskModule {
     bytes32 quoteSignatureR,
     bytes32 quoteSignatureVS,
     uint40 quoteValidUntil
-  ) external whenNotPaused returns (uint256) {
+  ) external returns (uint256) {
     _checkFullSignature(
       payout,
       premium,
@@ -190,7 +190,7 @@ contract FullSignedBucketRiskModule is SignedBucketRiskModule {
         premium,
         lossProb,
         expiration,
-        _msgSender(),
+        msg.sender,
         _makeInternalId(policyData),
         _unpackParams(params)
       ).id;

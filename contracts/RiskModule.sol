@@ -284,7 +284,6 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
 
   /**
    * @dev Called from child contracts to create policies (after they validated the pricing).
-   *      whenNotPaused validation must be done in the external method.
    *
    * @param payout The exposure (maximum payout) of the policy
    * @param premium The premium that will be paid by the policyHolder
@@ -306,9 +305,6 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     return _newPolicyWithParams(payout, premium, lossProb, expiration, payer, onBehalfOf, internalId, params());
   }
 
-  /**
-   * @dev Internal method without whenNotPaused, MUST be called from other function that has this modifier
-   */
   function _newPolicyWithParams(
     uint256 payout,
     uint256 premium,
@@ -332,7 +328,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
       "You must allow ENSURO to transfer the premium"
     );
     require(
-      payer == _msgSender() || _policyPool.currency().allowance(payer, _msgSender()) >= premium,
+      payer == msg.sender || _policyPool.currency().allowance(payer, msg.sender) >= premium,
       "Payer must allow caller to transfer the premium"
     );
     require(payout <= maxPayoutPerPolicy(), "RiskModule: Payout is more than maximum per policy");
@@ -345,7 +341,6 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
 
   /**
    * @dev Called from child contracts to replace policies (after they validated the pricing).
-   *      whenNotPaused validation must be done in the external method.
    *
    * @param payout The exposure (maximum payout) of the policy
    * @param premium The premium that will be paid by the policyHolder
@@ -380,7 +375,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
       "You must allow ENSURO to transfer the premium"
     );
     require(
-      payer == _msgSender() || _policyPool.currency().allowance(payer, _msgSender()) >= (premium - oldPolicy.premium),
+      payer == msg.sender || _policyPool.currency().allowance(payer, msg.sender) >= (premium - oldPolicy.premium),
       "Payer must allow caller to transfer the premium"
     );
     require(payout <= maxPayoutPerPolicy(), "RiskModule: Payout is more than maximum per policy");

@@ -127,7 +127,7 @@ contract SignedQuoteRiskModule is RiskModule {
     bytes32 quoteSignatureR,
     bytes32 quoteSignatureVS,
     uint40 quoteValidUntil
-  ) external whenNotPaused returns (Policy.PolicyData memory createdPolicy) {
+  ) external returns (Policy.PolicyData memory createdPolicy) {
     return
       _newPolicySigned(
         payout,
@@ -138,7 +138,7 @@ contract SignedQuoteRiskModule is RiskModule {
         quoteSignatureR,
         quoteSignatureVS,
         quoteValidUntil,
-        _msgSender(),
+        msg.sender,
         onBehalfOf
       );
   }
@@ -175,7 +175,7 @@ contract SignedQuoteRiskModule is RiskModule {
     bytes32 quoteSignatureR,
     bytes32 quoteSignatureVS,
     uint40 quoteValidUntil
-  ) external whenNotPaused returns (uint256) {
+  ) external returns (uint256) {
     return
       _newPolicySigned(
         payout,
@@ -186,7 +186,7 @@ contract SignedQuoteRiskModule is RiskModule {
         quoteSignatureR,
         quoteSignatureVS,
         quoteValidUntil,
-        _msgSender(),
+        msg.sender,
         onBehalfOf
       ).id;
   }
@@ -195,7 +195,7 @@ contract SignedQuoteRiskModule is RiskModule {
    * @dev Creates a new Policy using a signed quote. The payer is the policy holder
    *
    * Requirements:
-   * - currency().allowance(onBehalfOf, _msgSender()) > 0
+   * - currency().allowance(onBehalfOf, msg.sender) > 0
    * - The quote has been signed by an address with the component role PRICER_ROLE
    *
    * Emits:
@@ -223,13 +223,13 @@ contract SignedQuoteRiskModule is RiskModule {
     bytes32 quoteSignatureR,
     bytes32 quoteSignatureVS,
     uint40 quoteValidUntil
-  ) external whenNotPaused returns (uint256) {
+  ) external returns (uint256) {
     require(
-      onBehalfOf == _msgSender() || currency().allowance(onBehalfOf, _msgSender()) > 0,
+      onBehalfOf == msg.sender || currency().allowance(onBehalfOf, msg.sender) > 0,
       "Sender is not authorized to create policies onBehalfOf"
     );
     /**
-     * The standard is the payer should be the _msgSender() but usually, in this type of module,
+     * The standard is the payer should be the msg.sender but usually, in this type of module,
      * the sender is an operative account managed by software, where the onBehalfOf is a more
      * secure account (hardware wallet) that does the cash movements.
      * This non standard behaviour allows for a more secure setup, where the sender never manages
@@ -253,11 +253,11 @@ contract SignedQuoteRiskModule is RiskModule {
       ).id;
   }
 
-  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external whenNotPaused {
+  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external {
     _policyPool.resolvePolicy(policy, payout);
   }
 
-  function resolvePolicyFullPayout(Policy.PolicyData calldata policy, bool customerWon) external whenNotPaused {
+  function resolvePolicyFullPayout(Policy.PolicyData calldata policy, bool customerWon) external {
     _policyPool.resolvePolicyFullPayout(policy, customerWon);
   }
 

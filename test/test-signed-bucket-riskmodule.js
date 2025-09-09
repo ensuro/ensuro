@@ -353,17 +353,18 @@ variants.forEach((variant) => {
     });
 
     it("Does not allow policy replacement when paused", async () => {
-      //
-      const { rm, policy } = await helpers.loadFixture(riskModuleWithPolicyFixture);
+      const { rm, policy, pool } = await helpers.loadFixture(riskModuleWithPolicyFixture);
 
-      await rm.pause();
+      await pool.pause();
 
       const replacementPolicyParams = await defaultPolicyParamsWithBucket({ rm });
       const replacementPolicySignature = await makeSignedQuote(signer, replacementPolicyParams, makeBucketQuoteMessage);
 
       await expect(
-        rm.replacePolicy(policy, ...replacePolicyParams(replacementPolicyParams, replacementPolicySignature))
-      ).to.be.revertedWithCustomError(rm, "EnforcedPause");
+        rm
+          .connect(cust)
+          .replacePolicy(policy, ...replacePolicyParams(replacementPolicyParams, replacementPolicySignature))
+      ).to.be.revertedWithCustomError(pool, "EnforcedPause");
     });
 
     it("Only allows REPLACER_ROLE to replace policies", async () => {

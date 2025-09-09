@@ -240,7 +240,7 @@ abstract contract Reserve is PolicyPoolComponent {
    *
    * - Emits {EarningsRecorded}
    */
-  function recordEarnings() public whenNotPaused {
+  function recordEarnings() public {
     IERC4626 yv = yieldVault();
     require(address(yv) != address(0), InvalidYieldVault());
     uint256 assetsInvested = yv.convertToAssets(yv.balanceOf(address(this)));

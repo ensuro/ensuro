@@ -7,7 +7,6 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
 import {Governance} from "./Governance.sol";
-import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 
 /**
  * @title Base class for PolicyPool components
@@ -19,7 +18,7 @@ import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Pau
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
-abstract contract PolicyPoolComponent is UUPSUpgradeable, PausableUpgradeable, IPolicyPoolComponent {
+abstract contract PolicyPoolComponent is UUPSUpgradeable, IPolicyPoolComponent {
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IPolicyPool internal immutable _policyPool;
 
@@ -31,7 +30,7 @@ abstract contract PolicyPoolComponent is UUPSUpgradeable, PausableUpgradeable, I
   error OnlyPolicyPool();
 
   modifier onlyPolicyPool() {
-    require(_msgSender() == address(_policyPool), OnlyPolicyPool());
+    require(msg.sender == address(_policyPool), OnlyPolicyPool());
     _;
   }
 
@@ -45,7 +44,6 @@ abstract contract PolicyPoolComponent is UUPSUpgradeable, PausableUpgradeable, I
   // solhint-disable-next-line func-name-mixedcase
   function __PolicyPoolComponent_init() internal onlyInitializing {
     __UUPSUpgradeable_init();
-    __Pausable_init();
   }
 
   function _authorizeUpgrade(address newImpl) internal view override {
@@ -61,14 +59,6 @@ abstract contract PolicyPoolComponent is UUPSUpgradeable, PausableUpgradeable, I
    */
   function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
     return interfaceId == type(IERC165).interfaceId || interfaceId == type(IPolicyPoolComponent).interfaceId;
-  }
-
-  function pause() public {
-    _pause();
-  }
-
-  function unpause() public {
-    _unpause();
   }
 
   function policyPool() public view override returns (IPolicyPool) {

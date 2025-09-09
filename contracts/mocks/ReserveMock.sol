@@ -62,7 +62,7 @@ contract ReserveMock is Reserve {
   }
 
   function addMoney(uint256 amount) external {
-    currency().safeTransferFrom(_msgSender(), address(this), amount);
+    currency().safeTransferFrom(msg.sender, address(this), amount);
   }
 
   function transferTo(address destination, uint256 amount) external {

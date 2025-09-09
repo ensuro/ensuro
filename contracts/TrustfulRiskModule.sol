@@ -66,7 +66,7 @@ contract TrustfulRiskModule is RiskModule {
     uint40 expiration,
     address onBehalfOf,
     uint96 internalId
-  ) external whenNotPaused returns (uint256) {
+  ) external returns (uint256) {
     return _newPolicy(payout, premium, lossProb, expiration, _getPayer(onBehalfOf, premium), onBehalfOf, internalId).id;
   }
 
@@ -94,7 +94,7 @@ contract TrustfulRiskModule is RiskModule {
     uint40 expiration,
     address onBehalfOf,
     uint96 internalId
-  ) external whenNotPaused returns (Policy.PolicyData memory createdPolicy) {
+  ) external returns (Policy.PolicyData memory createdPolicy) {
     return _newPolicy(payout, premium, lossProb, expiration, _getPayer(onBehalfOf, premium), onBehalfOf, internalId);
   }
 
@@ -121,7 +121,7 @@ contract TrustfulRiskModule is RiskModule {
     uint256 lossProb,
     uint40 expiration,
     uint96 internalId
-  ) external whenNotPaused returns (uint256) {
+  ) external returns (uint256) {
     address onBehalfOf = IERC721(address(_policyPool)).ownerOf(oldPolicy.id);
     return
       _replacePolicy(
@@ -138,9 +138,9 @@ contract TrustfulRiskModule is RiskModule {
 
   function _getPayer(address onBehalfOf, uint256 premium) internal view returns (address payer) {
     payer = onBehalfOf;
-    if (payer != _msgSender() && _policyPool.currency().allowance(payer, _msgSender()) < premium)
+    if (payer != msg.sender && _policyPool.currency().allowance(payer, msg.sender) < premium)
       /**
-       * The standard is the payer should be the _msgSender() but usually, in this type of module,
+       * The standard is the payer should be the msg.sender but usually, in this type of module,
        * the sender is an operative account managed by software, where the onBehalfOf is a more
        * secure account (hardware wallet) that does the cash movements.
        * This non standard behaviour allows for a more secure setup, where the sender never manages
@@ -150,7 +150,7 @@ contract TrustfulRiskModule is RiskModule {
        * Note that this allowance won't be spent, so it can be set as the maximum amount of a single
        * premium even for multiple policies.
        */
-      payer = _msgSender();
+      payer = msg.sender;
     return payer;
   }
 
@@ -167,7 +167,7 @@ contract TrustfulRiskModule is RiskModule {
    * @param policy The policy previously created (from {NewPolicy} event)
    * @param payout The payout to transfer to the policy holder
    */
-  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external whenNotPaused {
+  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external {
     _policyPool.resolvePolicy(policy, payout);
   }
 
@@ -184,7 +184,7 @@ contract TrustfulRiskModule is RiskModule {
    * @param customerWon If true, policy.payout is transferred to the policy holder. If false, the policy is resolved
    * without payout and can't be longer claimed.
    */
-  function resolvePolicyFullPayout(Policy.PolicyData calldata policy, bool customerWon) external whenNotPaused {
+  function resolvePolicyFullPayout(Policy.PolicyData calldata policy, bool customerWon) external {
     _policyPool.resolvePolicyFullPayout(policy, customerWon);
   }
 

@@ -177,7 +177,7 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
   }
 
   /// @inheritdoc ERC20Upgradeable
-  function _update(address from, address to, uint256 value) internal virtual override whenNotPaused {
+  function _update(address from, address to, uint256 value) internal virtual override {
     uint256 valueScaled;
     if (from == address(0)) {
       // Mint
@@ -314,18 +314,14 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
     return _scr.scrAmount().mulDiv(WAD, this.totalSupply());
   }
 
-  function lockScr(uint256 scrAmount, uint256 policyInterestRate) external override onlyBorrower whenNotPaused {
+  function lockScr(uint256 scrAmount, uint256 policyInterestRate) external override onlyBorrower {
     require(scrAmount <= fundsAvailableToLock(), "Not enough funds available to cover the SCR");
     _tsScaled = _tsScaled.discreteChange(0, _scr); // Accrues interests so far, to update the scale before SCR changes
     _scr = _scr.add(scrAmount, policyInterestRate);
     emit SCRLocked(policyInterestRate, scrAmount);
   }
 
-  function unlockScr(
-    uint256 scrAmount,
-    uint256 policyInterestRate,
-    int256 adjustment
-  ) external override onlyBorrower whenNotPaused {
+  function unlockScr(uint256 scrAmount, uint256 policyInterestRate, int256 adjustment) external override onlyBorrower {
     // Require removed, since it shouldn't happen and if happens it will fail in _scr.sub
     // require(scrAmount <= uint256(_scr.scr), "Current SCR less than the amount you want to unlock");
     _tsScaled = _tsScaled.discreteChange(adjustment, _scr);
@@ -402,10 +398,7 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
     return totalSupply() - _tsScaled.minValue(); // Min value accepted by _tsScaled
   }
 
-  function internalLoan(
-    uint256 amount,
-    address receiver
-  ) external override onlyBorrower whenNotPaused returns (uint256) {
+  function internalLoan(uint256 amount, address receiver) external override onlyBorrower returns (uint256) {
     uint256 amountAsked = amount;
     amount = Math.min(amount, maxNegativeAdjustment());
     if (amount == 0) return amountAsked;
@@ -416,7 +409,7 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
     return amountAsked - amount;
   }
 
-  function repayLoan(uint256 amount, address onBehalfOf) external override whenNotPaused {
+  function repayLoan(uint256 amount, address onBehalfOf) external override {
     require(amount > 0, "EToken: amount should be greater than zero.");
     // Anyone can call this method, since it has to pay
     ETKLib.ScaledAmount storage loan = _loans[onBehalfOf];
