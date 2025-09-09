@@ -207,14 +207,12 @@ def test_etoken_erc20(tenv):
         etk.approve(None, "SPEND", expected_balance // _W(2))
 
     etk.approve("LP1", "SPEND", expected_balance // _W(2))
-    etk.increase_allowance("LP1", "SPEND", _W(50))
-    with pytest.raises(RevertError):
-        etk.decrease_allowance("LP1", "SPEND", _W(1000))
-    etk.decrease_allowance("LP1", "SPEND", _W(20))
+    etk.approve("LP1", "SPEND", etk.allowance("LP1", "SPEND") + _W(50))
+    etk.approve("LP1", "SPEND", etk.allowance("LP1", "SPEND") - _W(20))
     etk.allowance("LP1", "SPEND").assert_equal(expected_balance // _W(2) + _W(30))
-    etk.decrease_allowance("LP1", "SPEND", _W(30))
+    etk.approve("LP1", "SPEND", etk.allowance("LP1", "SPEND") - _W(30))
 
-    with pytest.raises(RevertError, match="allowance"):
+    with pytest.raises(RevertError, match="allowance|ERC20InsufficientAllowance"):
         etk.transfer_from("SPEND", "LP1", "LP2", expected_balance)
     etk.transfer_from("SPEND", "LP1", "LP2", expected_balance // _W(2))
     etk.allowance("LP1", "SPEND").assert_equal(_W(0))

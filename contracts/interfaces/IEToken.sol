@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.28;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
 /**
  * @title IEToken interface
  * @dev Interface for EToken smart contracts, these are the capital pools.
  * @author Ensuro
  */
-interface IEToken is IERC20 {
+interface IEToken {
   /**
    * @dev Enum of the different parameters that are configurable in an EToken.
    */

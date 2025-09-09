@@ -17,6 +17,7 @@
     "hardhat": "^2.26.2",
     "hardhat-contract-sizer": "^2.10.0",
     "hardhat-dependency-compiler": "^1.2.1",
+    "hardhat-ignore-warnings": "^0.2.12",
     "hardhat-tracer": "^3.2.1",
     "lcov-badge2": "^1.1.2",
     "prettier": "^3.6.2",
