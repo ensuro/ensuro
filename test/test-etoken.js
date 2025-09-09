@@ -207,16 +207,30 @@ describe("Etoken", () => {
     await yieldVault.connect(fakePA).mint(1n, etk);
     await yieldVault.discreteEarning(_A(100));
 
+    // Panics is trying to record an earnings to an ETK with totalSupply == 0
+    await expect(etk.recordEarnings()).to.be.revertedWithPanic(0x12);
+
+    const smallDeposit = _A("0.0001");
+    await pool.connect(lp).deposit(etk, smallDeposit);
+
     await expect(etk.recordEarnings())
       .to.emit(etk, "EarningsRecorded")
       .withArgs(_A(50) + 1n); // The vault has one virtual share, so the etk gets 50% of the earning
 
-    expect(await etk.totalSupply()).to.equal(_A(50) + 1n);
+    expect(await etk.totalSupply()).to.equal(_A(50) + 1n + smallDeposit);
+    expect(await etk.balanceOf(lp)).to.equal(_A(50) + 1n + smallDeposit);
     await pool.connect(lp).deposit(etk, _A(1000));
-    await expect(pool.connect(lp).withdraw(etk, MaxUint256)).to.emit(currency, "Transfer").withArgs(etk, lp, _A(1000));
 
-    // Check BEFORE RELEASE: is this correct? Who owns this total supply?
-    expect(await etk.totalSupply()).to.equal(_A(50) + 1n);
+    // The rounding error is big because the earning of 50 is disproportionated with respect to the investment
+    // of 0.0001
+    expect(await etk.balanceOf(lp)).to.closeTo(_A(1050) + 1n + smallDeposit, _A(1));
+
+    await expect(pool.connect(lp).withdraw(etk, MaxUint256))
+      .to.emit(currency, "Transfer")
+      .withArgs(etk, lp, captureAny.uint);
+
+    expect(await etk.totalSupply()).to.closeTo(_A(0), _A("0.55"));
+    expect(await etk.scaledTotalSupply()).to.closeTo(_A(0), 1n);
   });
 
   async function etokenFixture() {

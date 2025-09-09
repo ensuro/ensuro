@@ -14,23 +14,26 @@ import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 library ETKLib {
   using Math for uint256;
   using SafeCast for uint256;
+  using ETKLib for Scale;
+
+  type Scale is uint96;
 
   uint256 private constant SECONDS_PER_YEAR = 365 days;
-  uint96 private constant MIN_SCALE = 1e8; // 0.0000000001 == 1e-10 in wad
-  uint96 private constant WAD96 = 1e18;
+  uint256 private constant MIN_SCALE = 1e8; // 0.0000000001 == 1e-10 in wad
+  Scale private constant SCALE_ONE = Scale.wrap(1e18);
   uint256 internal constant WAD = 1e18;
+  int256 internal constant SWAD = 1e18;
 
   struct ScaledAmount {
     uint128 amount; // amount before applying any factor to take it to current value
-    uint96 scale; // in Wad - factor used to compute the current value from the amount at the lastUpdate time
+    Scale scale; // in Wad - factor used to compute the current value from the amount at the lastUpdate time
     uint32 lastUpdate; // Timestamp when the scale was computed. From that point to 'now', we increase with at a
     // given interestRate.
   }
 
   struct Scr {
     uint128 scr; // amount - Capital locked as Solvency Capital Requirement of backed up policies
-    uint64 interestRate; // in Wad - Interest rate received in exchange of solvency capital
-    uint64 tokenInterestRate; // in Wad - Overall interest rate of the token
+    uint128 interestRate; // in Wad - Interest rate received in exchange of solvency capital
   }
 
   /**
@@ -44,29 +47,18 @@ library ETKLib {
     }
   }
 
-  /*** BEGIN ScaledAmount functions ***/
-  function updateScale(ScaledAmount storage scaledAmount, uint256 interestRate) internal {
-    if (scaledAmount.lastUpdate >= uint32(block.timestamp)) return;
-    if (scaledAmount.amount == 0) {
-      scaledAmount.lastUpdate = uint32(block.timestamp);
-    } else {
-      scaledAmount.scale = getScale(scaledAmount, interestRate).toUint96();
-      scaledAmount.lastUpdate = uint32(block.timestamp);
+  /**
+   * @dev unchecked version of Math.mulDiv that returns the result of a * b / c. (signed version)
+   *
+   * Assumes a * b < 2**256
+   */
+  function _mulDiv(int256 a, int256 b, int256 c) internal pure returns (int256) {
+    unchecked {
+      return (a * b) / c;
     }
   }
 
-  function getScale(ScaledAmount storage scaledAmount, uint256 interestRate) internal view returns (uint256) {
-    uint32 now_ = uint32(block.timestamp);
-    if (scaledAmount.lastUpdate < now_) {
-      return
-        uint256(scaledAmount.scale).mulDiv(
-          ((interestRate * uint256(now_ - scaledAmount.lastUpdate)) / SECONDS_PER_YEAR) + WAD,
-          WAD
-        );
-    } else {
-      return scaledAmount.scale;
-    }
-  }
+  /*** BEGIN Scale functions ***/
 
   /**
    * @dev Converts a "scaled amount" (raw value, without applying earnings) to the current value after
@@ -75,8 +67,8 @@ library ETKLib {
    * @param scale        The scale to apply.
    * @return The current amount, that results of `scaledAmount * scale`
    */
-  function _scaledToCurrent(uint256 scaledAmount, uint256 scale) internal pure returns (uint256) {
-    return _mulDiv(scaledAmount, scale, WAD);
+  function toCurrent(Scale scale, uint256 scaledAmount) internal pure returns (uint256) {
+    return _mulDiv(scaledAmount, scale.toUint256(), WAD);
   }
 
   /**
@@ -85,72 +77,154 @@ library ETKLib {
    * @param scale        The scale to un-apply.
    * @return The scaled amount, that results of `currentAmount / scale`
    */
-  function _currentToScale(uint256 currentAmount, uint256 scale) internal pure returns (uint256) {
-    return _mulDiv(currentAmount, WAD, scale);
+  function toScaled(Scale scale, uint256 currentAmount) internal pure returns (uint256) {
+    return _mulDiv(currentAmount, WAD, scale.toUint256());
+  }
+
+  /**
+   * @dev Increases the scale for a given factor
+   * @param factor In wad
+   * @return newScale Returns a `newScale = scale * (1 + factor)`
+   */
+  function grow(Scale scale, uint256 factor) internal pure returns (Scale newScale) {
+    return Scale.wrap(_mulDiv(scale.toUint256(), factor + WAD, WAD).toUint96());
+  }
+
+  /**
+   * @dev Increases the scale for a given factor
+   * @param factor In wad
+   * @return newScale Returns a `newScale = scale * (1 + factor)`
+   */
+  function add(Scale scale, uint256 factor) internal pure returns (Scale newScale) {
+    return Scale.wrap((scale.toUint256() + factor).toUint96());
+  }
+
+  /**
+   * @dev Increases the scale for a given factor. The factor is signed, so the new scale can be lower. Checks
+   *      the resulting scale is greater than MIN_SCALE.
+   * @param factor In wad
+   * @return newScale Returns a `newScale = scale * (1 + factor)`
+   */
+  function add(Scale scale, int256 factor) internal pure returns (Scale newScale) {
+    uint256 newScaleInt = uint256(int256(scale.toUint256()) + factor);
+    require(newScaleInt >= MIN_SCALE, "Scale too small, can lead to rounding errors");
+    return Scale.wrap(newScaleInt.toUint96());
+  }
+
+  function toUint256(Scale scale) internal pure returns (uint256) {
+    return Scale.unwrap(scale);
+  }
+
+  /*** BEGIN ScaledAmount functions ***/
+
+  /**
+   * @dev Computes the scale of the scaledAmount projecting the last recorded value to the future asumming linear rate
+   */
+  function projectScale(ScaledAmount storage scaledAmount, uint256 interestRate) internal view returns (Scale) {
+    uint32 now_ = uint32(block.timestamp);
+    if (scaledAmount.lastUpdate < now_) {
+      return scaledAmount.scale.grow((interestRate * uint256(now_ - scaledAmount.lastUpdate)) / SECONDS_PER_YEAR);
+    } else {
+      return scaledAmount.scale;
+    }
+  }
+
+  /**
+   * @dev Computes the scale of the scaledAmount projecting the last recorded value to the future asumming linear rate
+   */
+  function projectScale(ScaledAmount storage scaledAmount, Scr storage scr) internal view returns (Scale ret) {
+    uint256 scrEarnings = earnings(scr, scaledAmount.lastUpdate);
+    if (scrEarnings == 0) return scaledAmount.scale;
+    ret = scaledAmount.scale.add(_mulDiv(scrEarnings, WAD, uint256(scaledAmount.amount)));
   }
 
   /**
    * @dev Returns the current amount (up to now) of the timescaled value
    */
   function getCurrentAmount(ScaledAmount storage scaledAmount, uint256 interestRate) internal view returns (uint256) {
-    return _scaledToCurrent(uint256(scaledAmount.amount), getScale(scaledAmount, interestRate));
-  }
-
-  function currentToScaledNow(
-    ScaledAmount storage scaledAmount,
-    uint256 interestRate,
-    uint256 currentAmount
-  ) internal view returns (uint256) {
-    return _currentToScale(currentAmount, getScale(scaledAmount, interestRate));
-  }
-
-  function scaledToCurrentNow(
-    ScaledAmount storage scaledAmount,
-    uint256 interestRate,
-    uint256 scaledAmountToConvert
-  ) internal view returns (uint256) {
-    return _scaledToCurrent(scaledAmountToConvert, getScale(scaledAmount, interestRate));
+    return projectScale(scaledAmount, interestRate).toCurrent(uint256(scaledAmount.amount));
   }
 
   function init(ScaledAmount storage scaledAmount) internal {
-    scaledAmount.scale = WAD96;
+    scaledAmount.scale = SCALE_ONE;
     scaledAmount.amount = 0;
     scaledAmount.lastUpdate = uint32(block.timestamp);
   }
 
-  function add(ScaledAmount storage scaledAmount, uint256 amount, uint256 interestRate) internal returns (uint256) {
-    updateScale(scaledAmount, interestRate);
-    uint256 scaledAdd = _currentToScale(amount, uint256(scaledAmount.scale));
-    scaledAmount.amount += scaledAdd.toUint128();
-    return scaledAdd;
+  function _add(
+    ScaledAmount storage scaledAmount,
+    uint256 amount,
+    Scale scale
+  ) internal view returns (ScaledAmount memory newScaledAmount, uint256 scaledAdd) {
+    scaledAdd = scale.toScaled(amount);
+    return (
+      ScaledAmount({
+        scale: scale,
+        amount: (uint256(scaledAmount.amount) + scaledAdd).toUint128(),
+        lastUpdate: uint32(block.timestamp)
+      }),
+      scaledAdd
+    );
   }
 
-  function sub(ScaledAmount storage scaledAmount, uint256 amount, uint256 interestRate) internal returns (uint256) {
-    updateScale(scaledAmount, interestRate);
-    uint256 scaledSub = _currentToScale(amount, uint256(scaledAmount.scale));
-    scaledAmount.amount -= scaledSub.toUint128();
-    if (scaledAmount.amount == 0) {
+  function _sub(
+    ScaledAmount storage scaledAmount,
+    uint256 amount,
+    Scale scale
+  ) internal view returns (ScaledAmount memory newScaledAmount, uint256 scaledSub) {
+    scaledSub = scale.toScaled(amount);
+    uint256 newAmount = uint256(scaledAmount.amount) - scaledSub;
+    if (newAmount == 0) {
       // Reset scale if amount == 0
-      scaledAmount.scale = WAD96;
+      scale = SCALE_ONE;
     }
-    return scaledSub;
+    return (
+      ScaledAmount({scale: scale, amount: newAmount.toUint128(), lastUpdate: uint32(block.timestamp)}),
+      scaledSub
+    );
+  }
+
+  function add(
+    ScaledAmount storage scaledAmount,
+    uint256 amount,
+    uint256 interestRate
+  ) internal view returns (ScaledAmount memory newScaledAmount, uint256 scaledAdd) {
+    return _add(scaledAmount, amount, projectScale(scaledAmount, interestRate));
+  }
+
+  function sub(
+    ScaledAmount storage scaledAmount,
+    uint256 amount,
+    uint256 interestRate
+  ) internal view returns (ScaledAmount memory newScaledAmount, uint256 scaledSub) {
+    return _sub(scaledAmount, amount, projectScale(scaledAmount, interestRate));
+  }
+
+  function add(
+    ScaledAmount storage scaledAmount,
+    uint256 amount,
+    Scr storage scr
+  ) internal view returns (ScaledAmount memory newScaledAmount, uint256 scaledAdd) {
+    return _add(scaledAmount, amount, projectScale(scaledAmount, scr));
+  }
+
+  function sub(
+    ScaledAmount storage scaledAmount,
+    uint256 amount,
+    Scr storage scr
+  ) internal view returns (ScaledAmount memory newScaledAmount, uint256 scaledSub) {
+    return _sub(scaledAmount, amount, projectScale(scaledAmount, scr));
   }
 
   function discreteChange(
     ScaledAmount storage scaledAmount,
     int256 amount,
-    uint256 interestRate
-  ) internal returns (uint256 newCurrentAmount) {
-    if (scaledAmount.amount == 0) {
-      add(scaledAmount, uint256(amount), interestRate);
-      return _scaledToCurrent(uint256(amount), uint256(scaledAmount.scale));
-    }
-    updateScale(scaledAmount, interestRate);
-    newCurrentAmount = uint256(int256(getCurrentAmount(scaledAmount, interestRate)) + amount);
-    scaledAmount.scale = newCurrentAmount.mulDiv(WAD, uint256(scaledAmount.amount)).toUint96();
-    // Consistency check - Uncomment for testing
-    // require(newCurrentAmount == getCurrentAmount(scaledAmount, interestRate), "Error");
-    require(scaledAmount.scale >= MIN_SCALE, "Scale too small, can lead to rounding errors");
+    Scr storage scr
+  ) internal view returns (ScaledAmount memory newScaledAmount) {
+    // Adds to the discrete change what was earned from SCR returns
+    amount += int256(earnings(scr, scaledAmount.lastUpdate));
+    Scale newScale = scaledAmount.scale.add(_mulDiv(amount, SWAD, int256(uint256(scaledAmount.amount))));
+    return ScaledAmount({amount: scaledAmount.amount, scale: newScale, lastUpdate: uint32(block.timestamp)});
   }
 
   function minValue(ScaledAmount storage scaledAmount) internal view returns (uint256) {
@@ -162,16 +236,10 @@ library ETKLib {
   function add(
     Scr storage scr,
     uint256 scrAmount_,
-    uint256 policyInterestRate,
-    uint256 totalSupply
+    uint256 policyInterestRate
   ) internal view returns (Scr memory modifiedScr) {
     if (scr.scr == 0) {
-      return
-        Scr({
-          scr: scrAmount_.toUint128(),
-          interestRate: policyInterestRate.toUint64(),
-          tokenInterestRate: _mulDiv(policyInterestRate, scrAmount_, totalSupply).toUint64()
-        });
+      return Scr({scr: scrAmount_.toUint128(), interestRate: policyInterestRate.toUint128()});
     } else {
       uint256 origScr = uint256(scr.scr);
       uint256 newScr = origScr + scrAmount_;
@@ -182,23 +250,17 @@ library ETKLib {
         newScr
       );
 
-      return
-        Scr({
-          scr: newScr.toUint128(),
-          interestRate: newInterestRate.toUint64(),
-          tokenInterestRate: _mulDiv(newInterestRate, newScr, totalSupply).toUint64()
-        });
+      return Scr({scr: newScr.toUint128(), interestRate: newInterestRate.toUint128()});
     }
   }
 
   function sub(
     Scr storage scr,
     uint256 scrAmount_,
-    uint256 policyInterestRate,
-    uint256 totalSupply
+    uint256 policyInterestRate
   ) internal view returns (Scr memory modifiedScr) {
     if (scr.scr == scrAmount_) {
-      return Scr({scr: 0, interestRate: 0, tokenInterestRate: 0});
+      return Scr({scr: 0, interestRate: 0});
     } else {
       uint256 origScr = uint256(scr.scr);
       uint256 newScr = origScr - scrAmount_;
@@ -209,20 +271,20 @@ library ETKLib {
         newScr
       );
 
-      return
-        Scr({
-          scr: newScr.toUint128(),
-          interestRate: newInterestRate.toUint64(),
-          tokenInterestRate: _mulDiv(newInterestRate, newScr, totalSupply).toUint64()
-        });
+      return Scr({scr: newScr.toUint128(), interestRate: newInterestRate.toUint128()});
     }
   }
 
-  function updateTokenInterestRate(Scr storage scr, uint256 totalSupply) internal {
-    if (totalSupply == 0) scr.tokenInterestRate = 0;
-    else {
-      scr.tokenInterestRate = _mulDiv(uint256(scr.interestRate), uint256(scr.scr), totalSupply).toUint64();
-    }
+  /**
+   * @dev Returns the earnings of the SCR since a given date
+   */
+  function earnings(Scr storage scr, uint32 since) internal view returns (uint256) {
+    return
+      _mulDiv(
+        uint256(scr.scr),
+        (uint256(scr.interestRate) * (block.timestamp - uint256(since))) / SECONDS_PER_YEAR,
+        WAD
+      );
   }
 
   function fundsAvailable(Scr storage scr, uint256 totalSupply) internal view returns (uint256) {
