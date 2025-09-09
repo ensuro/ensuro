@@ -24,6 +24,7 @@ library ETKLib {
   uint256 internal constant WAD = 1e18;
   int256 internal constant SWAD = 1e18;
 
+  // solhint-disable-next-line gas-struct-packing
   struct ScaledAmount {
     uint128 amount; // amount before applying any factor to take it to current value
     Scale scale; // in Wad - factor used to compute the current value from the amount at the lastUpdate time
@@ -136,13 +137,6 @@ library ETKLib {
     uint256 scrEarnings = earnings(scr, scaledAmount.lastUpdate);
     if (scrEarnings == 0) return scaledAmount.scale;
     ret = scaledAmount.scale.add(_mulDiv(scrEarnings, WAD, uint256(scaledAmount.amount)));
-  }
-
-  /**
-   * @dev Returns the current amount (up to now) of the timescaled value
-   */
-  function getCurrentAmount(ScaledAmount storage scaledAmount, uint256 interestRate) internal view returns (uint256) {
-    return projectScale(scaledAmount, interestRate).toCurrent(uint256(scaledAmount.amount));
   }
 
   function init(ScaledAmount storage scaledAmount) internal {

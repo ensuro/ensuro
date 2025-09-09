@@ -430,7 +430,7 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
 
   function getLoan(address borrower) public view virtual override returns (uint256) {
     ETKLib.ScaledAmount storage loan = _loans[borrower];
-    return loan.getCurrentAmount(internalLoanInterestRate());
+    return loan.projectScale(internalLoanInterestRate()).toCurrent(uint256(loan.amount));
   }
 
   function internalLoanInterestRate() public view returns (uint256) {
