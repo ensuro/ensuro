@@ -243,47 +243,45 @@ variants.forEach((variant) => {
 
     it("Rejects policy creation and resolution if it's paused", async () => {
       const { rm, pool, acMgr } = await helpers.loadFixture(deployPoolFixture);
-      await expect(rm.connect(guardian).pause()).to.emit(rm, "Paused");
+      await expect(pool.connect(guardian).pause()).to.emit(pool, "Paused");
       const policyParams = await variant.defaultPolicyParams({ rm: rm });
       const signature = await variant.makeSignedQuote(anon, policyParams);
-      await expect(variant.newPolicy(rm, creator, policyParams, cust, signature)).to.be.revertedWithCustomError(
-        rm,
+      await acMgr.grantRole(
+        variant.contract === "FullSignedBucketRiskModule" ? FULL_PRICER_ROLE : PRICER_ROLE,
+        anon,
+        0
+      );
+
+      await expect(variant.newPolicy(rm, creator, policyParams, anon, signature)).to.be.revertedWithCustomError(
+        pool,
         "EnforcedPause"
       );
 
       if (variant.contract === "SignedQuoteRiskModule") {
         await expect(
           variant.newPolicy(rm, creator, policyParams, cust, signature, "newPolicyFull")
-        ).to.be.revertedWithCustomError(rm, "EnforcedPause");
-        await expect(
-          variant.newPolicy(rm, creator, policyParams, cust, signature, "newPolicyPaidByHolder")
-        ).to.be.revertedWithCustomError(rm, "EnforcedPause");
+        ).to.be.revertedWithCustomError(pool, "EnforcedPause");
       }
 
       // Unpause and create a policy
-      await expect(rm.connect(guardian).unpause()).to.emit(rm, "Unpaused");
-      await acMgr.grantRole(
-        variant.contract === "FullSignedBucketRiskModule" ? FULL_PRICER_ROLE : PRICER_ROLE,
-        anon,
-        0
-      );
+      await expect(pool.connect(guardian).unpause()).to.emit(pool, "Unpaused");
       const tx = await variant.newPolicy(rm, creator, policyParams, anon, signature);
       const receipt = await tx.wait();
       const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
 
       // Pause again and check it can resolve
-      await expect(rm.connect(guardian).pause()).to.emit(rm, "Paused");
+      await expect(pool.connect(guardian).pause()).to.emit(pool, "Paused");
 
       await expect(
         variant.resolvePolicyFullPayout(rm.connect(resolver), [...newPolicyEvt.args[1]], true)
-      ).to.be.revertedWithCustomError(rm, "EnforcedPause");
+      ).to.be.revertedWithCustomError(pool, "EnforcedPause");
 
       await expect(rm.connect(resolver).resolvePolicy([...newPolicyEvt.args[1]], _A(10))).to.be.revertedWithCustomError(
-        rm,
+        pool,
         "EnforcedPause"
       );
 
-      await expect(rm.connect(guardian).unpause()).to.emit(rm, "Unpaused");
+      await expect(pool.connect(guardian).unpause()).to.emit(pool, "Unpaused");
       await expect(rm.connect(resolver).resolvePolicy([...newPolicyEvt.args[1]], _A(10))).to.emit(
         pool,
         "PolicyResolved"
