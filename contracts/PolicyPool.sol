@@ -18,8 +18,6 @@ import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
 import {IRiskModule} from "./interfaces/IRiskModule.sol";
 import {Policy} from "./Policy.sol";
 
-import {WadRayMath} from "./dependencies/WadRayMath.sol";
-
 /**
  * @title Ensuro PolicyPool contract
  * @dev This is the main contract of the protocol, it stores the eTokens (liquidity pools) and has the operations
@@ -34,7 +32,6 @@ import {WadRayMath} from "./dependencies/WadRayMath.sol";
  * @author Ensuro
  */
 contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721Upgradeable {
-  using WadRayMath for uint256;
   using Policy for Policy.PolicyData;
   using SafeERC20 for IERC20Metadata;
 

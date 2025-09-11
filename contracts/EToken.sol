@@ -13,8 +13,7 @@ import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {ILPWhitelist} from "./interfaces/ILPWhitelist.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
 import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
-import {WadRayMath} from "./dependencies/WadRayMath.sol";
-import {TimeScaled} from "./TimeScaled.sol";
+import {ETKLib} from "./ETKLib.sol";
 import {Governance} from "./Governance.sol";
 import {Reserve} from "./Reserve.sol";
 
@@ -29,11 +28,14 @@ import {Reserve} from "./Reserve.sol";
  * @author Ensuro
  */
 contract EToken is Reserve, ERC20Upgradeable, IEToken {
-  using WadRayMath for uint256;
-  using TimeScaled for TimeScaled.ScaledAmount;
+  using Math for uint256;
+  using ETKLib for ETKLib.ScaledAmount;
+  using ETKLib for ETKLib.Scr;
+  using ETKLib for ETKLib.Scale;
   using SafeERC20 for IERC20Metadata;
   using SafeCast for uint256;
 
+  uint256 internal constant WAD = 1e18;
   uint256 internal constant FOUR_DECIMAL_TO_WAD = 1e14;
   uint16 internal constant HUNDRED_PERCENT = 1e4;
   uint16 internal constant MAX_UR_MIN = 5e3; // 50% - Minimum value for Max Utilization Rate
@@ -41,18 +43,12 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
   uint16 internal constant LIQ_REQ_MAX = 13e3; // 130%
   uint16 internal constant INT_LOAN_IR_MAX = 5e3; // 50% - Maximum value for InternalLoan interest rate
 
-  TimeScaled.ScaledAmount internal _tsScaled; // Total Supply scaled
+  ETKLib.ScaledAmount internal _tsScaled; // Total Supply scaled
 
-  struct Scr {
-    uint128 scr; // in Wad - Capital locked as Solvency Capital Requirement of backed up policies
-    uint64 interestRate; // in Wad - Interest rate received in exchange of solvency capital
-    uint64 tokenInterestRate; // in Wad - Overall interest rate of the token
-  }
-
-  Scr internal _scr;
+  ETKLib.Scr internal _scr;
 
   // Mapping that keeps track of allowed borrowers (PremiumsAccount) and their current debt
-  mapping(address => TimeScaled.ScaledAmount) internal _loans;
+  mapping(address => ETKLib.ScaledAmount) internal _loans;
 
   struct PackedParams {
     ILPWhitelist whitelist; // Whitelist for deposits and transfers
@@ -72,7 +68,7 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
   event InternalBorrowerRemoved(address indexed borrower, uint256 defaultedDebt);
 
   modifier onlyBorrower() {
-    require(_loans[_msgSender()].scale != 0, "The caller must be a borrower");
+    require(_loans[_msgSender()].lastUpdate != 0, "The caller must be a borrower");
     _;
   }
 
@@ -172,12 +168,12 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
 
   /// @inheritdoc IERC20
   function totalSupply() public view virtual override returns (uint256) {
-    return _tsScaled.getCurrentAmount(tokenInterestRate());
+    return _tsScaled.projectScale(_scr).toCurrent(_tsScaled.amount);
   }
 
   /// @inheritdoc IERC20
   function balanceOf(address account) public view virtual override returns (uint256) {
-    return _tsScaled.scaledToCurrentNow(tokenInterestRate(), super.balanceOf(account));
+    return _tsScaled.projectScale(_scr).toCurrent(super.balanceOf(account));
   }
 
   /// @inheritdoc ERC20Upgradeable
@@ -185,24 +181,24 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
     uint256 valueScaled;
     if (from == address(0)) {
       // Mint
-      valueScaled = _tsScaled.add(value, tokenInterestRate());
+      (_tsScaled, valueScaled) = _tsScaled.add(value, _scr);
     } else if (to == address(0)) {
       // Burn
-      valueScaled = _tsScaled.sub(value, tokenInterestRate());
+      (_tsScaled, valueScaled) = _tsScaled.sub(value, _scr);
     } else {
       // Transfer
       require(
         address(_params.whitelist) == address(0) || _params.whitelist.acceptsTransfer(this, from, to, value),
         "Transfer not allowed - Liquidity Provider not whitelisted"
       );
-      valueScaled = _tsScaled.currentToScaledNow(tokenInterestRate(), value);
+      valueScaled = _tsScaled.projectScale(_scr).toScaled(value);
     }
 
     ERC20Storage storage $ = _getERC20StorageFromEToken();
     if (from != address(0)) {
       uint256 fromBalance = $._balances[from];
       if (fromBalance < valueScaled) {
-        revert ERC20InsufficientBalance(from, _tsScaled.scaledToCurrentNow(tokenInterestRate(), fromBalance), value);
+        revert ERC20InsufficientBalance(from, _tsScaled.projectScale(_scr).toCurrent(fromBalance), value);
       }
       unchecked {
         // Overflow not possible: valueScaled <= fromBalance <= totalSupply.
@@ -254,34 +250,17 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
 
   /** END Methods following AAVE's IScaledBalanceToken */
 
-  function _updateTokenInterestRate() internal {
-    uint256 totalSupply_ = this.totalSupply();
-    if (totalSupply_ == 0) _scr.tokenInterestRate = 0;
-    else {
-      uint256 newTokenInterestRate = uint256(_scr.interestRate).wadMul(uint256(_scr.scr)).wadDiv(totalSupply_);
-      _scr.tokenInterestRate = (newTokenInterestRate > type(uint64).max)
-        ? type(uint64).max
-        : newTokenInterestRate.toUint64();
-      // This is not the mathematically correct value, but the max we can set. The actual value of the total supply
-      // will be adjusted when the policies expire or are resolved and the SCR is unlocked.
-    }
-  }
-
   function getCurrentScale(bool updated) public view returns (uint256) {
-    if (updated) return _tsScaled.getScale(tokenInterestRate());
-    else return uint256(_tsScaled.scale);
+    if (updated) return _tsScaled.projectScale(_scr).toUint256();
+    else return _tsScaled.scale.toUint256();
   }
 
   function fundsAvailable() public view returns (uint256) {
-    uint256 totalSupply_ = this.totalSupply();
-    if (totalSupply_ > uint256(_scr.scr)) return totalSupply_ - uint256(_scr.scr);
-    else return 0;
+    return _scr.fundsAvailable(totalSupply());
   }
 
   function fundsAvailableToLock() public view returns (uint256) {
-    uint256 supply = this.totalSupply().wadMul(maxUtilizationRate());
-    if (supply > uint256(_scr.scr)) return supply - uint256(_scr.scr);
-    else return 0;
+    return _scr.fundsAvailable(totalSupply().mulDiv(maxUtilizationRate(), WAD));
   }
 
   function yieldVault() public view override returns (IERC4626) {
@@ -304,7 +283,7 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
   }
 
   function scr() public view virtual override returns (uint256) {
-    return uint256(_scr.scr);
+    return _scr.scrAmount();
   }
 
   function scrInterestRate() public view override returns (uint256) {
@@ -312,7 +291,11 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
   }
 
   function tokenInterestRate() public view override returns (uint256) {
-    return uint256(_scr.tokenInterestRate);
+    uint256 ts = totalSupply();
+    if (ts == 0) return 0;
+    else {
+      return uint256(_scr.interestRate).mulDiv(_scr.scr, ts);
+    }
   }
 
   function liquidityRequirement() public view returns (uint256) {
@@ -328,25 +311,14 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
   }
 
   function utilizationRate() public view returns (uint256) {
-    return uint256(_scr.scr).wadDiv(this.totalSupply());
+    return _scr.scrAmount().mulDiv(WAD, this.totalSupply());
   }
 
   function lockScr(uint256 scrAmount, uint256 policyInterestRate) external override onlyBorrower whenNotPaused {
-    require(scrAmount <= this.fundsAvailableToLock(), "Not enough funds available to cover the SCR");
-    _tsScaled.updateScale(tokenInterestRate());
-    if (_scr.scr == 0) {
-      _scr.scr = scrAmount.toUint128();
-      _scr.interestRate = policyInterestRate.toUint64();
-    } else {
-      uint256 origScr = uint256(_scr.scr);
-      uint256 newScr = origScr + scrAmount;
-      _scr.interestRate = (uint256(_scr.interestRate).wadMul(origScr) + policyInterestRate.wadMul(scrAmount))
-        .wadDiv(newScr)
-        .toUint64();
-      _scr.scr = newScr.toUint128();
-    }
+    require(scrAmount <= fundsAvailableToLock(), "Not enough funds available to cover the SCR");
+    _tsScaled = _tsScaled.discreteChange(0, _scr); // Accrues interests so far, to update the scale before SCR changes
+    _scr = _scr.add(scrAmount, policyInterestRate);
     emit SCRLocked(policyInterestRate, scrAmount);
-    _updateTokenInterestRate();
   }
 
   function unlockScr(
@@ -354,22 +326,11 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
     uint256 policyInterestRate,
     int256 adjustment
   ) external override onlyBorrower whenNotPaused {
-    require(scrAmount <= uint256(_scr.scr), "Current SCR less than the amount you want to unlock");
-    _tsScaled.updateScale(tokenInterestRate());
-
-    if (uint256(_scr.scr) == scrAmount) {
-      _scr.scr = 0;
-      _scr.interestRate = 0;
-    } else {
-      uint256 origScr = uint256(_scr.scr);
-      uint256 newScr = origScr - scrAmount;
-      _scr.interestRate = (uint256(_scr.interestRate).wadMul(origScr) - policyInterestRate.wadMul(scrAmount))
-        .wadDiv(newScr)
-        .toUint64();
-      _scr.scr = newScr.toUint128();
-    }
+    // Require removed, since it shouldn't happen and if happens it will fail in _scr.sub
+    // require(scrAmount <= uint256(_scr.scr), "Current SCR less than the amount you want to unlock");
+    _tsScaled = _tsScaled.discreteChange(adjustment, _scr);
+    _scr = _scr.sub(scrAmount, policyInterestRate);
     emit SCRUnlocked(policyInterestRate, scrAmount);
-    _discreteChange(adjustment);
   }
 
   function _yieldEarnings(int256 earnings) internal override {
@@ -378,8 +339,7 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
   }
 
   function _discreteChange(int256 amount) internal {
-    _tsScaled.discreteChange(amount, tokenInterestRate());
-    _updateTokenInterestRate();
+    _tsScaled = _tsScaled.discreteChange(amount, _scr);
   }
 
   function deposit(address provider, uint256 amount) external override onlyPolicyPool returns (uint256) {
@@ -388,13 +348,12 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
       "Liquidity Provider not whitelisted"
     );
     _mint(provider, amount);
-    _updateTokenInterestRate();
     require(utilizationRate() >= minUtilizationRate(), "Deposit rejected - Utilization Rate < min");
     return balanceOf(provider);
   }
 
   function totalWithdrawable() public view virtual override returns (uint256) {
-    uint256 locked = uint256(_scr.scr).wadMul(liquidityRequirement());
+    uint256 locked = _scr.scrAmount().mulDiv(liquidityRequirement(), WAD);
     uint256 totalSupply_ = totalSupply();
     if (totalSupply_ >= locked) return totalSupply_ - locked;
     else return 0;
@@ -416,18 +375,16 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
       "Liquidity Provider not whitelisted"
     );
     _burn(provider, amount);
-    _updateTokenInterestRate();
     _transferTo(provider, amount);
     return amount;
   }
 
   function addBorrower(address borrower) external override onlyPolicyPool {
     require(borrower != address(0), "EToken: Borrower cannot be the zero address");
-    TimeScaled.ScaledAmount storage loan = _loans[borrower];
-    if (loan.scale == 0) {
-      loan.init();
-      emit InternalBorrowerAdded(borrower);
-    }
+    ETKLib.ScaledAmount storage loan = _loans[borrower];
+    require(loan.lastUpdate == 0, "EToken: Borrower already added");
+    loan.init();
+    emit InternalBorrowerAdded(borrower);
   }
 
   function removeBorrower(address borrower) external override onlyPolicyPool {
@@ -452,8 +409,7 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
     uint256 amountAsked = amount;
     amount = Math.min(amount, maxNegativeAdjustment());
     if (amount == 0) return amountAsked;
-    TimeScaled.ScaledAmount storage loan = _loans[_msgSender()];
-    loan.add(amount, internalLoanInterestRate());
+    (_loans[_msgSender()], ) = _loans[_msgSender()].add(amount, internalLoanInterestRate());
     _discreteChange(-int256(amount));
     _transferTo(receiver, amount);
     emit InternalLoan(_msgSender(), amount, amountAsked);
@@ -463,9 +419,9 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
   function repayLoan(uint256 amount, address onBehalfOf) external override whenNotPaused {
     require(amount > 0, "EToken: amount should be greater than zero.");
     // Anyone can call this method, since it has to pay
-    TimeScaled.ScaledAmount storage loan = _loans[onBehalfOf];
-    require(loan.scale != 0, "Not a registered borrower");
-    loan.sub(amount, internalLoanInterestRate());
+    ETKLib.ScaledAmount storage loan = _loans[onBehalfOf];
+    require(loan.lastUpdate != 0, "Not a registered borrower");
+    (_loans[onBehalfOf], ) = loan.sub(amount, internalLoanInterestRate());
     _discreteChange(int256(amount));
     emit InternalLoanRepaid(onBehalfOf, amount);
     // Interaction at the end for security reasons
@@ -473,8 +429,8 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
   }
 
   function getLoan(address borrower) public view virtual override returns (uint256) {
-    TimeScaled.ScaledAmount storage loan = _loans[borrower];
-    return loan.getCurrentAmount(internalLoanInterestRate());
+    ETKLib.ScaledAmount storage loan = _loans[borrower];
+    return loan.projectScale(internalLoanInterestRate()).toCurrent(uint256(loan.amount));
   }
 
   function internalLoanInterestRate() public view returns (uint256) {

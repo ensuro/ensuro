@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.28;
-import {WadRayMath} from "./dependencies/WadRayMath.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IRiskModule} from "./interfaces/IRiskModule.sol";
 
 /**
@@ -11,8 +11,9 @@ import {IRiskModule} from "./interfaces/IRiskModule.sol";
  * @author Ensuro
  */
 library Policy {
-  using WadRayMath for uint256;
+  using Math for uint256;
 
+  uint256 internal constant WAD = 1e18;
   uint256 internal constant SECONDS_PER_YEAR = 365 days;
 
   // Active Policies
@@ -52,15 +53,15 @@ library Policy {
     uint40 expiration,
     uint40 start
   ) internal pure returns (PremiumComposition memory minPremium) {
-    minPremium.purePremium = payout.wadMul(lossProb.wadMul(rmParams.moc));
-    minPremium.jrScr = payout.wadMul(rmParams.jrCollRatio);
+    minPremium.purePremium = payout.mulDiv(lossProb, WAD).mulDiv(rmParams.moc, WAD);
+    minPremium.jrScr = payout.mulDiv(rmParams.jrCollRatio, WAD);
     if (minPremium.jrScr > minPremium.purePremium) {
       minPremium.jrScr -= minPremium.purePremium;
     } else {
       minPremium.jrScr = 0;
     }
 
-    minPremium.srScr = payout.wadMul(rmParams.collRatio);
+    minPremium.srScr = payout.mulDiv(rmParams.collRatio, WAD);
     if (minPremium.srScr > (minPremium.purePremium + minPremium.jrScr)) {
       minPremium.srScr -= minPremium.purePremium + minPremium.jrScr;
     } else {
@@ -68,13 +69,13 @@ library Policy {
     }
 
     // Calculate CoCs
-    minPremium.jrCoc = minPremium.jrScr.wadMul((rmParams.jrRoc * (expiration - start)) / SECONDS_PER_YEAR);
-    minPremium.srCoc = minPremium.srScr.wadMul((rmParams.srRoc * (expiration - start)) / SECONDS_PER_YEAR);
+    minPremium.jrCoc = minPremium.jrScr.mulDiv((rmParams.jrRoc * (expiration - start)) / SECONDS_PER_YEAR, WAD);
+    minPremium.srCoc = minPremium.srScr.mulDiv((rmParams.srRoc * (expiration - start)) / SECONDS_PER_YEAR, WAD);
     uint256 totalCoc = minPremium.jrCoc + minPremium.srCoc;
 
     minPremium.ensuroCommission =
-      minPremium.purePremium.wadMul(rmParams.ensuroPpFee) +
-      totalCoc.wadMul(rmParams.ensuroCocFee);
+      minPremium.purePremium.mulDiv(rmParams.ensuroPpFee, WAD) +
+      totalCoc.mulDiv(rmParams.ensuroCocFee, WAD);
 
     minPremium.totalPremium = minPremium.purePremium + minPremium.ensuroCommission + totalCoc;
   }
@@ -114,7 +115,7 @@ library Policy {
   }
 
   function jrInterestRate(PolicyData memory policy) internal pure returns (uint256) {
-    return ((policy.jrCoc * SECONDS_PER_YEAR) / (policy.expiration - policy.start)).wadDiv(policy.jrScr);
+    return ((policy.jrCoc * SECONDS_PER_YEAR) / (policy.expiration - policy.start)).mulDiv(WAD, policy.jrScr);
   }
 
   function jrAccruedInterest(PolicyData memory policy) internal view returns (uint256) {
@@ -122,7 +123,7 @@ library Policy {
   }
 
   function srInterestRate(PolicyData memory policy) internal pure returns (uint256) {
-    return ((policy.srCoc * SECONDS_PER_YEAR) / (policy.expiration - policy.start)).wadDiv(policy.srScr);
+    return ((policy.srCoc * SECONDS_PER_YEAR) / (policy.expiration - policy.start)).mulDiv(WAD, policy.srScr);
   }
 
   function srAccruedInterest(PolicyData memory policy) internal view returns (uint256) {

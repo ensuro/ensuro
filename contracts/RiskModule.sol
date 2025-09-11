@@ -2,7 +2,6 @@
 pragma solidity ^0.8.28;
 
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
-import {WadRayMath} from "./dependencies/WadRayMath.sol";
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
 import {IRiskModule} from "./interfaces/IRiskModule.sol";
@@ -18,7 +17,6 @@ import {Policy} from "./Policy.sol";
  */
 abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   using Policy for Policy.PolicyData;
-  using WadRayMath for uint256;
   using SafeCast for uint256;
 
   uint256 internal constant SECONDS_IN_YEAR_WAD = 31536000e18; /* 365 * 24 * 3600 * 10e18 */

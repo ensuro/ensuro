@@ -274,6 +274,8 @@ def test_multiple_policies(tenv):
     etk.scr_interest_rate.assert_equal((_W("0.0365") * _W(300) + _W("0.0730") * _W(600)) // _W(900))
 
     assert etk.scr == _W(900)
+    etk.token_interest_rate.assert_equal(_W((300 * 0.0365 + 600 * 0.073) / 1000))
+    etk.total_supply().assert_equal(_W(1000) + _W("0.03") * _W(2))  # ts still unchanged
     etk.funds_available.assert_equal(_W(100) + _W("0.03") * _W(2))
 
     tenv.time_control.fast_forward(3 * DAY)
@@ -297,7 +299,7 @@ def test_multiple_policies(tenv):
     etk.scr_interest_rate.assert_equal(_W("0.0730"))
     assert etk.scr == policy2.sr_scr
     etk.balance_of("LP1").assert_equal(expected_balance)
-    with etk.thru(pa), pytest.raises(RevertError, match="SCR"):
+    with etk.thru(pa), pytest.raises(RevertError, match="SCR|Arithmetic operation overflowed"):
         etk.unlock_scr(policy2.sr_scr + _W(1), policy2.sr_interest_rate, _W(0))  # Can't unlock more than SCR
 
     with etk.thru(pa):
@@ -413,7 +415,7 @@ def test_internal_loan(tenv):
         not_lended.assert_equal(_W(1001) - max_negative_adjustment)
         lended = _W(1001) - not_lended
         assert tenv.currency.balance_of("CUST1") == lended
-        assert etk.get_loan(pa) == lended
+        etk.get_loan(pa).assert_equal(lended)
 
         with pytest.raises(RevertError, match="EToken: amount should be greater than zero."):
             etk.repay_loan(pa, _W(0), pa)

@@ -131,7 +131,7 @@ variants.forEach((variant) => {
       expect(policyData.purePremium).to.equal(_A("100"));
       expect(policyData.jrScr).to.equal(_A("200"));
       expect(policyData.srScr).to.equal(_A("700"));
-      expect(policyData.jrCoc).to.equal(_A("1.643835"));
+      expect(policyData.jrCoc).to.equal(_A("1.643834"));
       expect(policyData.srCoc).to.equal(_A("5.753422"));
     });
 
@@ -308,12 +308,12 @@ variants.forEach((variant) => {
       expect(policy3Data.purePremium).to.equal(_A("111.1"));
       expect(policy3Data.jrScr).to.equal(_A("58.9"));
       expect(policy3Data.srScr).to.equal(_A("330"));
-      expect(policy3Data.jrCoc).to.equal(_A("1.210274"));
+      expect(policy3Data.jrCoc).to.equal(_A("1.210273"));
       expect(policy3Data.srCoc).to.equal(_A("7.865750"));
       expect(policy3Data.ensuroCommission).to.equal(_A("0"));
       expect(
         await rm.getMinimumPremiumForBucket(policy3Params.payout, policy3Params.lossProb, policy3Params.expiration, 15)
-      ).to.equal(_A("120.176024"));
+      ).to.equal(_A("120.176023"));
 
       // Policy with bucketId = 0 uses defaults
       const policy4Params = await defaultPolicyParamsWithBucket({ rm: rm, lossProb: _W("0.2") });
