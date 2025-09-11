@@ -233,20 +233,6 @@ describe("FullSignedBucketRiskModule contract tests", function () {
     expect(policy3Data.ensuroCommission).to.equal(_W("0"));
   });
 
-  it("Does not allow policy replacement when paused", async () => {
-    //
-    const { rm, policy } = await helpers.loadFixture(riskModuleWithPolicyFixture);
-
-    await rm.pause();
-
-    const replacementPolicyParams = await defaultPolicyParamsWithParams({ rm });
-    const replacementPolicySignature = await makeSignedQuote(fullSigner, replacementPolicyParams, makeFullQuoteMessage);
-
-    await expect(
-      rm.replacePolicyFullParams(policy, ...replacePolicyParams(replacementPolicyParams, replacementPolicySignature))
-    ).to.be.revertedWithCustomError(rm, "EnforcedPause");
-  });
-
   it("Allows to replace policies", async () => {
     const { rm, pool, policy, policyParams, paramsSameAsDefaults } =
       await helpers.loadFixture(riskModuleWithPolicyFixture);

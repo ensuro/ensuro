@@ -160,7 +160,7 @@ contract SignedBucketRiskModule is RiskModule {
     bytes32 quoteSignatureR,
     bytes32 quoteSignatureVS,
     uint40 quoteValidUntil
-  ) external whenNotPaused returns (uint256) {
+  ) external returns (uint256) {
     _checkSignature(
       payout,
       premium,
@@ -172,7 +172,7 @@ contract SignedBucketRiskModule is RiskModule {
       quoteSignatureVS,
       quoteValidUntil
     );
-    return _newPolicySigned(payout, premium, lossProb, expiration, policyData, bucketId, _msgSender(), onBehalfOf).id;
+    return _newPolicySigned(payout, premium, lossProb, expiration, policyData, bucketId, msg.sender, onBehalfOf).id;
   }
 
   /**
@@ -209,7 +209,7 @@ contract SignedBucketRiskModule is RiskModule {
     bytes32 quoteSignatureR,
     bytes32 quoteSignatureVS,
     uint40 quoteValidUntil
-  ) external whenNotPaused returns (uint256) {
+  ) external returns (uint256) {
     _checkSignature(
       payout,
       premium,
@@ -228,13 +228,13 @@ contract SignedBucketRiskModule is RiskModule {
         premium,
         lossProb,
         expiration,
-        _msgSender(),
+        msg.sender,
         _makeInternalId(policyData),
         bucketParams(bucketId)
       ).id;
   }
 
-  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external whenNotPaused {
+  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external {
     _policyPool.resolvePolicy(policy, payout);
   }
 

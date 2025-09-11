@@ -241,15 +241,15 @@ describe("RiskModule contract", function () {
   });
 
   it("Rejects replace policy if the RM is paused", async () => {
-    const { policy, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
+    const { policy, rm, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
 
-    await expect(rm.connect(owner).pause()).to.emit(rm, "Paused");
+    await expect(pool.connect(owner).pause()).to.emit(pool, "Paused");
 
     await expect(
       rm
         .connect(backend)
         .replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, policy.expiration, 1234)
-    ).to.be.revertedWithCustomError(rm, "EnforcedPause");
+    ).to.be.revertedWithCustomError(pool, "EnforcedPause");
   });
 
   it("Should emit PolicyReplaced when policy is replaced", async () => {

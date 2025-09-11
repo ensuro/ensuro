@@ -414,7 +414,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    */
   function receiveGrant(uint256 amount) external {
     _storePurePremiumWon(amount);
-    currency().safeTransferFrom(_msgSender(), address(this), amount);
+    currency().safeTransferFrom(msg.sender, address(this), amount);
     emit WonPremiumsInOut(true, amount);
   }
 
@@ -449,7 +449,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     return amount;
   }
 
-  function policyCreated(Policy.PolicyData calldata policy) external override onlyPolicyPool whenNotPaused {
+  function policyCreated(Policy.PolicyData calldata policy) external override onlyPolicyPool {
     _activePurePremiums += policy.purePremium;
     if (policy.jrScr > 0) _juniorEtk.lockScr(policy.jrScr, policy.jrInterestRate());
     if (policy.srScr > 0) _seniorEtk.lockScr(policy.srScr, policy.srInterestRate());
@@ -458,7 +458,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   function policyReplaced(
     Policy.PolicyData calldata oldPolicy,
     Policy.PolicyData calldata newPolicy
-  ) external override onlyPolicyPool whenNotPaused {
+  ) external override onlyPolicyPool {
     if (oldPolicy.srScr > 0 && newPolicy.srScr > 0) {
       int256 diff = int256(oldPolicy.srInterestRate()) - int256(newPolicy.srInterestRate());
       require(SignedMath.abs(diff) < 1e14, "Interest rate can't change");
@@ -483,7 +483,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     address policyHolder,
     Policy.PolicyData calldata policy,
     uint256 payout
-  ) external override onlyPolicyPool whenNotPaused {
+  ) external override onlyPolicyPool {
     _activePurePremiums -= policy.purePremium;
     uint256 borrowFromScr = _payFromPremiums(int256(payout) - int256(policy.purePremium));
     if (borrowFromScr != 0) {
@@ -522,7 +522,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    *
    * @return available The funds still available after repayment
    */
-  function repayLoans() external whenNotPaused returns (uint256 available) {
+  function repayLoans() external returns (uint256 available) {
     available = fundsAvailable();
     if (available != 0 && address(_seniorEtk) != address(0)) available = _repayLoan(available, _seniorEtk);
     if (available != 0 && address(_juniorEtk) != address(0)) available = _repayLoan(available, _juniorEtk);
@@ -554,7 +554,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     return fundsAvailable_ - repayAmount;
   }
 
-  function policyExpired(Policy.PolicyData calldata policy) external override onlyPolicyPool whenNotPaused {
+  function policyExpired(Policy.PolicyData calldata policy) external override onlyPolicyPool {
     _activePurePremiums -= policy.purePremium;
     _storePurePremiumWon(policy.purePremium);
     _unlockScr(policy);
