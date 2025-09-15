@@ -11,7 +11,9 @@ describe("Policy initialize", () => {
     const { pool } = await helpers.loadFixture(poolFixture);
 
     const policyArgs = await makePolicyArgs({ premium: _A("2"), payout: _A("1") });
-    await expect(pool.initializeAndEmitPolicy(...policyArgs)).to.be.revertedWith("Premium cannot be more than payout");
+    await expect(pool.initializeAndEmitPolicy(...policyArgs))
+      .to.be.revertedWithCustomError(pool, "PremiumExceedsPayout")
+      .withArgs(_A(2), _A(1));
   });
 
   it("Correctly collateralizes with jr etoken", async () => {

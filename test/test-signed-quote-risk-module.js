@@ -303,12 +303,12 @@ variants.forEach((variant) => {
         ).to.changeTokenBalance(currency, anon, policyParams.payout);
       });
 
-      it("Creates a policy where using newPolicyPaidByHolder where payer == msg.sender", async () => {
+      it("Creates a policy where using newPolicy where holder == msg.sender", async () => {
         const { rm, pool, currency } = await helpers.loadFixture(deployPoolFixture);
         const policyParams = await variant.defaultPolicyParams({ rm: rm, premium: _A(200) });
         const signature = await variant.makeSignedQuote(signer, policyParams);
 
-        const tx = await variant.newPolicy(rm, creator, policyParams, creator, signature, "newPolicyPaidByHolder");
+        const tx = await variant.newPolicy(rm, creator, policyParams, creator, signature, "newPolicy");
         const receipt = await tx.wait();
         const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
 
@@ -317,18 +317,14 @@ variants.forEach((variant) => {
         ).to.changeTokenBalance(currency, creator, policyParams.payout);
       });
 
-      it("Creates a policy where payer != msg.sender using newPolicyPaidByHolder", async () => {
+      it("Creates a policy where holder != msg.sender using newPolicy", async () => {
         const { rm, pool, currency } = await helpers.loadFixture(deployPoolFixture);
         const policyParams = await variant.defaultPolicyParams({ rm: rm, premium: _A(200) });
         const signature = await variant.makeSignedQuote(signer, policyParams);
-        await expect(
-          variant.newPolicy(rm, creator, policyParams, cust, signature, "newPolicyPaidByHolder")
-        ).to.be.revertedWith("Sender is not authorized to create policies onBehalfOf");
 
-        await currency.connect(cust).approve(creator, _A(200));
-        await currency.connect(cust).approve(pool, _A(200));
+        await currency.connect(creator).approve(pool, _A(200));
 
-        const tx = await variant.newPolicy(rm, creator, policyParams, cust, signature, "newPolicyPaidByHolder");
+        const tx = await variant.newPolicy(rm, creator, policyParams, cust, signature, "newPolicy");
         const receipt = await tx.wait();
         const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
 

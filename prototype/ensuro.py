@@ -11,6 +11,7 @@ from ethproto.contracts import (
     ContractProxyField,
     ERC20Token,
     ERC721Token,
+    RevertCustomError,
     WadField,
     external,
     require,
@@ -170,22 +171,20 @@ class RiskModule(AccessControlContract):
         if premium is None:
             premium = self.get_minimum_premium(payout, loss_prob, expiration)
 
-        require(premium < payout, "Premium must be less than payout")
-        require(expiration > start, "Expiration must be in the future")
-        require(((expiration - start) / SECONDS_IN_HOUR) < self.max_duration, "Policy exceeds max duration")
-        require(on_behalf_of is not None, "Customer can't be zero address")
+        require(premium < payout, self._error("PremiumExceedsPayout", premium, payout))
+        require(expiration > start, self._error("ExpirationMustBeInTheFuture", expiration, start))
         require(
-            self.policy_pool.currency.allowance(payer, self.policy_pool.contract_id) >= premium,
-            "You must allow ENSURO to transfer the premium",
+            ((expiration - start) / SECONDS_IN_HOUR) < self.max_duration,
+            self._error("PolicyExceedsMaxDuration", self.max_duration),
         )
+        require(on_behalf_of is not None, self._error("InvalidCustomer", on_behalf_of))
         require(
-            self._running_as == payer
-            or self.policy_pool.currency.allowance(payer, self._running_as) >= premium,
-            "Payer must allow PRICER to transfer the premium",
+            self._running_as == payer,
+            "Customer paying not supported anymore - Payer must be caller...",
         )
         require(
             payout <= self.max_payout_per_policy,
-            f"Policy Payout is more than maximum: {payout} > maximum {self.max_payout_per_policy}",
+            self._error("PayoutExceedsMaxPerPolicy", payout, self.max_payout_per_policy),
         )
 
         policy = Policy(
@@ -201,7 +200,7 @@ class RiskModule(AccessControlContract):
         active_exposure = self.active_exposure + policy.payout
         require(
             active_exposure <= self.exposure_limit,
-            "RiskModule: Exposure limit exceeded",
+            self._error("ExposureLimitExceeded", active_exposure, self.exposure_limit),
         )
         self.active_exposure = active_exposure
 
@@ -223,21 +222,15 @@ class RiskModule(AccessControlContract):
             "Policy replacement must be greater or equal than old policy",
         )
 
-        require(premium < payout, "Premium must be less than payout")
-        require(((expiration - start) / SECONDS_IN_HOUR) < self.max_duration, "Policy exceeds max duration")
+        require(premium < payout, self._error("PremiumExceedsPayout", premium, payout))
         require(
-            self.policy_pool.currency.allowance(payer, self.policy_pool.contract_id)
-            >= (premium - old_policy.premium),
-            "You must allow ENSURO to transfer the premium",
+            ((expiration - start) / SECONDS_IN_HOUR) < self.max_duration,
+            self._error("PolicyExceedsMaxDuration", self.max_duration),
         )
-        require(
-            self._running_as == payer
-            or self.policy_pool.currency.allowance(payer, self._running_as) >= (old_policy.premium - premium),
-            "Payer must allow PRICER to transfer the premium",
-        )
+        require(self._running_as == payer, "Payer must be caller")
         require(
             payout <= self.max_payout_per_policy,
-            f"Policy Payout is more than maximum: {payout} > maximum {self.max_payout_per_policy}",
+            self._error("PayoutExceedsMaxPerPolicy", payout, self.max_payout_per_policy),
         )
 
         policy = Policy(
@@ -253,7 +246,7 @@ class RiskModule(AccessControlContract):
         active_exposure = self.active_exposure + policy.payout - old_policy.payout
         require(
             active_exposure <= self.exposure_limit,
-            "RiskModule: Exposure limit exceeded",
+            self._error("ExposureLimitExceeded", active_exposure, self.exposure_limit),
         )
         self.active_exposure = active_exposure
 
@@ -366,7 +359,11 @@ class Policy(Model):
         )
         require(
             self.premium >= (self.pure_premium + self.jr_coc + self.sr_coc + self.ensuro_commission),
-            "Premium less than minimum",
+            RevertCustomError(
+                "PremiumLessThanMinimum",
+                self.premium,
+                self.pure_premium + self.jr_coc + self.sr_coc + self.ensuro_commission,
+            ),
         )
         self.partner_commission = (
             self.premium - self.pure_premium - self.jr_coc - self.sr_coc - self.ensuro_commission
@@ -537,7 +534,7 @@ class EToken(ReserveMixin, ERC20Token):
         self._update_current_scale()
         require(
             scr_amount <= self.funds_available_to_lock,
-            "Not enough funds available to cover the SCR " + self.symbol,
+            self._error("NotEnoughScrFunds", scr_amount, self.funds_available_to_lock),
         )
 
         if self.scr == 0:
@@ -579,7 +576,7 @@ class EToken(ReserveMixin, ERC20Token):
         self.scale_factor = new_total_supply // self._base_supply()
         require(
             self.scale_factor >= self.MIN_SCALE,
-            "Scale too small, can lead to rounding errors",
+            self._error("ScaleTooSmall", self.scale_factor),
         )
         self._update_token_interest_rate()
 
@@ -601,7 +598,7 @@ class EToken(ReserveMixin, ERC20Token):
         # Pre condition: the pool needs to transfer the amount
         require(
             self.whitelist is None or self.whitelist.accepts_deposit(self, provider, amount),
-            "Liquidity Provider not whitelisted",
+            self._error("DepositNotWhitelisted", provider, amount),
         )
         self._update_current_scale()
         scaled_amount = amount // self.scale_factor
@@ -610,7 +607,7 @@ class EToken(ReserveMixin, ERC20Token):
         self._check_balance()
         require(
             self.utilization_rate >= self.min_utilization_rate,
-            "Deposit rejected - Utilization Rate < min",
+            self._error("UtilizationRateTooLow", self.utilization_rate, self.min_utilization_rate),
         )
         return self.balance_of(provider)
 
@@ -624,7 +621,7 @@ class EToken(ReserveMixin, ERC20Token):
     def _transfer(self, sender, recipient, amount):
         require(
             self.whitelist is None or self.whitelist.accepts_transfer(self, sender, recipient, amount),
-            "Transfer not allowed - Liquidity Provider not whitelisted",
+            self._error("TransferNotWhitelisted", sender, recipient, amount),
         )
         scaled_amount = amount // self._calculate_current_scale()
         super()._transfer(sender, recipient, scaled_amount)
@@ -643,11 +640,11 @@ class EToken(ReserveMixin, ERC20Token):
             amount = max_withdraw
         if amount == 0:
             return Wad(0)
-        require(amount <= max_withdraw, "amount > max withdrawable")
+        require(amount <= max_withdraw, self._error("ExceedsMaxWithdraw", amount, max_withdraw))
 
         require(
             self.whitelist is None or self.whitelist.accepts_withdrawal(self, provider, amount),
-            "Liquidity Provider not whitelisted",
+            self._error("WithdrawalNotWhitelisted", provider, amount),
         )
 
         scaled_amount = amount // self.scale_factor
@@ -660,7 +657,7 @@ class EToken(ReserveMixin, ERC20Token):
 
     @external
     def add_borrower(self, borrower):
-        require(borrower is not None, "EToken: Borrower cannot be the zero address")
+        require(borrower is not None, self._error("InvalidBorrower", borrower))
         # Must be called ONLY by the PolicyPool
         borrower = ContractProxyField().adapt(borrower)
         if borrower not in self.loans:
@@ -685,7 +682,7 @@ class EToken(ReserveMixin, ERC20Token):
             if amount <= 0:
                 return amount_asked
         loan = self.loans.get(ContractProxyField().adapt(borrower), None)
-        require(loan is not None, "Borrower not registered")
+        require(loan is not None, self._error("InvalidBorrower", borrower))
         loan.add(amount, self.internal_loan_interest_rate)
         self._update_current_scale()
         self._discrete_earning(-amount)
@@ -695,10 +692,9 @@ class EToken(ReserveMixin, ERC20Token):
 
     @external
     def repay_loan(self, msg_sender, amount, on_behalf_of):
-        require(amount > 0, "EToken: amount should be greater than zero.")
         borrower = on_behalf_of
         loan = self.loans.get(ContractProxyField().adapt(borrower), None)
-        require(loan is not None, "Borrower not registered")
+        require(loan is not None, self._error("InvalidBorrower", borrower))
         loan.sub(amount, self.internal_loan_interest_rate)
         self._update_current_scale()
         self._discrete_earning(amount)
@@ -707,8 +703,7 @@ class EToken(ReserveMixin, ERC20Token):
 
     def get_loan(self, borrower):
         loan = self.loans.get(ContractProxyField().adapt(borrower), None)
-        if loan is None:
-            return _W(0)
+        require(loan is not None, self._error("InvalidBorrower", borrower))
         return loan.get_scaled_amount(self.internal_loan_interest_rate)
 
     @external
@@ -787,15 +782,18 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
     def set_deficit_ratio(self, new_ratio, adjustment):
         require(
             new_ratio <= _W(1) and new_ratio >= 0,
-            "Validation: deficitRatio must be <= 1",
+            self._error("InvalidDeficitRatio", new_ratio),
         )
         require(
             (int(new_ratio) // 1e14) * 1e14 == new_ratio,
-            "Validation: only up to 4 decimals allowed",
+            self._error("InvalidDeficitRatio", new_ratio),
         )
         max_deficit = -self.active_pure_premiums * new_ratio
         if not adjustment:
-            require(self.surplus >= max_deficit, "Validation: surplus must be >= maxDeficit")
+            require(
+                self.surplus >= max_deficit,
+                self._error("DeficitExceedsMaxDeficit", self.surplus, max_deficit),
+            )
             self.deficit_ratio = new_ratio
             return
 
@@ -827,11 +825,11 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
 
     @external
     def withdraw_won_premiums(self, amount, destination):
-        require(destination is not None, "PremiumsAccount: destination cannot be the zero address")
+        require(destination is not None, self._error("InvalidDestination", destination))
         s = self.surplus if self.surplus >= 0 else 0
-        if amount > s:
+        if amount is None:
             amount = s
-        require(amount > 0, "No premiums to withdraw")
+        require(amount <= s, self._error("WithdrawExceedsSurplus", amount, self.surplus))
         self._pay_from_premiums(amount)
         self._transfer_to(destination, amount)
         return amount
@@ -854,7 +852,7 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
                 amount_left = self.senior_etk.internal_loan(self, amount_left, receiver)
             require(
                 amount_left == Wad(0),
-                "Don't know where to source the rest of the money",
+                self._error("CannotBeBorrowed", amount_left),
             )
 
     def _max_deficit(self):
@@ -1039,7 +1037,7 @@ class PolicyPool(ERC721Token):
 
     @external
     def replace_policy(self, old_policy, new_policy, payer, internal_id):
-        require(old_policy.id in self.policies, "Policy not found")
+        require(old_policy.id in self.policies, self._error("PolicyNotFound", old_policy.id))
         old_policy = self.policies[old_policy.id]  # To make sure is the same, in solidity check with hash
         require(new_policy.start == old_policy.start, "Both policies must have the same starting date")
         require(
@@ -1098,22 +1096,28 @@ class PolicyPool(ERC721Token):
 
     @external
     def expire_policy(self, policy_id):
-        require(policy_id in self.policies, "Policy not found")
+        require(policy_id in self.policies, self._error("PolicyNotFound", policy_id))
         policy = self.policies[policy_id]
-        require(policy.expiration <= time_control.now, "Policy not expired yet")
+        require(
+            policy.expiration <= time_control.now,
+            self._error("PolicyNotExpired", policy_id, policy.expiration, time_control.now),
+        )
         return self.resolve_policy(policy_id, Wad(0))
 
     @external
     def expire_policies(self, policy_ids):
         for policy_id in policy_ids:
-            require(policy_id in self.policies, "Policy not found")
+            require(policy_id in self.policies, self._error("PolicyNotFound", policy_id))
             policy = self.policies[policy_id]
-            require(policy.expiration <= time_control.now, "Policy not expired yet")
+            require(
+                policy.expiration <= time_control.now,
+                self._error("PolicyNotExpired", policy_id, policy.expiration, time_control.now),
+            )
             self.resolve_policy(policy_id, Wad(0))
 
     @external
     def resolve_policy(self, policy_id, payout):
-        require(policy_id in self.policies, "Policy not found")
+        require(policy_id in self.policies, self._error("PolicyNotFound", policy_id))
         policy = self.policies[policy_id]
         if isinstance(payout, bool):
             payout = policy.payout if payout is True else Wad(0)
@@ -1122,7 +1126,7 @@ class PolicyPool(ERC721Token):
 
         require(
             payout == 0 or policy.expiration > time_control.now,
-            "Can't pay expired policy",
+            self._error("PolicyAlreadyExpired", policy.id),
         )
 
         if customer_won:
@@ -1162,7 +1166,7 @@ class LPManualWhitelist(Contract):
     def _check_defaults(self, default_status):
         require(
             all(st != self.ST_UNDEFINED for st in default_status),
-            "You need to define the default status for all the operations",
+            self._error("InvalidWhitelistStatus", default_status),
         )
 
     def whitelist_address(self, address, whitelisted):

@@ -83,8 +83,7 @@ def test_transfers(tenv):
     _deposit(pool, "eUSD1YEAR", "LP1", scr)
     etoken = pool.etokens["eUSD1YEAR"]
 
-    pool.currency.approve("CUST1", pool.contract_id, _W(100))
-    pool.currency.approve("CUST1", rm.owner, _W(100))
+    pool.currency.approve(rm.owner, pool.contract_id, _W(100))
 
     policy = rm.new_policy(
         payout=_W(3600),
@@ -167,8 +166,7 @@ def test_transfers_usdc(tenv):
     etoken = pool.etokens["eUSD1YEAR"]
     _deposit(pool, "eUSD1YEAR", "LP1", scr)
 
-    pool.currency.approve("CUST1", pool.contract_id, Wad(_D(100)))
-    pool.currency.approve("CUST1", rm.owner, Wad(_D(100)))
+    pool.currency.approve(rm.owner, pool.contract_id, Wad(_D(100)))
 
     policy = rm.new_policy(
         payout=Wad(_D(3600)),
@@ -352,12 +350,6 @@ def test_walkthrough(tenv):
           amount: 2000
         - user: LP3
           amount: 2000
-        - user: CUST1
-          amount: 1
-        - user: CUST2
-          amount: 2
-        - user: CUST3
-          amount: 130
     etokens:
       - name: eUSD1YEAR
     roles:
@@ -390,7 +382,7 @@ def test_walkthrough(tenv):
 
     assert eUSD1YEAR.balance_of("LP1") == _W(1000)  # Unchanged
 
-    with pytest.raises(RevertError, match="You must allow ENSURO"):
+    with pytest.raises(RevertError, match="ERC20InsufficientAllowance"):
         policy = policy_1 = policy = rm.new_policy(
             payout=_W(36),
             premium=_W(1),
@@ -400,8 +392,7 @@ def test_walkthrough(tenv):
             internal_id=111,
         )
 
-    pool.currency.approve("CUST1", pool.contract_id, _W(1))
-    pool.currency.approve("CUST1", rm.owner, _W(1))
+    pool.currency.approve(rm.owner, pool.contract_id, _W(1))
     policy_1 = policy = rm.new_policy(
         payout=_W(36),
         premium=_W(1),
@@ -437,12 +428,11 @@ def test_walkthrough(tenv):
     balances_1y = dict((lp, eUSD1YEAR.balance_of(lp)) for lp in ("LP1", "LP2", "LP3"))
     shares_1y = _calculate_shares(balances_1y, eUSD1YEAR.total_supply())
 
-    pool.currency.approve("CUST2", pool.contract_id, _W(2))
-    pool.currency.approve("CUST2", rm.owner, _W(2))
+    pool.currency.approve(rm.owner, pool.contract_id, _W(2))
 
     # With 10 days, the same interest rate is not possible, need to reduce the interest to keep
     # the same premium proportion
-    with pytest.raises(RevertError, match="Premium less than minimum"):
+    with pytest.raises(RevertError, match="PremiumLessThanMinimum"):
         policy_2 = policy = rm.new_policy(
             payout=_W(72),
             premium=_W(2),
@@ -534,8 +524,7 @@ def test_walkthrough(tenv):
 
     policies = []
 
-    pool.currency.approve("CUST3", pool.contract_id, _W(130))
-    pool.currency.approve("CUST3", rm.owner, _W(130))
+    pool.currency.approve(rm.owner, pool.contract_id, _W(130))
 
     won_count = 0
 
@@ -655,11 +644,11 @@ def test_nfts(tenv):
     rm = pool.risk_modules["Roulette"]
 
     usd = pool.currency
+    owner_initial_balance = usd.balance_of(rm.owner)
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(3503))
 
-    usd.approve("CUST1", pool.contract_id, _W(100))
-    usd.approve("CUST1", rm.owner, _W(100))
+    usd.approve(rm.owner, pool.contract_id, _W(100))
     policy = rm.new_policy(
         payout=_W(3600),
         premium=_W(100),
@@ -678,12 +667,12 @@ def test_nfts(tenv):
 
     timecontrol.fast_forward(WEEK - DAY)
     rm.resolve_policy(policy.id, True)
-    assert usd.balance_of("CUST1") == _W(100)
+    assert usd.balance_of(rm.owner) == owner_initial_balance - _W(100)
     assert usd.balance_of("CUST2") == _W(3600)
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(3503), assert_deposit=False)
-    usd.approve("CUST1", pool.contract_id, _W(100))
-    with pytest.raises(RevertError, match="Already exists|token already minted|ERC721InvalidSender"):
+    usd.approve(rm.owner, pool.contract_id, _W(100))
+    with pytest.raises(RevertError, match="ERC721InvalidSender|ERC721: token already minted"):
         policy = rm.new_policy(
             payout=_W(1800),
             premium=_W(50),
@@ -714,8 +703,6 @@ def test_partial_payout(tenv):
         initial_balances:
         - user: LP1
           amount: 3500
-        - user: CUST1
-          amount: 100
     etokens:
       - name: eUSD1YEAR
     """
@@ -729,8 +716,7 @@ def test_partial_payout(tenv):
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(3500))
 
-    usd.approve("CUST1", pool.contract_id, _W(100))
-    usd.approve("CUST1", rm.owner, _W(100))
+    usd.approve(rm.owner, pool.contract_id, _W(100))
     policy = rm.new_policy(
         payout=_W(3600),
         premium=_W(100),
@@ -774,8 +760,6 @@ def test_internal_loan_partial_payout(tenv):
         initial_balances:
         - user: LP1
           amount: 3500
-        - user: CUST1
-          amount: 2000
     etokens:
       - name: eUSD1YEAR
     """
@@ -787,8 +771,7 @@ def test_internal_loan_partial_payout(tenv):
     usd = pool.currency
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(3500))
-    usd.approve("CUST1", pool.contract_id, _W(2000))
-    usd.approve("CUST1", rm.owner, _W(2000))
+    usd.approve(rm.owner, pool.contract_id, _W(2000))
 
     policy = rm.new_policy(
         payout=_W(3600),
@@ -835,8 +818,6 @@ def test_increase_won_pure_premiums(tenv):
         initial_balances:
         - user: LP1
           amount: 3500
-        - user: CUST1
-          amount: 2000
     etokens:
       - name: eUSD1YEAR
     """
@@ -848,8 +829,7 @@ def test_increase_won_pure_premiums(tenv):
     usd = pool.currency
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(3500))
-    usd.approve("CUST1", pool.contract_id, _W(2000))
-    usd.approve("CUST1", rm.owner, _W(2000))
+    usd.approve(rm.owner, pool.contract_id, _W(2000))
 
     policy = rm.new_policy(
         payout=_W(3600),
@@ -895,8 +875,6 @@ def test_payout_bigger_than_pure_premium(tenv):
         initial_balances:
         - user: LP1
           amount: 3500
-        - user: CUST1
-          amount: 2000
     etokens:
       - name: eUSD1YEAR
     """
@@ -908,8 +886,7 @@ def test_payout_bigger_than_pure_premium(tenv):
     usd = pool.currency
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(3500))
-    usd.approve("CUST1", pool.contract_id, _W(2000))
-    usd.approve("CUST1", rm.owner, _W(2000))
+    usd.approve(rm.owner, pool.contract_id, _W(2000))
 
     policy = rm.new_policy(
         payout=_W(3600),
@@ -947,8 +924,6 @@ def test_lp_whitelist(tenv):
           amount: 5000
         - user: LP2
           amount: 3000
-        - user: CUST1
-          amount: 200
     etokens:
       - name: eUSD1YEAR
         internal_loan_interest_rate: "0.06"
@@ -982,7 +957,7 @@ def test_lp_whitelist(tenv):
 
     # Now only whitelisted can deposit
     USD.approve("LP2", pool.contract_id, _W(3000))
-    with pytest.raises(RevertError, match="Liquidity Provider not whitelisted"):
+    with pytest.raises(RevertError, match="DepositNotWhitelisted"):
         pool.deposit("eUSD1YEAR", "LP2", _W(1000))
 
     # Whitelisting requires permission
@@ -996,7 +971,7 @@ def test_lp_whitelist(tenv):
     assert pool.deposit("eUSD1YEAR", "LP2", _W(2000)) == _W(2000)
 
     # Transfer targets need to be whitelisted too
-    with pytest.raises(RevertError, match="Transfer not allowed - Liquidity Provider not whitelisted"):
+    with pytest.raises(RevertError, match="TransferNotWhitelisted"):
         etk.transfer("LP2", "LP3", _W(500))
 
     with whitelist.as_("amlcompliance"):
@@ -1012,11 +987,11 @@ def test_lp_whitelist(tenv):
     # De-whitelist can't deposit anymore
     with whitelist.as_("amlcompliance"):
         whitelist.whitelist_address("LP2", all_blacklisted)
-    with pytest.raises(RevertError, match="Liquidity Provider not whitelisted"):
+    with pytest.raises(RevertError, match="DepositNotWhitelisted"):
         pool.deposit("eUSD1YEAR", "LP2", _W(1000))
 
     # Can't withdraw if all_blacklisted
-    with pytest.raises(RevertError, match="Liquidity Provider not whitelisted"):
+    with pytest.raises(RevertError, match="WithdrawalNotWhitelisted"):
         pool.withdraw("eUSD1YEAR", "LP2", _W(300)).assert_equal(_W(300))
 
     # But can withdraw if using defaults
@@ -1076,7 +1051,7 @@ def test_lp_whitelist_transfers_open(tenv):
 
     # Now only whitelisted can deposit
     USD.approve("LP2", pool.contract_id, _W(3000))
-    with pytest.raises(RevertError, match="Liquidity Provider not whitelisted"):
+    with pytest.raises(RevertError, match="DepositNotWhitelisted"):
         pool.deposit("eUSD1YEAR", "LP2", _W(1000))
 
     with whitelist.as_("amlcompliance"):
@@ -1092,20 +1067,20 @@ def test_lp_whitelist_transfers_open(tenv):
     with whitelist.as_("amlcompliance"):
         whitelist.whitelist_address("LP3", all_blacklisted)
 
-    with pytest.raises(RevertError, match="Liquidity Provider not whitelisted"):
+    with pytest.raises(RevertError, match="TransferNotWhitelisted"):
         etk.transfer("LP2", "LP3", _W(100))
-    with pytest.raises(RevertError, match="Liquidity Provider not whitelisted"):
+    with pytest.raises(RevertError, match="TransferNotWhitelisted"):
         etk.transfer("LP3", "LP2", _W(100))
 
     # LP2 can't withdraw because default is ST_BLACKLISTED
-    with pytest.raises(RevertError, match="Liquidity Provider not whitelisted"):
+    with pytest.raises(RevertError, match="WithdrawalNotWhitelisted"):
         pool.withdraw("eUSD1YEAR", "LP2", _W(300)).assert_equal(_W(300))
 
     with whitelist.as_("amlcompliance"):
         whitelist.whitelist_address("LP2", all_whitelisted)
 
     # LP3 can't withdraw because default is ST_BLACKLISTED
-    with pytest.raises(RevertError, match="Liquidity Provider not whitelisted"):
+    with pytest.raises(RevertError, match="WithdrawalNotWhitelisted"):
         pool.withdraw("eUSD1YEAR", "LP3", _W(300)).assert_equal(_W(300))
 
 
@@ -1145,7 +1120,7 @@ def test_lp_whitelist_defaults(tenv):
     for i in range(4):
         wrong_defaults = default_behavior[:i] + (WL.ST_UNDEFINED,) + default_behavior[i + 1 :]
         assert len(wrong_defaults) == 4
-        with pytest.raises(Exception, match="define the default status"):
+        with pytest.raises(Exception, match="InvalidWhitelistStatus"):
             # in web3=7 raise ContractLogicError instead of RevertError. Check again when we migrate
             # to custom errors
             whitelist = tenv.module.LPManualWhitelist(pool=pool, default_status=wrong_defaults)
@@ -1163,7 +1138,7 @@ def test_lp_whitelist_defaults(tenv):
     for i in range(4):
         wrong_defaults = default_behavior[:i] + (WL.ST_UNDEFINED,) + default_behavior[i + 1 :]
         assert len(wrong_defaults) == 4
-        with whitelist.as_("admin"), pytest.raises(RevertError, match="define the default status"):
+        with whitelist.as_("admin"), pytest.raises(RevertError, match="InvalidWhitelistStatus"):
             whitelist.set_whitelist_defaults(wrong_defaults)
 
 
@@ -1191,8 +1166,6 @@ def test_expire_policy(tenv):
           amount: 1000
         - user: LP3
           amount: 1000
-        - user: CUST1
-          amount: 100
     etokens:
       - name: eUSD1YEAR
     roles:
@@ -1213,8 +1186,7 @@ def test_expire_policy(tenv):
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(1000))
 
-    pool.currency.approve("CUST1", pool.contract_id, _W(100))
-    pool.currency.approve("CUST1", rm.owner, _W(100))
+    pool.currency.approve(rm.owner, pool.contract_id, _W(100))
     policy = rm.new_policy(
         payout=_W(2100),
         premium=_W(100),
@@ -1245,7 +1217,7 @@ def test_expire_policy(tenv):
 
     timecontrol.fast_forward(4 * DAY)
 
-    with pytest.raises(RevertError, match="Policy not expired yet"):
+    with pytest.raises(RevertError, match="PolicyNotExpired"):
         pool.expire_policy(policy.id)
 
     timecontrol.fast_forward(7 * DAY)
@@ -1287,8 +1259,6 @@ def test_expire_policies_in_batch(tenv):
           amount: 1000
         - user: LP3
           amount: 1000
-        - user: CUST1
-          amount: 500
     etokens:
       - name: eUSD1YEAR
     roles:
@@ -1309,8 +1279,7 @@ def test_expire_policies_in_batch(tenv):
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(2000))
 
-    pool.currency.approve("CUST1", pool.contract_id, _W(500))
-    pool.currency.approve("CUST1", rm.owner, _W(500))
+    pool.currency.approve(rm.owner, pool.contract_id, _W(500))
 
     policy_ids = []
     for_lps = _W(0)
@@ -1331,7 +1300,7 @@ def test_expire_policies_in_batch(tenv):
 
     timecontrol.fast_forward(4 * DAY)
 
-    with pytest.raises(RevertError, match="Policy not expired yet"):
+    with pytest.raises(RevertError, match="PolicyNotExpired"):
         pool.expire_policies(policy_ids)
 
     timecontrol.fast_forward(7 * DAY)
@@ -1384,8 +1353,6 @@ def test_expire_policy_payout(tenv):
 
     pool = load_config(StringIO(YAML_SETUP), tenv.module)
     timecontrol = tenv.time_control
-    etk = pool.etokens["eUSD1YEAR"]  # noqa
-    USD = pool.currency  # noqa
     rm = pool.risk_modules["Flight Insurance"]
 
     with rm.as_(rm.owner):
@@ -1393,8 +1360,7 @@ def test_expire_policy_payout(tenv):
 
     _deposit(pool, "eUSD1YEAR", "LP1", _W(1000))
 
-    pool.currency.approve("CUST1", pool.contract_id, _W(100))
-    pool.currency.approve("CUST1", rm.owner, _W(100))
+    pool.currency.approve(rm.owner, pool.contract_id, _W(100))
     policy = rm.new_policy(
         payout=_W(2100),
         premium=_W(100),
@@ -1405,7 +1371,7 @@ def test_expire_policy_payout(tenv):
     )
 
     timecontrol.fast_forward(12 * DAY)
-    with pytest.raises(RevertError, match="Can't pay expired policy"):
+    with pytest.raises(RevertError, match="PolicyAlreadyExpired"):
         rm.resolve_policy(policy.id, True)
 
     rm.resolve_policy(policy.id, False)
@@ -1459,6 +1425,7 @@ def test_replace_policy(tenv):
     USD = pool.currency
     rm = pool.risk_modules["CFAR"]
     premiums_account = rm.premiums_account
+    owner_initial_balance = USD.balance_of(rm.owner)
 
     with rm.as_(rm.owner):
         rm.moc = _W("1.1")
@@ -1467,8 +1434,7 @@ def test_replace_policy(tenv):
     _deposit(pool, "SR", "LP1", _W(1000))
     _deposit(pool, "JR", "LP2", _W(1000))
 
-    USD.approve("CUST1", pool.contract_id, _W(100))
-    USD.approve("CUST1", rm.owner, _W(100))
+    USD.approve(rm.owner, pool.contract_id, _W(100))
     policy = rm.new_policy(
         payout=_W(2100),
         premium=_W(100),
@@ -1478,7 +1444,7 @@ def test_replace_policy(tenv):
         internal_id=122,
     )
 
-    USD.balance_of("CUST1") == _W(100)
+    assert USD.balance_of(rm.owner) == owner_initial_balance - _W(100)
 
     etkSR.scr.assert_equal(_W("0.1") * _W(2100))
     etkJR.scr.assert_equal(policy.jr_scr)
@@ -1497,7 +1463,7 @@ def test_replace_policy(tenv):
         internal_id=123,
     )
 
-    with pytest.raises(RevertError, match="You must allow ENSURO"):
+    with pytest.raises(RevertError, match="ERC20InsufficientAllowance"):
         rm.replace_policy(**replace_kwargs)
 
     USD.approve("owner", pool.contract_id, _W(90))
@@ -1525,7 +1491,7 @@ def test_replace_policy(tenv):
         balance_before["ENS"] + new_policy.ensuro_commission - policy.ensuro_commission
     )
 
-    with pytest.raises(RevertError, match="Policy not found"):
+    with pytest.raises(RevertError, match="PolicyNotFound"):
         rm.resolve_policy(policy.id, True)
 
     assert pool.owner_of(new_policy.id) == "CUST1"
@@ -1587,6 +1553,7 @@ def test_replace_policy_two_times(tenv):
     USD = pool.currency
     rm = pool.risk_modules["CFAR"]
     premiums_account = rm.premiums_account
+    owner_initial_balance = USD.balance_of(rm.owner)
 
     with rm.as_(rm.owner):
         rm.moc = _W("1.1")
@@ -1596,8 +1563,6 @@ def test_replace_policy_two_times(tenv):
     _deposit(pool, "JR", "LP2", _W(1000))
 
     USD.approve("owner", pool.contract_id, _W(200))
-    USD.approve("CUST1", pool.contract_id, _W(100))
-    USD.approve("CUST1", rm.owner, _W(100))
     policy = rm.new_policy(
         payout=_W(2100),
         premium=_W(100),
@@ -1607,7 +1572,7 @@ def test_replace_policy_two_times(tenv):
         internal_id=122,
     )
 
-    USD.balance_of("CUST1") == _W(100)
+    assert USD.balance_of(rm.owner) == owner_initial_balance - _W(100)
     etkSR.scr.assert_equal(_W("0.1") * _W(2100))
     etkJR.scr.assert_equal(policy.jr_scr)
 
@@ -1647,7 +1612,7 @@ def test_replace_policy_two_times(tenv):
     assert pool.owner_of(new_policy.id) == "CUST1"
 
     # Try to replace the FIRST policy
-    with pytest.raises(RevertError, match="Policy not found"):
+    with pytest.raises(RevertError, match="PolicyNotFound"):
         third_policy = rm.replace_policy(**replace_kwargs)
 
     # I'll replace the policy again
@@ -1683,7 +1648,7 @@ def test_replace_policy_two_times(tenv):
         balance_before["ENS"] + third_policy.ensuro_commission - new_policy.ensuro_commission
     )
 
-    with pytest.raises(RevertError, match="Policy not found"):
+    with pytest.raises(RevertError, match="PolicyNotFound"):
         rm.resolve_policy(new_policy.id, True)
 
     assert pool.owner_of(third_policy.id) == "CUST1"
@@ -1743,9 +1708,7 @@ def test_replace_policy_same_params(tenv):
     _deposit(pool, "SR", "LP1", _W(1000))
     _deposit(pool, "JR", "LP2", _W(1000))
 
-    USD.approve("owner", pool.contract_id, _W(90))
-    USD.approve("CUST1", pool.contract_id, _W(100))
-    USD.approve("CUST1", rm.owner, _W(100))
+    USD.approve("owner", pool.contract_id, _W(100))
     policy = rm.new_policy(
         payout=_W(2100),
         premium=_W(100),
@@ -1794,7 +1757,7 @@ def test_replace_policy_same_params(tenv):
     # The owner of the first policy is from CUST1 but can't resolve that policy
     assert pool.owner_of(policy.id) == "CUST1"
     assert pool.owner_of(new_policy.id) == "CUST1"
-    with pytest.raises(RevertError, match="Policy not found"):
+    with pytest.raises(RevertError, match="PolicyNotFound"):
         rm.resolve_policy(policy.id, True)
 
 
@@ -1849,8 +1812,6 @@ def test_replace_policy_not_enough_money(tenv):
     _deposit(pool, "JR", "LP1", _W(2000))
 
     USD.approve("owner", pool.contract_id, _W(100))
-    USD.approve("CUST1", pool.contract_id, _W(100))
-    USD.approve("CUST1", rm.owner, _W(100))
     policy = rm.new_policy(
         payout=_W(2100),
         premium=_W(100),
@@ -1875,7 +1836,7 @@ def test_replace_policy_not_enough_money(tenv):
         internal_id=123,
     )
 
-    with pytest.raises(RevertError, match="Not enough funds available to cover the SCR"):
+    with pytest.raises(RevertError, match="NotEnoughScrFunds"):
         rm.replace_policy(**replace_kwargs)
 
     # Can resolve the policy, was not replaced
@@ -1932,8 +1893,6 @@ def test_replace_policy_zero_sr_scr(tenv):
     _deposit(pool, "SR", "LP1", _W(1000))
 
     USD.approve("owner", pool.contract_id, _W(90))
-    USD.approve("CUST1", pool.contract_id, _W(100))
-    USD.approve("CUST1", rm.owner, _W(100))
     policy = rm.new_policy(
         payout=_W(100),
         premium=_W(90),
@@ -1990,7 +1949,9 @@ def test_withdraw_won_premiums(tenv):
     premiums_account.won_pure_premiums.assert_equal(won_pure_premiums - _W(10))
 
     with premiums_account.as_("PREMIUM_WITHDRAWER"):
-        premiums_account.withdraw_won_premiums(_W(999999), "ENS").assert_equal(won_pure_premiums - _W(10))
+        with pytest.raises(RevertError, match="WithdrawExceedsSurplus"):
+            premiums_account.withdraw_won_premiums(_W(999999), "ENS")
+        premiums_account.withdraw_won_premiums(None, "ENS").assert_equal(won_pure_premiums - _W(10))
 
     USD.balance_of("ENS").assert_equal(treasury_balance + won_pure_premiums)
     premiums_account.won_pure_premiums.assert_equal(0)
@@ -2064,8 +2025,6 @@ def test_repay_loan(tenv):
         initial_balances:
         - user: LP1
           amount: 10000
-        - user: CUST1
-          amount: 2000
     etokens:
       - name: eUSD1YEAR
     """
@@ -2083,8 +2042,7 @@ def test_repay_loan(tenv):
     _deposit(pool, "eUSD1YEAR", "LP1", _W(1000))
     assert etk.balance_of("LP1") == _W(1000)
 
-    USD.approve("CUST1", pool.contract_id, _W(600))
-    USD.approve("CUST1", rm.owner, _W(600))
+    USD.approve(rm.owner, pool.contract_id, _W(600))
     policy = rm.new_policy(
         payout=_W(500),
         premium=_W(300),
@@ -2184,8 +2142,7 @@ def test_loss_propagation_limits(tenv):
     etkSr = pool.etokens["eUSDSr"]
     etkJr = pool.etokens["eUSDJr"]
 
-    USD.approve("CUST1", pool.contract_id, _W(1000))
-    USD.approve("CUST1", rm.owner, Wad(2**256 - 1))
+    USD.approve(rm.owner, pool.contract_id, _W(1000))
 
     # LP1 deposits 2000 in eUSDJr
     # LP2 deposits 3000 in eUSDSr
@@ -2229,7 +2186,7 @@ def test_loss_propagation_limits(tenv):
     etkSr.get_loan(pa).assert_equal(_W(140))
 
     # Expire 4th Policy
-    with pytest.raises(RevertError, match="Don't know where to source the rest of the money"):
+    with pytest.raises(RevertError, match="CannotBeBorrowed"):
         # Can't resolve in full because it will exceed the 500 limit of etkSr
         rm.resolve_policy(policies[3].id, True)
     rm.resolve_policy(policies[3].id, _W(379))  # 380 won't work because of loan interests

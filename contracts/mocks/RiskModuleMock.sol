@@ -5,7 +5,6 @@ import {IPolicyPool} from "../interfaces/IPolicyPool.sol";
 import {IPremiumsAccount} from "../interfaces/IPremiumsAccount.sol";
 import {RiskModule} from "../RiskModule.sol";
 import {Policy} from "../Policy.sol";
-import {IERC721} from "@openzeppelin/contracts/interfaces/IERC721.sol";
 
 /**
  * @title Trustful Risk Module
@@ -51,7 +50,16 @@ contract RiskModuleMock is RiskModule {
     address onBehalfOf,
     uint96 internalId
   ) external returns (uint256) {
-    return _newPolicy(payout, premium, lossProb, expiration, payer, onBehalfOf, internalId).id;
+    return
+      _newPolicy(
+        payout,
+        premium,
+        lossProb,
+        expiration,
+        payer == address(0) ? msg.sender : payer,
+        onBehalfOf,
+        internalId
+      ).id;
   }
 
   function newPolicyRaw(
@@ -79,8 +87,7 @@ contract RiskModuleMock is RiskModule {
     uint40 expiration,
     uint96 internalId
   ) external returns (uint256) {
-    address onBehalfOf = IERC721(address(_policyPool)).ownerOf(oldPolicy.id);
-    return _replacePolicy(oldPolicy, payout, premium, lossProb, expiration, onBehalfOf, internalId, params()).id;
+    return _replacePolicy(oldPolicy, payout, premium, lossProb, expiration, msg.sender, internalId, params()).id;
   }
 
   function replacePolicyRaw(

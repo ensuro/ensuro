@@ -31,6 +31,9 @@ contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
 
   mapping(address => WhitelistStatus) private _wlStatus;
 
+  error InvalidProvider(address provider);
+  error InvalidWhitelistStatus(WhitelistStatus newStatus);
+
   event LPWhitelistStatusChanged(address provider, WhitelistStatus whitelisted);
 
   /// @custom:oz-upgrades-unsafe-allow constructor
@@ -58,7 +61,7 @@ contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
   }
 
   function whitelistAddress(address provider, WhitelistStatus calldata newStatus) external {
-    require(provider != address(0), "You can't change the defaults");
+    require(provider != address(0), InvalidProvider(provider));
     _whitelistAddress(provider, newStatus);
   }
 
@@ -68,7 +71,7 @@ contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
         newStatus.withdraw != WhitelistOptions.undefined &&
         newStatus.sendTransfer != WhitelistOptions.undefined &&
         newStatus.receiveTransfer != WhitelistOptions.undefined,
-      "You need to define the default status for all the operations"
+      InvalidWhitelistStatus(newStatus)
     );
   }
 

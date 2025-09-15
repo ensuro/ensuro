@@ -82,6 +82,11 @@ interface IPremiumsAccount {
   function juniorEtk() external view returns (IEToken);
 
   /**
+   * @dev Returns the juniorEtk and seniorEtk. See {juniorEtk()} and {seniorEtk()}
+   */
+  function etks() external view returns (IEToken juniorEtk, IEToken seniorEtk);
+
+  /**
    * @dev The total amount of premiums hold by this PremiumsAccount
    */
   function purePremiums() external view returns (uint256);

@@ -254,7 +254,9 @@ describe("PolicyPool contract", function () {
     await expect(rm.connect(backend).resolvePolicy([...policy], policy.payout)).not.to.be.reverted;
     expect(await pool.isActive(policy.id)).to.be.false;
     expect(await pool.getPolicyHash(policy.id)).to.be.equal(hre.ethers.ZeroHash);
-    await expect(rm.connect(backend).resolvePolicy([...policy], _A(100))).to.be.revertedWith("Policy not found");
+    await expect(rm.connect(backend).resolvePolicy([...policy], _A(100)))
+      .to.be.revertedWithCustomError(pool, "PolicyNotFound")
+      .withArgs(policy.id);
   });
 
   it("Only allows riskmodule to resolve unexpired policies", async () => {
@@ -264,11 +266,11 @@ describe("PolicyPool contract", function () {
   });
 
   it("Does not allow a bigger payout than the one setup in the policy", async () => {
-    const { policy, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
+    const { policy, rm, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
 
-    await expect(rm.connect(backend).resolvePolicy([...policy], policy.payout + _A(10))).to.be.revertedWith(
-      "payout > policy.payout"
-    );
+    await expect(rm.connect(backend).resolvePolicy([...policy], policy.payout + _A(10)))
+      .to.be.revertedWithCustomError(pool, "PayoutExceedsLimit")
+      .withArgs(policy.payout + _A(10), policy.payout);
   });
 
   it("Can't expire policies when the pool is paused", async () => {
@@ -286,9 +288,9 @@ describe("PolicyPool contract", function () {
     const { policy, rm, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
     await expect(rm.connect(backend).resolvePolicy([...policy], policy.payout)).not.to.be.reverted;
     expect(await pool.isActive(policy.id)).to.be.false;
-    await expect(pool.replacePolicy([...policy], [...policy], ZeroAddress, 1234)).to.be.revertedWith(
-      "Policy not found"
-    );
+    await expect(pool.replacePolicy([...policy], [...policy], ZeroAddress, 1234))
+      .to.be.revertedWithCustomError(pool, "PolicyNotFound")
+      .withArgs(policy.id);
   });
 
   it("Only RM can replace policies", async () => {
@@ -328,17 +330,19 @@ describe("PolicyPool contract", function () {
   });
 
   it("Does not allow to replace expired policies", async () => {
-    const { policy, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
+    const { policy, rm, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
     await helpers.time.increaseTo(policy.expiration + 100n);
     await expect(
       rm
         .connect(backend)
-        .replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, policy.expiration, 1234)
-    ).to.be.revertedWith("Old policy is expired");
+        .replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, policy.expiration + 1000n, 1234)
+    )
+      .to.be.revertedWithCustomError(pool, "PolicyAlreadyExpired")
+      .withArgs(policy.id);
 
-    await expect(rm.connect(backend).replacePolicyRaw([...policy], [...policy], backend, 123)).to.be.revertedWith(
-      "Old policy is expired"
-    );
+    await expect(rm.connect(backend).replacePolicyRaw([...policy], [...policy], backend, 123))
+      .to.be.revertedWithCustomError(pool, "PolicyAlreadyExpired")
+      .withArgs(policy.id);
   });
 
   it("Must revert if new policy values must be greater or equal than old policy", async () => {
@@ -348,9 +352,9 @@ describe("PolicyPool contract", function () {
     const p1 = await createNewPolicy(rm, backend, pool, _A(1000), _A(10), _W(0), now + 3600 * 5, cust, cust, 222);
     let p2 = [...p1];
     p2[1] -= _A(1); // change new policy payout
-    await expect(rm.connect(backend).replacePolicyRaw([...p1], [...p2], backend, 1234)).to.be.revertedWith(
-      "New policy must be greater or equal than old policy"
-    );
+    await expect(rm.connect(backend).replacePolicyRaw([...p1], [...p2], backend, 1234))
+      .to.be.revertedWithCustomError(pool, "InvalidPolicyReplacement")
+      .withArgs(p1, p2);
   });
 
   it("Must revert if new policy have different start date", async () => {
@@ -359,9 +363,9 @@ describe("PolicyPool contract", function () {
     await helpers.time.increaseTo(policy.start + 100n);
     const now = await helpers.time.latest();
     const p = await createNewPolicy(rm, backend, pool, _A(1000), _A(10), _W(0), now + 3600 * 5, cust, cust, 1234);
-    await expect(rm.connect(backend).replacePolicyRaw([...policy], [...p], backend, 123)).to.be.revertedWith(
-      "Both policies must have the same starting date"
-    );
+    await expect(rm.connect(backend).replacePolicyRaw([...policy], [...p], backend, 123))
+      .to.be.revertedWithCustomError(pool, "InvalidPolicyReplacement")
+      .withArgs(policy, p);
   });
 
   it("Only PolicyPool can call PA policyReplaced", async () => {
@@ -373,12 +377,14 @@ describe("PolicyPool contract", function () {
   });
 
   it("Replacement policy must have a new unique internalId", async () => {
-    const { policy, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
+    const { policy, rm, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
     await expect(
       rm
         .connect(backend)
         .replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, policy.expiration, 123)
-    ).to.be.revertedWith("Policy already exists");
+    )
+      .to.be.revertedWithCustomError(pool, "PolicyAlreadyExists")
+      .withArgs(policy.id);
   });
 
   it("Can change the baseURI and after the change the tokenURI works", async () => {

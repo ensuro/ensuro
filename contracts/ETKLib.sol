@@ -37,6 +37,8 @@ library ETKLib {
     uint128 interestRate; // in Wad - Interest rate received in exchange of solvency capital
   }
 
+  error ScaleTooSmall(uint256 rejectedScale); // Scale too small, can lead to rounding errors
+
   /**
    * @dev unchecked version of Math.mulDiv that returns the result of a * b / c.
    *
@@ -108,7 +110,7 @@ library ETKLib {
    */
   function add(Scale scale, int256 factor) internal pure returns (Scale newScale) {
     uint256 newScaleInt = uint256(int256(scale.toUint256()) + factor);
-    require(newScaleInt >= MIN_SCALE, "Scale too small, can lead to rounding errors");
+    require(newScaleInt >= MIN_SCALE, ScaleTooSmall(newScaleInt));
     return Scale.wrap(newScaleInt.toUint96());
   }
 

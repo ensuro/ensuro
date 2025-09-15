@@ -83,6 +83,14 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   PackedParams internal _params;
 
   error LossesCannotExceedMaxDeficit(uint256 losses, uint256 excess);
+  error InvalidUpgradeETokenChanged(IEToken oldEToken, IEToken newEToken);
+  error InvalidDeficitRatio(uint256 newDeficitRatio);
+  error DeficitExceedsMaxDeficit(int256 currentDeficit, int256 newMaxDeficit);
+  error CannotBeBorrowed(uint256 amountLeft);
+  error InterestRateCannotChange(int256 oldIR, int256 newIR);
+  error InvalidLoanLimit(uint256 loanLimit);
+  error InvalidDestination(address destination);
+  error WithdrawExceedsSurplus(uint256 amountRequired, int256 surplus);
 
   /**
    * Premiums can come in (for "free", without liability) with receiveGrant.
@@ -138,14 +146,9 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   function _upgradeValidations(address newImpl) internal view virtual override {
     super._upgradeValidations(newImpl);
     IPremiumsAccount newPA = IPremiumsAccount(newImpl);
-    require(
-      newPA.juniorEtk() == _juniorEtk || address(_juniorEtk) == address(0),
-      "Can't upgrade changing the Junior ETK unless to non-zero"
-    );
-    require(
-      newPA.seniorEtk() == _seniorEtk || address(_seniorEtk) == address(0),
-      "Can't upgrade changing the Senior ETK unless to non-zero"
-    );
+    (IEToken newJr, IEToken newSr) = newPA.etks();
+    require(newJr == _juniorEtk || address(_juniorEtk) == address(0), InvalidUpgradeETokenChanged(_juniorEtk, newJr));
+    require(newSr == _seniorEtk || address(_seniorEtk) == address(0), InvalidUpgradeETokenChanged(_seniorEtk, newSr));
   }
 
   /**
@@ -184,7 +187,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   function _validateParameters() internal view override {
     require(
       _params.deficitRatio <= HUNDRED_PERCENT && _params.deficitRatio >= 0,
-      "Validation: deficitRatio must be <= 1"
+      InvalidDeficitRatio(_params.deficitRatio)
     );
   }
 
@@ -239,6 +242,10 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
 
   function juniorEtk() external view override returns (IEToken) {
     return _juniorEtk;
+  }
+
+  function etks() external view override returns (IEToken, IEToken) {
+    return (_juniorEtk, _seniorEtk);
   }
 
   /**
@@ -299,10 +306,10 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    */
   function setDeficitRatio(uint256 newRatio, bool adjustment) external {
     uint16 truncatedRatio = (newRatio / FOUR_DECIMAL_TO_WAD).toUint16();
-    require(uint256(truncatedRatio) * FOUR_DECIMAL_TO_WAD == newRatio, "Validation: only up to 4 decimals allowed");
+    require(uint256(truncatedRatio) * FOUR_DECIMAL_TO_WAD == newRatio, InvalidDeficitRatio(newRatio));
 
     int256 maxDeficit = _maxDeficit(newRatio);
-    require(adjustment || _surplus >= maxDeficit, "Validation: surplus must be >= maxDeficit");
+    if (!adjustment && _surplus < maxDeficit) revert DeficitExceedsMaxDeficit(-_surplus, -maxDeficit);
     _params.deficitRatio = truncatedRatio;
     _validateParameters();
 
@@ -331,12 +338,12 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   function setLoanLimits(uint256 newLimitJr, uint256 newLimitSr) external {
     if (newLimitJr != type(uint256).max) {
       _params.jrLoanLimit = _toZeroDecimals(newLimitJr);
-      require(_toAmount(_params.jrLoanLimit) == newLimitJr, "Validation: no decimals allowed");
+      require(_toAmount(_params.jrLoanLimit) == newLimitJr, InvalidLoanLimit(newLimitJr));
       _parameterChanged(Governance.GovernanceActions.setJrLoanLimit, newLimitJr);
     }
     if (newLimitSr != type(uint256).max) {
       _params.srLoanLimit = _toZeroDecimals(newLimitSr);
-      require(_toAmount(_params.srLoanLimit) == newLimitSr, "Validation: no decimals allowed");
+      require(_toAmount(_params.srLoanLimit) == newLimitSr, InvalidLoanLimit(newLimitSr));
       _parameterChanged(Governance.GovernanceActions.setSrLoanLimit, newLimitSr);
     }
   }
@@ -366,7 +373,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
       if (_seniorEtk.getLoan(address(this)) + left < srLoanLimit()) {
         left = _seniorEtk.internalLoan(left, receiver);
       } // in the senior eToken doesn't make sense to handle partial loan
-      require(left == 0, "Don't know where to source the rest of the money");
+      require(left == 0, CannotBeBorrowed(left));
     }
   }
 
@@ -420,10 +427,10 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
 
   /**
    *
-   * Withdraws excess premiums (surplus) to the destination.
+   * @dev Withdraws excess premiums (surplus) to the destination.
    *
    * This might be needed in some cases for example if we are deprecating the protocol or the excess premiums
-   * are needed to compensate something. Shouldn't be used. Can be disabled revoking role WITHDRAW_WON_PREMIUMS_ROLE
+   * are needed to compensate something. Or to extract profits accrued either by Ensuro or the partners.
    *
    * Requirements:
    * - _surplus > 0
@@ -431,18 +438,19 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * Events:
    * - Emits {WonPremiumsInOut} with moneyIn = false
    *
-   * @param amount The amount to withdraw
+   * @param amount The amount to withdraw. If amount == type(uint256).max it withdraws as much as possible and doesn't
+   *               fails. If amount != type(uint256).max it tries to withdraw that amount or it fails
    * @param destination The address that will receive the transferred funds.
    * @return Returns the actual amount withdrawn.
    */
   function withdrawWonPremiums(uint256 amount, address destination) external returns (uint256) {
-    require(destination != address(0), "PremiumsAccount: destination cannot be the zero address");
-    if (_surplus <= 0) {
-      amount = 0;
+    require(destination != address(0), InvalidDestination(destination));
+    if (amount == type(uint256).max) {
+      if (_surplus <= 0) return 0;
+      amount = uint256(_surplus);
     } else {
-      amount = Math.min(amount, uint256(_surplus));
+      require(int256(amount) <= _surplus, WithdrawExceedsSurplus(amount, _surplus));
     }
-    require(amount > 0, "No premiums to withdraw");
     _surplus -= int256(amount);
     _transferTo(destination, amount);
     emit WonPremiumsInOut(false, amount);
@@ -459,13 +467,17 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     Policy.PolicyData calldata oldPolicy,
     Policy.PolicyData calldata newPolicy
   ) external override onlyPolicyPool {
+    int256 oldIR;
+    int256 newIR;
     if (oldPolicy.srScr > 0 && newPolicy.srScr > 0) {
-      int256 diff = int256(oldPolicy.srInterestRate()) - int256(newPolicy.srInterestRate());
-      require(SignedMath.abs(diff) < 1e14, "Interest rate can't change");
+      oldIR = int256(oldPolicy.srInterestRate());
+      newIR = int256(newPolicy.srInterestRate());
+      require(SignedMath.abs(oldIR - newIR) < 1e14, InterestRateCannotChange(oldIR, newIR));
     }
     if (oldPolicy.jrScr > 0 && newPolicy.jrScr > 0) {
-      int256 diff = int256(oldPolicy.jrInterestRate()) - int256(newPolicy.jrInterestRate());
-      require(SignedMath.abs(diff) < 1e14, "Interest rate can't change");
+      oldIR = int256(oldPolicy.jrInterestRate());
+      newIR = int256(newPolicy.jrInterestRate());
+      require(SignedMath.abs(oldIR - newIR) < 1e14, InterestRateCannotChange(oldIR, newIR));
     }
     /*
      * Supporting interest rate change is possible, but it would require complex computations.

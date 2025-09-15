@@ -120,10 +120,10 @@ def test_withdraw_won_premiums(tenv):
     pa = tenv.pa_class()
     treasury = "ENS"
 
-    with pytest.raises(RevertError, match="PremiumsAccount: destination cannot be the zero address"):
+    with pytest.raises(RevertError, match="InvalidDestination"):
         pa.withdraw_won_premiums(_W(100), None)
 
-    with pytest.raises(RevertError, match="No premiums to withdraw"):
+    with pytest.raises(RevertError, match="WithdrawExceedsSurplus"):
         pa.withdraw_won_premiums(_W(100), treasury)
 
     tenv.currency.approve(tenv.currency.owner, pa, _W(1000))
@@ -137,7 +137,9 @@ def test_withdraw_won_premiums(tenv):
     treasury_balance = tenv.currency.balance_of(treasury)
     treasury_balance.assert_equal(_W(50))
 
-    pa.withdraw_won_premiums(_W(500), treasury)
+    with pytest.raises(RevertError, match="WithdrawExceedsSurplus"):
+        pa.withdraw_won_premiums(_W(500), treasury)
+    pa.withdraw_won_premiums(None, treasury)  # None == MAX_UINT --> as much as possible
     pa.won_pure_premiums.assert_equal(_W(0))
     treasury_balance = tenv.currency.balance_of(treasury)
     treasury_balance.assert_equal(_W(200))
@@ -787,10 +789,10 @@ def test_set_loan_limits(tenv):
     if tenv.kind != "ethereum":
         return
 
-    with pa.as_("ADMIN"), pytest.raises(RevertError, match="Validation: no decimals allowed"):
+    with pa.as_("ADMIN"), pytest.raises(RevertError, match="InvalidLoanLimit"):
         pa.set_loan_limits(_W("13.12"), None)
 
-    with pa.as_("ADMIN"), pytest.raises(RevertError, match="Validation: no decimals allowed"):
+    with pa.as_("ADMIN"), pytest.raises(RevertError, match="InvalidLoanLimit"):
         pa.set_loan_limits(None, _W("13.12"))
 
     with pa.as_("ADMIN"):
@@ -806,7 +808,7 @@ def test_set_deficit_ratio(tenv):
         senior_etk=tenv.etk(name="eUSD1YEAR", symbol="ETK2"),
     )
 
-    with pytest.raises(RevertError, match="Validation: deficitRatio must be <= 1"):
+    with pytest.raises(RevertError, match="InvalidDeficitRatio"):
         pa.set_deficit_ratio(_W("1.7"), True)
 
     pa.set_deficit_ratio(_W("0.7"), True)
@@ -956,7 +958,7 @@ def test_ratio_adjustment(tenv):
     junior_etk.get_loan(pa).assert_equal(_W(0))
     senior_etk.get_loan(pa).assert_equal(_W(0))
 
-    with pytest.raises(RevertError, match="Validation: surplus must be >= maxDeficit"):
+    with pytest.raises(RevertError, match="DeficitExceedsMaxDeficit"):
         pa.set_deficit_ratio(_W("0.3"), False)
 
     pa.set_deficit_ratio(_W("0.3"), True)
@@ -1070,5 +1072,5 @@ def test_set_deficit_ratio_refuses_loss_of_precision(tenv):
         senior_etk=tenv.etk(name="eUSD1YEAR", symbol="ETK2"),
     )
 
-    with pytest.raises(RevertError, match="Validation: only up to 4 decimals allowed"):
+    with pytest.raises(RevertError, match="InvalidDeficitRatio"):
         pa.set_deficit_ratio(_W("0.12345"), True)

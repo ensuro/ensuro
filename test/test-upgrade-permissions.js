@@ -158,9 +158,9 @@ describe("Test Upgrade contracts", function () {
     );
 
     newImpl = await PremiumsAccount.deploy(pool, ZeroAddress, ZeroAddress);
-    await expect(premiumsAccount.connect(guardian).upgradeToAndCall(newImpl, emptyBytes)).to.be.revertedWith(
-      "Can't upgrade changing the Senior ETK unless to non-zero"
-    );
+    await expect(premiumsAccount.connect(guardian).upgradeToAndCall(newImpl, emptyBytes))
+      .to.be.revertedWithCustomError(premiumsAccount, "InvalidUpgradeETokenChanged")
+      .withArgs(await premiumsAccount.seniorEtk(), ZeroAddress);
 
     // Changing jrEtk from 0 to something is possible
     const jrEtk = await addEToken(pool, {});
@@ -168,9 +168,9 @@ describe("Test Upgrade contracts", function () {
     await premiumsAccount.connect(guardian).upgradeToAndCall(newImpl, emptyBytes);
 
     newImpl = await PremiumsAccount.deploy(pool, ZeroAddress, etk);
-    await expect(premiumsAccount.connect(guardian).upgradeToAndCall(newImpl, emptyBytes)).to.be.revertedWith(
-      "Can't upgrade changing the Junior ETK unless to non-zero"
-    );
+    await expect(premiumsAccount.connect(guardian).upgradeToAndCall(newImpl, emptyBytes))
+      .to.be.revertedWithCustomError(premiumsAccount, "InvalidUpgradeETokenChanged")
+      .withArgs(jrEtk, ZeroAddress);
   });
 
   it("Should be able to deploy PremiumsAccount without eTokens and upgrade to have them", async () => {
@@ -193,9 +193,9 @@ describe("Test Upgrade contracts", function () {
     // Changing srEtk to something else is not possible
     const otherSrEtk = await addEToken(pool, {});
     newImpl = await PremiumsAccount.deploy(pool, jrEtk, otherSrEtk);
-    await expect(premiumsAccount.connect(guardian).upgradeToAndCall(newImpl, emptyBytes)).to.be.revertedWith(
-      "Can't upgrade changing the Senior ETK unless to non-zero"
-    );
+    await expect(premiumsAccount.connect(guardian).upgradeToAndCall(newImpl, emptyBytes))
+      .to.be.revertedWithCustomError(premiumsAccount, "InvalidUpgradeETokenChanged")
+      .withArgs(await premiumsAccount.seniorEtk(), otherSrEtk);
   });
 
   it("Should be able to upgrade RiskModule contract", async () => {

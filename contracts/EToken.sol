@@ -62,13 +62,25 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
 
   IERC4626 internal _yieldVault;
 
+  error OnlyBorrower(address caller); // The caller must be a borrower
+  error InvalidParameter(Parameter parameter);
+  error TransferNotWhitelisted(address from_, address to_, uint256 value);
+  error DepositNotWhitelisted(address account, uint256 value);
+  error WithdrawalNotWhitelisted(address account, uint256 value);
+  error NotEnoughScrFunds(uint256 required, uint256 available);
+  error UtilizationRateTooLow(uint256 actualUtilization, uint256 minUtilization);
+  error InvalidBorrower(address borrower);
+  error BorrowerAlreadyAdded(address borrower);
+  error InvalidWhitelist(ILPWhitelist whitelist);
+  error ExceedsMaxWithdraw(uint256 requested, uint256 maxWithdraw);
+
   event InternalLoan(address indexed borrower, uint256 value, uint256 amountAsked);
   event InternalLoanRepaid(address indexed borrower, uint256 value);
   event InternalBorrowerAdded(address indexed borrower);
   event InternalBorrowerRemoved(address indexed borrower, uint256 defaultedDebt);
 
   modifier onlyBorrower() {
-    require(_loans[_msgSender()].lastUpdate != 0, "The caller must be a borrower");
+    require(_loans[_msgSender()].lastUpdate != 0, OnlyBorrower(_msgSender()));
     _;
   }
 
@@ -140,13 +152,14 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
   function _validateParameters() internal view override {
     require(
       _params.liquidityRequirement >= LIQ_REQ_MIN && _params.liquidityRequirement <= LIQ_REQ_MAX,
-      "Validation: liquidityRequirement must be [0.8, 1.3]"
+      InvalidParameter(Parameter.liquidityRequirement)
     );
     require(
       _params.maxUtilizationRate >= MAX_UR_MIN && _params.maxUtilizationRate <= HUNDRED_PERCENT,
-      "Validation: maxUtilizationRate must be [0.5, 1]"
+      InvalidParameter(Parameter.maxUtilizationRate)
     );
-    require(_params.minUtilizationRate <= HUNDRED_PERCENT, "Validation: minUtilizationRate must be [0, 1]");
+    require(_params.minUtilizationRate <= HUNDRED_PERCENT, InvalidParameter(Parameter.minUtilizationRate));
+
     /*
      * We don't validate minUtilizationRate < maxUtilizationRate because the opposite is valid too.
      * These limits aren't strong limits on the values the utilization rate can take, but instead they are
@@ -156,7 +169,7 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
      * `maxUtilizationRate` is used to prevent selling more coverage when UR is too high, only checked on `lockScr`
      * operations, but not in withdrawals or other operations.
      */
-    require(_params.internalLoanInterestRate <= INT_LOAN_IR_MAX, "Validation: internalLoanInterestRate must be <= 50%");
+    require(_params.internalLoanInterestRate <= INT_LOAN_IR_MAX, InvalidParameter(Parameter.internalLoanInterestRate));
   }
 
   /*** BEGIN ERC20 methods - changes required to customize OZ's ERC20 implementation */
@@ -189,7 +202,7 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
       // Transfer
       require(
         address(_params.whitelist) == address(0) || _params.whitelist.acceptsTransfer(this, from, to, value),
-        "Transfer not allowed - Liquidity Provider not whitelisted"
+        TransferNotWhitelisted(from, to, value)
       );
       valueScaled = _tsScaled.projectScale(_scr).toScaled(value);
     }
@@ -315,7 +328,7 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
   }
 
   function lockScr(uint256 scrAmount, uint256 policyInterestRate) external override onlyBorrower {
-    require(scrAmount <= fundsAvailableToLock(), "Not enough funds available to cover the SCR");
+    if (scrAmount > fundsAvailableToLock()) revert NotEnoughScrFunds(scrAmount, fundsAvailableToLock());
     _tsScaled = _tsScaled.discreteChange(0, _scr); // Accrues interests so far, to update the scale before SCR changes
     _scr = _scr.add(scrAmount, policyInterestRate);
     emit SCRLocked(policyInterestRate, scrAmount);
@@ -341,10 +354,10 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
   function deposit(address provider, uint256 amount) external override onlyPolicyPool returns (uint256) {
     require(
       address(_params.whitelist) == address(0) || _params.whitelist.acceptsDeposit(this, provider, amount),
-      "Liquidity Provider not whitelisted"
+      DepositNotWhitelisted(provider, amount)
     );
     _mint(provider, amount);
-    require(utilizationRate() >= minUtilizationRate(), "Deposit rejected - Utilization Rate < min");
+    if (utilizationRate() < minUtilizationRate()) revert UtilizationRateTooLow(utilizationRate(), minUtilizationRate());
     return balanceOf(provider);
   }
 
@@ -365,10 +378,10 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
     uint256 maxWithdraw = Math.min(balanceOf(provider), totalWithdrawable());
     if (amount == type(uint256).max) amount = maxWithdraw;
     if (amount == 0) return 0;
-    require(amount <= maxWithdraw, "amount > max withdrawable");
+    require(amount <= maxWithdraw, ExceedsMaxWithdraw(amount, maxWithdraw));
     require(
       address(_params.whitelist) == address(0) || _params.whitelist.acceptsWithdrawal(this, provider, amount),
-      "Liquidity Provider not whitelisted"
+      WithdrawalNotWhitelisted(provider, amount)
     );
     _burn(provider, amount);
     _transferTo(provider, amount);
@@ -376,15 +389,15 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
   }
 
   function addBorrower(address borrower) external override onlyPolicyPool {
-    require(borrower != address(0), "EToken: Borrower cannot be the zero address");
+    require(borrower != address(0), InvalidBorrower(borrower));
     ETKLib.ScaledAmount storage loan = _loans[borrower];
-    require(loan.lastUpdate == 0, "EToken: Borrower already added");
+    require(loan.lastUpdate == 0, BorrowerAlreadyAdded(borrower));
     loan.init();
     emit InternalBorrowerAdded(borrower);
   }
 
   function removeBorrower(address borrower) external override onlyPolicyPool {
-    require(borrower != address(0), "EToken: Borrower cannot be the zero address");
+    require(borrower != address(0), InvalidBorrower(borrower));
     uint256 defaultedDebt = getLoan(borrower);
     delete _loans[borrower];
     emit InternalBorrowerRemoved(borrower, defaultedDebt);
@@ -410,10 +423,9 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
   }
 
   function repayLoan(uint256 amount, address onBehalfOf) external override {
-    require(amount > 0, "EToken: amount should be greater than zero.");
     // Anyone can call this method, since it has to pay
     ETKLib.ScaledAmount storage loan = _loans[onBehalfOf];
-    require(loan.lastUpdate != 0, "Not a registered borrower");
+    require(loan.lastUpdate != 0, InvalidBorrower(onBehalfOf));
     (_loans[onBehalfOf], ) = loan.sub(amount, internalLoanInterestRate());
     _discreteChange(int256(amount));
     emit InternalLoanRepaid(onBehalfOf, amount);
@@ -423,6 +435,7 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
 
   function getLoan(address borrower) public view virtual override returns (uint256) {
     ETKLib.ScaledAmount storage loan = _loans[borrower];
+    require(loan.lastUpdate != 0, InvalidBorrower(borrower));
     return loan.projectScale(internalLoanInterestRate()).toCurrent(uint256(loan.amount));
   }
 
@@ -453,7 +466,7 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
   function setWhitelist(ILPWhitelist lpWhitelist_) external {
     require(
       address(lpWhitelist_) == address(0) || IPolicyPoolComponent(address(lpWhitelist_)).policyPool() == _policyPool,
-      "Component not linked to this PolicyPool"
+      InvalidWhitelist(lpWhitelist_)
     );
     _params.whitelist = lpWhitelist_;
     _componentChanged(Governance.GovernanceActions.setLPWhitelist, address(lpWhitelist_));
