@@ -198,7 +198,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   error PolicyAlreadyExists(uint256 policyId);
   error PolicyAlreadyExpired(uint256 policyId);
   error PolicyNotFound(uint256 policyId);
-  error PolicyNotExpired(uint256 policyId, uint40 expiration, uint40 now);
+  error PolicyNotExpired(uint256 policyId, uint40 expiration, uint256 now);
   error InvalidPolicyReplacement(Policy.PolicyData oldPolicy, Policy.PolicyData newPolicy);
   error PayoutExceedsLimit(uint256 payout, uint256 policyPayout);
 
@@ -569,17 +569,14 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   function expirePolicy(Policy.PolicyData calldata policy) external override whenNotPaused {
-    require(
-      policy.expiration <= block.timestamp,
-      PolicyNotExpired(policy.id, policy.expiration, uint40(block.timestamp))
-    );
+    if (policy.expiration > block.timestamp) revert PolicyNotExpired(policy.id, policy.expiration, block.timestamp);
     return _resolvePolicy(policy, 0, true);
   }
 
   function expirePolicies(Policy.PolicyData[] calldata policies) external whenNotPaused {
     for (uint256 i = 0; i < policies.length; ++i) {
       if (policies[i].expiration > block.timestamp)
-        revert PolicyNotExpired(policies[i].id, policies[i].expiration, uint40(block.timestamp));
+        revert PolicyNotExpired(policies[i].id, policies[i].expiration, block.timestamp);
       _resolvePolicy(policies[i], 0, true);
     }
   }

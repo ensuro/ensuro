@@ -27,9 +27,6 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   uint16 internal constant MIN_MOC = 5e3; // 50%
   uint16 internal constant MAX_MOC = 4e4; // 400%
 
-  // For parameters that can be changed by the risk module provider
-  bytes32 internal constant RM_PROVIDER_ROLE = keccak256("RM_PROVIDER_ROLE");
-
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IPremiumsAccount internal immutable _premiumsAccount;
 
