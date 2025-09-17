@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
-const { amountFunction, _W, getTransactionEvent } = require("@ensuro/utils/js/utils");
+const { amountFunction, _W, getTransactionEvent, captureAny } = require("@ensuro/utils/js/utils");
 const { deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
@@ -115,7 +115,9 @@ describe("Multiple policy expirations", function () {
     // Try to expire this unexpired policy along with an expired one
     const toExpire = [[...policies[0]], [...newPolicyEvt.args.policy]];
     expect(newPolicyEvt.args.policy.expiration).to.be.greaterThan(await helpers.time.latest());
-    await expect(pool.connect(backend).expirePolicies(toExpire)).to.be.revertedWith("Policy not expired yet");
+    await expect(pool.connect(backend).expirePolicies(toExpire))
+      .to.be.revertedWithCustomError(pool, "PolicyNotExpired")
+      .withArgs(newPolicyEvt.args.policy.id, newPolicyEvt.args.policy.expiration, captureAny.uint);
   });
 });
 

@@ -1,4 +1,4 @@
 m9g
 PyYAML
-eth-prototype[web3]>=1
+eth-prototype[web3]>=1.4
 environs

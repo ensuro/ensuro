@@ -288,7 +288,7 @@ def test_minimum_premium(tenv):
     tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", tenv.A(2))
     tenv.currency.approve("JOHN_SELLER", rm.policy_pool, tenv.A(2))
 
-    with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="less than minimum"):
+    with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="PremiumLessThanMinimum"):
         policy = rm.new_policy(
             payout=tenv.A(36),
             premium=tenv.A("1.28"),
@@ -393,7 +393,7 @@ def test_premium_too_high(tenv):
     tenv.currency.approve("JOHN_SELLER", rm.policy_pool, tenv.A(37))
     expiration = tenv.time_control.now + WEEK
 
-    with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="Premium must be less than payout"):
+    with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="PremiumExceedsPayout"):
         rm.new_policy(
             payout=tenv.A(36),
             premium=tenv.A(37),
@@ -418,7 +418,7 @@ def test_expiration_in_the_past_should_revert(tenv):
     tenv.currency.approve("JOHN_SELLER", rm.policy_pool, tenv.A(1))
     expiration = tenv.time_control.now - WEEK
 
-    with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="Expiration must be in the future"):
+    with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="ExpirationMustBeInTheFuture"):
         rm.new_policy(
             payout=tenv.A(36),
             premium=tenv.A(1),
@@ -447,7 +447,7 @@ def test_max_duration(tenv):
     tenv.currency.approve("JOHN_SELLER", rm.policy_pool, tenv.A(1))
     expiration = tenv.time_control.now + YEAR + WEEK
 
-    with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="Policy exceeds max duration"):
+    with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="PolicyExceedsMaxDuration"):
         rm.new_policy(
             payout=tenv.A(36),
             premium=tenv.A(1),
@@ -472,7 +472,7 @@ def test_customer_with_zero_address(tenv):
     tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", tenv.A(1))
     tenv.currency.approve("JOHN_SELLER", rm.policy_pool, tenv.A(1))
 
-    with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="Customer can't be zero address"):
+    with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="InvalidCustomer"):
         rm.new_policy(
             payout=tenv.A(36),
             premium=tenv.A(1),
@@ -497,7 +497,7 @@ def test_exceeded_max_payout(tenv):
     tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", tenv.A(101))
     tenv.currency.approve("JOHN_SELLER", rm.policy_pool, tenv.A(101))
 
-    with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="Payout is more than maximum"):
+    with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="PayoutExceedsMaxPerPolicy"):
         rm.new_policy(
             payout=tenv.A(101),
             premium=None,
@@ -522,7 +522,7 @@ def test_exceeded_max_exposure(tenv):
     tenv.currency.transfer(tenv.currency.owner, "JOHN_SELLER", tenv.A(101))
     tenv.currency.approve("JOHN_SELLER", rm.policy_pool, tenv.A(101))
 
-    with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="Exposure limit exceeded"):
+    with rm.as_("JOHN_SELLER"), pytest.raises(RevertError, match="ExposureLimitExceeded"):
         rm.new_policy(
             payout=tenv.A(101),
             premium=None,

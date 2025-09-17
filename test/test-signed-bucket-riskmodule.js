@@ -347,9 +347,9 @@ variants.forEach((variant) => {
     it("Validates bucket parameters", async () => {
       const { rm } = await helpers.loadFixture(deployPoolFixture);
 
-      await expect(rm.setBucketParams(1, defaultBucketParams({ moc: _W("0.2") }).asParams())).to.be.revertedWith(
-        "Validation: moc must be [0.5, 4]"
-      );
+      await expect(rm.setBucketParams(1, defaultBucketParams({ moc: _W("0.2") }).asParams()))
+        .to.be.revertedWithCustomError(rm, "InvalidParameter")
+        .withArgs(RiskModuleParameter.moc);
     });
 
     it("Does not allow policy replacement when paused", async () => {

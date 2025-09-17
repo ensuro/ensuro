@@ -1,9 +1,9 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { MaxUint256 } = require("ethers");
+const { MaxUint256, ZeroAddress } = require("ethers");
 const { RiskModuleParameter } = require("../js/enums");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
-const { amountFunction, _W, getTransactionEvent } = require("@ensuro/utils/js/utils");
+const { amountFunction, _W, getTransactionEvent, captureAny } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
 
@@ -62,15 +62,14 @@ describe("RiskModule contract", function () {
     const now = await helpers.time.latest();
 
     // Deploy a new policy
-    await currency.connect(cust).approve(pool, _A(110));
-    await currency.connect(cust).approve(backend, _A(110));
+    await currency.connect(backend).approve(pool, _A(110));
 
     const tx = await rm.connect(backend).newPolicy(
       _A(1000), // payout
       _A(10), // premium
       _W(0), // lossProb
       now + 3600 * 5, // expiration
-      cust, // payer
+      ZeroAddress,
       cust, // holder
       123 // internalId
     );
@@ -94,7 +93,7 @@ describe("RiskModule contract", function () {
     const { pool, rm, currency } = await helpers.loadFixture(deployRiskModuleFixture);
     await currency.connect(backend).approve(pool, _A(110));
 
-    const policy = await makePolicy({ payer: backend });
+    const policy = await makePolicy({});
     await rm.connect(backend).newPolicy(...policy.toArgs());
 
     // The premium was payed by the caller
@@ -102,23 +101,26 @@ describe("RiskModule contract", function () {
     expect(await currency.balanceOf(backend)).to.equal(_A(890));
   });
 
-  it("Doesn't allow another payer by default", async () => {
+  it("The payer is always the caller and fails with ERC20 error if spending not approved", async () => {
     const { pool, rm, currency } = await helpers.loadFixture(deployRiskModuleFixture);
 
     // The customer approved the spending for the pool
     await currency.connect(cust).approve(pool, _A(110));
 
-    const policy = await makePolicy({ payer: cust });
-    await expect(rm.connect(backend).newPolicy(...policy.toArgs())).to.be.revertedWith(
-      "Payer must allow caller to transfer the premium"
-    );
+    const policy = await makePolicy({});
+    await expect(rm.connect(backend).newPolicy(...policy.toArgs()))
+      .to.be.revertedWithCustomError(currency, "ERC20InsufficientAllowance")
+      .withArgs(pool, 0, _A(100)); // 100 = Pure Premium
 
     expect(await currency.balanceOf(cust)).to.equal(_A(500));
     expect(await currency.balanceOf(backend)).to.equal(_A(1000));
   });
 
-  it("Allows another payer given the right allowances", async () => {
+  it("Does not allow another payer - Even with old allowances", async () => {
     const { pool, rm, currency } = await helpers.loadFixture(deployRiskModuleFixture);
+
+    // Leaving this test to underline the 2.x behaviour where the customer could be the payer
+    // by doing an allowance to the caller is no longer supported
 
     // The customer approved the spending for the pool
     await currency.connect(cust).approve(pool, _A(110));
@@ -126,12 +128,10 @@ describe("RiskModule contract", function () {
     // And also allowed the backend
     await currency.connect(cust).approve(backend, _A(110));
 
-    const policy = await makePolicy({ payer: cust });
-    await rm.connect(backend).newPolicy(...policy.toArgs());
-
-    // The premium was paid by the customer
-    expect(await currency.balanceOf(cust)).to.equal(_A(390));
-    expect(await currency.balanceOf(backend)).to.equal(_A(1000));
+    const policy = await makePolicy({});
+    await expect(rm.connect(backend).newPolicy(...policy.toArgs()))
+      .to.be.revertedWithCustomError(currency, "ERC20InsufficientAllowance")
+      .withArgs(pool, _A(0), _A(100));
   });
 
   it("Does not allow an exposure limit of zero", async () => {
@@ -142,7 +142,9 @@ describe("RiskModule contract", function () {
         exposureLimit: 0,
         extraArgs: [],
       })
-    ).to.be.revertedWith("Exposure and MaxPayout must be >0");
+    )
+      .to.be.revertedWithCustomError(RiskModule, "InvalidParameter")
+      .withArgs(RiskModuleParameter.exposureLimit);
   });
 
   it("Does not allow wallet with zero address", async () => {
@@ -162,25 +164,32 @@ describe("RiskModule contract", function () {
         maxPayoutPerPolicy: 0,
         extraArgs: [],
       })
-    ).to.be.revertedWith("Exposure and MaxPayout must be >0");
+    )
+      .to.be.revertedWithCustomError(RiskModule, "InvalidParameter")
+      .withArgs(RiskModuleParameter.maxPayoutPerPolicy);
   });
 
   it("Reverts if new policy is lower than previous", async () => {
-    const { policy, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
+    const { policy, rm, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
 
     // Old Policy: { payout= 1000, premium = 10, expiration= now + 3600 + 5}
     await expect(
       rm.connect(backend).replacePolicy([...policy], _A(999), policy.premium, policy.lossProb, policy.expiration, 1234)
-    ).to.be.revertedWith("Policy replacement must be greater or equal than old policy");
+    )
+      .to.be.revertedWithCustomError(pool, "InvalidPolicyReplacement")
+      .withArgs(policy, captureAny.value);
+    expect(captureAny.lastValue[1]).to.equal(_A(999));
 
     await expect(
       rm.connect(backend).replacePolicy([...policy], policy.payout, _A(9), policy.lossProb, policy.expiration, 1234)
-    ).to.be.revertedWith("Policy replacement must be greater or equal than old policy");
+    )
+      .to.be.revertedWithCustomError(pool, "InvalidPolicyReplacement")
+      .withArgs(policy, captureAny.value);
 
     const now = await helpers.time.latest();
     await expect(
       rm.connect(backend).replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, now + 3600, 1234)
-    ).to.be.revertedWith("Policy replacement must be greater or equal than old policy");
+    ).to.be.revertedWithCustomError(pool, "InvalidPolicyReplacement");
   });
 
   it("It reverts if the premium >= payout", async () => {
@@ -188,11 +197,13 @@ describe("RiskModule contract", function () {
 
     await expect(
       rm.connect(backend).replacePolicy([...policy], _A(100), _A(101), policy.lossProb, policy.expiration, 1234)
-    ).to.be.revertedWith("Premium must be less than payout");
+    )
+      .to.be.revertedWithCustomError(rm, "PremiumExceedsPayout")
+      .withArgs(_A(101), _A(100));
   });
 
   it("Reverts if new policy is lower than previous with premium == MaxUint256", async () => {
-    const { policy, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
+    const { policy, rm, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
 
     const minPremium = await rm.getMinimumPremium(policy.payout, policy.lossProb, policy.expiration);
     expect(minPremium < policy.premium).to.be.true;
@@ -200,7 +211,9 @@ describe("RiskModule contract", function () {
       rm
         .connect(backend)
         .replacePolicy([...policy], policy.payout, MaxUint256, policy.lossProb, policy.expiration, 1234)
-    ).to.be.revertedWith("Policy replacement must be greater or equal than old policy");
+    )
+      .to.be.revertedWithCustomError(pool, "InvalidPolicyReplacement")
+      .withArgs(policy, captureAny.value);
   });
 
   it("It reverts if new policy exceeds max duration", async () => {
@@ -209,23 +222,28 @@ describe("RiskModule contract", function () {
     // Max Duration = 8760
     const newExp = 8760 * 3600 + now + 1000;
     await expect(
-      rm.connect(backend).replacePolicy([...policy], policy.payout, policy.premium, policy.lossProb, newExp, 1234)
-    ).to.be.revertedWith("Policy exceeds max duration");
+      rm.connect(backend).replacePolicy([...policy], policy.payout, MaxUint256, policy.lossProb, newExp, 1234)
+    )
+      .to.be.revertedWithCustomError(rm, "PolicyExceedsMaxDuration")
+      .withArgs(8760);
   });
 
   it("It reverts if new payout > maxPayoutPerPolicy", async () => {
     const { policy, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
 
-    const newPayout = (await rm.maxPayoutPerPolicy()) + 1n;
+    const maxPayoutPerPolicy = await rm.maxPayoutPerPolicy();
+    const newPayout = maxPayoutPerPolicy + 1n;
     await expect(
       rm
         .connect(backend)
         .replacePolicy([...policy], newPayout, policy.premium, policy.lossProb, policy.expiration, 1234)
-    ).to.be.revertedWith("RiskModule: Payout is more than maximum per policy");
+    )
+      .to.be.revertedWithCustomError(rm, "PayoutExceedsMaxPerPolicy")
+      .withArgs(newPayout, maxPayoutPerPolicy);
   });
 
   it("It reverts if _activeExposure > exposureLimit", async () => {
-    const { policy, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
+    const { policy, rm, pool, currency } = await helpers.loadFixture(deployRmWithPolicyFixture);
 
     expect(await rm.exposureLimit()).to.be.equal(_A(1000000));
     // Set exposureLimit to 1500 and maxPayoutPerPolicy to allow bigger policies
@@ -233,14 +251,16 @@ describe("RiskModule contract", function () {
     await rm.setParam(RiskModuleParameter.exposureLimit, _A(1100));
     expect(await rm.exposureLimit()).to.be.equal(_A(1100));
 
+    await currency.connect(backend).approve(pool, _A(200));
+
     await expect(
-      rm
-        .connect(backend)
-        .replacePolicy([...policy], policy.payout + _A(200), policy.premium, policy.lossProb, policy.expiration, 1234)
-    ).to.be.revertedWith("RiskModule: Exposure limit exceeded");
+      rm.connect(backend).replacePolicy([...policy], _A(2000), _A(200), policy.lossProb, policy.expiration, 1234)
+    )
+      .to.be.revertedWithCustomError(rm, "ExposureLimitExceeded")
+      .withArgs(_A(2000), _A(1100));
   });
 
-  it("Rejects replace policy if the RM is paused", async () => {
+  it("Rejects replace policy if the pool is paused", async () => {
     const { policy, rm, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
 
     await expect(pool.connect(owner).pause()).to.emit(pool, "Paused");
@@ -272,7 +292,7 @@ describe("RiskModule contract", function () {
       premium: premium || _A(110),
       lossProbability: lossProbability || _W("0.1"),
       expiration: expiration || now + 3600 * 5,
-      payer: payer || cust,
+      payer: payer || ZeroAddress,
       onBehalfOf: onBehalfOf || cust,
       internalId: internalId || 123,
     };

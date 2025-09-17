@@ -99,9 +99,9 @@ def test_only_policy_pool_validation(tenv):
         etk.deposit("LP1", _W(1000))
     with pytest.raises(RevertError, match="OnlyPolicyPool()"):
         etk.withdraw("LP1", _W(1000))
-    with pytest.raises(RevertError, match="The caller must be a borrower"):
+    with pytest.raises(RevertError, match="OnlyBorrower"):
         etk.lock_scr(_W(600), _W("0.0365"))
-    with pytest.raises(RevertError, match="The caller must be a borrower"):
+    with pytest.raises(RevertError, match="OnlyBorrower"):
         etk.unlock_scr(_W(600), _W("0.0365"), _W(0))
 
 
@@ -228,7 +228,7 @@ def test_etoken_erc20(tenv):
     assert _W(5000) > total_withdrawable
 
     # Max to withdraw is total_withdrawable - Only if infinite sent as parameter
-    with etk.thru_policy_pool(), pytest.raises(RevertError, match="amount > max withdrawable"):
+    with etk.thru_policy_pool(), pytest.raises(RevertError, match="ExceedsMaxWithdraw"):
         etk.withdraw("LP1", _W(5000)).assert_equal(total_withdrawable)
 
     with etk.thru_policy_pool():
@@ -357,7 +357,7 @@ def test_lock_scr_validation(tenv):
         sr_scr=_W(600), sr_interest_rate=_W("0.0365"), expiration=tenv.time_control.now + WEEK
     )
 
-    with etk.thru(pa), pytest.raises(RevertError, match="EToken: Borrower cannot be the zero address"):
+    with etk.thru(pa), pytest.raises(RevertError, match="InvalidBorrower"):
         with etk.thru_policy_pool():
             etk.add_borrower(None)
 
@@ -365,14 +365,14 @@ def test_lock_scr_validation(tenv):
         etk.add_borrower(pa)
 
     with etk.thru(pa):
-        with pytest.raises(RevertError, match="Not enough funds available to cover the SCR"):
+        with pytest.raises(RevertError, match="NotEnoughScrFunds"):
             etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
     with etk.thru_policy_pool():
         tenv.currency.transfer(tenv.currency.owner, etk, _W(200))
         etk.deposit("LP1", _W(200))
 
     with etk.thru(pa):
-        with pytest.raises(RevertError, match="Not enough funds available to cover the SCR"):
+        with pytest.raises(RevertError, match="NotEnoughScrFunds"):
             etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
 
 
@@ -388,7 +388,9 @@ def test_internal_loan(tenv):
     with etk.thru_policy_pool():
         etk.deposit("LP1", _W(1000))
     assert etk.internal_loan_interest_rate == _W("0.073")
-    assert etk.get_loan(pa) == _W(0)
+
+    with pytest.raises(RevertError, match="InvalidBorrower"):
+        assert etk.get_loan(pa) == _W(0)
 
     with etk.thru_policy_pool():
         etk.add_borrower(pa)
@@ -417,8 +419,7 @@ def test_internal_loan(tenv):
         assert tenv.currency.balance_of("CUST1") == lended
         etk.get_loan(pa).assert_equal(lended)
 
-        with pytest.raises(RevertError, match="EToken: amount should be greater than zero."):
-            etk.repay_loan(pa, _W(0), pa)
+        etk.repay_loan(pa, _W(0), pa)
 
         etk.repay_loan(pa, lended, pa)
         tenv.currency.balance_of(pa).assert_equal(pa_balance - lended)
@@ -429,7 +430,8 @@ def test_internal_loan(tenv):
     etk.get_loan(pa).assert_equal(_W(300))
     tenv.time_control.fast_forward(7 * DAY)
 
-    etk.get_loan(pa2).assert_equal(_W(0))
+    with pytest.raises(RevertError, match="InvalidBorrower"):
+        etk.get_loan(pa2).assert_equal(_W(0))
 
     # After 7 days increases at a rate of 7.3%/year (0.02% per day)
     etk.get_loan(pa).assert_equal(_W(300) * _W(1 + 0.0002 * 7))
@@ -495,7 +497,7 @@ def test_max_utilization_rate(tenv):
     )
 
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
-    with pytest.raises(RevertError, match="Not enough funds available to cover the SCR"):
+    with pytest.raises(RevertError, match="NotEnoughScrFunds"):
         with etk.thru(pa):
             etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
 
@@ -538,9 +540,7 @@ def test_max_utilization_rate(tenv):
         etk.set_min_utilization_rate(_W("0.475"))
 
     tenv.currency.transfer(tenv.currency.owner, etk, _W(5))
-    with etk.thru_policy_pool(), pytest.raises(
-        RevertError, match="Deposit rejected - Utilization Rate < min"
-    ):
+    with etk.thru_policy_pool(), pytest.raises(RevertError, match="UtilizationRateTooLow"):
         etk.deposit("LP1", _W(5))
 
     withdrawable = _W(2000) - _W(950)

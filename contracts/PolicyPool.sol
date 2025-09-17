@@ -195,6 +195,13 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    */
   error InvalidNotificationResponse(bytes4 response);
 
+  error PolicyAlreadyExists(uint256 policyId);
+  error PolicyAlreadyExpired(uint256 policyId);
+  error PolicyNotFound(uint256 policyId);
+  error PolicyNotExpired(uint256 policyId, uint40 expiration, uint256 now);
+  error InvalidPolicyReplacement(Policy.PolicyData oldPolicy, Policy.PolicyData newPolicy);
+  error PayoutExceedsLimit(uint256 payout, uint256 policyPayout);
+
   /**
    * @dev Event emitted when the treasury changes
    *
@@ -459,7 +466,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
 
     // Effects
     policy.id = makePolicyId(rm, internalId);
-    require(_policies[policy.id] == bytes32(0), "Policy already exists");
+    require(_policies[policy.id] == bytes32(0), PolicyAlreadyExists(policy.id));
     _policies[policy.id] = policy.hash();
     _safeMint(policyHolder, policy.id, "");
 
@@ -468,8 +475,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
 
     // Distribute the premium
     _currency.safeTransferFrom(payer, address(pa), policy.purePremium);
-    if (policy.srCoc > 0) _currency.safeTransferFrom(payer, address(pa.seniorEtk()), policy.srCoc);
-    if (policy.jrCoc > 0) _currency.safeTransferFrom(payer, address(pa.juniorEtk()), policy.jrCoc);
+    (IEToken jrEtk, IEToken srEtk) = pa.etks();
+    if (policy.srCoc > 0) _currency.safeTransferFrom(payer, address(srEtk), policy.srCoc);
+    if (policy.jrCoc > 0) _currency.safeTransferFrom(payer, address(jrEtk), policy.jrCoc);
     _currency.safeTransferFrom(payer, _treasury, policy.ensuroCommission);
     if (policy.partnerCommission > 0 && payer != rm.wallet())
       _currency.safeTransferFrom(payer, rm.wallet(), policy.partnerCommission);
@@ -497,10 +505,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     _requireCompActive(address(rm), ComponentKind.riskModule);
     IPremiumsAccount pa = rm.premiumsAccount();
     _requireCompActive(address(pa), ComponentKind.premiumsAccount);
-    require(oldPolicy.expiration > uint40(block.timestamp), "Old policy is expired");
-    require(oldPolicy.start == newPolicy_.start, "Both policies must have the same starting date");
+    require(oldPolicy.expiration > uint40(block.timestamp), PolicyAlreadyExpired(oldPolicy.id));
     require(
-      oldPolicy.payout <= newPolicy_.payout &&
+      oldPolicy.start == newPolicy_.start &&
+        oldPolicy.payout <= newPolicy_.payout &&
         oldPolicy.purePremium <= newPolicy_.purePremium &&
         oldPolicy.ensuroCommission <= newPolicy_.ensuroCommission &&
         oldPolicy.jrCoc <= newPolicy_.jrCoc &&
@@ -510,12 +518,12 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
         oldPolicy.partnerCommission <= newPolicy_.partnerCommission &&
         oldPolicy.expiration <= newPolicy_.expiration &&
         rm == newPolicy_.riskModule,
-      "New policy must be greater or equal than old policy"
+      InvalidPolicyReplacement(oldPolicy, newPolicy_)
     );
 
     // Effects
     newPolicy_.id = makePolicyId(rm, internalId);
-    require(_policies[newPolicy_.id] == bytes32(0), "Policy already exists");
+    require(_policies[newPolicy_.id] == bytes32(0), PolicyAlreadyExists(newPolicy_.id));
     _policies[newPolicy_.id] = newPolicy_.hash();
     address policyHolder = ownerOf(oldPolicy.id);
     _safeMint(policyHolder, newPolicy_.id, "");
@@ -526,8 +534,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
 
     // Distribute the premium
     _transferIfNonZero(payer, address(pa), newPolicy_.purePremium, oldPolicy.purePremium);
-    _transferIfNonZero(payer, address(pa.seniorEtk()), newPolicy_.srCoc, oldPolicy.srCoc);
-    _transferIfNonZero(payer, address(pa.juniorEtk()), newPolicy_.jrCoc, oldPolicy.jrCoc);
+    (IEToken jrEtk, IEToken srEtk) = pa.etks();
+    _transferIfNonZero(payer, address(srEtk), newPolicy_.srCoc, oldPolicy.srCoc);
+    _transferIfNonZero(payer, address(jrEtk), newPolicy_.jrCoc, oldPolicy.jrCoc);
     _transferIfNonZero(payer, _treasury, newPolicy_.ensuroCommission, oldPolicy.ensuroCommission);
     address rmWallet = rm.wallet();
     if (payer != rmWallet)
@@ -552,7 +561,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   function _validatePolicy(Policy.PolicyData memory policy) internal view {
-    require(policy.id != 0 && policy.hash() == _policies[policy.id], "Policy not found");
+    require(policy.id != 0 && policy.hash() == _policies[policy.id], PolicyNotFound(policy.id));
   }
 
   function makePolicyId(IRiskModule rm, uint96 internalId) public pure returns (uint256) {
@@ -560,13 +569,14 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   function expirePolicy(Policy.PolicyData calldata policy) external override whenNotPaused {
-    require(policy.expiration <= block.timestamp, "Policy not expired yet");
+    if (policy.expiration > block.timestamp) revert PolicyNotExpired(policy.id, policy.expiration, block.timestamp);
     return _resolvePolicy(policy, 0, true);
   }
 
   function expirePolicies(Policy.PolicyData[] calldata policies) external whenNotPaused {
     for (uint256 i = 0; i < policies.length; ++i) {
-      require(policies[i].expiration <= block.timestamp, "Policy not expired yet");
+      if (policies[i].expiration > block.timestamp)
+        revert PolicyNotExpired(policies[i].id, policies[i].expiration, block.timestamp);
       _resolvePolicy(policies[i], 0, true);
     }
   }
@@ -606,10 +616,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     _validatePolicy(policy);
     IRiskModule rm = policy.riskModule;
     if (!expired && address(rm) != _msgSender()) revert OnlyRiskModuleAllowed();
-    require(payout == 0 || policy.expiration > block.timestamp, "Can't pay expired policy");
+    require(payout == 0 || policy.expiration > block.timestamp, PolicyAlreadyExpired(policy.id));
     _requireCompActiveOrDeprecated(address(rm), ComponentKind.riskModule);
 
-    require(payout <= policy.payout, "payout > policy.payout");
+    require(payout <= policy.payout, PayoutExceedsLimit(payout, policy.payout));
 
     bool customerWon = payout > 0;
 

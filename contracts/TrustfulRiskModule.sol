@@ -5,7 +5,6 @@ import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
 import {RiskModule} from "./RiskModule.sol";
 import {Policy} from "./Policy.sol";
-import {IERC721} from "@openzeppelin/contracts/interfaces/IERC721.sol";
 
 /**
  * @title Trustful Risk Module
@@ -67,7 +66,7 @@ contract TrustfulRiskModule is RiskModule {
     address onBehalfOf,
     uint96 internalId
   ) external returns (uint256) {
-    return _newPolicy(payout, premium, lossProb, expiration, _getPayer(onBehalfOf, premium), onBehalfOf, internalId).id;
+    return _newPolicy(payout, premium, lossProb, expiration, msg.sender, onBehalfOf, internalId).id;
   }
 
   /**
@@ -95,7 +94,7 @@ contract TrustfulRiskModule is RiskModule {
     address onBehalfOf,
     uint96 internalId
   ) external returns (Policy.PolicyData memory createdPolicy) {
-    return _newPolicy(payout, premium, lossProb, expiration, _getPayer(onBehalfOf, premium), onBehalfOf, internalId);
+    return _newPolicy(payout, premium, lossProb, expiration, msg.sender, onBehalfOf, internalId);
   }
 
   /**
@@ -122,36 +121,7 @@ contract TrustfulRiskModule is RiskModule {
     uint40 expiration,
     uint96 internalId
   ) external returns (uint256) {
-    address onBehalfOf = IERC721(address(_policyPool)).ownerOf(oldPolicy.id);
-    return
-      _replacePolicy(
-        oldPolicy,
-        payout,
-        premium,
-        lossProb,
-        expiration,
-        _getPayer(onBehalfOf, premium),
-        internalId,
-        params()
-      ).id;
-  }
-
-  function _getPayer(address onBehalfOf, uint256 premium) internal view returns (address payer) {
-    payer = onBehalfOf;
-    if (payer != msg.sender && _policyPool.currency().allowance(payer, msg.sender) < premium)
-      /**
-       * The standard is the payer should be the msg.sender but usually, in this type of module,
-       * the sender is an operative account managed by software, where the onBehalfOf is a more
-       * secure account (hardware wallet) that does the cash movements.
-       * This non standard behaviour allows for a more secure setup, where the sender never manages
-       * cash.
-       * We leverage the currency's allowance mechanism to allow the sender access to the payer's
-       * funds.
-       * Note that this allowance won't be spent, so it can be set as the maximum amount of a single
-       * premium even for multiple policies.
-       */
-      payer = msg.sender;
-    return payer;
+    return _replacePolicy(oldPolicy, payout, premium, lossProb, expiration, msg.sender, internalId, params()).id;
   }
 
   /**

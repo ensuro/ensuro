@@ -191,68 +191,6 @@ contract SignedQuoteRiskModule is RiskModule {
       ).id;
   }
 
-  /**
-   * @dev Creates a new Policy using a signed quote. The payer is the policy holder
-   *
-   * Requirements:
-   * - currency().allowance(onBehalfOf, msg.sender) > 0
-   * - The quote has been signed by an address with the component role PRICER_ROLE
-   *
-   * Emits:
-   * - {PolicyPool.NewPolicy}
-   * - {NewSignedPolicy}
-   *
-   * @param payout The exposure (maximum payout) of the policy
-   * @param premium The premium that will be paid by the payer
-   * @param lossProb The probability of having to pay the maximum payout (wad)
-   * @param expiration The expiration of the policy (timestamp)
-   * @param onBehalfOf The policy holder
-   * @param policyData A hash of the private details of the policy. The last 96 bits will be used as internalId
-   * @param quoteSignatureR The signature of the quote. R component (EIP-2098 signature)
-   * @param quoteSignatureVS The signature of the quote. VS component (EIP-2098 signature)
-   * @param quoteValidUntil The expiration of the quote
-   * @return Returns the id of the created policy
-   */
-  function newPolicyPaidByHolder(
-    uint256 payout,
-    uint256 premium,
-    uint256 lossProb,
-    uint40 expiration,
-    address onBehalfOf,
-    bytes32 policyData,
-    bytes32 quoteSignatureR,
-    bytes32 quoteSignatureVS,
-    uint40 quoteValidUntil
-  ) external returns (uint256) {
-    require(
-      onBehalfOf == msg.sender || currency().allowance(onBehalfOf, msg.sender) > 0,
-      "Sender is not authorized to create policies onBehalfOf"
-    );
-    /**
-     * The standard is the payer should be the msg.sender but usually, in this type of module,
-     * the sender is an operative account managed by software, where the onBehalfOf is a more
-     * secure account (hardware wallet) that does the cash movements.
-     * This non standard behaviour allows for a more secure setup, where the sender never manages
-     * cash.
-     * We leverage the currency's allowance mechanism to allow the sender access to the payer's
-     * funds.
-     * Note that this allowance won't be spent, so anything above 0 is accepted.
-     */
-    return
-      _newPolicySigned(
-        payout,
-        premium,
-        lossProb,
-        expiration,
-        policyData,
-        quoteSignatureR,
-        quoteSignatureVS,
-        quoteValidUntil,
-        onBehalfOf,
-        onBehalfOf
-      ).id;
-  }
-
   function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external {
     _policyPool.resolvePolicy(policy, payout);
   }

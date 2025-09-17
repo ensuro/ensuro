@@ -35,6 +35,8 @@ jobs:
       - run: npx hardhat size-contracts
       - run: npm run solhint
       - name: Run python tests
+        env:
+          USE_CUSTOM_ERRORS: "Y"
         run: |
           . scripts/utils.sh
           startHHNode
@@ -76,7 +78,9 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
 
-      - run: npx hardhat python-coverage
+      - env:
+          USE_CUSTOM_ERRORS: "Y"
+        run: npx hardhat python-coverage
 
       - name: Produce the coverage report
         uses: insightsengineering/coverage-action@v2

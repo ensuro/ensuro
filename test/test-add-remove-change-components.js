@@ -213,7 +213,9 @@ describe("Test add, remove and change status of PolicyPool components", function
     const receipt = await tx.wait();
     const borrowerRemovedEvt = getTransactionEvent(etk.interface, receipt, "InternalBorrowerRemoved");
 
-    expect(await etk.getLoan(premiumsAccount)).to.be.equal(_A(0)); // debt defaulted
+    await expect(etk.getLoan(premiumsAccount))
+      .to.be.revertedWithCustomError(etk, "InvalidBorrower")
+      .withArgs(premiumsAccount); // debt defaulted
     expect(borrowerRemovedEvt.args.defaultedDebt).to.be.equal(internalLoan);
     expect(await pool.getComponentStatus(premiumsAccount)).to.be.equal(ComponentStatus.inactive);
 

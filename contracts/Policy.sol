@@ -46,6 +46,10 @@ library Policy {
     uint256 totalPremium;
   }
 
+  error PremiumLessThanMinimum(uint256 premium, uint256 minPremium);
+  error PremiumExceedsPayout(uint256 premium, uint256 payout);
+  error ZeroHash(PolicyData policy);
+
   function getMinimumPremium(
     IRiskModule.Params memory rmParams,
     uint256 payout,
@@ -89,7 +93,7 @@ library Policy {
     uint40 expiration,
     uint40 start
   ) internal pure returns (PolicyData memory newPolicy) {
-    require(premium <= payout, "Premium cannot be more than payout");
+    require(premium < payout, PremiumExceedsPayout(premium, payout));
     PolicyData memory policy;
 
     policy.riskModule = riskModule;
@@ -108,7 +112,7 @@ library Policy {
     policy.srCoc = minPremium.srCoc;
     policy.ensuroCommission = minPremium.ensuroCommission;
 
-    require(minPremium.totalPremium <= premium, "Premium less than minimum");
+    require(minPremium.totalPremium <= premium, PremiumLessThanMinimum(premium, minPremium.totalPremium));
 
     policy.partnerCommission = premium - minPremium.totalPremium;
     return policy;
@@ -119,7 +123,7 @@ library Policy {
   }
 
   function jrAccruedInterest(PolicyData memory policy) internal view returns (uint256) {
-    return (policy.jrCoc * (block.timestamp - policy.start)) / (policy.expiration - policy.start);
+    return (policy.jrCoc * (block.timestamp - policy.start)) / duration(policy);
   }
 
   function srInterestRate(PolicyData memory policy) internal pure returns (uint256) {
@@ -127,12 +131,16 @@ library Policy {
   }
 
   function srAccruedInterest(PolicyData memory policy) internal view returns (uint256) {
-    return (policy.srCoc * (block.timestamp - policy.start)) / (policy.expiration - policy.start);
+    return (policy.srCoc * (block.timestamp - policy.start)) / duration(policy);
+  }
+
+  function duration(PolicyData memory policy) internal pure returns (uint40) {
+    return policy.expiration - policy.start;
   }
 
   function hash(PolicyData memory policy) internal pure returns (bytes32 retHash) {
     retHash = keccak256(abi.encode(policy));
-    require(retHash != bytes32(0), "Policy: hash cannot be 0");
+    require(retHash != bytes32(0), ZeroHash(policy));
     return retHash;
   }
 }

@@ -27,9 +27,6 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   uint16 internal constant MIN_MOC = 5e3; // 50%
   uint16 internal constant MAX_MOC = 4e4; // 400%
 
-  // For parameters that can be changed by the risk module provider
-  bytes32 internal constant RM_PROVIDER_ROLE = keccak256("RM_PROVIDER_ROLE");
-
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IPremiumsAccount internal immutable _premiumsAccount;
 
@@ -58,6 +55,12 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   error ExposureLimitCannotBeLessThanActiveExposure();
   error PremiumsAccountMustBePartOfThePool();
   error UpgradeCannotChangePremiumsAccount();
+  error InvalidParameter(Parameter parameter);
+  error ExpirationMustBeInTheFuture(uint40 expiration, uint40 now);
+  error PolicyExceedsMaxDuration(uint16 maxDuration);
+  error InvalidCustomer(address customer);
+  error ExposureLimitExceeded(uint256 activeExposure, uint256 exposureLimit);
+  error PayoutExceedsMaxPerPolicy(uint256 payout, uint256 maxPayoutPerPolicy);
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(IPolicyPool policyPool_, IPremiumsAccount premiumsAccount_) PolicyPoolComponent(policyPool_) {
@@ -147,15 +150,16 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
   }
 
   function _validatePackedParams(PackedParams storage params_) internal view {
-    require(params_.jrCollRatio <= HUNDRED_PERCENT, "Validation: jrCollRatio must be <=1");
-    require(params_.collRatio <= HUNDRED_PERCENT && params_.collRatio > 0, "Validation: collRatio must be <=1");
-    require(params_.collRatio >= params_.jrCollRatio, "Validation: collRatio >= jrCollRatio");
-    require(params_.moc <= MAX_MOC && params_.moc >= MIN_MOC, "Validation: moc must be [0.5, 4]");
-    require(params_.ensuroPpFee <= HUNDRED_PERCENT, "Validation: ensuroPpFee must be <= 1");
-    require(params_.ensuroCocFee <= HUNDRED_PERCENT, "Validation: ensuroCocFee must be <= 1");
-    require(params_.srRoc <= HUNDRED_PERCENT, "Validation: srRoc must be <= 1 (100%)");
-    require(params_.jrRoc <= HUNDRED_PERCENT, "Validation: jrRoc must be <= 1 (100%)");
-    require(params_.exposureLimit > 0 && params_.maxPayoutPerPolicy > 0, "Exposure and MaxPayout must be >0");
+    require(params_.jrCollRatio <= HUNDRED_PERCENT, InvalidParameter(Parameter.jrCollRatio));
+    require(params_.collRatio <= HUNDRED_PERCENT && params_.collRatio > 0, InvalidParameter(Parameter.collRatio));
+    require(params_.collRatio >= params_.jrCollRatio, InvalidParameter(Parameter.collRatio));
+    require(params_.moc <= MAX_MOC && params_.moc >= MIN_MOC, InvalidParameter(Parameter.moc));
+    require(params_.ensuroPpFee <= HUNDRED_PERCENT, InvalidParameter(Parameter.ensuroPpFee));
+    require(params_.ensuroCocFee <= HUNDRED_PERCENT, InvalidParameter(Parameter.ensuroCocFee));
+    require(params_.srRoc <= HUNDRED_PERCENT, InvalidParameter(Parameter.srRoc));
+    require(params_.jrRoc <= HUNDRED_PERCENT, InvalidParameter(Parameter.jrRoc));
+    require(params_.exposureLimit > 0, InvalidParameter(Parameter.exposureLimit));
+    require(params_.maxPayoutPerPolicy > 0, InvalidParameter(Parameter.maxPayoutPerPolicy));
   }
 
   function name() public view override returns (string memory) {
@@ -222,7 +226,7 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     } else if (param == Parameter.maxPayoutPerPolicy) {
       _params.maxPayoutPerPolicy = _amountToX(2, newValue);
     } else if (param == Parameter.exposureLimit) {
-      require(newValue >= _activeExposure, "Can't set exposureLimit less than active exposure");
+      require(newValue >= _activeExposure, ExposureLimitExceeded(_activeExposure, newValue));
       // TODO: restore custom validation for increasing exposure??a
       // require(newValue <= exposureLimit() || hasPoolRole(LEVEL1_ROLE), "Increase requires LEVEL1_ROLE");
       _params.exposureLimit = _amountToX(0, newValue);
@@ -319,22 +323,13 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     if (premium == type(uint256).max) {
       premium = _getMinimumPremium(payout, lossProb, expiration, now_, params_);
     }
-    require(premium < payout, "Premium must be less than payout");
-    require(expiration > now_, "Expiration must be in the future");
-    require(((expiration - now_) / 3600) < _params.maxDuration, "Policy exceeds max duration");
-    require(onBehalfOf != address(0), "Customer can't be zero address");
-    require(
-      _policyPool.currency().allowance(payer, address(_policyPool)) >= premium,
-      "You must allow ENSURO to transfer the premium"
-    );
-    require(
-      payer == msg.sender || _policyPool.currency().allowance(payer, msg.sender) >= premium,
-      "Payer must allow caller to transfer the premium"
-    );
-    require(payout <= maxPayoutPerPolicy(), "RiskModule: Payout is more than maximum per policy");
+    require(expiration > now_, ExpirationMustBeInTheFuture(expiration, now_));
+    require(onBehalfOf != address(0), InvalidCustomer(onBehalfOf));
+    if (payout > maxPayoutPerPolicy()) revert PayoutExceedsMaxPerPolicy(payout, maxPayoutPerPolicy());
     policy = Policy.initialize(this, params_, premium, payout, lossProb, expiration, now_);
+    require(policy.duration() / 3600 < _params.maxDuration, PolicyExceedsMaxDuration(_params.maxDuration));
     _activeExposure += policy.payout;
-    require(_activeExposure <= exposureLimit(), "RiskModule: Exposure limit exceeded");
+    if (_activeExposure > exposureLimit()) revert ExposureLimitExceeded(_activeExposure, exposureLimit());
     policy.id = _policyPool.newPolicy(policy, payer, onBehalfOf, internalId);
     return policy;
   }
@@ -363,28 +358,16 @@ abstract contract RiskModule is IRiskModule, PolicyPoolComponent {
     if (premium == type(uint256).max) {
       premium = _getMinimumPremium(payout, lossProb, expiration, oldPolicy.start, params_);
     }
-    require(premium < payout, "Premium must be less than payout");
-    require(oldPolicy.expiration > uint40(block.timestamp), "Old policy is expired");
-    require(
-      expiration >= oldPolicy.expiration && payout >= oldPolicy.payout && premium >= oldPolicy.premium,
-      "Policy replacement must be greater or equal than old policy"
-    );
-    require(((expiration - oldPolicy.start) / 3600) < _params.maxDuration, "Policy exceeds max duration");
-    require(
-      _policyPool.currency().allowance(payer, address(_policyPool)) >= (premium - oldPolicy.premium),
-      "You must allow ENSURO to transfer the premium"
-    );
-    require(
-      payer == msg.sender || _policyPool.currency().allowance(payer, msg.sender) >= (premium - oldPolicy.premium),
-      "Payer must allow caller to transfer the premium"
-    );
-    require(payout <= maxPayoutPerPolicy(), "RiskModule: Payout is more than maximum per policy");
+    if (expiration < uint40(block.timestamp)) revert ExpirationMustBeInTheFuture(expiration, uint40(block.timestamp));
+    if (payout > maxPayoutPerPolicy()) revert PayoutExceedsMaxPerPolicy(payout, maxPayoutPerPolicy());
     policy = Policy.initialize(this, params_, premium, payout, lossProb, expiration, oldPolicy.start);
-
-    _activeExposure += policy.payout - oldPolicy.payout;
-    require(_activeExposure <= exposureLimit(), "RiskModule: Exposure limit exceeded");
+    require(policy.duration() / 3600 < _params.maxDuration, PolicyExceedsMaxDuration(_params.maxDuration));
 
     policy.id = _policyPool.replacePolicy(oldPolicy, policy, payer, internalId);
+
+    _activeExposure += policy.payout - oldPolicy.payout;
+    if (_activeExposure > exposureLimit()) revert ExposureLimitExceeded(_activeExposure, exposureLimit());
+
     return policy;
   }
 
