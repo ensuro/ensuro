@@ -36,7 +36,7 @@ contract PolicyPoolMock is IPolicyPool {
     address /* policyHolder */,
     uint96 internalId
   ) external override returns (uint256) {
-    policy.id = (uint256(uint160(address(policy.riskModule))) << 96) + internalId;
+    policy.id = (uint256(uint160(msg.sender)) << 96) + internalId;
     policyHashes[policy.id] = policy.hash();
     emit NewPolicy(IRiskModule(msg.sender), policy);
     return policy.id;
@@ -48,18 +48,21 @@ contract PolicyPoolMock is IPolicyPool {
     address /* payer */,
     uint96 internalId
   ) external override returns (uint256) {
-    newPolicy_.id = (uint256(uint160(address(newPolicy_.riskModule))) << 96) + internalId;
+    newPolicy_.id = (uint256(uint160(msg.sender)) << 96) + internalId;
     policyHashes[newPolicy_.id] = newPolicy_.hash();
-    IRiskModule rm = oldPolicy.riskModule;
+    IRiskModule rm = IRiskModule(msg.sender);
     emit NewPolicy(rm, newPolicy_);
     emit PolicyReplaced(IRiskModule(msg.sender), oldPolicy.id, newPolicy_.id);
     return newPolicy_.id;
   }
 
+  function extractRiskModule(uint256 policyId) public pure returns (IRiskModule) {
+    return IRiskModule(address(uint160(policyId >> 96)));
+  }
+
   function _resolvePolicy(Policy.PolicyData memory policy, uint256 payout) internal {
     require(policy.id != 0, "Policy not found");
     require(policy.hash() == policyHashes[policy.id], "Hash doesn't match");
-    require(msg.sender == address(policy.riskModule), "Only riskModule is authorized to resolve the policy");
     delete policies[policy.id];
     delete policyHashes[policy.id];
     emit PolicyResolved(IRiskModule(msg.sender), policy.id, payout);
@@ -97,8 +100,7 @@ contract PolicyPoolMock is IPolicyPool {
    * @dev Simple passthrough method for testing Policy.initialize
    */
   function initializeAndEmitPolicy(
-    IRiskModule riskModule,
-    IRiskModule.Params memory rmParams,
+    Policy.Params memory rmParams,
     uint256 premium,
     uint256 payout,
     uint256 lossProb,
@@ -106,7 +108,6 @@ contract PolicyPoolMock is IPolicyPool {
     uint40 start
   ) external {
     Policy.PolicyData memory policy = Policy.initialize(
-      riskModule,
       rmParams,
       premium,
       payout,
@@ -115,7 +116,7 @@ contract PolicyPoolMock is IPolicyPool {
       start == 0 ? uint40(block.timestamp) : start
     );
 
-    emit NewPolicy(riskModule, policy);
+    emit NewPolicy(IRiskModule(address(0)), policy);
   }
 }
 

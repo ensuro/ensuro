@@ -64,7 +64,6 @@ describe("Policy initialize", () => {
   async function makePolicyArgs(options = {}, rmParams = {}) {
     const now = await helpers.time.latest();
     return [
-      options.riskModule || "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // riskModule
       [
         rmParams.moc || _W(1), // moc
         rmParams.jrCollRatio || _W(0), // jrCollRatio

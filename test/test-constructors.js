@@ -71,18 +71,18 @@ describe("Constructor validations", function () {
 
   it("Checks TrustfulRiskModule constructor validations", async () => {
     const { premiumsAccount, policyPool, currency } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
-    const TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
-    const initArgs = ["foo", 0, 0, 0, 0, 0, rndAddr];
+    const RiskModule = await hre.ethers.getContractFactory("RiskModule");
+    const initArgs = [rndAddr, rndAddr];
     const paAddr = await hre.ethers.resolveAddress(premiumsAccount);
     const poolAddr = await hre.ethers.resolveAddress(policyPool);
     await expect(
-      hre.upgrades.deployProxy(TrustfulRiskModule, initArgs, {
+      hre.upgrades.deployProxy(RiskModule, initArgs, {
         constructorArgs: [ZeroAddress, paAddr],
         ...deployProxyArgs,
       })
-    ).to.be.revertedWithCustomError(TrustfulRiskModule, "NoZeroPolicyPool");
+    ).to.be.revertedWithCustomError(RiskModule, "NoZeroPolicyPool");
     await expect(
-      hre.upgrades.deployProxy(TrustfulRiskModule, initArgs, {
+      hre.upgrades.deployProxy(RiskModule, initArgs, {
         constructorArgs: [poolAddr, ZeroAddress],
         ...deployProxyArgs,
       })
@@ -93,42 +93,11 @@ describe("Constructor validations", function () {
     const anotherPA = await deployPremiumsAccount(anotherPool, {});
     const anotherPAAddr = await hre.ethers.resolveAddress(anotherPA);
     await expect(
-      hre.upgrades.deployProxy(TrustfulRiskModule, initArgs, {
+      hre.upgrades.deployProxy(RiskModule, initArgs, {
         constructorArgs: [poolAddr, anotherPAAddr],
         ...deployProxyArgs,
       })
-    ).to.be.revertedWithCustomError(TrustfulRiskModule, "PremiumsAccountMustBePartOfThePool");
-  });
-
-  it("Checks SignedQuoteRiskModule constructor validations", async () => {
-    const { premiumsAccount, policyPool, currency } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
-    const SignedQuoteRiskModule = await hre.ethers.getContractFactory("SignedQuoteRiskModule");
-    const initArgs = ["foo", 0, 0, 0, 0, 0, rndAddr];
-    const poolAddr = await hre.ethers.resolveAddress(policyPool);
-    const paAddr = await hre.ethers.resolveAddress(premiumsAccount);
-    await expect(
-      hre.upgrades.deployProxy(SignedQuoteRiskModule, initArgs, {
-        constructorArgs: [ZeroAddress, paAddr, false],
-        ...deployProxyArgs,
-      })
-    ).to.be.revertedWithCustomError(SignedQuoteRiskModule, "NoZeroPolicyPool");
-    await expect(
-      hre.upgrades.deployProxy(SignedQuoteRiskModule, initArgs, {
-        constructorArgs: [poolAddr, ZeroAddress, false],
-        ...deployProxyArgs,
-      })
-    ).to.be.reverted;
-    const anotherPool = await deployPool({
-      currency: currency,
-    });
-    const anotherPA = await deployPremiumsAccount(anotherPool, {});
-    const anotherPaAddr = await hre.ethers.resolveAddress(anotherPA);
-    await expect(
-      hre.upgrades.deployProxy(SignedQuoteRiskModule, initArgs, {
-        constructorArgs: [poolAddr, anotherPaAddr, false],
-        ...deployProxyArgs,
-      })
-    ).to.be.revertedWithCustomError(SignedQuoteRiskModule, "PremiumsAccountMustBePartOfThePool");
+    ).to.be.revertedWithCustomError(RiskModule, "PremiumsAccountMustBePartOfThePool");
   });
 
   it("Checks LPManualWhitelist constructor validations", async () => {

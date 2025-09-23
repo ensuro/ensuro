@@ -6,6 +6,7 @@ import {ERC721Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC72
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import {Governance} from "./Governance.sol";
@@ -34,6 +35,7 @@ import {Policy} from "./Policy.sol";
 contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721Upgradeable {
   using Policy for Policy.PolicyData;
   using SafeERC20 for IERC20Metadata;
+  using SafeCast for uint256;
 
   uint256 internal constant HOLDER_GAS_LIMIT = 150000;
 
@@ -107,6 +109,16 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * the full {Policy-PolicyData} struct has to be sent for each operation (hash is used to verify).
    */
   mapping(uint256 => bytes32) internal _policies;
+
+  struct Exposure {
+    uint128 active;
+    uint128 limit;
+  }
+
+  /**
+   * @dev Mapping of current exposures and limits for each risk module.
+   */
+  mapping(IRiskModule => Exposure) internal _exposureByRm;
 
   /**
    * @dev Base URI for the minted policy NFTs.
@@ -201,6 +213,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   error PolicyNotExpired(uint256 policyId, uint40 expiration, uint256 now);
   error InvalidPolicyReplacement(Policy.PolicyData oldPolicy, Policy.PolicyData newPolicy);
   error PayoutExceedsLimit(uint256 payout, uint256 policyPayout);
+  error ExposureLimitExceeded(uint128 activeExposure, uint128 exposureLimit);
 
   /**
    * @dev Event emitted when the treasury changes
@@ -226,6 +239,15 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * @param holder The address of the contract that owns the policy
    */
   event ExpirationNotificationFailed(uint256 indexed policyId, IPolicyHolder holder);
+
+  /**
+   * @dev Event emitted when the exposure limit for a given risk module is changed
+   *
+   * @param riskModule The risk module whose limit will be changed
+   * @param oldLimit Exposure limit before the change
+   * @param newLimit Exposure limit after the change
+   */
+  event ExposureLimitChanged(IRiskModule indexed riskModule, uint128 oldLimit, uint128 newLimit);
 
   /**
    * @dev Instantiates a Policy Pool. Sets immutable fields.
@@ -368,8 +390,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
       if (IERC20Metadata(address(component)).totalSupply() != 0)
         revert ComponentInUseCannotRemove(comp.kind, IERC20Metadata(address(component)).totalSupply());
     } else if (comp.kind == ComponentKind.riskModule) {
-      if (IRiskModule(address(component)).activeExposure() != 0)
-        revert ComponentInUseCannotRemove(comp.kind, IRiskModule(address(component)).activeExposure());
+      if (_exposureByRm[IRiskModule(address(component))].active != 0)
+        revert ComponentInUseCannotRemove(comp.kind, _exposureByRm[IRiskModule(address(component))].active);
     } else if (comp.kind == ComponentKind.premiumsAccount) {
       IPremiumsAccount pa = IPremiumsAccount(address(component));
       if (pa.purePremiums() != 0) revert ComponentInUseCannotRemove(comp.kind, pa.purePremiums());
@@ -458,17 +480,18 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     uint96 internalId
   ) external override whenNotPaused returns (uint256) {
     // Checks
-    IRiskModule rm = policy.riskModule;
-    if (address(rm) != _msgSender()) revert OnlyRiskModuleAllowed();
+    IRiskModule rm = IRiskModule(_msgSender());
     _requireCompActive(address(rm), ComponentKind.riskModule);
     IPremiumsAccount pa = rm.premiumsAccount();
     _requireCompActive(address(pa), ComponentKind.premiumsAccount);
 
     // Effects
     policy.id = makePolicyId(rm, internalId);
+    policy.start = uint40(block.timestamp);
     require(_policies[policy.id] == bytes32(0), PolicyAlreadyExists(policy.id));
     _policies[policy.id] = policy.hash();
     _safeMint(policyHolder, policy.id, "");
+    _changeExposure(rm, true, policy.payout);
 
     // Interactions
     pa.policyCreated(policy);
@@ -500,8 +523,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   ) external override whenNotPaused returns (uint256) {
     // Checks
     _validatePolicy(oldPolicy);
-    IRiskModule rm = oldPolicy.riskModule;
-    if (address(rm) != _msgSender()) revert OnlyRiskModuleAllowed();
+    IRiskModule rm = IRiskModule(_msgSender());
+    if (extractRiskModule(oldPolicy.id) != rm) revert OnlyRiskModuleAllowed();
     _requireCompActive(address(rm), ComponentKind.riskModule);
     IPremiumsAccount pa = rm.premiumsAccount();
     _requireCompActive(address(pa), ComponentKind.premiumsAccount);
@@ -516,8 +539,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
         oldPolicy.jrScr <= newPolicy_.jrScr &&
         oldPolicy.srScr <= newPolicy_.srScr &&
         oldPolicy.partnerCommission <= newPolicy_.partnerCommission &&
-        oldPolicy.expiration <= newPolicy_.expiration &&
-        rm == newPolicy_.riskModule,
+        oldPolicy.expiration <= newPolicy_.expiration,
       InvalidPolicyReplacement(oldPolicy, newPolicy_)
     );
 
@@ -527,6 +549,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     _policies[newPolicy_.id] = newPolicy_.hash();
     address policyHolder = ownerOf(oldPolicy.id);
     _safeMint(policyHolder, newPolicy_.id, "");
+    _changeExposure(rm, true, newPolicy_.payout - oldPolicy.payout);
     delete _policies[oldPolicy.id];
 
     // Interactions
@@ -566,6 +589,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
 
   function makePolicyId(IRiskModule rm, uint96 internalId) public pure returns (uint256) {
     return (uint256(uint160(address(rm))) << 96) + internalId;
+  }
+
+  function extractRiskModule(uint256 policyId) public pure returns (IRiskModule) {
+    return IRiskModule(address(uint160(policyId >> 96)));
   }
 
   function expirePolicy(Policy.PolicyData calldata policy) external override whenNotPaused {
@@ -614,7 +641,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   function _resolvePolicy(Policy.PolicyData memory policy, uint256 payout, bool expired) internal {
     // Checks
     _validatePolicy(policy);
-    IRiskModule rm = policy.riskModule;
+    IRiskModule rm = extractRiskModule(policy.id);
     if (!expired && address(rm) != _msgSender()) revert OnlyRiskModuleAllowed();
     require(payout == 0 || policy.expiration > block.timestamp, PolicyAlreadyExpired(policy.id));
     _requireCompActiveOrDeprecated(address(rm), ComponentKind.riskModule);
@@ -635,14 +662,38 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
       pa.policyExpired(policy);
     }
 
-    rm.releaseExposure(policy.payout);
+    _changeExposure(rm, false, policy.payout);
 
-    emit PolicyResolved(policy.riskModule, policy.id, payout);
+    emit PolicyResolved(rm, policy.id, payout);
     if (payout > 0) {
       _notifyPayout(policy.id, payout);
     } else {
       _notifyExpiration(policy.id);
     }
+  }
+
+  function _changeExposure(IRiskModule rm, bool increase, uint256 change) internal {
+    Exposure storage exposure = _exposureByRm[rm];
+    if (increase) {
+      exposure.active += change.toUint128();
+      require(exposure.active <= exposure.limit, ExposureLimitExceeded(exposure.active, exposure.limit));
+    } else {
+      exposure.active -= change.toUint128();
+    }
+  }
+
+  function setExposureLimit(IRiskModule rm, uint256 newLimit) external {
+    Exposure storage exposure = _exposureByRm[rm];
+    uint128 newLimit128 = newLimit.toUint128();
+    require(exposure.active < newLimit128, ExposureLimitExceeded(exposure.active, newLimit128));
+    emit ExposureLimitChanged(rm, exposure.limit, newLimit128);
+    exposure.limit = newLimit128;
+  }
+
+  function getExposure(IRiskModule rm) external view returns (uint256 active, uint256 limit) {
+    Exposure storage exposure = _exposureByRm[rm];
+    active = exposure.active;
+    limit = exposure.limit;
   }
 
   /**
