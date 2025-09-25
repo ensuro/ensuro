@@ -42,7 +42,7 @@ describe("Supports interface implementation", function () {
       iinterfaceIds[iName] = await iidCalculator.getFunction(iName.toUpperCase() + "_INTERFACEID")();
     }
     console.log(iinterfaceIds);
-    */
+     */
     const interfaceIds = {
       IERC165: "0x01ffc9a7",
       IERC20: "0x36372b07",
@@ -52,12 +52,15 @@ describe("Supports interface implementation", function () {
       IEToken: "0x90770621",
       // IPolicyPool: "0x3234fad6", - Up to v2.7
       // IPolicyPool: "0x0ce33b78", - Up to v2.9
-      IPolicyPool: "0x7d73446f",
+      // IPolicyPool: "0x7d73446f", - Before `refactoring-rms` branch that changed Policy struct
+      IPolicyPool: "0x4a19696a",
       IPolicyPoolComponent: "0x4d15eb03",
-      IRiskModule: "0xda40804f",
+      // IRiskModule: "0xda40804f", - Up to v2.9
+      IRiskModule: "0x21b7e09b",
       // IPremiumsAccount: "0xb76712ec", - Up to v2.7
       // IPremiumsAccount: "0x1ce4a652", - Up to v2.9
-      IPremiumsAccount: "0x42a0fe0b",
+      // IPremiumsAccount: "0x42a0fe0b", - Before `refactoring-rms` branch that changed Policy struct
+      IPremiumsAccount: "0x19fb2a71",
       ILPWhitelist: "0xf8722d89",
       IPolicyHolder: "0x3ece0a89",
     };
@@ -121,22 +124,12 @@ describe("Supports interface implementation", function () {
     expect(await premiumsAccount.supportsInterface(invalidInterfaceId)).to.be.false;
   });
 
-  it("Checks TrustfulRiskModule supported interfaces", async () => {
+  it("Checks RiskModule supported interfaces", async () => {
     const { interfaceIds, premiumsAccount, policyPool } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
-    const TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
-    const rm = await TrustfulRiskModule.deploy(policyPool, premiumsAccount);
+    const RiskModule = await hre.ethers.getContractFactory("RiskModule");
+    const rm = await RiskModule.deploy(policyPool, premiumsAccount);
     expect(await rm.supportsInterface(interfaceIds.IERC165)).to.be.true;
     expect(await rm.supportsInterface(interfaceIds.IPolicyPoolComponent)).to.be.true;
-    expect(await rm.supportsInterface(interfaceIds.IRiskModule)).to.be.true;
-    expect(await rm.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.false;
-    expect(await rm.supportsInterface(invalidInterfaceId)).to.be.false;
-  });
-
-  it("Checks SignedQuoteRiskModule supported interfaces", async () => {
-    const { interfaceIds, premiumsAccount, policyPool } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
-    const SignedQuoteRiskModule = await hre.ethers.getContractFactory("SignedQuoteRiskModule");
-    const rm = await SignedQuoteRiskModule.deploy(policyPool, premiumsAccount, false);
-    expect(await rm.supportsInterface(interfaceIds.IERC165)).to.be.true;
     expect(await rm.supportsInterface(interfaceIds.IRiskModule)).to.be.true;
     expect(await rm.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.false;
     expect(await rm.supportsInterface(invalidInterfaceId)).to.be.false;

@@ -7,7 +7,6 @@ import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
 import {IRiskModule} from "./interfaces/IRiskModule.sol";
 import {IUnderwriter} from "./interfaces/IUnderwriter.sol";
 import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
-import {Governance} from "./Governance.sol";
 import {Policy} from "./Policy.sol";
 
 /**
@@ -106,6 +105,10 @@ contract RiskModule is IRiskModule, PolicyPoolComponent {
     _underwriter = newUW;
   }
 
+  function premiumsAccount() external view override returns (IPremiumsAccount) {
+    return _premiumsAccount;
+  }
+
   function getMinimumPremium(
     uint256 payout,
     uint256 lossProb,
@@ -150,7 +153,7 @@ contract RiskModule is IRiskModule, PolicyPoolComponent {
    * @param inputData Input data that will be decoded by the _underwriter to construct the oldPolicy and the
    *                  parameters for the new policy.
    */
-  function replacePolicy(bytes calldata inputData) internal virtual returns (Policy.PolicyData memory policy) {
+  function replacePolicy(bytes calldata inputData) external virtual returns (Policy.PolicyData memory policy) {
     (
       Policy.PolicyData memory oldPolicy,
       uint256 payout,
@@ -172,8 +175,21 @@ contract RiskModule is IRiskModule, PolicyPoolComponent {
     return policy;
   }
 
-  function premiumsAccount() external view override returns (IPremiumsAccount) {
-    return _premiumsAccount;
+  /**
+   * @dev Resolves a policy, if payout > 0, it pays to the policy holder.
+   *
+   * Requirements:
+   * - payout <= policy.payout
+   * - block.timestamp >= policy.expiration
+   *
+   * Emits:
+   * - {PolicyPool.PolicyResolved}
+   *
+   * @param policy The policy previously created (from {NewPolicy} event)
+   * @param payout The payout to transfer to the policy holder
+   */
+  function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external {
+    _policyPool.resolvePolicy(policy, payout);
   }
 
   /**
@@ -181,5 +197,5 @@ contract RiskModule is IRiskModule, PolicyPoolComponent {
    * variables without shifting down storage in the inheritance chain.
    * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
    */
-  uint256[46] private __gap;
+  uint256[48] private __gap;
 }

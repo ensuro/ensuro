@@ -4,23 +4,33 @@ const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { deployPool, deployPremiumsAccount, addRiskModule, makePolicy, addEToken } = require("../js/test-utils");
 const { ComponentKind, ComponentStatus } = require("../js/enums");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
+const { defaultTestParams, makeFTUWInputData } = require("../js/utils");
 
 const { MaxUint256 } = hre.ethers;
+
+const _A = amountFunction(6);
+
+function makeInputData({ payout, premium, lossProb, expiration, internalId, params }) {
+  return makeFTUWInputData({
+    payout: payout || _A(36),
+    premium: premium || _A(1),
+    lossProb: lossProb || _W(1 / 37),
+    expiration,
+    internalId: internalId || 123,
+    params: defaultTestParams(params || {}),
+  });
+}
 
 describe("Test add, remove and change status of PolicyPool components", function () {
   let currency;
   let pool;
-  let premiumsAccount;
-  let TrustfulRiskModule;
   let cust, guardian, level1, lp;
-  let _A;
   let etk;
   let rm;
+  let premiumsAccount;
 
   beforeEach(async () => {
     [, lp, cust, guardian, level1] = await hre.ethers.getSigners();
-
-    _A = amountFunction(6);
 
     currency = await initCurrency(
       { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(10000) },
@@ -37,8 +47,7 @@ describe("Test add, remove and change status of PolicyPool components", function
     etk = await addEToken(pool, {});
 
     premiumsAccount = await deployPremiumsAccount(pool, { srEtk: etk });
-    TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
-    rm = await addRiskModule(pool, premiumsAccount, TrustfulRiskModule, {});
+    rm = await addRiskModule(pool, premiumsAccount, {});
 
     await currency.connect(lp).approve(pool, _A(3000));
     await pool.connect(lp).deposit(etk, _A(3000));
@@ -94,7 +103,17 @@ describe("Test add, remove and change status of PolicyPool components", function
     await currency.connect(cust).approve(pool, _A(100));
 
     // When active newPolicies are OK
-    let newPolicyEvt = await makePolicy(pool, rm, cust, _A(36), _A(1), _W(1 / 37), start + 3600, 1, "newPolicyFull");
+    let newPolicyEvt = await makePolicy(
+      pool,
+      rm.connect(cust),
+      cust,
+      _A(36),
+      _A(1),
+      _W(1 / 37),
+      start + 3600,
+      1,
+      defaultTestParams({})
+    );
     let policy = newPolicyEvt.args.policy;
 
     expect(await pool.getComponentStatus(rm)).to.be.equal(ComponentStatus.active);
@@ -104,9 +123,8 @@ describe("Test add, remove and change status of PolicyPool components", function
     expect(await pool.getComponentStatus(rm)).to.be.equal(ComponentStatus.deprecated);
 
     // When deprecated can't create policy
-    rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 2);
     await expect(
-      rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 2)
+      rm.connect(cust).newPolicy(makeInputData({ expiration: start + 3600 }), cust)
     ).to.be.revertedWithCustomError(pool, "ComponentNotFoundOrNotActive");
 
     // But policies can be resolved
@@ -116,7 +134,17 @@ describe("Test add, remove and change status of PolicyPool components", function
     await expect(pool.connect(level1).changeComponentStatus(rm, ComponentStatus.active)).not.to.be.reverted;
     expect(await pool.getComponentStatus(rm)).to.be.equal(ComponentStatus.active);
 
-    newPolicyEvt = await makePolicy(pool, rm, cust, _A(36), _A(1), _W(1 / 37), start + 3600, 3);
+    newPolicyEvt = await makePolicy(
+      pool,
+      rm.connect(cust),
+      cust,
+      _A(36),
+      _A(1),
+      _W(1 / 37),
+      start + 3600,
+      3,
+      defaultTestParams({})
+    );
     policy = newPolicyEvt.args.policy;
 
     await expect(pool.connect(guardian).changeComponentStatus(rm, ComponentStatus.suspended)).not.to.be.reverted;
@@ -128,7 +156,7 @@ describe("Test add, remove and change status of PolicyPool components", function
       "ComponentMustBeActiveOrDeprecated"
     );
     await expect(
-      rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 4)
+      rm.connect(cust).newPolicy(makeInputData({ expiration: start + 3600 }), cust)
     ).to.be.revertedWithCustomError(pool, "ComponentNotFoundOrNotActive");
 
     // Can't be removed if not deprecated before, or if has active policies
@@ -140,13 +168,13 @@ describe("Test add, remove and change status of PolicyPool components", function
 
     await expect(pool.connect(level1).removeComponent(rm))
       .to.be.revertedWithCustomError(pool, "ComponentInUseCannotRemove")
-      .withArgs(ComponentKind.riskModule, await rm.activeExposure());
+      .withArgs(ComponentKind.riskModule, (await pool.getExposure(rm))[0]);
 
     await expect(rm.connect(cust).resolvePolicy([...policy], _A(10))).not.to.be.reverted;
     await expect(pool.connect(level1).removeComponent(rm)).not.to.be.reverted;
     expect(await pool.getComponentStatus(rm)).to.be.equal(ComponentStatus.inactive);
 
-    await expect(rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 5))
+    await expect(rm.connect(cust).newPolicy(makeInputData({ expiration: start + 3600 }), cust))
       .to.be.revertedWithCustomError(pool, "ComponentNotTheRightKind")
       .withArgs(rm, ComponentKind.riskModule);
   });
@@ -156,7 +184,17 @@ describe("Test add, remove and change status of PolicyPool components", function
     await currency.connect(cust).approve(pool, _A(100));
 
     // When active newPolicies are OK
-    let newPolicyEvt = await makePolicy(pool, rm, cust, _A(36), _A(1), _W(1 / 37), start + 3600, 1);
+    let newPolicyEvt = await makePolicy(
+      pool,
+      rm.connect(cust),
+      cust,
+      _A(36),
+      _A(1),
+      _W(1 / 37),
+      start + 3600,
+      1,
+      defaultTestParams({})
+    );
     let policy = newPolicyEvt.args.policy;
 
     expect(await pool.getComponentStatus(premiumsAccount)).to.be.equal(ComponentStatus.active);
@@ -168,7 +206,7 @@ describe("Test add, remove and change status of PolicyPool components", function
 
     // When deprecated can't create policy
     await expect(
-      rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 2)
+      rm.connect(cust).newPolicy(makeInputData({ expiration: start + 3600 }), cust)
     ).to.be.revertedWithCustomError(pool, "ComponentNotFoundOrNotActive");
 
     // But policies can be resolved
@@ -179,7 +217,17 @@ describe("Test add, remove and change status of PolicyPool components", function
       .reverted;
     expect(await pool.getComponentStatus(premiumsAccount)).to.be.equal(ComponentStatus.active);
 
-    newPolicyEvt = await makePolicy(pool, rm, cust, _A(36), _A(1), _W(1 / 37), start + 3600, 3);
+    newPolicyEvt = await makePolicy(
+      pool,
+      rm.connect(cust),
+      cust,
+      _A(36),
+      _A(1),
+      _W(1 / 37),
+      start + 3600,
+      3,
+      defaultTestParams({})
+    );
     policy = newPolicyEvt.args.policy;
 
     // Only GUARDIAN can suspend
@@ -192,7 +240,7 @@ describe("Test add, remove and change status of PolicyPool components", function
       "ComponentMustBeActiveOrDeprecated"
     );
     await expect(
-      rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 4)
+      rm.connect(cust).newPolicy(makeInputData({ expiration: start + 3600 }), cust)
     ).to.be.revertedWithCustomError(pool, "ComponentNotFoundOrNotActive");
 
     // Can't be removed if not deprecated before, or if has active policies
@@ -219,7 +267,7 @@ describe("Test add, remove and change status of PolicyPool components", function
     expect(borrowerRemovedEvt.args.defaultedDebt).to.be.equal(internalLoan);
     expect(await pool.getComponentStatus(premiumsAccount)).to.be.equal(ComponentStatus.inactive);
 
-    await expect(rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 5))
+    await expect(rm.connect(cust).newPolicy(makeInputData({ expiration: start + 3600 }), cust))
       .to.be.revertedWithCustomError(pool, "ComponentNotTheRightKind")
       .withArgs(premiumsAccount, ComponentKind.premiumsAccount);
   });

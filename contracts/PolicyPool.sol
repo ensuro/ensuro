@@ -116,14 +116,14 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   /**
-   * @dev Mapping of current exposures and limits for each risk module.
-   */
-  mapping(IRiskModule => Exposure) internal _exposureByRm;
-
-  /**
    * @dev Base URI for the minted policy NFTs.
    */
   string internal _nftBaseURI;
+
+  /**
+   * @dev Mapping of current exposures and limits for each risk module.
+   */
+  mapping(IRiskModule => Exposure) internal _exposureByRm;
 
   /**
    * @dev Constructor error when address(0) is sent as `access()`
@@ -766,5 +766,5 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * variables without shifting down storage in the inheritance chain.
    * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
    */
-  uint256[46] private __gap;
+  uint256[45] private __gap;
 }

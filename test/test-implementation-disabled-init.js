@@ -6,10 +6,10 @@ const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { amountFunction, _W } = require("@ensuro/utils/js/utils");
 const { deployPremiumsAccount, deployPool } = require("../js/test-utils");
 
+const { ZeroAddress } = hre.ethers;
+
 describe("Test Implementation contracts can't be initialized", function () {
   const rndAddr = "0xd758af6bfc2f0908d7c5f89942be52c36a6b3cab";
-  const zeroAddr = hre.ethers.ZeroAddress;
-  const rmParams = ["Some RM Name", _W(1), _W(0), _W(0), 100e6, 1000e6, rndAddr];
 
   async function setupFixture() {
     const [owner] = await hre.ethers.getSigners();
@@ -67,22 +67,15 @@ describe("Test Implementation contracts can't be initialized", function () {
   it("Does not allow initialize PremiumsAccount implementation", async () => {
     const { policyPool } = await helpers.loadFixture(setupFixtureWithPool);
     const PremiumsAccount = await hre.ethers.getContractFactory("PremiumsAccount");
-    const pa = await PremiumsAccount.deploy(policyPool, zeroAddr, zeroAddr);
+    const pa = await PremiumsAccount.deploy(policyPool, ZeroAddress, ZeroAddress);
     await expect(pa.initialize()).to.be.revertedWithCustomError(pa, "InvalidInitialization");
   });
 
-  it("Does not allow initialize TrustfulRiskModule implementation", async () => {
+  it("Does not allow initialize RiskModule implementation", async () => {
     const { policyPool, premiumsAccount } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
-    const TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
-    const rm = await TrustfulRiskModule.deploy(policyPool, premiumsAccount);
-    await expect(rm.initialize(...rmParams)).to.be.revertedWithCustomError(rm, "InvalidInitialization");
-  });
-
-  it("Does not allow initialize SignedQuoteRiskModule implementation", async () => {
-    const { policyPool, premiumsAccount } = await helpers.loadFixture(setupFixtureWithPoolAndPA);
-    const SignedQuoteRiskModule = await hre.ethers.getContractFactory("SignedQuoteRiskModule");
-    const rm = await SignedQuoteRiskModule.deploy(policyPool, premiumsAccount, true);
-    await expect(rm.initialize(...rmParams)).to.be.revertedWithCustomError(rm, "InvalidInitialization");
+    const RiskModule = await hre.ethers.getContractFactory("RiskModule");
+    const rm = await RiskModule.deploy(policyPool, premiumsAccount);
+    await expect(rm.initialize(ZeroAddress, rndAddr)).to.be.revertedWithCustomError(rm, "InvalidInitialization");
   });
 
   it("Does not allow initialize LPManualWhitelist implementation", async () => {

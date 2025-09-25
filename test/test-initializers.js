@@ -4,7 +4,7 @@ const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
 const { amountFunction } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
-const { deployPool, deployPremiumsAccount, addRiskModule, createRiskModule, addEToken } = require("../js/test-utils");
+const { deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
 const { deployAMPProxy, getAccessManager } = require("@ensuro/access-managed-proxy/js/deployProxy");
 const { ampConfig } = require("../js/ampConfig");
 
@@ -32,8 +32,7 @@ describe("Test Initialize contracts", function () {
     const etk = await addEToken(pool, {});
 
     const premiumsAccount = await deployPremiumsAccount(pool, { srEtk: etk });
-    const TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
-    const rm = await addRiskModule(pool, premiumsAccount, TrustfulRiskModule, {});
+    const rm = await addRiskModule(pool, premiumsAccount, {});
 
     await currency.connect(lp).approve(pool, _A(5000));
     await pool.connect(lp).deposit(etk, _A(3000));
@@ -42,7 +41,6 @@ describe("Test Initialize contracts", function () {
       currency,
       pool,
       premiumsAccount,
-      TrustfulRiskModule,
       lp,
       cust,
       guardian,
@@ -74,23 +72,7 @@ describe("Test Initialize contracts", function () {
   });
 
   it("Does not allow reinitializing RiskModule", async () => {
-    await expect(rm.initialize("RM", 0, 0, 0, 0, 0, ZeroAddress)).to.be.revertedWithCustomError(
-      pool,
-      "InvalidInitialization"
-    );
-  });
-
-  ["SignedQuoteRiskModule", "SignedBucketRiskModule"].forEach((contract) => {
-    it(`Does not allow reinitializing ${contract}`, async () => {
-      const Factory = await hre.ethers.getContractFactory(contract);
-      const initRm = await createRiskModule(pool, premiumsAccount, Factory, {
-        extraConstructorArgs: contract === "SignedQuoteRiskModule" ? [false] : [],
-      });
-      await expect(initRm.initialize("RM", 0, 0, 0, 0, 0, ZeroAddress)).to.be.revertedWithCustomError(
-        pool,
-        "InvalidInitialization"
-      );
-    });
+    await expect(rm.initialize(ZeroAddress, ZeroAddress)).to.be.revertedWithCustomError(pool, "InvalidInitialization");
   });
 
   it("Does not allow reinitializing Whitelist", async () => {

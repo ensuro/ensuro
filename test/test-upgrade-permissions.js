@@ -77,9 +77,9 @@ describe("Test Upgrade contracts", function () {
 
   async function setupFixtureWithPoolAndRM() {
     const ret = await setupFixtureWithPoolAndPA();
-    const TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
-    const rm = await addRiskModule(ret.pool, ret.premiumsAccount, TrustfulRiskModule, {});
-    return { rm, TrustfulRiskModule, ...ret };
+    const RiskModule = await hre.ethers.getContractFactory("RiskModule");
+    const rm = await addRiskModule(ret.pool, ret.premiumsAccount, {});
+    return { rm, RiskModule, ...ret };
   }
 
   it("Should be able to upgrade PolicyPool", async () => {
@@ -199,24 +199,21 @@ describe("Test Upgrade contracts", function () {
   });
 
   it("Should be able to upgrade RiskModule contract", async () => {
-    const { guardian, pool, premiumsAccount, TrustfulRiskModule, rm } =
-      await helpers.loadFixture(setupFixtureWithPoolAndRM);
-    const newRM = await TrustfulRiskModule.deploy(pool, premiumsAccount);
+    const { guardian, pool, premiumsAccount, RiskModule, rm } = await helpers.loadFixture(setupFixtureWithPoolAndRM);
+    const newRM = await RiskModule.deploy(pool, premiumsAccount);
 
     await rm.connect(guardian).upgradeToAndCall(newRM, emptyBytes);
   });
 
   it("Can upgrade RiskModule with componentRole", async () => {
-    const { cust, pool, premiumsAccount, TrustfulRiskModule, rm } =
-      await helpers.loadFixture(setupFixtureWithPoolAndRM);
-    const newRM = await TrustfulRiskModule.deploy(pool, premiumsAccount);
+    const { cust, pool, premiumsAccount, RiskModule, rm } = await helpers.loadFixture(setupFixtureWithPoolAndRM);
+    const newRM = await RiskModule.deploy(pool, premiumsAccount);
 
     await rm.connect(cust).upgradeToAndCall(newRM, emptyBytes);
   });
 
   it("Should not be able to upgrade RiskModule with different pool or PremiumsAccount", async () => {
-    const { guardian, pool, rm, currency, _A, TrustfulRiskModule } =
-      await helpers.loadFixture(setupFixtureWithPoolAndRM);
+    const { guardian, pool, rm, currency, _A, RiskModule } = await helpers.loadFixture(setupFixtureWithPoolAndRM);
     const newPool = await deployPool({
       currency: currency,
       grantRoles: [],
@@ -225,7 +222,7 @@ describe("Test Upgrade contracts", function () {
     newPool._A = _A;
     const newPA = await deployPremiumsAccount(newPool, {});
 
-    let newImpl = await TrustfulRiskModule.deploy(newPool, newPA);
+    let newImpl = await RiskModule.deploy(newPool, newPA);
 
     await expect(rm.connect(guardian).upgradeToAndCall(newImpl, emptyBytes)).to.be.revertedWithCustomError(
       rm,
@@ -233,7 +230,7 @@ describe("Test Upgrade contracts", function () {
     );
     const newPAOrigPool = await deployPremiumsAccount(pool, {});
 
-    newImpl = await TrustfulRiskModule.deploy(pool, newPAOrigPool);
+    newImpl = await RiskModule.deploy(pool, newPAOrigPool);
     await expect(rm.connect(guardian).upgradeToAndCall(newImpl, emptyBytes)).to.be.revertedWithCustomError(
       rm,
       "UpgradeCannotChangePremiumsAccount"

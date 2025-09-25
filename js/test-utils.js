@@ -1,8 +1,9 @@
 const hre = require("hardhat");
-const { _W, getTransactionEvent, AM_ROLES } = require("@ensuro/utils/js/utils");
+const { _W, getTransactionEvent, AM_ROLES, getAddress } = require("@ensuro/utils/js/utils");
 const { deployAMPProxy, attachAsAMP, getAccessManager } = require("@ensuro/access-managed-proxy/js/deployProxy");
-const { RiskModuleParameter } = require("./enums");
+const { ComponentKind } = require("./enums");
 const { ampConfig } = require("./ampConfig");
+const { makeFTUWInputData } = require("./utils");
 
 const { ethers } = hre;
 const { ZeroAddress } = ethers;
@@ -20,41 +21,24 @@ async function makeAllPublic(contract, accessManager) {
 async function createRiskModule(
   pool,
   premiumsAccount,
-  contractFactory,
-  {
-    rmName,
-    collRatio,
-    srRoc,
-    ensuroPPFee,
-    maxPayoutPerPolicy,
-    exposureLimit,
-    moc,
-    wallet,
-    extraArgs,
-    extraConstructorArgs,
-    contractName,
-    disableAC,
-  }
+  { underwriter, wallet, extraArgs, extraConstructorArgs, disableAC }
 ) {
   extraArgs = extraArgs || [];
   extraConstructorArgs = extraConstructorArgs || [];
-  const _A = pool._A || _W;
-  maxPayoutPerPolicy = maxPayoutPerPolicy !== undefined ? _A(maxPayoutPerPolicy) : _A(1000);
-  exposureLimit = exposureLimit !== undefined ? _A(exposureLimit) : _A(1000000);
-  contractName = contractName || "RiskModule";
+
+  if (underwriter === undefined) {
+    const FullTrustedUW = await hre.ethers.getContractFactory("FullTrustedUW");
+    underwriter = await FullTrustedUW.deploy();
+  }
 
   const accessManager = await getAccessManager(pool);
   const poolAddr = await ethers.resolveAddress(pool);
   const paAddr = await ethers.resolveAddress(premiumsAccount);
+  const RiskModule = await hre.ethers.getContractFactory("RiskModule");
   const rm = await deployAMPProxy(
-    contractFactory,
+    RiskModule,
     [
-      rmName || "RiskModule",
-      _W(collRatio) || _W(1),
-      _W(ensuroPPFee) || _W(0),
-      _W(srRoc) || _W("0.1"),
-      maxPayoutPerPolicy,
-      exposureLimit,
+      getAddress(underwriter),
       wallet || "0xdD2FD4581271e230360230F9337D5c0430Bf44C0", // Random address
       ...extraArgs,
     ],
@@ -63,7 +47,7 @@ async function createRiskModule(
       constructorArgs: [poolAddr, paAddr, ...extraConstructorArgs],
       unsafeAllow: ["missing-initializer"],
       acMgr: accessManager,
-      ...ampConfig[contractName],
+      ...ampConfig.RiskModule,
     }
   );
 
@@ -71,44 +55,26 @@ async function createRiskModule(
 
   if (disableAC || disableAC === undefined) await makeAllPublic(rm, accessManager);
 
-  if (moc !== undefined && moc != 1.0) {
-    moc = _W(moc);
-    await rm.setParam(RiskModuleParameter.moc, moc);
-  }
   return rm;
 }
 
 async function addRiskModule(
   pool,
   premiumsAccount,
-  contractFactory,
-  {
-    rmName,
-    collRatio,
-    srRoc,
-    ensuroPPFee,
-    maxPayoutPerPolicy,
-    exposureLimit,
-    moc,
-    wallet,
-    extraArgs,
-    extraConstructorArgs,
-  }
+  { underwriter, exposureLimit, wallet, extraArgs, extraConstructorArgs }
 ) {
-  const rm = await createRiskModule(pool, premiumsAccount, contractFactory, {
-    rmName,
-    collRatio,
-    srRoc,
-    ensuroPPFee,
-    maxPayoutPerPolicy,
-    exposureLimit,
-    moc,
+  const rm = await createRiskModule(pool, premiumsAccount, {
+    underwriter,
     wallet,
     extraArgs,
     extraConstructorArgs,
   });
 
-  await pool.addComponent(rm, 2);
+  await pool.addComponent(rm, ComponentKind.riskModule);
+  if (exposureLimit !== null) {
+    exposureLimit = exposureLimit !== undefined ? pool._A(exposureLimit) : pool._A(1000000);
+    await pool.setExposureLimit(rm, exposureLimit);
+  }
   return rm;
 }
 
@@ -156,7 +122,7 @@ async function addEToken(
     extraArgs,
     extraConstructorArgs,
   });
-  await pool.addComponent(etk, 1);
+  await pool.addComponent(etk, ComponentKind.eToken);
   return etk;
 }
 
@@ -229,13 +195,13 @@ async function deployPremiumsAccount(pool, options, addToPool = true) {
   await premiumsAccount.waitForDeployment();
   if (options.disableAC || options.disableAC === undefined) await makeAllPublic(premiumsAccount, accessManager);
 
-  if (addToPool) await pool.addComponent(premiumsAccount, 3);
+  if (addToPool) await pool.addComponent(premiumsAccount, ComponentKind.premiumsAccount);
 
   return premiumsAccount;
 }
 
-async function makePolicy(pool, rm, cust, payout, premium, lossProb, expiration, internalId, method = "newPolicy") {
-  let tx = await rm.connect(cust)[method](payout, premium, lossProb, expiration, cust, internalId);
+async function makePolicy(pool, rm, cust, payout, premium, lossProb, expiration, internalId, params) {
+  let tx = await rm.newPolicy(makeFTUWInputData({ payout, premium, lossProb, expiration, internalId, params }), cust);
   let receipt = await tx.wait();
   const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
 
