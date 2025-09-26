@@ -114,7 +114,7 @@ class BucketParams(Model):
 class RiskModule(AccessControlContract):
     policy_pool = ContractProxyField()
     premiums_account = ContractProxyField()
-    name = StringField()
+    name = StringField(default="Dummy")
     moc = WadField(default=_W(1))
     jr_coll_ratio = WadField(default=Wad(0))
     coll_ratio = WadField(default=_W(1))
@@ -165,7 +165,7 @@ class RiskModule(AccessControlContract):
         return (int(prefix, 16) << 96) + internal_id
 
     @external
-    def new_policy(self, payout, premium, loss_prob, expiration, payer, on_behalf_of, internal_id):
+    def new_policy(self, payout, premium, loss_prob, expiration, on_behalf_of, internal_id):
         assert isinstance(loss_prob, Wad), "Loss prob MUST be wad"
         start = time_control.now
         if premium is None:
@@ -178,10 +178,6 @@ class RiskModule(AccessControlContract):
             self._error("PolicyExceedsMaxDuration", self.max_duration),
         )
         require(on_behalf_of is not None, self._error("InvalidCustomer", on_behalf_of))
-        require(
-            self._running_as == payer,
-            "Customer paying not supported anymore - Payer must be caller...",
-        )
         require(
             payout <= self.max_payout_per_policy,
             self._error("PayoutExceedsMaxPerPolicy", payout, self.max_payout_per_policy),
@@ -204,7 +200,7 @@ class RiskModule(AccessControlContract):
         )
         self.active_exposure = active_exposure
 
-        policy.id = self.policy_pool.new_policy(policy, payer, on_behalf_of, internal_id)
+        policy.id = self.policy_pool.new_policy(policy, self._running_as, on_behalf_of, internal_id)
         assert policy.id > 0
         return policy
 
@@ -274,45 +270,10 @@ class RiskModule(AccessControlContract):
     def remove_policy(self, policy):
         self.active_exposure -= policy.payout
 
-
-class TrustfulRiskModule(RiskModule):
-    def new_policy(self, *args, **kwargs):
-        payer = kwargs.get("on_behalf_of")
-        if self._running_as != payer and self.policy_pool.currency.allowance(payer, self._running_as) < (
-            kwargs.get("premium") or MAX_UINT
-        ):
-            payer = self._running_as
-        kwargs["payer"] = payer
-
-        return super().new_policy(*args, **kwargs)
-
     @external
     def resolve_policy(self, policy_id, customer_won):
         with self.policy_pool.as_(self.contract_id):
             return self.policy_pool.resolve_policy(policy_id, customer_won)
-
-
-class SignedBucketRiskModule(RiskModule):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self._buckets = {}
-
-    def set_bucket_params(self, bucket_id: Wad, params: BucketParams):
-        self._buckets[bucket_id] = params
-
-    def delete_bucket(self, bucket_id: Wad):
-        del self._buckets[bucket_id]
-
-    def bucket_params(self, bucket_id: Wad) -> BucketParams:
-        try:
-            return self._buckets[bucket_id]
-        except KeyError:
-            return BucketParams.from_rm(self)
-
-    def get_minimum_premium_for_bucket(self, payout, loss_prob, expiration, bucket_id):
-        return self.get_minimum_premium_composition(
-            payout, loss_prob, expiration, self.bucket_params(bucket_id)
-        ).total
 
 
 class Policy(Model):

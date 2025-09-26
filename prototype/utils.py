@@ -146,7 +146,7 @@ def load_config(yaml_config=None, module=None):
         for key in "jr_coll_ratio,jr_roc".split(","):
             if key in risk_module_dict:
                 post_init_attributes[key] = _W(risk_module_dict.pop(key))
-        rm = module.TrustfulRiskModule(**risk_module_dict)
+        rm = module.RiskModule(**risk_module_dict)
         for key, value in post_init_attributes.items():
             setattr(rm, key, value)
 

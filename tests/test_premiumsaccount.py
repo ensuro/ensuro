@@ -157,7 +157,7 @@ def test_withdraw_won_premiums_with_borrowed_active_pp(tenv):
         assert senior_etk.deposit("LP1", _W(300)) == _W(300)
         senior_etk.add_borrower(pa)
 
-    rm = RiskModule(premiums_account="dummy", name="Roulette", policy_pool="dummy")
+    rm = RiskModule(premiums_account="dummy", policy_pool="dummy")
 
     policy = ensuro.Policy(
         id=1,
@@ -264,7 +264,7 @@ def test_policy_created_without_etokens(tenv):
     start = tenv.time_control.now
     expiration = tenv.time_control.now + WEEK
 
-    rm = RiskModule(premiums_account="dummy", name="Roulette", policy_pool="dummy")
+    rm = RiskModule(premiums_account="dummy", policy_pool="dummy")
     rm.coll_ratio.assert_equal(_W(1))
 
     policy = ensuro.Policy(
@@ -287,7 +287,6 @@ def test_policy_created_without_etokens(tenv):
 
     rm_2 = RiskModule(
         premiums_account="dummy",
-        name="Roulette",
         policy_pool="dummy",
         coll_ratio=_W("0.5"),
     )
@@ -326,7 +325,7 @@ def test_create_and_expire_policy_with_sr_etk(tenv):
         assert senior_etk.deposit("LP1", _W(900)) == _W(900)
         senior_etk.add_borrower(pa)
 
-    rm = RiskModule(premiums_account="dummy", name="Roulette", policy_pool="dummy")
+    rm = RiskModule(premiums_account="dummy", policy_pool="dummy")
     rm.coll_ratio.assert_equal(_W(1))
 
     policy = ensuro.Policy(
@@ -400,7 +399,7 @@ def test_policy_resolved_with_payout(tenv):
         assert senior_etk.deposit("LP1", _W(800)) == _W(800)
         senior_etk.add_borrower(pa)
 
-    rm = RiskModule(premiums_account="dummy", name="Roulette", policy_pool="dummy")
+    rm = RiskModule(premiums_account="dummy", policy_pool="dummy")
 
     policy = ensuro.Policy(
         id=1,
@@ -447,7 +446,6 @@ def test_policy_created_with_jr_etoken(tenv):
     with pytest.raises(RevertError, match="Validation: collRatio >= jrCollRatio"):
         rm = RiskModule(
             premiums_account="dummy",
-            name="Roulette",
             policy_pool="dummy",
             coll_ratio=_W("0.5"),
             jr_coll_ratio=_W("0.8"),
@@ -455,7 +453,6 @@ def test_policy_created_with_jr_etoken(tenv):
 
     rm = RiskModule(
         premiums_account="dummy",
-        name="Roulette",
         policy_pool="dummy",
         coll_ratio=_W("0.5"),
         jr_coll_ratio=_W("0.4"),
@@ -533,7 +530,6 @@ def test_policy_created_with_sr_etoken(tenv):
 
     rm = RiskModule(
         premiums_account="dummy",
-        name="Roulette",
         policy_pool="dummy",
         coll_ratio=_W("0.2"),
     )
@@ -570,7 +566,6 @@ def test_policy_created_with_jr_and_sr_etoken(tenv):
 
     rm = RiskModule(
         premiums_account="dummy",
-        name="Roulette",
         policy_pool="dummy",
         coll_ratio=_W("0.95"),
         jr_coll_ratio=_W("0.1"),
@@ -628,7 +623,6 @@ def test_pay_from_premium(tenv):
 
     rm = RiskModule(
         premiums_account="dummy",
-        name="Roulette",
         policy_pool="dummy",
         coll_ratio=_W("0.95"),
     )
@@ -695,7 +689,6 @@ def test_payout_equal_pure_premium(tenv):
 
     rm = RiskModule(
         premiums_account="dummy",
-        name="Roulette",
         policy_pool="dummy",
         coll_ratio=_W("1"),
     )
@@ -830,7 +823,6 @@ def test_set_deficit_ratio_without_adjustment(tenv):
 
     rm = RiskModule(
         premiums_account="dummy",
-        name="Roulette",
         policy_pool="dummy",
         coll_ratio=_W("0.95"),
     )
@@ -888,7 +880,6 @@ def test_ratio_adjustment(tenv):
 
     rm = RiskModule(
         premiums_account="dummy",
-        name="Roulette",
         policy_pool="dummy",
         coll_ratio=_W("0.95"),
     )
@@ -1012,7 +1003,6 @@ def test_set_deficit_ratio_and_create_policy(tenv):
 
     rm = RiskModule(
         premiums_account="dummy",
-        name="Roulette",
         policy_pool="dummy",
         coll_ratio=_W("0.95"),
     )
