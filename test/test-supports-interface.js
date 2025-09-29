@@ -42,7 +42,7 @@ describe("Supports interface implementation", function () {
       iinterfaceIds[iName] = await iidCalculator.getFunction(iName.toUpperCase() + "_INTERFACEID")();
     }
     console.log(iinterfaceIds);
-     */
+    */
     const interfaceIds = {
       IERC165: "0x01ffc9a7",
       IERC20: "0x36372b07",
@@ -53,7 +53,7 @@ describe("Supports interface implementation", function () {
       // IPolicyPool: "0x3234fad6", - Up to v2.7
       // IPolicyPool: "0x0ce33b78", - Up to v2.9
       // IPolicyPool: "0x7d73446f", - Before `refactoring-rms` branch that changed Policy struct
-      IPolicyPool: "0x4a19696a",
+      IPolicyPool: "0xea84868b",
       IPolicyPoolComponent: "0x4d15eb03",
       // IRiskModule: "0xda40804f", - Up to v2.9
       IRiskModule: "0x21b7e09b",
