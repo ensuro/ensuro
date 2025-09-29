@@ -112,8 +112,8 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
     uint256 maxUtilizationRate_,
     uint256 internalLoanInterestRate_
   ) public initializer {
-    __ERC20_init(name_, symbol_);
     __Reserve_init();
+    __ERC20_init(name_, symbol_);
     __EToken_init_unchained(maxUtilizationRate_, internalLoanInterestRate_);
   }
 

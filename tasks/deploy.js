@@ -6,7 +6,6 @@ const { ampConfig } = require("../js/ampConfig");
 const {
   amountFunction,
   _W,
-  grantComponentRole,
   getDefaultSigner,
   setupAMRole,
   getAccessManagerRole,
@@ -272,28 +271,7 @@ async function deployPremiumsAccount({ poolAddress, acMgr, juniorEtk, seniorEtk,
 }
 
 async function deployRiskModule(
-  {
-    rmClass,
-    rmName,
-    poolAddress,
-    acMgr,
-    paAddress,
-    collRatio,
-    jrCollRatio,
-    roc,
-    jrRoc,
-    ensuroPpFee,
-    ensuroCocFee,
-    maxPayoutPerPolicy,
-    exposureLimit,
-    maxDuration,
-    moc,
-    wallet,
-    extraArgs,
-    extraConstructorArgs,
-    runAs,
-    ...opts
-  },
+  { rmClass, poolAddress, acMgr, paAddress, underwriter, wallet, extraArgs, extraConstructorArgs, runAs, ...opts },
   hre
 ) {
   extraArgs = typeof extraArgs === "string" ? JSON.parse(extraArgs) : extraArgs || [];
@@ -301,60 +279,27 @@ async function deployRiskModule(
   extraConstructorArgs =
     typeof extraConstructorArgs === "string" ? JSON.parse(extraConstructorArgs) : extraConstructorArgs || [];
 
+  if (underwriter === undefined) {
+    const FullTrustedUW = await hre.ethers.getContractFactory("FullTrustedUW");
+    underwriter = await FullTrustedUW.deploy();
+  }
+
   const { contract } = await deployAMPProxyContract(
     {
       contractClass: rmClass,
       constructorArgs: [poolAddress, paAddress, ...extraConstructorArgs],
-      initializeArgs: [
-        rmName,
-        _W(collRatio),
-        _W(ensuroPpFee),
-        _W(roc),
-        _A(maxPayoutPerPolicy),
-        _A(exposureLimit),
-        wallet,
-        ...extraArgs,
-      ],
+      initializeArgs: [await ethers.resolveAddress(underwriter), wallet, ...extraArgs],
       acMgr,
       ...opts,
     },
     hre
   );
-  const rm = runAs === undefined ? contract : contract.connect(runAs);
   if (opts.addComponent) {
-    if (moc != 1.0) {
-      moc = _W(moc);
-      await rm.setParam(0, moc);
-    }
-    if (jrCollRatio != 0.0) {
-      jrCollRatio = _W(jrCollRatio);
-      await rm.setParam(1, jrCollRatio);
-    }
-    if (jrRoc != 0.0) {
-      jrRoc = _W(jrRoc);
-      await rm.setParam(5, jrRoc);
-    }
-    if (ensuroCocFee != 0) {
-      ensuroCocFee = _W(ensuroCocFee);
-      await rm.setParam(4, ensuroCocFee);
-    }
-    if (maxDuration != 24 * 365) {
-      await rm.setParam(9, maxDuration);
-    }
     let policyPool = await hre.ethers.getContractAt("PolicyPool", poolAddress);
     if (runAs) policyPool = policyPool.connect(runAs);
     await policyPool.addComponent(contract, 2);
   }
-  if (opts.setupInternalPermissions) {
-    acMgr = await hre.ethers.getContractAt("AccessManager", acMgr);
-    await setupAMRole(acMgr, rm, undefined, "POOL_ROLE", ["releaseExposure"]);
-  }
   return contract;
-}
-
-async function deploySignedQuoteRM(opts, hre) {
-  opts.extraConstructorArgs = [opts.creationIsOpen];
-  return deployRiskModule(opts, hre);
 }
 
 async function setAssetManager({ reserve, amAddress, liquidityMin, liquidityMiddle, liquidityMax }, hre) {
@@ -441,47 +386,6 @@ async function deployWhitelist(
     await etk.setWhitelist(contract);
   }
   return contract;
-}
-
-async function trustfullPolicy({ rmAddress, payout, premium, lossProb, expiration, customer }, hre) {
-  const rm = await hre.ethers.getContractAt("TrustfulRiskModule", rmAddress);
-  const policyPool = await hre.ethers.getContractAt("PolicyPool", await rm.policyPool());
-  const access = await hre.ethers.getContractAt("AccessManager", await policyPool.access());
-  const currency = await hre.ethers.getContractAt("IERC20Metadata", await policyPool.currency());
-  await grantComponentRole(hre, access, rm, "PRICER_ROLE");
-
-  customer = customer || (await getDefaultSigner(hre));
-  premium = _A(premium);
-
-  await currency.approve(policyPool, premium);
-  lossProb = _W(lossProb);
-  if (expiration === undefined) {
-    expiration = 3600;
-  }
-  if (expiration < 1600000000) {
-    expiration = Math.round(new Date().getTime() / 1000) + expiration;
-  }
-  payout = _A(payout);
-
-  const tx = await rm.newPolicy(payout, premium, lossProb, expiration, customer.address, { gasLimit: 999999 });
-  console.log(tx);
-}
-
-async function resolvePolicy({ rmAddress, payout, fullPayout, policyId }, hre) {
-  const rm = await hre.ethers.getContractAt("TrustfulRiskModule", rmAddress);
-  const policyPool = await hre.ethers.getContractAt("PolicyPool", await rm.policyPool());
-  const access = await hre.ethers.getContractAt("AccessManager", await policyPool.access());
-  await grantComponentRole(hre, access, rm, "RESOLVER_ROLE");
-
-  let tx;
-
-  if (fullPayout === undefined) {
-    payout = _A(payout);
-    tx = await rm.resolvePolicy(policyId, payout);
-  } else {
-    tx = await rm.resolvePolicyFullPayout(policyId, fullPayout);
-  }
-  console.log(tx);
 }
 
 async function listETokens({ poolAddress }, hre) {
@@ -617,44 +521,12 @@ function add_task() {
     .addParam("poolAddress", "PolicyPool Address", types.address)
     .addParam("acMgr", "AccessManager Address", types.address)
     .addParam("paAddress", "PremiumsAccount Address", types.address)
-    .addOptionalParam("rmClass", "RiskModule contract", "TrustfulRiskModule", types.str)
-    .addOptionalParam("rmName", "Name of the RM", "Test RM", types.str)
-    .addOptionalParam("collRatio", "Collateralization ratio", 1.0, types.float)
-    .addOptionalParam("jrCollRatio", "Junior Collateralization ratio", 0.0, types.float)
-    .addOptionalParam("ensuroPpFee", "Ensuro Pure Premium Fee", 0.02, types.float)
-    .addOptionalParam("ensuroCocFee", "Ensuro Coc Fee", 0.1, types.float)
-    .addOptionalParam("roc", "Interest rate paid to Senior LPs for solvency capital", 0.05, types.float)
-    .addOptionalParam("jrRoc", "Interest rate paid to Junior LPs for solvency capital", 0.0, types.float)
-    .addOptionalParam("maxPayoutPerPolicy", "Max Payout Per policy", 10000, types.float)
-    .addOptionalParam("exposureLimit", "Exposure (sum of payouts) limit for the RM", 1e6, types.float)
-    .addOptionalParam("maxDuration", "Maximum policy duration in hours", 24 * 365, types.int)
-    .addOptionalParam("moc", "Margin of Conservativism", 1.0, types.float)
+    .addOptionalParam("rmClass", "RiskModule contract", "RiskModule", types.str)
+    .addOptionalParam("underwriter", "Underwriter Address", undefined, types.address)
     .addOptionalParam("extraConstructorArgs", "Additional constructor args", undefined, types.str)
     .addOptionalParam("extraArgs", "Additional initializer args", undefined, types.str)
     .addParam("wallet", "RM address", types.address)
     .setAction(deployRiskModule);
-
-  task("deploy:signedQuoteRiskModule", "Deploys a RiskModule and adds it to the pool")
-    .addOptionalParam("verify", "Verify contract in Etherscan", false, types.boolean)
-    .addOptionalParam("saveAddr", "Save created contract address", "RM", types.str)
-    .addOptionalParam("addComponent", "Adds the new component to the pool", true, types.boolean)
-    .addParam("poolAddress", "PolicyPool Address", types.address)
-    .addParam("paAddress", "PremiumsAccount Address", types.address)
-    .addOptionalParam("rmClass", "RiskModule contract", "SignedQuoteRiskModule", types.str)
-    .addOptionalParam("rmName", "Name of the RM", "Test RM", types.str)
-    .addOptionalParam("collRatio", "Collateralization ratio", 1.0, types.float)
-    .addOptionalParam("jrCollRatio", "Junior Collateralization ratio", 0.0, types.float)
-    .addOptionalParam("ensuroPpFee", "Ensuro Pure Premium Fee", 0.02, types.float)
-    .addOptionalParam("ensuroCocFee", "Ensuro Coc Fee", 0.1, types.float)
-    .addOptionalParam("roc", "Interest rate paid to Senior LPs for solvency capital", 0.05, types.float)
-    .addOptionalParam("jrRoc", "Interest rate paid to Junior LPs for solvency capital", 0.0, types.float)
-    .addOptionalParam("maxPayoutPerPolicy", "Max Payout Per policy", 10000, types.float)
-    .addOptionalParam("exposureLimit", "Exposure (sum of payouts) limit for the RM", 1e6, types.float)
-    .addOptionalParam("maxDuration", "Maximum policy duration in hours", 24 * 365, types.int)
-    .addOptionalParam("moc", "Margin of Conservativism", 1.0, types.float)
-    .addOptionalParam("creationIsOpen", "Indicates if anyone can create policies (with a quote)", true, types.boolean)
-    .addParam("wallet", "RM address", types.address)
-    .setAction(deploySignedQuoteRM);
 
   task("ens:setAssetManager", "Sets an asset manager to a reserve")
     .addParam("reserve", "Reserve Address", types.address)
@@ -692,22 +564,6 @@ function add_task() {
     .addParam("acMgr", "AccessManager Address", types.address)
     .setAction(deployWhitelist);
 
-  task("ens:trustfullPolicy", "Creates a TrustfulRiskModule Policy")
-    .addParam("rmAddress", "RiskModule address", types.address)
-    .addParam("payout", "Payout for customer in case policy is triggered", undefined, types.int)
-    .addParam("premium", "Premium the customer pays", undefined, types.int)
-    .addParam("lossProb", "Probability of policy being triggered", undefined, types.float)
-    .addOptionalParam("expiration", "Expiration of the policy (relative or absolute)", undefined, types.int)
-    .addOptionalParam("customer", "Customer", undefined, types.address)
-    .setAction(trustfullPolicy);
-
-  task("ens:resolvePolicy", "Resolves a TrustfulRiskModule Policy")
-    .addParam("rmAddress", "RiskModule address", types.address)
-    .addParam("policyId", "Id of the policy", undefined, types.int)
-    .addOptionalParam("payout", "Payout for customer in case policy is triggered", undefined, types.int)
-    .addOptionalParam("fullPayout", "Full payout or not", undefined, types.boolean)
-    .setAction(resolvePolicy);
-
   task("ens:listETokens", "Lists eTokens")
     .addParam("poolAddress", "PolicyPool Address", types.address)
     .setAction(listETokens);
@@ -727,7 +583,6 @@ module.exports = {
   deployEToken,
   deployPremiumsAccount,
   deployRiskModule,
-  deploySignedQuoteRM,
   setAssetManager,
   deployWhitelist,
   txOverrides,

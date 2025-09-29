@@ -5,7 +5,6 @@ const ampConfig = {
       "newPolicy",
       "resolvePolicy",
       "replacePolicy",
-      "resolvePolicyFullPayout", // FIX BEFORE RELEASE: remove this method
       "expirePolicy", // To guarantee that all policies expire
     ],
   },

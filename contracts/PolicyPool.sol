@@ -392,7 +392,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     } else if (comp.kind == ComponentKind.riskModule) {
       if (_exposureByRm[IRiskModule(address(component))].active != 0)
         revert ComponentInUseCannotRemove(comp.kind, _exposureByRm[IRiskModule(address(component))].active);
-    } else if (comp.kind == ComponentKind.premiumsAccount) {
+    } else {
+      // (comp.kind == ComponentKind.premiumsAccount)
       IPremiumsAccount pa = IPremiumsAccount(address(component));
       if (pa.purePremiums() != 0) revert ComponentInUseCannotRemove(comp.kind, pa.purePremiums());
       IEToken etk = pa.juniorEtk();
@@ -610,13 +611,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
 
   function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external override whenNotPaused {
     return _resolvePolicy(policy, payout, false);
-  }
-
-  function resolvePolicyFullPayout(
-    Policy.PolicyData calldata policy,
-    bool customerWon
-  ) external override whenNotPaused {
-    return _resolvePolicy(policy, customerWon ? policy.payout : 0, false);
   }
 
   function isActive(uint256 policyId) external view override returns (bool) {
