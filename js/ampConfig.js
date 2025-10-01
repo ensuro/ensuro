@@ -5,15 +5,12 @@ const ampConfig = {
       "newPolicy",
       "resolvePolicy",
       "replacePolicy",
-      "resolvePolicyFullPayout", // FIX BEFORE RELEASE: remove this method
       "expirePolicy", // To guarantee that all policies expire
     ],
   },
   RiskModule: {
     skipViewsAndPure: true,
-    skipMethods: [
-      "releaseExposure", // FIX BEFORE RELEASE: move exposure enforcement to PolicyPool
-    ],
+    skipMethods: [],
   },
   PremiumsAccount: {
     skipViewsAndPure: true,
@@ -39,11 +36,6 @@ const ampConfig = {
     skipMethods: [],
   },
 };
-
-ampConfig.FullSignedBucketRiskModule = ampConfig.RiskModule;
-ampConfig.SignedBucketRiskModule = ampConfig.RiskModule;
-ampConfig.SignedQuoteRiskModule = ampConfig.RiskModule;
-ampConfig.TrustfulRiskModule = ampConfig.RiskModule;
 
 module.exports = {
   ampConfig,

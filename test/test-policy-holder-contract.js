@@ -1,12 +1,15 @@
 const { expect } = require("chai");
-const { getAddress, amountFunction, getTransactionEvent } = require("@ensuro/utils/js/utils");
+const { getAddress, amountFunction, getTransactionEvent, _W } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { defaultPolicyParams, makePolicyId } = require("../js/utils");
-const { deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
+const { deployPool, deployPremiumsAccount, addEToken } = require("../js/test-utils");
+const { ComponentKind } = require("../js/enums.js");
 const { ethers } = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
 const { ZeroAddress } = ethers;
+
+const _A = amountFunction(6);
 
 const NotificationKind = {
   PolicyReceived: 0,
@@ -15,11 +18,28 @@ const NotificationKind = {
   PolicyReplaced: 3,
 };
 
+function toPolicyStruct(policy, start = 0) {
+  return [
+    0, // id - Ignored
+    policy.payout, // payout
+    _A(0), // jrScr
+    _A(0), // srScr
+    policy.lossProb, // lossProb
+    (policy.payout * policy.lossProb) / _W(1), // purePremium
+    _A(0), // ensuroCommission
+    _A(0), // partnerCommission
+    _A(0), // jrCoc
+    _A(0), // srCoc
+    start, // start
+    policy.expiration, // expiration
+  ];
+}
+
 describe("PoliyHolder policy creation handling", () => {
   it("Receiving with a functioning holder contract succeeds and executes the handler code", async () => {
     const { rm, ph, backend } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
-    await expect(rm.connect(backend).newPolicy(...policyToArgs(policy, backend, ph, 1)))
+    await expect(rm.newPolicy(toPolicyStruct(policy), backend, ph, 1))
       .to.emit(ph, "NotificationReceived")
       .withArgs(NotificationKind.PolicyReceived, makePolicyId(rm, 1), rm, ZeroAddress);
   });
@@ -28,7 +48,7 @@ describe("PoliyHolder policy creation handling", () => {
     const { rm, ph, backend } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
     await ph.setFail(true);
-    await expect(rm.connect(backend).newPolicy(...policyToArgs(policy, backend, ph, 1))).to.be.revertedWith(
+    await expect(rm.newPolicy(toPolicyStruct(policy), backend, ph, 1)).to.be.revertedWith(
       "onERC721Received: They told me I have to fail"
     );
   });
@@ -38,7 +58,7 @@ describe("PoliyHolder policy creation handling", () => {
     const policy = await defaultPolicyParams({});
     await ph.setFail(true);
     await ph.setEmptyRevert(true);
-    await expect(rm.connect(backend).newPolicy(...policyToArgs(policy, backend, ph, 1))).to.be.revertedWithCustomError(
+    await expect(rm.newPolicy(toPolicyStruct(policy), backend, ph, 1)).to.be.revertedWithCustomError(
       pool,
       "ERC721InvalidReceiver"
     );
@@ -48,7 +68,7 @@ describe("PoliyHolder policy creation handling", () => {
     const { rm, ph, backend, pool } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
     await ph.setBadlyImplemented(true);
-    await expect(rm.connect(backend).newPolicy(...policyToArgs(policy, backend, ph, 1))).to.be.revertedWithCustomError(
+    await expect(rm.newPolicy(toPolicyStruct(policy), backend, ph, 1)).to.be.revertedWithCustomError(
       pool,
       "ERC721InvalidReceiver"
     );
@@ -57,67 +77,67 @@ describe("PoliyHolder policy creation handling", () => {
 
 describe("PolicyHolder resolution handling", () => {
   it("Resolving with a functioning holder contract succeeds and executes the handler code", async () => {
-    const { rm, pool, ph, backend, _A } = await helpers.loadFixture(deployPoolFixture);
+    const { rm, pool, ph, backend } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
-    const policyEvt = await createPolicy(rm.connect(backend), pool, policyToArgs(policy, backend, ph, 1));
+    const policyEvt = await createPolicy(rm, pool, policy, backend, ph, 1);
 
-    await expect(rm.connect(backend).resolvePolicy([...policyEvt.args[1]], _A("123")))
+    await expect(rm.resolvePolicy([...policyEvt.args[1]], _A("123")))
       .to.emit(ph, "NotificationReceived")
       .withArgs(NotificationKind.PayoutReceived, makePolicyId(rm, 1), rm, pool);
     expect(await ph.payout()).to.equal(_A("123"));
   });
 
   it("Resolving with a holder that fails reverts the transaction", async () => {
-    const { rm, pool, ph, backend, _A } = await helpers.loadFixture(deployPoolFixture);
+    const { rm, pool, ph, backend } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
-    const policyEvt = await createPolicy(rm.connect(backend), pool, policyToArgs(policy, backend, ph, 1));
+    const policyEvt = await createPolicy(rm, pool, policy, backend, ph, 1);
 
     await ph.setFail(true);
-    await expect(rm.connect(backend).resolvePolicy([...policyEvt.args[1]], _A("123"))).to.be.revertedWith(
+    await expect(rm.resolvePolicy([...policyEvt.args[1]], _A("123"))).to.be.revertedWith(
       "onPayoutReceived: They told me I have to fail"
     );
   });
 
   it("Resolving with a holder that fails empty reverts the transaction", async () => {
-    const { rm, pool, ph, backend, _A } = await helpers.loadFixture(deployPoolFixture);
+    const { rm, pool, ph, backend } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
-    const policyEvt = await createPolicy(rm.connect(backend), pool, policyToArgs(policy, backend, ph, 1));
+    const policyEvt = await createPolicy(rm, pool, policy, backend, ph, 1);
 
     await ph.setFail(true);
     await ph.setEmptyRevert(true);
-    await expect(rm.connect(backend).resolvePolicy([...policyEvt.args[1]], _A("123"))).to.be.reverted;
+    await expect(rm.resolvePolicy([...policyEvt.args[1]], _A("123"))).to.be.reverted;
   });
 
   it("Resolving with a holder that returns a bad value reverts the transaction", async () => {
-    const { rm, pool, ph, backend, _A } = await helpers.loadFixture(deployPoolFixture);
+    const { rm, pool, ph, backend } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
-    const policyEvt = await createPolicy(rm.connect(backend), pool, policyToArgs(policy, backend, ph, 1));
+    const policyEvt = await createPolicy(rm, pool, policy, backend, ph, 1);
 
     await ph.setBadlyImplemented(true);
-    await expect(rm.connect(backend).resolvePolicy([...policyEvt.args[1]], _A("123"))).to.be.revertedWithCustomError(
+    await expect(rm.resolvePolicy([...policyEvt.args[1]], _A("123"))).to.be.revertedWithCustomError(
       pool,
       "InvalidNotificationResponse"
     );
   });
 
   it("Resolving with a holder that doesn't implement the interface suceeds without executing the handling code", async () => {
-    const { rm, pool, ph, backend, _A } = await helpers.loadFixture(deployPoolFixture);
+    const { rm, pool, ph, backend } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
-    const policyEvt = await createPolicy(rm.connect(backend), pool, policyToArgs(policy, backend, ph, 1));
+    const policyEvt = await createPolicy(rm, pool, policy, backend, ph, 1);
 
     await ph.setNotImplemented(true);
-    const tx = await rm.connect(backend).resolvePolicy([...policyEvt.args[1]], _A("123"));
+    const tx = await rm.resolvePolicy([...policyEvt.args[1]], _A("123"));
     const receipt = await tx.wait();
     expect(await getTransactionEvent(ph.interface, receipt, "NotificationReceived")).to.be.null;
   });
 
   it("Resolving with a holder that doesn't implement ERC165 succeeds without executing the handling code", async () => {
-    const { rm, pool, ph, backend, _A } = await helpers.loadFixture(deployPoolFixture);
+    const { rm, pool, ph, backend } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
-    const policyEvt = await createPolicy(rm.connect(backend), pool, policyToArgs(policy, backend, ph, 1));
+    const policyEvt = await createPolicy(rm, pool, policy, backend, ph, 1);
 
     await ph.setNoERC165(true);
-    const tx = await rm.connect(backend).resolvePolicy([...policyEvt.args[1]], _A("123"));
+    const tx = await rm.resolvePolicy([...policyEvt.args[1]], _A("123"));
     const receipt = await tx.wait();
     expect(await getTransactionEvent(ph.interface, receipt, "NotificationReceived")).to.be.null;
   });
@@ -127,12 +147,11 @@ describe("PolicyHolder replacement handling", () => {
   it("Replacing with a functioning holder contract succeeds and executes the handler code", async () => {
     const { rm, pool, ph, backend } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
-    const policyEvt = await createPolicy(rm.connect(backend), pool, policyToArgs(policy, backend, ph, 1));
+    const policyEvt = await createPolicy(rm, pool, policy, backend, ph, 1);
     const chainPolicy = policyEvt.args.policy;
     const policyNew = await defaultPolicyParams({ expiration: policy.expiration, premium: chainPolicy.premium });
-
     const replaceReceipt = await getReceipt(
-      rm.connect(backend).replacePolicy([...chainPolicy], ...policyToReplaceArgs(policyNew, 2))
+      rm.replacePolicy([...chainPolicy], toPolicyStruct(policyNew, chainPolicy.start), backend, 2)
     );
 
     const evts = getTransactionEvent(ph.interface, replaceReceipt, "NotificationReceived", false, getAddress(ph));
@@ -147,13 +166,13 @@ describe("PolicyHolder replacement handling", () => {
   it("Replacing with a functioning holder contract succeeds even if it spends a lot of gas", async () => {
     const { rm, pool, ph, backend } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
-    const policyEvt = await createPolicy(rm.connect(backend), pool, policyToArgs(policy, backend, ph, 1));
+    const policyEvt = await createPolicy(rm, pool, policy, backend, ph, 1);
     const chainPolicy = policyEvt.args.policy;
     const policyNew = await defaultPolicyParams({ expiration: policy.expiration, premium: chainPolicy.premium });
 
     await ph.setSpendGasCount(10);
     const replaceReceipt = await getReceipt(
-      rm.connect(backend).replacePolicy([...chainPolicy], ...policyToReplaceArgs(policyNew, 2))
+      rm.replacePolicy([...chainPolicy], toPolicyStruct(policyNew, chainPolicy.start), backend, 2)
     );
 
     const evts = getTransactionEvent(ph.interface, replaceReceipt, "NotificationReceived", false, getAddress(ph));
@@ -163,13 +182,13 @@ describe("PolicyHolder replacement handling", () => {
   it("Replacing with a functioning non V2 holder contract succeeds", async () => {
     const { rm, pool, ph, backend } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
-    const policyEvt = await createPolicy(rm.connect(backend), pool, policyToArgs(policy, backend, ph, 1));
+    const policyEvt = await createPolicy(rm, pool, policy, backend, ph, 1);
     const chainPolicy = policyEvt.args.policy;
     const policyNew = await defaultPolicyParams({ expiration: policy.expiration, premium: chainPolicy.premium });
 
     await ph.setNoV2(true);
     const replaceReceipt = await getReceipt(
-      rm.connect(backend).replacePolicy([...chainPolicy], ...policyToReplaceArgs(policyNew, 2))
+      rm.replacePolicy([...chainPolicy], toPolicyStruct(policyNew, chainPolicy.start), backend, 2)
     );
 
     const evts = getTransactionEvent(ph.interface, replaceReceipt, "NotificationReceived", false, getAddress(ph));
@@ -181,24 +200,24 @@ describe("PolicyHolder replacement handling", () => {
   it("Replacing with a failing holder contract fails", async () => {
     const { rm, pool, ph, backend } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
-    const policyEvt = await createPolicy(rm.connect(backend), pool, policyToArgs(policy, backend, ph, 1));
+    const policyEvt = await createPolicy(rm, pool, policy, backend, ph, 1);
     const chainPolicy = policyEvt.args.policy;
     const policyNew = await defaultPolicyParams({ expiration: policy.expiration, premium: chainPolicy.premium });
 
     await ph.setFailReplace(true);
     await expect(
-      rm.connect(backend).replacePolicy([...chainPolicy], ...policyToReplaceArgs(policyNew, 2))
+      rm.replacePolicy([...chainPolicy], toPolicyStruct(policyNew, chainPolicy.start), backend, 2)
     ).to.be.revertedWith("onPolicyReplaced: They told me I have to fail");
 
     // Same happens with an empty revert
     await ph.setEmptyRevert(true);
-    await expect(rm.connect(backend).replacePolicy([...chainPolicy], ...policyToReplaceArgs(policyNew, 2))).to.be
+    await expect(rm.replacePolicy([...chainPolicy], toPolicyStruct(policyNew, chainPolicy.start), backend, 2)).to.be
       .reverted;
 
     // Also fails if returns wrong value
     await ph.setFailReplace(false);
     await ph.setBadlyImplementedReplace(true);
-    await expect(rm.connect(backend).replacePolicy([...chainPolicy], ...policyToReplaceArgs(policyNew, 2)))
+    await expect(rm.replacePolicy([...chainPolicy], toPolicyStruct(policyNew, chainPolicy.start), backend, 2))
       .to.be.revertedWithCustomError(pool, "InvalidNotificationResponse")
       .withArgs("0x0badf00d");
   });
@@ -208,7 +227,7 @@ describe("PolicyHolder expiration handling", function () {
   it("Expiring with a functioning holder contract succeeds and executes the handler code", async () => {
     const { owner, pool, rm, ph, backend } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
-    const policy1Evt = await createPolicy(rm.connect(backend), pool, policyToArgs(policy, backend, ph, 1));
+    const policy1Evt = await createPolicy(rm, pool, policy, backend, ph, 1);
 
     await helpers.time.increaseTo(policy.expiration);
     await expect(pool.expirePolicy([...policy1Evt.args[1]]))
@@ -220,7 +239,7 @@ describe("PolicyHolder expiration handling", function () {
     const { pool, rm, ph, backend } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
 
-    const policyEvt = await createPolicy(rm.connect(backend), pool, policyToArgs(policy, backend, ph, 1));
+    const policyEvt = await createPolicy(rm, pool, policy, backend, ph, 1);
     await ph.setFail(true);
     await helpers.time.increaseTo(policy.expiration);
     const tx = await pool.expirePolicy([...policyEvt.args[1]]);
@@ -232,7 +251,7 @@ describe("PolicyHolder expiration handling", function () {
     const { pool, rm, ph, backend } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
 
-    const policyEvt = await createPolicy(rm.connect(backend), pool, policyToArgs(policy, backend, ph, 1));
+    const policyEvt = await createPolicy(rm, pool, policy, backend, ph, 1);
     await ph.setSpendGasCount(7);
     await helpers.time.increaseTo(policy.expiration);
     const tx = await pool.expirePolicy([...policyEvt.args[1]]);
@@ -244,7 +263,7 @@ describe("PolicyHolder expiration handling", function () {
     const { pool, rm, ph, backend } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
 
-    const policyEvt = await createPolicy(rm.connect(backend), pool, policyToArgs(policy, backend, ph, 1));
+    const policyEvt = await createPolicy(rm, pool, policy, backend, ph, 1);
     await ph.setSpendGasCount(6);
     await helpers.time.increaseTo(policy.expiration);
     const tx = await pool.expirePolicy([...policyEvt.args[1]]);
@@ -256,7 +275,7 @@ describe("PolicyHolder expiration handling", function () {
     const { pool, rm, ph, backend } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
 
-    const policyEvt = await createPolicy(rm.connect(backend), pool, policyToArgs(policy, backend, ph, 1));
+    const policyEvt = await createPolicy(rm, pool, policy, backend, ph, 1);
     await helpers.time.increaseTo(policy.expiration);
     const tx = await pool.expirePolicy([...policyEvt.args[1]]);
     const receipt = await tx.wait();
@@ -267,7 +286,7 @@ describe("PolicyHolder expiration handling", function () {
     const { pool, rm, ph, backend } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
 
-    const policyEvt = await createPolicy(rm.connect(backend), pool, policyToArgs(policy, backend, ph, 1));
+    const policyEvt = await createPolicy(rm, pool, policy, backend, ph, 1);
     await ph.setFail(true);
     await ph.setEmptyRevert(true);
     await helpers.time.increaseTo(policy.expiration);
@@ -283,7 +302,7 @@ describe("PolicyHolder expiration handling", function () {
   it("Expiring with a holder that returns a bad value succeeds", async () => {
     const { owner, pool, rm, ph, backend } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
-    const policy1Evt = await createPolicy(rm.connect(backend), pool, policyToArgs(policy, backend, ph, 1));
+    const policy1Evt = await createPolicy(rm, pool, policy, backend, ph, 1);
 
     await ph.setBadlyImplemented(true);
     await helpers.time.increaseTo(policy.expiration);
@@ -295,7 +314,7 @@ describe("PolicyHolder expiration handling", function () {
   it("Expiring with a holder that doesn't implement the interface succeeds", async () => {
     const { pool, rm, ph, backend } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
-    const policy1Evt = await createPolicy(rm.connect(backend), pool, policyToArgs(policy, backend, ph, 1));
+    const policy1Evt = await createPolicy(rm, pool, policy, backend, ph, 1);
 
     await ph.setNotImplemented(true);
     await helpers.time.increaseTo(policy.expiration);
@@ -307,7 +326,7 @@ describe("PolicyHolder expiration handling", function () {
   it("Expiring with a holder that doesn't implement ERC165 succeeds", async () => {
     const { pool, rm, ph, backend } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
-    const policy1Evt = await createPolicy(rm.connect(backend), pool, policyToArgs(policy, backend, ph, 1));
+    const policy1Evt = await createPolicy(rm, pool, policy, backend, ph, 1);
 
     await ph.setNoERC165(true);
     await helpers.time.increaseTo(policy.expiration);
@@ -319,8 +338,6 @@ describe("PolicyHolder expiration handling", function () {
 
 async function deployPoolFixture() {
   const [owner, lp, cust, backend] = await ethers.getSigners();
-
-  const _A = amountFunction(6);
 
   const currency = await initCurrency(
     { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(10000) },
@@ -338,32 +355,40 @@ async function deployPoolFixture() {
 
   const premiumsAccount = await deployPremiumsAccount(pool, { srEtk: etk });
 
-  const RiskModule = await ethers.getContractFactory("RiskModuleMock");
+  const PolicyPool = await ethers.getContractFactory("PolicyPool");
+  const RiskModuleMock = await ethers.getContractFactory("RiskModuleMock");
+
+  const rmMock = await RiskModuleMock.deploy(pool, premiumsAccount, ZeroAddress);
+  const rm = PolicyPool.attach(getAddress(rmMock));
+  await pool.addComponent(rm, ComponentKind.riskModule);
+  await pool.setExposureLimit(rm, _A(2000));
 
   await currency.connect(lp).approve(pool, _A(5000));
   await currency.connect(backend).approve(pool, _A(5000));
   await pool.connect(lp).deposit(etk, _A(5000));
 
-  const rm = await addRiskModule(pool, premiumsAccount, RiskModule, {
-    extraArgs: [],
-  });
-
   const PolicyHolderMock = await ethers.getContractFactory("PolicyHolderMock");
   const ph = await PolicyHolderMock.deploy();
 
-  return { pool, currency, etk, premiumsAccount, RiskModule, rm, PolicyHolderMock, ph, _A, lp, cust, backend, owner };
+  return {
+    pool,
+    currency,
+    etk,
+    premiumsAccount,
+    RiskModuleMock,
+    rm,
+    PolicyHolderMock,
+    ph,
+    _A,
+    lp,
+    cust,
+    backend,
+    owner,
+  };
 }
 
-function policyToArgs(policy, payer, onBehalfOf, internalId) {
-  return [policy.payout, policy.premium, policy.lossProb, policy.expiration, payer, onBehalfOf, internalId];
-}
-
-function policyToReplaceArgs(policy, internalId) {
-  return [policy.payout, policy.premium, policy.lossProb, policy.expiration, internalId];
-}
-
-async function createPolicy(rm, pool, policyArgs) {
-  const tx = await rm.newPolicy(...policyArgs);
+async function createPolicy(rm, pool, policy, payer, onBehalfOf, internalId) {
+  const tx = await rm.newPolicy(toPolicyStruct(policy), payer, onBehalfOf, internalId);
   const receipt = await tx.wait();
 
   return getTransactionEvent(pool.interface, receipt, "NewPolicy");

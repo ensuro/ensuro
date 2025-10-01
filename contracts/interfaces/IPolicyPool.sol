@@ -118,22 +118,6 @@ interface IPolicyPool {
   function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external;
 
   /**
-   * @dev Resolves a policy with a payout that can be either 0 or the maximum payout of the policy
-   *
-   * Requirements:
-   * - `policy`: must be a Policy previously created with `newPolicy` (checked with `policy.hash()`) and not
-   *   resolved before and not expired (if customerWon).
-   *
-   * Events:
-   * - {PolicyPool-PolicyResolved}: with the payout
-   * - {ERC20-Transfer}: to the policyholder with the payout
-   *
-   * @param policy A policy previously created with `newPolicy`
-   * @param customerWon Indicated if the payout is zero or the maximum payout
-   */
-  function resolvePolicyFullPayout(Policy.PolicyData calldata policy, bool customerWon) external;
-
-  /**
    * @dev Resolves a policy with a payout 0, unlocking the solvency. Can be called by anyone, but only after
    * `Policy.expiration`.
    *

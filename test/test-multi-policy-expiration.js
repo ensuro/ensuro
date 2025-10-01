@@ -4,6 +4,7 @@ const { amountFunction, _W, getTransactionEvent, captureAny } = require("@ensuro
 const { deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
+const { defaultTestParams, makeFTUWInputData } = require("../js/utils");
 
 const _A = amountFunction(6);
 
@@ -68,8 +69,7 @@ describe("Multiple policy expirations", function () {
     const additionalPolicies = 500; // number arrived at by trial-and-error
 
     for (let i = 0; i < additionalPolicies; i++) {
-      const policy = await makePolicy({ payer: pricer, internalId: 100000 + i });
-      const tx = await rm.connect(pricer).newPolicy(...policy.toArgs());
+      const tx = await rm.connect(pricer).newPolicy(makeInputData({ internalId: 100000 + i }), pricer);
       const receipt = await tx.wait();
       const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
       policies.push(newPolicyEvt.args.policy);
@@ -107,8 +107,7 @@ describe("Multiple policy expirations", function () {
     await helpers.time.increaseTo(policies[policies.length - 1].expiration);
 
     // Create a new policy
-    const policy = await makePolicy({ payer: pricer, internalId: policies.length + 1 });
-    const tx = await rm.connect(pricer).newPolicy(...policy.toArgs());
+    const tx = await rm.connect(pricer).newPolicy(await makeInputData({ internalId: policies.length + 1 }), pricer);
     const receipt = await tx.wait();
     const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
 
@@ -139,11 +138,8 @@ async function poolWithPolicies() {
   const etk = await addEToken(pool, {});
   const premiumsAccount = await deployPremiumsAccount(pool, { srEtk: etk });
 
-  const RiskModule = await hre.ethers.getContractFactory("RiskModuleMock");
-  const rm = await addRiskModule(pool, premiumsAccount, RiskModule, {
-    collRatio: "0.01",
-    extraArgs: [],
-  });
+  const RiskModule = await hre.ethers.getContractFactory("RiskModule");
+  const rm = await addRiskModule(pool, premiumsAccount, {});
 
   // Fund the protocol
   await currency.connect(lp).approve(pool, _A(100000));
@@ -155,8 +151,7 @@ async function poolWithPolicies() {
   // Create a bunch of policies
   const policies = [];
   for (let i = 0; i < 100; i++) {
-    const policy = await makePolicy({ payer: pricer, internalId: i });
-    const tx = await rm.connect(pricer).newPolicy(...policy.toArgs());
+    const tx = await rm.connect(pricer).newPolicy(await makeInputData({ internalId: i }), pricer);
     const receipt = await tx.wait();
     const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
     policies.push(newPolicyEvt.args.policy);
@@ -178,25 +173,14 @@ async function poolWithPolicies() {
   };
 }
 
-async function makePolicy({ payout, premium, lossProbability, expiration, payer, onBehalfOf, internalId }) {
+async function makeInputData({ payout, premium, lossProb, expiration, internalId, params }) {
   const now = await helpers.time.latest();
-  const policy = {
+  return makeFTUWInputData({
     payout: payout || _A(100),
     premium: premium || _A(11),
-    lossProbability: lossProbability || _W("0.1"),
+    lossProb: lossProb || _W("0.1"),
     expiration: expiration || now + 3600 * 5,
-    payer: payer,
-    onBehalfOf: onBehalfOf || payer,
     internalId: internalId || 123,
-  };
-  policy.toArgs = () => [
-    policy.payout,
-    policy.premium,
-    policy.lossProbability,
-    policy.expiration,
-    policy.payer,
-    policy.onBehalfOf,
-    policy.internalId,
-  ];
-  return policy;
+    params: defaultTestParams(params || { collRatio: _W("0.01") }),
+  });
 }

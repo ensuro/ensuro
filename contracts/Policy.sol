@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.28;
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {IRiskModule} from "./interfaces/IRiskModule.sol";
 
 /**
  * @title Policy library
@@ -16,11 +15,52 @@ library Policy {
   uint256 internal constant WAD = 1e18;
   uint256 internal constant SECONDS_PER_YEAR = 365 days;
 
+  /**
+   * Struct of the parameters of the risk module that are used to calculate the different Policy fields (see
+   * {Policy-PolicyData}.
+   */
+  struct Params {
+    /**
+     * @dev MoC (Margin of Conservativism) is a factor that multiplies the lossProb to increase or decrease the pure
+     * premium.
+     */
+    uint256 moc;
+    /**
+     * @dev Junior Collateralization Ratio is the percentage of policy exposure (payout) that will be covered with the
+     * purePremium and the Junior EToken
+     */
+    uint256 jrCollRatio;
+    /**
+     * @dev Collateralization Ratio is the percentage of policy exposure (payout) that will be covered by the
+     * purePremium and the Junior and Senior EToken. Usually is calculated as the relation between VAR99.5% and VAR100
+     * (full collateralization).
+     */
+    uint256 collRatio;
+    /**
+     * @dev Ensuro PurePremium Fee is the percentage that will be multiplied by the pure premium to obtain the part of
+     * the Ensuro Fee that's proportional to the pure premium.
+     */
+    uint256 ensuroPpFee;
+    /**
+     * @dev Ensuro Cost of Capital Fee is the percentage that will be multiplied by the cost of capital (CoC) to
+     * obtain the part of the Ensuro Fee that's proportional to the CoC.
+     */
+    uint256 ensuroCocFee;
+    /**
+     * @dev Junior Return on Capital is the annualized interest rate that's charged for the capital locked in the Junior
+     * EToken.
+     */
+    uint256 jrRoc;
+    /**
+     * @dev Senior Return on Capital is the annualized interest rate that's charged for the capital locked in the Senior
+     * EToken.
+     */
+    uint256 srRoc;
+  }
   // Active Policies
   struct PolicyData {
     uint256 id;
     uint256 payout;
-    uint256 premium;
     uint256 jrScr;
     uint256 srScr;
     uint256 lossProb; // original loss probability (in wad)
@@ -30,7 +70,6 @@ library Policy {
     uint256 partnerCommission; // share of the premium that goes for the RM
     uint256 jrCoc; // share of the premium that goes to junior liquidity providers (won or not)
     uint256 srCoc; // share of the premium that goes to senior liquidity providers (won or not)
-    IRiskModule riskModule;
     uint40 start;
     uint40 expiration;
   }
@@ -51,7 +90,7 @@ library Policy {
   error ZeroHash(PolicyData policy);
 
   function getMinimumPremium(
-    IRiskModule.Params memory rmParams,
+    Params memory rmParams,
     uint256 payout,
     uint256 lossProb,
     uint40 expiration,
@@ -85,8 +124,7 @@ library Policy {
   }
 
   function initialize(
-    IRiskModule riskModule,
-    IRiskModule.Params memory rmParams,
+    Params memory rmParams,
     uint256 premium,
     uint256 payout,
     uint256 lossProb,
@@ -96,8 +134,6 @@ library Policy {
     require(premium < payout, PremiumExceedsPayout(premium, payout));
     PolicyData memory policy;
 
-    policy.riskModule = riskModule;
-    policy.premium = premium;
     policy.payout = payout;
     policy.lossProb = lossProb;
     policy.start = start;

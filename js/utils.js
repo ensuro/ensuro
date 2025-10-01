@@ -3,6 +3,8 @@ const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { DAY } = require("@ensuro/utils/js/constants");
 const { amountFunction, getAddress, _W } = require("@ensuro/utils/js/utils");
 
+const abiCoder = ethers.AbiCoder.defaultAbiCoder();
+
 /**
  * Create a policy id by combining the riskmodule address and the internal id.
  *
@@ -167,6 +169,21 @@ function defaultBucketParams({ moc, jrCollRatio, collRatio, ensuroPpFee, ensuroC
   };
 }
 
+function defaultTestParams({ moc, jrCollRatio, collRatio, ensuroPpFee, ensuroCocFee, jrRoc, srRoc }) {
+  return {
+    moc: moc !== undefined ? moc : _W("1.0"),
+    jrCollRatio: jrCollRatio !== undefined ? jrCollRatio : _W(0),
+    collRatio: collRatio !== undefined ? collRatio : _W(1),
+    ensuroPpFee: ensuroPpFee !== undefined ? ensuroPpFee : _W(0),
+    ensuroCocFee: ensuroCocFee !== undefined ? ensuroCocFee : _W(0),
+    jrRoc: jrRoc !== undefined ? jrRoc : _W("0.1"),
+    srRoc: srRoc !== undefined ? srRoc : _W("0.1"),
+    asParams: function () {
+      return [this.moc, this.jrCollRatio, this.collRatio, this.ensuroPpFee, this.ensuroCocFee, this.jrRoc, this.srRoc];
+    },
+  };
+}
+
 const SECONDS_IN_YEAR = 3600n * 24n * 365n;
 
 function computePremiumComposition(payout, lossProb, expiration, params, premium = undefined, now = undefined) {
@@ -203,11 +220,47 @@ function computeMinimumPremium(payout, lossProb, expiration, params, now = undef
   return computePremiumComposition(payout, lossProb, expiration, params, undefined, now).totalPremium;
 }
 
+function getPremium(policy) {
+  return policy.purePremium + policy.jrCoc + policy.srCoc + policy.ensuroCommission + policy.partnerCommission;
+}
+
+function makeFTUWInputData({ payout, premium, lossProb, expiration, internalId, params }) {
+  return abiCoder.encode(
+    [
+      "uint256",
+      "uint256",
+      "uint256",
+      "uint40",
+      "uint96",
+      "(uint256, uint256, uint256, uint256, uint256, uint256, uint256)",
+    ],
+    [payout, premium, lossProb, expiration, internalId, params.asParams()]
+  );
+}
+
+function makeFTUWReplacementInputData({ oldPolicy, payout, premium, lossProb, expiration, internalId, params }) {
+  return abiCoder.encode(
+    [
+      "(uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint40, uint40)",
+      "uint256",
+      "uint256",
+      "uint256",
+      "uint40",
+      "uint96",
+      "(uint256, uint256, uint256, uint256, uint256, uint256, uint256)",
+    ],
+    [oldPolicy, payout, premium, lossProb, expiration, internalId, params.asParams()]
+  );
+}
+
 module.exports = {
   defaultPolicyParams,
   defaultPolicyParamsWithBucket,
   defaultPolicyParamsWithParams,
   defaultBucketParams,
+  defaultTestParams,
+  makeFTUWInputData,
+  makeFTUWReplacementInputData,
   makeBucketQuoteMessage,
   makeFullQuoteMessage,
   paramsAsUint256,
@@ -217,4 +270,5 @@ module.exports = {
   recoverAddress,
   computeMinimumPremium,
   packParams,
+  getPremium,
 };

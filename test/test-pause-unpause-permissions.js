@@ -1,18 +1,20 @@
 const { expect } = require("chai");
-const { amountFunction, _W } = require("@ensuro/utils/js/utils");
+const { amountFunction, _W, captureAny } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
-const { deployPool, deployPremiumsAccount, addRiskModule, makePolicy, addEToken } = require("../js/test-utils");
+const { deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
+const { makeFTUWInputData, defaultTestParams } = require("../js/utils");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
 describe("Test pause, unpause and upgrade contracts", function () {
   let currency;
   let pool;
   let premiumsAccount;
-  let TrustfulRiskModule;
   let cust, guardian, level1, lp, owner;
   let _A;
   let etk;
   let rm;
+  let testPolicyInput;
+  let now;
 
   beforeEach(async () => {
     [owner, lp, cust, guardian, level1] = await hre.ethers.getSigners();
@@ -34,16 +36,22 @@ describe("Test pause, unpause and upgrade contracts", function () {
     etk = await addEToken(pool, {});
 
     premiumsAccount = await deployPremiumsAccount(pool, { srEtk: etk });
-    TrustfulRiskModule = await hre.ethers.getContractFactory("TrustfulRiskModule");
-    rm = await addRiskModule(pool, premiumsAccount, TrustfulRiskModule, {});
+    rm = await addRiskModule(pool, premiumsAccount, {});
 
     await currency.connect(lp).approve(pool, _A(3000));
     await pool.connect(lp).deposit(etk, _A(3000));
+    now = await helpers.time.latest();
+    testPolicyInput = makeFTUWInputData({
+      payout: _A(36),
+      premium: _A(1),
+      lossProb: _W(1 / 37),
+      expiration: now + 3600,
+      internalId: 123,
+      params: defaultTestParams({}),
+    });
   });
 
   it("Pause and Unpause PolicyPool", async function () {
-    const start = await helpers.time.latest();
-
     expect(await pool.paused()).to.be.equal(false);
     await currency.connect(cust).approve(pool, _A(100));
 
@@ -55,9 +63,10 @@ describe("Test pause, unpause and upgrade contracts", function () {
     await expect(pool.connect(lp).withdraw(etk, _A(3000))).to.be.revertedWithCustomError(pool, "EnforcedPause");
 
     // Can't create policy
-    await expect(
-      rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 1)
-    ).to.be.revertedWithCustomError(pool, "EnforcedPause");
+    await expect(rm.connect(cust).newPolicy(testPolicyInput, cust)).to.be.revertedWithCustomError(
+      pool,
+      "EnforcedPause"
+    );
 
     // UnPause PolicyPool
     await pool.connect(level1).unpause();
@@ -70,8 +79,10 @@ describe("Test pause, unpause and upgrade contracts", function () {
     expect(await etk.balanceOf(lp)).to.be.equal(_A(3300));
 
     // Can create policy
-    const newPolicyEvt = await makePolicy(pool, rm, cust, _A(36), _A(1), _W(1 / 37), start + 3600, 1);
-    const policy = newPolicyEvt.args.policy;
+    await expect(rm.connect(cust).newPolicy(testPolicyInput, cust))
+      .to.emit(pool, "NewPolicy")
+      .withArgs(rm, captureAny.value);
+    const policy = captureAny.lastValue;
 
     // Pause PolicyPool again
     await pool.connect(guardian).pause();
@@ -97,8 +108,6 @@ describe("Test pause, unpause and upgrade contracts", function () {
   });
 
   it("Pause/Unpause and resolve policy with full payout", async function () {
-    const start = await helpers.time.latest();
-
     await currency.connect(cust).approve(pool, _A(100));
 
     // Pause PolicyPool
@@ -106,34 +115,36 @@ describe("Test pause, unpause and upgrade contracts", function () {
     expect(await pool.paused()).to.be.equal(true);
 
     // Can't create policy
-    await expect(
-      rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 1)
-    ).to.be.revertedWithCustomError(pool, "EnforcedPause");
+    await expect(rm.connect(cust).newPolicy(testPolicyInput, cust)).to.be.revertedWithCustomError(
+      pool,
+      "EnforcedPause"
+    );
 
     // UnPause PolicyPool
     await pool.connect(level1).unpause();
     expect(await pool.paused()).to.be.equal(false);
 
     // Can create policy
-    const newPolicyEvt = await makePolicy(pool, rm, cust, _A(36), _A(1), _W(1 / 37), start + 3600, 1);
-    const policy = newPolicyEvt.args.policy;
+    await expect(rm.connect(cust).newPolicy(testPolicyInput, cust))
+      .to.emit(pool, "NewPolicy")
+      .withArgs(rm, captureAny.value);
+
+    const policy = captureAny.lastValue;
 
     // Pause PolicyPool again
     await pool.connect(guardian).pause();
     // Can't resolve Policy
-    await expect(rm.connect(cust).resolvePolicyFullPayout([...policy], true)).to.be.revertedWithCustomError(
+    await expect(rm.connect(cust).resolvePolicy([...policy], policy.payout)).to.be.revertedWithCustomError(
       pool,
       "EnforcedPause"
     );
     // UnPause PolicyPool
     await pool.connect(guardian).unpause();
     // Can resolve Policy
-    await expect(rm.connect(cust).resolvePolicyFullPayout([...policy], true)).not.to.be.reverted;
+    await expect(rm.connect(cust).resolvePolicy([...policy], policy.payout)).not.to.be.reverted;
   });
 
   it("Pause/Unpause and expire policy", async function () {
-    const start = await helpers.time.latest();
-
     await currency.connect(cust).approve(pool, _A(100));
 
     // Pause PolicyPool
@@ -141,17 +152,20 @@ describe("Test pause, unpause and upgrade contracts", function () {
     expect(await pool.paused()).to.be.equal(true);
 
     // Can't create policy
-    await expect(
-      rm.connect(cust).newPolicy(_A(36), _A(1), _W(1 / 37), start + 3600, cust, 1)
-    ).to.be.revertedWithCustomError(pool, "EnforcedPause");
+    await expect(rm.connect(cust).newPolicy(testPolicyInput, cust)).to.be.revertedWithCustomError(
+      pool,
+      "EnforcedPause"
+    );
 
     // UnPause PolicyPool
     await pool.connect(guardian).unpause();
     expect(await pool.paused()).to.be.equal(false);
 
     // Can create policy
-    const newPolicyEvt = await makePolicy(pool, rm, cust, _A(36), _A(1), _W(1 / 37), start + 3600, 1);
-    const policy = newPolicyEvt.args.policy;
+    await expect(rm.connect(cust).newPolicy(testPolicyInput, cust))
+      .to.emit(pool, "NewPolicy")
+      .withArgs(rm, captureAny.value);
+    const policy = captureAny.lastValue;
 
     // Pause PolicyPool again
     await pool.connect(guardian).pause();

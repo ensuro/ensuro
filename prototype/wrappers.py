@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 
+from eth_abi import encode as abi_encode
 from ethproto.wadray import _W, Wad
 from ethproto.wrappers import AddressBook  # noqa: F401
 from ethproto.wrappers import IERC20, IERC721, ETHWrapper, MethodAdapter, get_provider
@@ -295,7 +296,6 @@ class Policy:
         return (
             self.id,
             self.payout,
-            self.premium,
             self.jr_scr,
             self.sr_scr,
             self.loss_prob,
@@ -304,15 +304,11 @@ class Policy:
             self.partner_commission,
             self.jr_coc,
             self.sr_coc,
-            self._risk_module,
             self.start,
             self.expiration,
         )
 
-    FIELDS = (
-        "(int, amount, amount, amount, amount, wad, "
-        "amount, amount, amount, amount, amount, address, int, int)"
-    )
+    FIELDS = "(int, amount, amount, amount, wad, amount, amount, amount, amount, amount, int, int)"
 
     @classmethod
     def from_prototype_policy(cls, policy, address_book):
@@ -336,12 +332,16 @@ class Policy:
         )
 
     @classmethod
-    def from_policy_data(cls, policy_data, address_book):
+    def from_policy_data(cls, riskModule, policy_data, address_book):
         """Creates a Policy object from a PolicyData struct (see Policy.sol)"""
         return cls(
             policy_data.id,
             policy_data.payout,
-            policy_data.premium,
+            policy_data.purePremium
+            + policy_data.jrCoc
+            + policy_data.srCoc
+            + policy_data.ensuroCommission
+            + policy_data.partnerCommission,
             policy_data.jrScr,
             policy_data.srScr,
             policy_data.lossProb,
@@ -350,7 +350,7 @@ class Policy:
             policy_data.partnerCommission,
             policy_data.jrCoc,
             policy_data.srCoc,
-            policy_data.riskModule,
+            riskModule,
             policy_data.start,
             policy_data.expiration,
             address_book,
@@ -371,28 +371,45 @@ class PolicyDB:
 policy_db = PolicyDB()
 
 
+class FullTrustedUW(ETHWrapper):
+    eth_contract = "FullTrustedUW"
+    constructor_args = ()
+    proxy_kind = None
+
+
 class RiskModule(ETHWrapper):
-    eth_contract = "IRiskModule"
+    eth_contract = "RiskModule"
+    proxy_kind = "uups"
 
     constructor_args = (
         ("pool", "address"),
         ("premiums_account", "address"),
     )
     initialize_args = (
-        ("name", "string"),
-        ("coll_ratio", "wad"),
-        ("ensuro_pp_fee", "wad"),
-        ("sr_roc", "wad"),
-        ("max_payout_per_policy", "amount"),
-        ("exposure_limit", "amount"),
+        ("underwriter", "address"),
         ("wallet", "address"),
     )
 
+    new_policy_ = MethodAdapter(
+        (
+            ("input_data", "bytes"),
+            ("on_behalf_of", "address"),
+        ),
+        "receipt",
+    )
+
+    replace_policy_ = MethodAdapter(
+        (("input_data", "bytes"),),
+        "receipt",
+    )
+
+    resolve_policy_ = MethodAdapter((("policy", Policy.FIELDS), ("payout", "amount")))
+
     def __init__(
         self,
-        name,
         policy_pool,
         premiums_account,
+        name="Dummy",
         coll_ratio=_W(1),
         ensuro_pp_fee=_W(0),
         sr_roc=_W(0),
@@ -401,57 +418,46 @@ class RiskModule(ETHWrapper):
         wallet="RM",
         owner="owner",
     ):
-        coll_ratio = _W(coll_ratio)
-        ensuro_pp_fee = _W(ensuro_pp_fee)
-        sr_roc = _W(sr_roc)
-        max_payout_per_policy = _W(max_payout_per_policy)
-        exposure_limit = _W(exposure_limit)
+        self.coll_ratio = _W(coll_ratio)
+        self.jr_coll_ratio = _W(0)
+        self.moc = _W(1)
+        self.name = name
+        self.ensuro_pp_fee = _W(ensuro_pp_fee)
+        self.ensuro_coc_fee = _W(0)
+        self.sr_roc = _W(sr_roc)
+        self.jr_roc = _W(0)
+        self.max_payout_per_policy = _W(max_payout_per_policy)
+        self.exposure_limit = _W(exposure_limit)
+        self._underwriter = FullTrustedUW(owner)
         super().__init__(
             owner,
             policy_pool.contract,
             premiums_account,
-            name,
-            coll_ratio,
-            ensuro_pp_fee,
-            sr_roc,
-            max_payout_per_policy,
-            exposure_limit,
+            self._underwriter.contract,
             wallet,
         )
         self.policy_pool = policy_pool
         self._premiums_account = premiums_account
         self._auto_from = self.owner
 
-    name = MethodAdapter((), "string", is_property=True)
-
-    last_tweak = MethodAdapter((), "tuple")
-
-    params = MethodAdapter((), "tuple")
-    set_param = MethodAdapter((("param", "int"), ("value", "wad")))
-
-    moc = property(GetParam(0), SetParam(0))
-    jr_coll_ratio = property(GetParam(1), SetParam(1))
-    coll_ratio = property(GetParam(2), SetParam(2))
-    ensuro_pp_fee = property(GetParam(3), SetParam(3))
-    ensuro_coc_fee = property(GetParam(4), SetParam(4))
-    jr_roc = property(GetParam(5), SetParam(5))
-    sr_roc = property(GetParam(6), SetParam(6))
-
-    max_payout_per_policy_ = MethodAdapter((), "amount", is_property=True)
-    exposure_limit_ = MethodAdapter((), "amount", is_property=True)
-    max_duration_ = MethodAdapter((), "int", is_property=True)
-
-    max_payout_per_policy = property(GetProperty("max_payout_per_policy_"), SetParam(7))
-    exposure_limit = property(GetProperty("exposure_limit_"), SetParam(8))
-    max_duration = property(GetProperty("max_duration_"), SetParam(9))
-
-    active_exposure = MethodAdapter((), "amount", is_property=True)
     wallet = MethodAdapter((), "address", is_property=True)
-    get_minimum_premium = MethodAdapter(
-        (("payout", "amount"), ("loss_prob", "wad"), ("expiration", "int")), "amount"
+    get_minimum_premium_ = MethodAdapter(
+        (
+            ("payout", "amount"),
+            ("loss_prob", "wad"),
+            ("start", "int"),
+            ("expiration", "int"),
+            ("params", "(wad, wad, wad, wad, wad, wad, wad)"),
+        ),
+        "amount",
     )
 
     premiums_account_ = MethodAdapter((), "address", is_property=True)
+    underwriter = MethodAdapter((), "address", is_property=True)
+
+    @property
+    def active_exposure(self):
+        return self.policy_pool.get_exposure(self)[0]
 
     @property
     def premiums_account(self):
@@ -459,76 +465,104 @@ class RiskModule(ETHWrapper):
             self._premiums_account = PremiumsAccount.connect(self.premiums_account_, self.owner)
         return self._premiums_account
 
+    def get_minimum_premium(self, payout, loss_prob, expiration):
+        return self.get_minimum_premium_(
+            payout, loss_prob, get_provider().time_control.now, expiration, self._get_params()
+        )
+
+    def _get_params(self):
+        return [
+            self.moc,
+            self.jr_coll_ratio,
+            self.coll_ratio,
+            self.ensuro_pp_fee,
+            self.ensuro_coc_fee,
+            self.jr_roc,
+            self.sr_roc,
+        ]
+
+    POLICY_PARAMS_STRUCT = "(uint256,uint256,uint256,uint256,uint256,uint256,uint256)"
+
     def new_policy(self, *args, **kwargs):
         if "premium" not in kwargs:
             kwargs["premium"] = MAX_UINT
         if "payer" not in kwargs:
             kwargs["payer"] = kwargs.get("on_behalf_of")
-        receipt = self.new_policy_(*args, **kwargs)
+        input_data = abi_encode(
+            ["uint256", "uint256", "uint256", "uint40", "uint96", self.POLICY_PARAMS_STRUCT],
+            [
+                kwargs["payout"],
+                MAX_UINT if kwargs["premium"] is None else kwargs["premium"],
+                kwargs["loss_prob"],
+                kwargs["expiration"],
+                kwargs["internal_id"],
+                self._get_params(),
+            ],
+        )
+        receipt = self.new_policy_(input_data, kwargs["on_behalf_of"])
         if "NewPolicy" in receipt.events:
             policy_data = receipt.events["NewPolicy"]["policy"]
-            policy = Policy.from_policy_data(policy_data, address_book=self.provider.address_book)
+            policy = Policy.from_policy_data(
+                receipt.events["NewPolicy"]["riskModule"],
+                policy_data,
+                address_book=self.provider.address_book,
+            )
             policy_db.add_policy(self.policy_pool.contract.address, policy)
             return policy
         else:
             return None
-
-    def make_policy_id(self, internal_id):
-        rm_addr = self.contract.address
-        return (int(rm_addr, 16) << 96) + internal_id
-
-
-class TrustfulRiskModule(RiskModule):
-    eth_contract = "TrustfulRiskModule"
-    proxy_kind = "uups"
-
-    new_policy_ = MethodAdapter(
-        (
-            ("payout", "amount"),
-            ("premium", "amount"),
-            ("loss_prob", "wad"),
-            ("expiration", "int"),
-            ("on_behalf_of", "address"),
-            ("internal_id", "int"),
-        ),
-        "receipt",
-    )
-
-    replace_policy_ = MethodAdapter(
-        (
-            ("old_policy", Policy.FIELDS),
-            ("payout", "amount"),
-            ("premium", "amount"),
-            ("loss_prob", "wad"),
-            ("expiration", "int"),
-            ("payer", "msg.sender"),
-            ("internal_id", "int"),
-        )
-    )
-
-    resolve_policy_full_payout = MethodAdapter((("policy", Policy.FIELDS), ("customer_won", "bool")))
-    resolve_policy_ = MethodAdapter((("policy", Policy.FIELDS), ("payout", "amount")))
-
-    def resolve_policy(self, policy_id, customer_won_or_amount):
-        global policy_db
-        policy = policy_db.get_policy(self.policy_pool.contract.address, policy_id)
-        if customer_won_or_amount is True or customer_won_or_amount is False:
-            return self.resolve_policy_full_payout(policy.as_tuple(), customer_won_or_amount)
-        else:
-            return self.resolve_policy_(policy.as_tuple(), customer_won_or_amount)
 
     def replace_policy(self, *args, **kwargs):
         kwargs["old_policy"] = kwargs["old_policy"].as_tuple()
         if "premium" not in kwargs:
             kwargs["premium"] = MAX_UINT
-        receipt = self.replace_policy_(*args, **kwargs)
+
+        input_data = abi_encode(
+            [
+                "(" + "uint256," * 10 + "uint40,uint40)",
+                "uint256",
+                "uint256",
+                "uint256",
+                "uint40",
+                "uint96",
+                self.POLICY_PARAMS_STRUCT,
+            ],
+            [
+                kwargs["old_policy"],
+                kwargs["payout"],
+                MAX_UINT if kwargs["premium"] is None else kwargs["premium"],
+                kwargs["loss_prob"],
+                kwargs["expiration"],
+                kwargs["internal_id"],
+                self._get_params(),
+            ],
+        )
+        receipt = self.replace_policy_(input_data)
         if "NewPolicy" in receipt.events:
             policy_data = receipt.events["NewPolicy"]["policy"]
-            policy = Policy.from_policy_data(policy_data, address_book=self.provider.address_book)
+            policy = Policy.from_policy_data(
+                receipt.events["NewPolicy"]["riskModule"],
+                policy_data,
+                address_book=self.provider.address_book,
+            )
             policy_db.add_policy(self.policy_pool.contract.address, policy)
             return policy
         else:
             return None
+
+    def resolve_policy(self, policy_id, customer_won_or_amount):
+        global policy_db
+        policy = policy_db.get_policy(self.policy_pool.contract.address, policy_id)
+        if customer_won_or_amount is True or customer_won_or_amount is False:
+            return self.resolve_policy_(
+                policy.as_tuple(), Wad(0) if customer_won_or_amount is False else policy.payout
+            )
+        else:
+            return self.resolve_policy_(policy.as_tuple(), customer_won_or_amount)
+
+    def make_policy_id(self, internal_id):
+        rm_addr = self.contract.address
+        return (int(rm_addr, 16) << 96) + internal_id
 
 
 class SignedQuoteRiskModule(RiskModule):
@@ -617,7 +651,11 @@ class SignedQuoteRiskModule(RiskModule):
         receipt = self.new_policy_paid_by_holder_(*args, **kwargs)
         if "NewPolicy" in receipt.events:
             policy_data = receipt.events["NewPolicy"]["policy"]
-            policy = Policy.from_policy_data(policy_data, address_book=self.provider.address_book)
+            policy = Policy.from_policy_data(
+                receipt.events["NewPolicy"]["riskModule"],
+                policy_data,
+                address_book=self.provider.address_book,
+            )
             policy_db.add_policy(self.policy_pool.contract.address, policy)
             return policy
         else:
@@ -635,88 +673,6 @@ class SignedQuoteRiskModule(RiskModule):
             return self.resolve_policy_(policy.as_tuple(), customer_won_or_amount)
 
 
-class SignedBucketRiskModule(SignedQuoteRiskModule):
-
-    constructor_args = (
-        ("pool", "address"),
-        ("premiums_account", "address"),
-    )
-
-    eth_contract = "SignedBucketRiskModule"
-    proxy_kind = "uups"
-
-    set_bucket_params = MethodAdapter((("bucket_id", "wad"), ("params", "tuple")))
-
-    delete_bucket = MethodAdapter((("bucket_id", "wad"),))
-
-    bucket_params = MethodAdapter((("bucket_id", "wad"),), return_type="tuple")
-
-    get_minimum_premium_for_bucket = MethodAdapter(
-        (("payout", "amount"), ("loss_prob", "wad"), ("expiration", "int", "bucket_id", "wad")),
-        return_type="amount",
-    )
-
-    def __init__(
-        self,
-        name,
-        policy_pool,
-        premiums_account,
-        coll_ratio=_W(1),
-        ensuro_pp_fee=_W(0),
-        sr_roc=_W(0),
-        max_payout_per_policy=_W(1000000),
-        exposure_limit=_W(1000000),
-        wallet="RM",
-        owner="owner",
-    ):
-        # FIXME: Improve this classes design so we don't have to repeat the whole RiskModule constructor
-        coll_ratio = _W(coll_ratio)
-        ensuro_pp_fee = _W(ensuro_pp_fee)
-        sr_roc = _W(sr_roc)
-        max_payout_per_policy = _W(max_payout_per_policy)
-        exposure_limit = _W(exposure_limit)
-        ETHWrapper.__init__(
-            self,
-            owner,
-            policy_pool.contract,
-            premiums_account,
-            name,
-            coll_ratio,
-            ensuro_pp_fee,
-            sr_roc,
-            max_payout_per_policy,
-            exposure_limit,
-            wallet,
-        )
-        self.policy_pool = policy_pool
-        self._premiums_account = premiums_account
-        self._auto_from = self.owner
-
-    def fetch_buckets(self):
-        new_bucket_events = self.provider.get_events(self, "NewBucket")
-        delete_bucket_events = self.provider.get_events(self, "BucketDeleted")
-        all_events = sorted(
-            new_bucket_events + delete_bucket_events, key=lambda evt: (evt.blockNumber, evt.transactionIndex)
-        )
-        buckets = {}
-        bucket_tuple_fields = (
-            "moc",
-            "jrCollRatio",
-            "collRatio",
-            "ensuroPpFee",
-            "ensuroCocFee",
-            "jrRoc",
-            "srRoc",
-        )
-        for evt in all_events:
-            if evt.event == "NewBucket":
-                buckets[evt.args.bucketId] = tuple(evt.args.params[field] for field in bucket_tuple_fields)
-            elif evt.event == "BucketDeleted":
-                buckets.pop(evt.args.bucketId)
-
-        return buckets
-
-
 class PolicyPool(IERC721):
     eth_contract = "PolicyPool"
 
@@ -727,6 +683,9 @@ class PolicyPool(IERC721):
         ("treasury", "address"),
     )
     proxy_kind = "uups"
+
+    set_exposure_limit = MethodAdapter((("risk_module", "contract"), ("new_limit", "amount")))
+    get_exposure = MethodAdapter((("risk_module", "contract"),), "(amount, amount)")
 
     def __init__(self, owner, currency, name="Ensuro Policy", symbol="EPOL", treasury="ENS"):
         self._currency = currency
@@ -832,6 +791,8 @@ class PolicyPool(IERC721):
     def add_risk_module(self, risk_module):
         self.add_component(risk_module, 2)
         self._risk_modules[risk_module.name] = risk_module
+        if risk_module.exposure_limit:
+            self.set_exposure_limit(risk_module, risk_module.exposure_limit)
 
     deposit_ = MethodAdapter((("etoken", "contract"), ("provider", "msg.sender"), ("amount", "amount")))
 
@@ -853,7 +814,8 @@ class PolicyPool(IERC721):
     def get_policy(self, policy_id):
         policy_data = eth_call(self, "getPolicy", policy_id)
         if policy_data:
-            return Policy.from_policy_data(policy_data, self.provider.address_book)
+            rm = hex(policy_id)[:42]
+            return Policy.from_policy_data(rm, policy_data, self.provider.address_book)
 
     get_policy_fund_count = MethodAdapter((("policy_id", "int"),), "int")
     get_policy_fund = MethodAdapter((("policy_id", "int"), ("etoken", "contract")), "amount")
