@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {ERC721Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
+import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -469,16 +470,38 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
       revert ComponentMustBeActiveOrDeprecated();
   }
 
-  function deposit(IEToken eToken, uint256 amount) external override whenNotPaused {
+  function _deposit(IEToken eToken, uint256 amount, address receiver) internal {
     _requireCompActive(address(eToken), ComponentKind.eToken);
-    uint256 balanceBefore = _currency.balanceOf(address(eToken));
     _currency.safeTransferFrom(_msgSender(), address(eToken), amount);
-    eToken.deposit(_msgSender(), _currency.balanceOf(address(eToken)) - balanceBefore);
+    eToken.deposit(amount, _msgSender(), receiver);
   }
 
-  function withdraw(IEToken eToken, uint256 amount) external override whenNotPaused returns (uint256) {
+  function deposit(IEToken eToken, uint256 amount, address receiver) external override whenNotPaused {
+    _deposit(eToken, amount, receiver);
+  }
+
+  function depositWithPermit(
+    IEToken eToken,
+    uint256 amount,
+    address receiver,
+    uint256 deadline,
+    uint8 v,
+    bytes32 r,
+    bytes32 s
+  ) external override whenNotPaused {
+    // solhint-disable-next-line no-empty-blocks
+    try IERC20Permit(address(_currency)).permit(_msgSender(), address(this), amount, deadline, v, r, s) {} catch {}
+    _deposit(eToken, amount, receiver);
+  }
+
+  function withdraw(
+    IEToken eToken,
+    uint256 amount,
+    address receiver,
+    address owner
+  ) external override whenNotPaused returns (uint256) {
     _requireCompActiveOrDeprecated(address(eToken), ComponentKind.eToken);
-    return eToken.withdraw(_msgSender(), amount);
+    return eToken.withdraw(amount, _msgSender(), owner, receiver);
   }
 
   function newPolicy(

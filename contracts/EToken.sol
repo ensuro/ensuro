@@ -6,6 +6,7 @@ import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+import {ERC20PermitUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUpgradeable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
@@ -26,7 +27,7 @@ import {Reserve} from "./Reserve.sol";
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
-contract EToken is Reserve, ERC20Upgradeable, IEToken {
+contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
   using Math for uint256;
   using ETKLib for ETKLib.ScaledAmount;
   using ETKLib for ETKLib.Scr;
@@ -114,6 +115,7 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
   ) public initializer {
     __Reserve_init();
     __ERC20_init(name_, symbol_);
+    __ERC20Permit_init(name_);
     __EToken_init_unchained(maxUtilizationRate_, internalLoanInterestRate_);
   }
 
@@ -328,14 +330,15 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
     _tsScaled = _tsScaled.discreteChange(amount, _scr);
   }
 
-  function deposit(address provider, uint256 amount) external override onlyPolicyPool returns (uint256) {
+  function deposit(uint256 amount, address caller, address receiver) external override onlyPolicyPool {
     require(
-      address(_params.whitelist) == address(0) || _params.whitelist.acceptsDeposit(this, provider, amount),
-      DepositNotWhitelisted(provider, amount)
+      address(_params.whitelist) == address(0) ||
+        (_params.whitelist.acceptsDeposit(this, caller, amount) &&
+          (caller == receiver || _params.whitelist.acceptsTransfer(this, caller, receiver, amount))),
+      DepositNotWhitelisted(caller, amount)
     );
-    _mint(provider, amount);
+    _mint(receiver, amount);
     if (utilizationRate() < minUtilizationRate()) revert UtilizationRateTooLow(utilizationRate(), minUtilizationRate());
-    return balanceOf(provider);
   }
 
   function totalWithdrawable() public view virtual override returns (uint256) {
@@ -345,23 +348,31 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
     else return 0;
   }
 
-  function withdraw(address provider, uint256 amount) external override onlyPolicyPool returns (uint256) {
+  function withdraw(
+    uint256 amount,
+    address caller,
+    address owner,
+    address receiver
+  ) external override onlyPolicyPool returns (uint256) {
     /**
      * Here we don't check for maxUtilizationRate because that limit only affects locking more capital (`lockScr`), but
      * doesn't affects the right of liquidity providers to withdraw their funds.
      * The only limit for withdraws is the `totalWithdrawable()` function, that's affected by the relation between the
      * scr and the totalSupply.
      */
-    uint256 maxWithdraw = Math.min(balanceOf(provider), totalWithdrawable());
+    uint256 maxWithdraw = Math.min(balanceOf(owner), totalWithdrawable());
     if (amount == type(uint256).max) amount = maxWithdraw;
     if (amount == 0) return 0;
     require(amount <= maxWithdraw, ExceedsMaxWithdraw(amount, maxWithdraw));
     require(
-      address(_params.whitelist) == address(0) || _params.whitelist.acceptsWithdrawal(this, provider, amount),
-      WithdrawalNotWhitelisted(provider, amount)
+      address(_params.whitelist) == address(0) || _params.whitelist.acceptsWithdrawal(this, owner, amount),
+      WithdrawalNotWhitelisted(owner, amount)
     );
-    _burn(provider, amount);
-    _transferTo(provider, amount);
+    if (caller != owner) {
+      _spendAllowance(owner, caller, amount);
+    }
+    _burn(owner, amount);
+    _transferTo(receiver, amount);
     return amount;
   }
 

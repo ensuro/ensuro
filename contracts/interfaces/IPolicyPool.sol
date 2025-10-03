@@ -160,13 +160,45 @@ interface IPolicyPool {
    * - `eToken` is an active eToken installed in the pool.
    *
    * Events:
-   * - {EToken-Transfer}: from 0x0 to `msg.sender`, reflects the eTokens minted.
+   * - {EToken-Transfer}: from 0x0 to `receiver`, reflects the eTokens minted.
    * - {ERC20-Transfer}: from `msg.sender` to address(eToken)
    *
    * @param eToken The address of the eToken to which the user wants to provide liquidity
    * @param amount The amount to deposit
+   * @param receiver The user that will receive the minted tokens
    */
-  function deposit(IEToken eToken, uint256 amount) external;
+  function deposit(IEToken eToken, uint256 amount, address receiver) external;
+
+  /**
+   * @dev Deposits liquidity into an eToken. Forwards the call to {EToken-deposit}, after transferring the funds.
+   * The user will receive etokens for the same amount deposited. EIP-2612 compatible version, allows sending a
+   * signed permit in the same operation.
+   *
+   * Requirements:
+   * - `msg.sender` approved the spending of `currency()` for at least `amount`
+   * - `eToken` is an active eToken installed in the pool.
+   *
+   * Events:
+   * - {EToken-Transfer}: from 0x0 to `receiver`, reflects the eTokens minted.
+   * - {ERC20-Transfer}: from `msg.sender` to address(eToken)
+   *
+   * @param eToken The address of the eToken to which the user wants to provide liquidity
+   * @param receiver The user that will receive the minted tokens
+   * @param amount The amount to deposit
+   * @param deadline The deadline of the permit
+   * @param v Component of the secp256k1 signature
+   * @param r Component of the secp256k1 signature
+   * @param s Component of the secp256k1 signature
+   */
+  function depositWithPermit(
+    IEToken eToken,
+    uint256 amount,
+    address receiver,
+    uint256 deadline,
+    uint8 v,
+    bytes32 r,
+    bytes32 s
+  ) external;
 
   /**
    * @dev Withdraws an amount from an eToken. Forwards the call to {EToken-withdraw}.
@@ -176,14 +208,16 @@ interface IPolicyPool {
    * - `eToken` is an active (or deprecated) eToken installed in the pool.
    *
    * Events:
-   * - {EToken-Transfer}: from `msg.sender` to `0x0`, reflects the eTokens burned.
-   * - {ERC20-Transfer}: from address(eToken) to `msg.sender`
+   * - {EToken-Transfer}: from `owner` to `0x0`, reflects the eTokens burned.
+   * - {ERC20-Transfer}: from address(eToken) to `receiver`
    *
    * @param eToken The address of the eToken from where the user wants to withdraw liquidity
    * @param amount The amount to withdraw. If equal to type(uint256).max, means full withdrawal.
    *               If the balance is not enough or can't be withdrawn (locked as SCR), it withdraws
    *               as much as it can, but doesn't fails.
+   * @param receiver The user that will receive the resulting `currency()`
+   * @param owner The user that owns the eTokens (must be msg.sender or have allowance)
    * @return Returns the actual amount withdrawn.
    */
-  function withdraw(IEToken eToken, uint256 amount) external returns (uint256);
+  function withdraw(IEToken eToken, uint256 amount, address receiver, address owner) external returns (uint256);
 }

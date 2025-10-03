@@ -75,15 +75,17 @@ interface IEToken {
    * - Must be called by `policyPool()`
    * - The amount was transferred
    * - `utilizationRate()` after the deposit is >= `minUtilizationRate()`
+   * - If there is a whitelist, caller must be authorized to deposit. If caller != receiver, then transfer from caller
+   *   to received must be authorized
    *
    * Events:
    * - Emits {Transfer} with `from` = 0x0 and to = `provider`
    *
-   * @param provider The address of the liquidity provider
    * @param amount The amount deposited.
-   * @return The actual balance of the provider
+   * @param caller The user that initiates the deposit
+   * @param receiver The user that will receive the minted eTokens
    */
-  function deposit(address provider, uint256 amount) external returns (uint256);
+  function deposit(uint256 amount, address caller, address receiver) external;
 
   /**
    * @dev Withdraws an amount from an eToken. `withdrawn` eTokens are be burned and the user receives the same amount
@@ -95,11 +97,18 @@ interface IEToken {
    * Events:
    * - Emits {Transfer} with `from` = `provider` and to = `0x0`
    *
-   * @param provider The address of the liquidity provider
    * @param amount The amount to withdraw. If `amount` == `type(uint256).max`, then tries to withdraw all the balance.
+   * @param caller The user that initiates the withdrawal
+   * @param owner The owner of the eTokens (either caller==owner or caller has allowance)
+   * @param receiver The address that will receive the resulting `currency()`
    * @return withdrawn The actual amount that withdrawn. `withdrawn <= amount && withdrawn <= balanceOf(provider)`
    */
-  function withdraw(address provider, uint256 amount) external returns (uint256 withdrawn);
+  function withdraw(
+    uint256 amount,
+    address caller,
+    address owner,
+    address receiver
+  ) external returns (uint256 withdrawn);
 
   /**
    * @dev Returns the total amount that can be withdrawn
