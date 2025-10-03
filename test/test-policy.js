@@ -5,6 +5,7 @@ const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { amountFunction, _W, getTransactionEvent } = require("@ensuro/utils/js/utils");
 
 const _A = amountFunction(6);
+const { ZeroAddress } = hre.ethers;
 
 describe("Policy initialize", () => {
   it("Does not allow premium greater than payout", async () => {
@@ -56,7 +57,7 @@ describe("Policy initialize", () => {
 
   async function poolFixture() {
     const PolicyPool = await hre.ethers.getContractFactory("PolicyPoolMock");
-    const pool = await PolicyPool.deploy(hre.ethers.ZeroAddress);
+    const pool = await PolicyPool.deploy(ZeroAddress);
 
     return { pool };
   }

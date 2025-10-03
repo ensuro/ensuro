@@ -10,7 +10,6 @@ import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
 import {Reserve} from "./Reserve.sol";
-import {Governance} from "./Governance.sol";
 import {IPremiumsAccount} from "./interfaces/IPremiumsAccount.sol";
 import {Policy} from "./Policy.sol";
 
@@ -102,6 +101,24 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   event WonPremiumsInOut(bool moneyIn, uint256 value);
 
   /**
+   * Emitted when the deficitRatio is changed
+   *
+   * @param oldRatio Ratio before the change
+   * @param newRatio Ratio after the change
+   * @param adjustment Adjustement (etk loan) made to adjust the contract, so deficit <= maxDeficit
+   */
+  event DeficitRatioChanged(uint256 oldRatio, uint256 newRatio, uint256 adjustment);
+
+  /**
+   * Emitted when the loan limits are changed
+   *
+   * @param oldLimit Limit before the change
+   * @param newLimit Limit after the change
+   * @param isSenior If true, the limit changed is the senior limit, otherwise is the junior limit
+   */
+  event LoanLimitChanged(uint256 oldLimit, uint256 newLimit, bool isSenior);
+
+  /**
    * @dev Constructor of the contract, sets the immutable fields.
    *
    * @param juniorEtk_ Address of the Junior EToken (first loss lender). `address(0)` if not present.
@@ -140,7 +157,6 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
       jrLoanLimit: 0,
       srLoanLimit: 0
     });
-    _validateParameters();
   }
 
   function _upgradeValidations(address newImpl) internal view virtual override {
@@ -182,13 +198,6 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
       require(excess == 0, LossesCannotExceedMaxDeficit(uint256(-earningsOrLosses), excess));
     }
     super._yieldEarnings(earningsOrLosses);
-  }
-
-  function _validateParameters() internal view override {
-    require(
-      _params.deficitRatio <= HUNDRED_PERCENT && _params.deficitRatio >= 0,
-      InvalidDeficitRatio(_params.deficitRatio)
-    );
   }
 
   function purePremiums() external view override returns (uint256) {
@@ -298,7 +307,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * @dev Changes the `deficitRatio` parameter.
    *
    * Events:
-   * - Emits GovernanceAction with action = setDeficitRatio or setDeficitRatioWithAdjustment if an adjustment was made.
+   * - Emits DeficitRatioChanged
    *
    * @param adjustment If true and the new ratio leaves `_surplus < -_maxDeficit()`, it adjusts the _surplus to the new
    *                   `_maxDeficit()` and borrows the difference from the eTokens.
@@ -306,29 +315,30 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    */
   function setDeficitRatio(uint256 newRatio, bool adjustment) external {
     uint16 truncatedRatio = (newRatio / FOUR_DECIMAL_TO_WAD).toUint16();
-    require(uint256(truncatedRatio) * FOUR_DECIMAL_TO_WAD == newRatio, InvalidDeficitRatio(newRatio));
+    require(
+      newRatio <= WAD && uint256(truncatedRatio) * FOUR_DECIMAL_TO_WAD == newRatio,
+      InvalidDeficitRatio(newRatio)
+    );
 
     int256 maxDeficit = _maxDeficit(newRatio);
     if (!adjustment && _surplus < maxDeficit) revert DeficitExceedsMaxDeficit(-_surplus, -maxDeficit);
-    _params.deficitRatio = truncatedRatio;
-    _validateParameters();
 
-    Governance.GovernanceActions action = Governance.GovernanceActions.setDeficitRatio;
+    uint256 borrow;
     if (_surplus < maxDeficit) {
       // Do the adjustment
-      uint256 borrow = uint256(-_surplus + maxDeficit);
+      borrow = uint256(-_surplus + maxDeficit);
       _surplus = maxDeficit;
       _borrowFromEtk(borrow, address(this), address(_juniorEtk) != address(0));
-      action = Governance.GovernanceActions.setDeficitRatioWithAdjustment;
     }
-    _parameterChanged(action, newRatio);
+    emit DeficitRatioChanged(_params.deficitRatio * FOUR_DECIMAL_TO_WAD, newRatio, borrow);
+    _params.deficitRatio = truncatedRatio;
   }
 
   /**
    * @dev Changes the `jrLoanLimit` or `srLoanLimit` parameter.
    *
    * Events:
-   * - Emits GovernanceAction with action = setDeficitRatio or setDeficitRatioWithAdjustment if an adjustment was made.
+   * - Emits up to two LoanLimitChanged events
    *
    * @param newLimitJr     The new limit to be set for the loans taken from the Junior eToken.
                            If newLimitJr == MAX_UINT, it's ignored. If == 0, means the loans are unbounded.
@@ -337,14 +347,14 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    */
   function setLoanLimits(uint256 newLimitJr, uint256 newLimitSr) external {
     if (newLimitJr != type(uint256).max) {
+      emit LoanLimitChanged(jrLoanLimit(), newLimitJr, false);
       _params.jrLoanLimit = _toZeroDecimals(newLimitJr);
       require(_toAmount(_params.jrLoanLimit) == newLimitJr, InvalidLoanLimit(newLimitJr));
-      _parameterChanged(Governance.GovernanceActions.setJrLoanLimit, newLimitJr);
     }
     if (newLimitSr != type(uint256).max) {
+      emit LoanLimitChanged(srLoanLimit(), newLimitSr, true);
       _params.srLoanLimit = _toZeroDecimals(newLimitSr);
       require(_toAmount(_params.srLoanLimit) == newLimitSr, InvalidLoanLimit(newLimitSr));
-      _parameterChanged(Governance.GovernanceActions.setSrLoanLimit, newLimitSr);
     }
   }
 

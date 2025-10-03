@@ -9,7 +9,6 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-import {Governance} from "./Governance.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
 import {IPolicyHolderV2} from "./interfaces/IPolicyHolderV2.sol";
 import {IPolicyHolder} from "./interfaces/IPolicyHolder.sol";
@@ -216,12 +215,20 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   error ExposureLimitExceeded(uint128 activeExposure, uint128 exposureLimit);
 
   /**
-   * @dev Event emitted when the treasury changes
+   * @dev Event emitted when the treasury (who receives ensuroCommission) changes
    *
-   * @param action The type of governance action (setTreasury or setBaseURI for now)
-   * @param value  The address of the new treasury or the address of the caller (for setBaseURI)
+   * @param oldTreasury The address of the treasury before the change
+   * @param newTreasury  The address of the treasury after the change
    */
-  event ComponentChanged(Governance.GovernanceActions indexed action, address value);
+  event TreasuryChanged(address oldTreasury, address newTreasury);
+
+  /**
+   * @dev Event emitted when the baseURI (for policy NFTs) changes
+   *
+   * @param oldBaseURI The baseURI before the change
+   * @param newBaseURI The baseURI after the change
+   */
+  event BaseURIChanged(string oldBaseURI, string newBaseURI);
 
   /**
    * @dev Event emitted when a new component added/removed to the pool or the status changes.
@@ -315,15 +322,15 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
 
   function _setTreasury(address treasury_) internal {
     if (treasury_ == address(0)) revert NoZeroTreasury();
+    emit TreasuryChanged(_treasury, treasury_);
     _treasury = treasury_;
-    emit ComponentChanged(Governance.GovernanceActions.setTreasury, _treasury);
   }
 
   /**
    * @dev Changes the address of the treasury, the one that receives the protocol fees.
    *
    * Events:
-   * - Emits {ComponentChanged} with action = setTreasury and the address of the new treasury.
+   * - Emits {TreasuryChanged}
    */
   function setTreasury(address treasury_) external {
     _setTreasury(treasury_);
@@ -744,11 +751,11 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * @dev Changes the baseURI of the minted policy NFTs
    *
    * Events:
-   * - Emits {ComponentChanged} with action = setBaseURI and the address of the caller.
+   * - Emits {BaseURIChanged}
    */
   function setBaseURI(string calldata nftBaseURI_) external {
+    emit BaseURIChanged(_nftBaseURI, nftBaseURI_);
     _nftBaseURI = nftBaseURI_;
-    emit ComponentChanged(Governance.GovernanceActions.setBaseURI, _msgSender());
   }
 
   function _update(address to, uint256 tokenId, address auth) internal override whenNotPaused returns (address) {
