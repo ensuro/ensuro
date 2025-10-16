@@ -14,7 +14,6 @@ import {ILPWhitelist} from "./interfaces/ILPWhitelist.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
 import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
 import {ETKLib} from "./ETKLib.sol";
-import {Governance} from "./Governance.sol";
 import {Reserve} from "./Reserve.sol";
 
 /**
@@ -38,10 +37,9 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
   uint256 internal constant WAD = 1e18;
   uint256 internal constant FOUR_DECIMAL_TO_WAD = 1e14;
   uint16 internal constant HUNDRED_PERCENT = 1e4;
-  uint16 internal constant MAX_UR_MIN = 5e3; // 50% - Minimum value for Max Utilization Rate
-  uint16 internal constant LIQ_REQ_MIN = 8e3; // 80%
-  uint16 internal constant LIQ_REQ_MAX = 13e3; // 130%
-  uint16 internal constant INT_LOAN_IR_MAX = 5e3; // 50% - Maximum value for InternalLoan interest rate
+  uint256 internal constant LIQ_REQ_MIN = 0.8e18; // 80%
+  uint256 internal constant LIQ_REQ_MAX = 1.3e18; // 130%
+  uint256 internal constant INT_LOAN_IR_MAX = 0.5e18; // 50% - Maximum value for InternalLoan interest rate
 
   ETKLib.ScaledAmount internal _tsScaled; // Total Supply scaled
 
@@ -78,6 +76,8 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
   event InternalLoanRepaid(address indexed borrower, uint256 value);
   event InternalBorrowerAdded(address indexed borrower);
   event InternalBorrowerRemoved(address indexed borrower, uint256 defaultedDebt);
+  event ParameterChanged(Parameter param, uint256 newValue);
+  event WhitelistChanged(ILPWhitelist oldWhitelist, ILPWhitelist newWhitelist);
 
   modifier onlyBorrower() {
     require(_loans[_msgSender()].lastUpdate != 0, OnlyBorrower(_msgSender()));
@@ -129,14 +129,15 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
       tokenInterestRate: 0
     }); */
     _params = PackedParams({
-      maxUtilizationRate: _wadTo4(maxUtilizationRate_),
+      maxUtilizationRate: 0, // Will be set in the next line
       liquidityRequirement: HUNDRED_PERCENT,
       minUtilizationRate: 0,
-      internalLoanInterestRate: _wadTo4(internalLoanInterestRate_),
+      internalLoanInterestRate: 0, // Will be set in the next line
       whitelist: ILPWhitelist(address(0))
     });
 
-    _validateParameters();
+    setParam(Parameter.maxUtilizationRate, maxUtilizationRate_);
+    setParam(Parameter.internalLoanInterestRate, internalLoanInterestRate_);
   }
 
   /// @inheritdoc IERC165
@@ -146,30 +147,6 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
       interfaceId == type(IERC20).interfaceId ||
       interfaceId == type(IERC20Metadata).interfaceId ||
       interfaceId == type(IEToken).interfaceId;
-  }
-
-  // runs validation on EToken parameters
-  function _validateParameters() internal view override {
-    require(
-      _params.liquidityRequirement >= LIQ_REQ_MIN && _params.liquidityRequirement <= LIQ_REQ_MAX,
-      InvalidParameter(Parameter.liquidityRequirement)
-    );
-    require(
-      _params.maxUtilizationRate >= MAX_UR_MIN && _params.maxUtilizationRate <= HUNDRED_PERCENT,
-      InvalidParameter(Parameter.maxUtilizationRate)
-    );
-    require(_params.minUtilizationRate <= HUNDRED_PERCENT, InvalidParameter(Parameter.minUtilizationRate));
-
-    /*
-     * We don't validate minUtilizationRate < maxUtilizationRate because the opposite is valid too.
-     * These limits aren't strong limits on the values the utilization rate can take, but instead they are
-     * limits on specific operations.
-     * `minUtilizationRate` is used to avoid new deposits to dilute the yields of existing LPs, but it doesn't
-     * prevent the UR from going down in other operations (`unlockScr` for example).
-     * `maxUtilizationRate` is used to prevent selling more coverage when UR is too high, only checked on `lockScr`
-     * operations, but not in withdrawals or other operations.
-     */
-    require(_params.internalLoanInterestRate <= INT_LOAN_IR_MAX, InvalidParameter(Parameter.internalLoanInterestRate));
   }
 
   /*** BEGIN ERC20 methods - changes required to customize OZ's ERC20 implementation */
@@ -443,24 +420,34 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
     return _4toWad(_params.internalLoanInterestRate);
   }
 
-  function setParam(Parameter param, uint256 newValue) external {
+  function setParam(Parameter param, uint256 newValue) public {
     if (param == Parameter.liquidityRequirement) {
+      require(newValue >= LIQ_REQ_MIN && newValue <= LIQ_REQ_MAX, InvalidParameter(param));
       _params.liquidityRequirement = _wadTo4(newValue);
     } else if (param == Parameter.minUtilizationRate) {
+      require(newValue <= WAD, InvalidParameter(param));
       _params.minUtilizationRate = _wadTo4(newValue);
     } else if (param == Parameter.maxUtilizationRate) {
+      require(newValue <= WAD, InvalidParameter(param));
       _params.maxUtilizationRate = _wadTo4(newValue);
+      /*
+       * We don't validate minUtilizationRate < maxUtilizationRate because the opposite is valid too.
+       * These limits aren't strong limits on the values the utilization rate can take, but instead they are
+       * limits on specific operations.
+       * `minUtilizationRate` is used to avoid new deposits to dilute the yields of existing LPs, but it doesn't
+       * prevent the UR from going down in other operations (`unlockScr` for example).
+       * `maxUtilizationRate` is used to prevent selling more coverage when UR is too high, only checked on `lockScr`
+       * operations, but not in withdrawals or other operations.
+       */
     } else if (param == Parameter.internalLoanInterestRate) {
       // This call changes the interest rate without updating the current loans up to this point
       // So, if interest rate goes from 5% to 6%, this change will be retroactive to the lastUpdate of each
       // loan. Since it's a permissioned call, I'm ok with this. If a caller wants to reduce the impact, it can
       // issue 1 wei repayLoan to each active loan, forcing the update of the scales
+      require(newValue <= INT_LOAN_IR_MAX, InvalidParameter(param));
       _params.internalLoanInterestRate = _wadTo4(newValue);
     }
-    _parameterChanged(
-      Governance.GovernanceActions(uint256(Governance.GovernanceActions.setLiquidityRequirement) + uint256(param)),
-      newValue
-    );
+    emit ParameterChanged(param, newValue);
   }
 
   function setWhitelist(ILPWhitelist lpWhitelist_) external {
@@ -468,8 +455,8 @@ contract EToken is Reserve, ERC20Upgradeable, IEToken {
       address(lpWhitelist_) == address(0) || IPolicyPoolComponent(address(lpWhitelist_)).policyPool() == _policyPool,
       InvalidWhitelist(lpWhitelist_)
     );
+    emit WhitelistChanged(_params.whitelist, lpWhitelist_);
     _params.whitelist = lpWhitelist_;
-    _componentChanged(Governance.GovernanceActions.setLPWhitelist, address(lpWhitelist_));
   }
 
   function whitelist() external view returns (ILPWhitelist) {

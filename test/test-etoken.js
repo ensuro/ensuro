@@ -15,7 +15,7 @@ const _A = amountFunction(6);
 describe("Etoken", () => {
   it("Refuses transfers to null address", async () => {
     const { etk } = await helpers.loadFixture(etokenFixture);
-    await expect(etk.transfer(hre.ethers.ZeroAddress, _A(10)))
+    await expect(etk.transfer(ZeroAddress, _A(10)))
       .to.be.revertedWithCustomError(etk, "ERC20InvalidReceiver")
       .withArgs(ZeroAddress);
   });
@@ -52,9 +52,13 @@ describe("Etoken", () => {
   it("Allows setting whitelist to null", async () => {
     const { etk } = await helpers.loadFixture(etokenFixture);
 
-    expect(await etk.setWhitelist(hre.ethers.ZeroAddress)).to.emit(etk, "ComponentChanged");
+    const oldWL = await etk.whitelist();
 
-    expect(await etk.whitelist()).to.equal(hre.ethers.ZeroAddress);
+    expect(await etk.setWhitelist(ZeroAddress))
+      .to.emit(etk, "WhitelistChanged")
+      .withArgs(oldWL, ZeroAddress);
+
+    expect(await etk.whitelist()).to.equal(ZeroAddress);
   });
 
   it("Can assign a yieldVault and rebalance funds there", async () => {

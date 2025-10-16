@@ -6,7 +6,6 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
-import {Governance} from "./Governance.sol";
 
 /**
  * @title Base class for PolicyPool components
@@ -21,9 +20,6 @@ import {Governance} from "./Governance.sol";
 abstract contract PolicyPoolComponent is UUPSUpgradeable, IPolicyPoolComponent {
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IPolicyPool internal immutable _policyPool;
-
-  event GovernanceAction(Governance.GovernanceActions indexed action, uint256 value);
-  event ComponentChanged(Governance.GovernanceActions indexed action, address value);
 
   error NoZeroPolicyPool();
   error UpgradeCannotChangePolicyPool();
@@ -67,19 +63,6 @@ abstract contract PolicyPoolComponent is UUPSUpgradeable, IPolicyPoolComponent {
 
   function currency() public view returns (IERC20Metadata) {
     return _policyPool.currency();
-  }
-
-  // solhint-disable-next-line no-empty-blocks
-  function _validateParameters() internal view virtual {} // Must be reimplemented with specific validations
-
-  function _parameterChanged(Governance.GovernanceActions action, uint256 value) internal {
-    _validateParameters();
-    emit GovernanceAction(action, value);
-  }
-
-  function _componentChanged(Governance.GovernanceActions action, address value) internal {
-    _validateParameters();
-    emit ComponentChanged(action, value);
   }
 
   /**

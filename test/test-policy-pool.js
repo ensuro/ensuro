@@ -8,6 +8,7 @@ const { ComponentStatus, ComponentKind } = require("../js/enums.js");
 const { ZeroAddress, ZeroHash } = hre.ethers;
 
 const _A = amountFunction(6);
+const TREASURY = "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199"; // Random address
 
 async function createNewPolicy(rm, cust, pool, payout, premium, lossProb, expiration, payer, holder, internalId) {
   const policyData = [
@@ -42,7 +43,7 @@ async function deployPoolFixture() {
 
   const pool = await deployPool({
     currency: currency,
-    treasuryAddress: "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199", // Random address
+    treasuryAddress: TREASURY,
   });
   pool._A = _A;
 
@@ -116,7 +117,7 @@ describe("PolicyPool contract", function () {
     // Cant set treasury to 0x0
     await expect(pool.setTreasury(ZeroAddress)).to.be.revertedWithCustomError(pool, "NoZeroTreasury");
 
-    await expect(pool.setTreasury(newTreasury)).to.emit(pool, "ComponentChanged");
+    await expect(pool.setTreasury(newTreasury)).to.emit(pool, "TreasuryChanged").withArgs(TREASURY, newTreasury);
 
     expect(await pool.treasury()).to.equal(newTreasury);
   });
@@ -427,8 +428,8 @@ describe("PolicyPool contract", function () {
 
     // User with no roles fails
     await expect(pool.connect(backend).setBaseURI("https://offchain-v2.ensuro.co/api/policies/nft/"))
-      .to.be.emit(pool, "ComponentChanged")
-      .withArgs(4, backend);
+      .to.be.emit(pool, "BaseURIChanged")
+      .withArgs("", "https://offchain-v2.ensuro.co/api/policies/nft/");
 
     expect(await pool.tokenURI(policy.id)).to.be.equal(`https://offchain-v2.ensuro.co/api/policies/nft/${policy.id}`);
     await expect(pool.tokenURI(1233)).to.be.revertedWithCustomError(pool, "ERC721NonexistentToken").withArgs(1233);
