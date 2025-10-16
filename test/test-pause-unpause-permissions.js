@@ -39,7 +39,7 @@ describe("Test pause, unpause and upgrade contracts", function () {
     rm = await addRiskModule(pool, premiumsAccount, {});
 
     await currency.connect(lp).approve(pool, _A(3000));
-    await pool.connect(lp).deposit(etk, _A(3000));
+    await pool.connect(lp).deposit(etk, _A(3000), lp);
     now = await helpers.time.latest();
     testPolicyInput = makeFTUWInputData({
       payout: _A(36),
@@ -59,8 +59,8 @@ describe("Test pause, unpause and upgrade contracts", function () {
     await pool.connect(guardian).pause();
     expect(await pool.paused()).to.be.equal(true);
 
-    await expect(pool.connect(lp).deposit(etk, _A(3000))).to.be.revertedWithCustomError(pool, "EnforcedPause");
-    await expect(pool.connect(lp).withdraw(etk, _A(3000))).to.be.revertedWithCustomError(pool, "EnforcedPause");
+    await expect(pool.connect(lp).deposit(etk, _A(3000), lp)).to.be.revertedWithCustomError(pool, "EnforcedPause");
+    await expect(pool.connect(lp).withdraw(etk, _A(3000), lp, lp)).to.be.revertedWithCustomError(pool, "EnforcedPause");
 
     // Can't create policy
     await expect(rm.connect(cust).newPolicy(testPolicyInput, cust)).to.be.revertedWithCustomError(
@@ -73,9 +73,9 @@ describe("Test pause, unpause and upgrade contracts", function () {
     expect(await pool.paused()).to.be.equal(false);
 
     await currency.connect(lp).approve(pool, _A(500));
-    await pool.connect(lp).deposit(etk, _A(500));
+    await pool.connect(lp).deposit(etk, _A(500), lp);
     expect(await etk.balanceOf(lp)).to.be.equal(_A(3500));
-    await pool.connect(lp).withdraw(etk, _A(200));
+    await pool.connect(lp).withdraw(etk, _A(200), lp, lp);
     expect(await etk.balanceOf(lp)).to.be.equal(_A(3300));
 
     // Can create policy

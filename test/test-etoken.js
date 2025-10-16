@@ -32,7 +32,7 @@ describe("Etoken", () => {
     const { etk, pool, lp } = await helpers.loadFixture(etokenFixture);
     expect(await etk.fundsAvailable()).to.equal(_A(3000));
 
-    await pool.connect(lp).withdraw(etk, _A(3000));
+    await pool.connect(lp).withdraw(etk, _A(3000), lp, lp);
 
     expect(await etk.fundsAvailable()).to.equal(_A(0));
   });
@@ -82,7 +82,7 @@ describe("Etoken", () => {
 
     expect(await etk.balanceOf(lp)).to.equal(_A(3300) - 2n);
 
-    await expect(pool.connect(lp).withdraw(etk, _A(2000)))
+    await expect(pool.connect(lp).withdraw(etk, _A(2000), lp, lp))
       .to.emit(etk, "Transfer")
       .withArgs(lp, ZeroAddress, _A(2000))
       .to.emit(yieldVault, "Withdraw")
@@ -141,7 +141,7 @@ describe("Etoken", () => {
     expect(await etk.getCurrentScale(true)).to.closeTo(_W("1.1666"), _W("0.0001"));
 
     // Full withdrawl fails due to rounding error
-    await expect(pool.connect(lp).withdraw(etk, MaxUint256)).to.be.revertedWithCustomError(
+    await expect(pool.connect(lp).withdraw(etk, MaxUint256, lp, lp)).to.be.revertedWithCustomError(
       yieldVault,
       "ERC4626ExceededMaxWithdraw"
     );
@@ -151,7 +151,7 @@ describe("Etoken", () => {
     const etkBurned = newCaptureAny();
     const yvWithdraw = newCaptureAny();
     const yvWithdrawShares = newCaptureAny();
-    await expect(pool.connect(lp).withdraw(etk, MaxUint256))
+    await expect(pool.connect(lp).withdraw(etk, MaxUint256, lp, lp))
       .to.emit(etk, "Transfer")
       .withArgs(lp, ZeroAddress, etkBurned.uint)
       .to.emit(yieldVault, "Withdraw")
@@ -203,7 +203,7 @@ describe("Etoken", () => {
       .to.emit(etk, "YieldVaultChanged")
       .withArgs(ZeroAddress, yieldVault, false);
 
-    await pool.connect(lp).withdraw(etk, MaxUint256);
+    await pool.connect(lp).withdraw(etk, MaxUint256, lp, lp);
     expect(await etk.totalSupply()).to.equal(0);
 
     // Mint 1 share for etk and generate 100 in earnings
@@ -215,7 +215,7 @@ describe("Etoken", () => {
     await expect(etk.recordEarnings()).to.be.revertedWithPanic(0x12);
 
     const smallDeposit = _A("0.0001");
-    await pool.connect(lp).deposit(etk, smallDeposit);
+    await pool.connect(lp).deposit(etk, smallDeposit, lp);
 
     await expect(etk.recordEarnings())
       .to.emit(etk, "EarningsRecorded")
@@ -223,13 +223,13 @@ describe("Etoken", () => {
 
     expect(await etk.totalSupply()).to.equal(_A(50) + 1n + smallDeposit);
     expect(await etk.balanceOf(lp)).to.equal(_A(50) + 1n + smallDeposit);
-    await pool.connect(lp).deposit(etk, _A(1000));
+    await pool.connect(lp).deposit(etk, _A(1000), lp);
 
     // The rounding error is big because the earning of 50 is disproportionated with respect to the investment
     // of 0.0001
     expect(await etk.balanceOf(lp)).to.closeTo(_A(1050) + 1n + smallDeposit, _A(1));
 
-    await expect(pool.connect(lp).withdraw(etk, MaxUint256))
+    await expect(pool.connect(lp).withdraw(etk, MaxUint256, lp, lp))
       .to.emit(currency, "Transfer")
       .withArgs(etk, lp, captureAny.uint);
 
@@ -254,7 +254,7 @@ describe("Etoken", () => {
     const etk = await addEToken(pool, {});
 
     await currency.connect(lp).approve(pool, _A(5000));
-    await pool.connect(lp).deposit(etk, _A(3000));
+    await pool.connect(lp).deposit(etk, _A(3000), lp);
 
     return { currency, pool, etk, lp, lp2, fakePA };
   }

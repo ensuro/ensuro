@@ -185,17 +185,30 @@ class EToken(ReserveMixin, IERC20):
         ),
     )
 
-    deposit_ = MethodAdapter((("provider", "address"), ("amount", "amount")))
+    deposit_ = MethodAdapter((("amount", "amount"), ("caller", "address"), ("receiver", "address")))
 
-    def deposit(self, provider, amount):
-        self.deposit_(provider, amount)
+    def deposit(self, provider, amount, receiver=None):
+        # Backward compatible interface of EToken.deposit
+        self.deposit_(amount, provider, receiver or provider)
         return self.balance_of(provider)
 
     total_withdrawable = MethodAdapter((), "amount")
-    withdraw_ = MethodAdapter((("provider", "address"), ("amount", "amount")))
+    withdraw_ = MethodAdapter(
+        (
+            ("amount", "amount"),
+            ("caller", "address"),
+            ("owner", "address"),
+            ("receiver", "address"),
+        )
+    )
 
-    def withdraw(self, provider, amount):
-        receipt = self.withdraw_(provider, amount)
+    def withdraw(self, provider, amount, receiver=None, owner=None):
+        # Backward compatible interface of EToken.withdraw
+        if receiver is None:
+            receiver = provider
+        if owner is None:
+            owner = provider
+        receipt = self.withdraw_(amount, provider, owner, receiver)
         if "Transfer" in receipt.events:
             return Wad(receipt.events["Transfer"]["value"])
         else:
@@ -794,18 +807,30 @@ class PolicyPool(IERC721):
         if risk_module.exposure_limit:
             self.set_exposure_limit(risk_module, risk_module.exposure_limit)
 
-    deposit_ = MethodAdapter((("etoken", "contract"), ("provider", "msg.sender"), ("amount", "amount")))
+    deposit_ = MethodAdapter(
+        (("etoken", "contract"), ("provider", "msg.sender"), ("amount", "amount"), ("receiver", "address"))
+    )
 
-    def deposit(self, etoken_name, provider, amount):
+    def deposit(self, etoken_name, provider, amount, receiver=None):
+        # Backward compatible interface of PolicyPool.deposit
         etoken = self.etokens[etoken_name]
-        self.deposit_(etoken, provider, amount)
+        self.deposit_(etoken, provider, amount, receiver or provider)
         return etoken.balance_of(provider)
 
-    withdraw_ = MethodAdapter((("etoken", "contract"), ("provider", "msg.sender"), ("amount", "amount")))
+    withdraw_ = MethodAdapter(
+        (
+            ("etoken", "contract"),
+            ("provider", "msg.sender"),
+            ("amount", "amount"),
+            ("receiver", "address"),
+            ("owner", "address"),
+        )
+    )
 
-    def withdraw(self, etoken_name, provider, amount):
+    def withdraw(self, etoken_name, provider, amount, receiver=None, owner=None):
+        # Backward compatible interface of PolicyPool.withdraw
         etoken = self.etokens[etoken_name]
-        receipt = self.withdraw_(etoken, provider, amount)
+        receipt = self.withdraw_(etoken, provider, amount, receiver or provider, owner or provider)
         if "Transfer" in receipt.events:
             return Wad(receipt.events["Transfer"]["value"])
         else:

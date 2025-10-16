@@ -58,7 +58,7 @@ async function deployRiskModuleFixture() {
   const premiumsAccount = await deployPremiumsAccount(pool, { srEtk: etk });
 
   await currency.connect(lp).approve(pool, _A(5000));
-  await pool.connect(lp).deposit(etk, _A(5000));
+  await pool.connect(lp).deposit(etk, _A(5000), lp);
 
   // Setup the risk module
   const RiskModuleMock = await hre.ethers.getContractFactory("RiskModuleMock");

@@ -258,6 +258,33 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   event ExposureLimitChanged(IRiskModule indexed riskModule, uint128 oldLimit, uint128 newLimit);
 
   /**
+   * @dev Event emitted for every deposit into an eToken
+   *
+   * @param eToken The eToken receiving the funds
+   * @param sender The sender of the funds (the user calling `deposit` or `depositWithPermit`)
+   * @param owner The user that will receive the minted eTokens
+   * @param amount Amount in `currency()` paid for the eTokens (equal to the amount of eTokens received)
+   */
+  event Deposit(IEToken indexed eToken, address indexed sender, address indexed owner, uint256 amount);
+
+  /**
+   * @dev Event emitted for every withdrawal from an eToken
+   *
+   * @param eToken The eToken where the withdrawal will be done
+   * @param sender The user calling the withdraw method. Must be the owner or have spending approval from it.
+   * @param receiver The user that receives the resulting funds (`currency()`)
+   * @param owner The owner of the burned eTokens
+   * @param amount Amount in `currency()` that will be received by `receiver`.
+   */
+  event Withdraw(
+    IEToken indexed eToken,
+    address indexed sender,
+    address indexed receiver,
+    address owner,
+    uint256 amount
+  );
+
+  /**
    * @dev Instantiates a Policy Pool. Sets immutable fields.
    *
    * @param access_ The address of the {AccessManager} that manages the access permissions for the pool governance
@@ -474,6 +501,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     _requireCompActive(address(eToken), ComponentKind.eToken);
     _currency.safeTransferFrom(_msgSender(), address(eToken), amount);
     eToken.deposit(amount, _msgSender(), receiver);
+    emit Deposit(eToken, _msgSender(), receiver, amount);
   }
 
   function deposit(IEToken eToken, uint256 amount, address receiver) external override whenNotPaused {
@@ -491,6 +519,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   ) external override whenNotPaused {
     // solhint-disable-next-line no-empty-blocks
     try IERC20Permit(address(_currency)).permit(_msgSender(), address(this), amount, deadline, v, r, s) {} catch {}
+    // Check https://github.com/OpenZeppelin/openzeppelin-contracts/blob/1cf13771092c83a060eaef0f8809493fb4c04eb1/contracts/token/ERC20/extensions/IERC20Permit.sol#L16
+    // for explanation of this try/catch pattern
     _deposit(eToken, amount, receiver);
   }
 
@@ -499,9 +529,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     uint256 amount,
     address receiver,
     address owner
-  ) external override whenNotPaused returns (uint256) {
+  ) external override whenNotPaused returns (uint256 amountWithdrawn) {
     _requireCompActiveOrDeprecated(address(eToken), ComponentKind.eToken);
-    return eToken.withdraw(amount, _msgSender(), owner, receiver);
+    amountWithdrawn = eToken.withdraw(amount, _msgSender(), owner, receiver);
+    emit Withdraw(eToken, _msgSender(), receiver, owner, amount);
   }
 
   function newPolicy(

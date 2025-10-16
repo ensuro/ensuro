@@ -30,7 +30,7 @@ async function setUp() {
   const pa = await deployPremiumsAccount(pool, { srEtk: srEtk, jrEtk: jrEtk });
 
   await currency.connect(lp).approve(pool, _A(5000));
-  await pool.connect(lp).deposit(jrEtk, _A(3000));
+  await pool.connect(lp).deposit(jrEtk, _A(3000), lp);
 
   return { currency, pool, jrEtk, srEtk, pa, lp, lp2 };
 }
