@@ -214,6 +214,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   error InvalidPolicyReplacement(Policy.PolicyData oldPolicy, Policy.PolicyData newPolicy);
   error PayoutExceedsLimit(uint256 payout, uint256 policyPayout);
   error ExposureLimitExceeded(uint128 activeExposure, uint128 exposureLimit);
+  error InvalidReceiver(address receiver);
 
   /**
    * @dev Event emitted when the treasury (who receives ensuroCommission) changes
@@ -498,6 +499,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   function _deposit(IEToken eToken, uint256 amount, address receiver) internal {
+    require(receiver != address(0), InvalidReceiver(receiver));
     _requireCompActive(address(eToken), ComponentKind.eToken);
     _currency.safeTransferFrom(_msgSender(), address(eToken), amount);
     eToken.deposit(amount, _msgSender(), receiver);
@@ -530,9 +532,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     address receiver,
     address owner
   ) external override whenNotPaused returns (uint256 amountWithdrawn) {
+    require(receiver != address(0), InvalidReceiver(receiver));
     _requireCompActiveOrDeprecated(address(eToken), ComponentKind.eToken);
     amountWithdrawn = eToken.withdraw(amount, _msgSender(), owner, receiver);
-    emit Withdraw(eToken, _msgSender(), receiver, owner, amount);
+    emit Withdraw(eToken, _msgSender(), receiver, owner, amountWithdrawn);
   }
 
   function newPolicy(
