@@ -3,7 +3,7 @@ const { _W, getTransactionEvent, AM_ROLES, getAddress } = require("@ensuro/utils
 const { deployAMPProxy, attachAsAMP, getAccessManager } = require("@ensuro/access-managed-proxy/js/deployProxy");
 const { ComponentKind } = require("./enums");
 const { ampConfig } = require("./ampConfig");
-const { makeFTUWInputData } = require("./utils");
+const { makeFTUWInputData, makeWhitelistStatus } = require("./utils");
 
 const { ethers } = hre;
 const { ZeroAddress } = ethers;
@@ -200,6 +200,23 @@ async function deployPremiumsAccount(pool, options, addToPool = true) {
   return premiumsAccount;
 }
 
+async function deployWhitelist(pool, options) {
+  const Whitelist = await ethers.getContractFactory(options.wlClass || "LPManualWhitelist");
+  const poolAddr = await ethers.resolveAddress(pool);
+  const accessManager = await getAccessManager(pool);
+  const wl = await deployAMPProxy(Whitelist, [options.defaultStatus || makeWhitelistStatus("BBWW")], {
+    kind: "uups",
+    constructorArgs: [poolAddr],
+    acMgr: accessManager,
+    ...ampConfig.LPManualWhitelist,
+  });
+
+  await wl.waitForDeployment();
+  if (options.disableAC || options.disableAC === undefined) await makeAllPublic(wl, accessManager);
+
+  return wl;
+}
+
 async function makePolicy(pool, rm, cust, payout, premium, lossProb, expiration, internalId, params) {
   let tx = await rm.newPolicy(makeFTUWInputData({ payout, premium, lossProb, expiration, internalId, params }), cust);
   let receipt = await tx.wait();
@@ -215,6 +232,7 @@ module.exports = {
   createRiskModule,
   deployPool,
   deployPremiumsAccount,
+  deployWhitelist,
   makePolicy,
   makeAllPublic,
 };

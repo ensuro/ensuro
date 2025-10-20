@@ -5,7 +5,8 @@ const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { amountFunction, captureAny, newCaptureAny, _W } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { DAY } = require("@ensuro/utils/js/constants");
-const { deployPool, addEToken } = require("../js/test-utils");
+const { deployPool, addEToken, deployWhitelist } = require("../js/test-utils");
+const { makeWhitelistStatus } = require("../js/utils");
 
 const { ethers } = hre;
 const { ZeroAddress, MaxUint256 } = ethers;
@@ -47,6 +48,138 @@ describe("Etoken", () => {
     const { etk, lp } = await helpers.loadFixture(etokenFixture);
 
     await expect(etk.removeBorrower(lp)).to.be.revertedWithCustomError(etk, "OnlyPolicyPool");
+  });
+
+  it("Only allows PolicyPool to call deposit", async () => {
+    const { etk, lp } = await helpers.loadFixture(etokenFixture);
+
+    await expect(etk.connect(lp).deposit(_A(100), lp, lp)).to.be.revertedWithCustomError(etk, "OnlyPolicyPool");
+  });
+
+  it("Only allows PolicyPool to call withdraw", async () => {
+    const { etk, lp } = await helpers.loadFixture(etokenFixture);
+
+    await expect(etk.connect(lp).withdraw(_A(100), lp, lp, lp)).to.be.revertedWithCustomError(etk, "OnlyPolicyPool");
+  });
+
+  it("Can deposit to a different receiver", async () => {
+    const { etk, lp, pool, lp2 } = await helpers.loadFixture(etokenFixture);
+
+    expect(await etk.balanceOf(lp)).to.equal(_A(3000));
+    expect(await etk.balanceOf(lp2)).to.equal(_A(0));
+
+    await expect(pool.connect(lp).deposit(etk, _A(30), lp2))
+      .to.emit(pool, "Deposit")
+      .withArgs(etk, lp, lp2, _A(30));
+    expect(await etk.balanceOf(lp2)).to.equal(_A(30));
+  });
+
+  it("Can withdraw to a different receiver", async () => {
+    const { etk, lp, pool, lp2, currency } = await helpers.loadFixture(etokenFixture);
+
+    expect(await etk.balanceOf(lp)).to.equal(_A(3000));
+    expect(await etk.balanceOf(lp2)).to.equal(_A(0));
+
+    await expect(pool.connect(lp).withdraw(etk, _A(30), lp2, lp))
+      .to.emit(pool, "Withdraw")
+      .withArgs(etk, lp, lp2, lp, _A(30));
+    expect(await currency.balanceOf(lp2)).to.equal(_A(30));
+
+    await expect(pool.connect(lp2).withdraw(etk, _A(20), lp2, lp))
+      .to.be.revertedWithCustomError(etk, "ERC20InsufficientAllowance")
+      .withArgs(lp2, _A(0), _A(20));
+
+    await etk.connect(lp).approve(lp2, MaxUint256);
+
+    await expect(pool.connect(lp2).withdraw(etk, _A(10), lp2, lp))
+      .to.emit(pool, "Withdraw")
+      .withArgs(etk, lp2, lp2, lp, _A(10));
+    expect(await currency.balanceOf(lp2)).to.equal(_A(40));
+  });
+
+  it("Can deposit to a different receiver - Whitelist version", async () => {
+    const { etk, lp, pool, lp2, wl } = await helpers.loadFixture(etkFixtureWithWL);
+
+    await expect(pool.connect(lp).deposit(etk, _A(30), lp2))
+      .to.be.revertedWithCustomError(etk, "DepositNotWhitelisted")
+      .withArgs(lp, _A(30));
+
+    expect(await wl.acceptsTransfer(etk, lp, lp2, _A(30))).to.equal(true);
+    expect(await wl.acceptsDeposit(etk, lp, _A(30))).to.equal(false);
+
+    await expect(wl.whitelistAddress(lp, makeWhitelistStatus("WWWW")))
+      .to.emit(wl, "LPWhitelistStatusChanged")
+      .withArgs(lp, makeWhitelistStatus("WWWW"));
+
+    expect(await wl.acceptsTransfer(etk, lp, lp2, _A(30))).to.equal(true);
+    expect(await wl.acceptsDeposit(etk, lp, _A(30))).to.equal(true);
+
+    await expect(pool.connect(lp).deposit(etk, _A(30), lp2))
+      .to.emit(pool, "Deposit")
+      .withArgs(etk, lp, lp2, _A(30));
+    expect(await etk.balanceOf(lp2)).to.equal(_A(30));
+
+    // Now, I restrict transfers sent from lp, so it should fail
+    await wl.whitelistAddress(lp, makeWhitelistStatus("WWBB"));
+
+    await expect(pool.connect(lp).deposit(etk, _A(40), lp2))
+      .to.be.revertedWithCustomError(etk, "DepositNotWhitelisted")
+      .withArgs(lp, _A(40));
+
+    // Same if lp2 is restricted to receive transfers
+    await wl.whitelistAddress(lp, makeWhitelistStatus("WWWW"));
+    await wl.whitelistAddress(lp2, makeWhitelistStatus("WWBB"));
+
+    await expect(pool.connect(lp).deposit(etk, _A(50), lp2))
+      .to.be.revertedWithCustomError(etk, "DepositNotWhitelisted")
+      .withArgs(lp, _A(50));
+
+    // But lp can deposit to itself
+    await expect(pool.connect(lp).deposit(etk, _A(50), lp))
+      .to.emit(pool, "Deposit")
+      .withArgs(etk, lp, lp, _A(50));
+  });
+
+  it("Can withdraw to a different receiver - Whitelist version", async () => {
+    const { etk, lp, pool, lp2, wl, currency } = await helpers.loadFixture(etkFixtureWithWL);
+
+    // First try to withdraw, but since LP is not whitelisted, it should fail
+    await expect(pool.connect(lp).withdraw(etk, _A(10), lp, lp))
+      .to.be.revertedWithCustomError(etk, "WithdrawalNotWhitelisted")
+      .withArgs(lp, _A(10));
+
+    await wl.whitelistAddress(lp, makeWhitelistStatus("WWWW"));
+
+    // Now it's OK to withdraw to itself
+    await expect(pool.connect(lp).withdraw(etk, _A(10), lp, lp))
+      .to.emit(pool, "Withdraw")
+      .withArgs(etk, lp, lp, lp, _A(10));
+
+    // Same withdrawing to someone else
+    await expect(pool.connect(lp).withdraw(etk, _A(20), lp2, lp))
+      .to.emit(pool, "Withdraw")
+      .withArgs(etk, lp, lp2, lp, _A(20));
+
+    expect(await currency.balanceOf(lp2)).to.equal(_A(20));
+
+    // But it fails if operating lp's tokens from lp2 account
+    await expect(pool.connect(lp2).withdraw(etk, _A(20), lp2, lp))
+      .to.be.revertedWithCustomError(etk, "ERC20InsufficientAllowance")
+      .withArgs(lp2, _A(0), _A(20));
+
+    await expect(etk.connect(lp).approve(lp2, _A(30)))
+      .to.emit(etk, "Approval")
+      .withArgs(lp, lp2, _A(30));
+
+    // Now with approval works fine
+    await expect(pool.connect(lp2).withdraw(etk, _A(20), lp2, lp))
+      .to.emit(pool, "Withdraw")
+      .withArgs(etk, lp2, lp2, lp, _A(20));
+
+    // Doing it again fails, because spending approval was used
+    await expect(pool.connect(lp2).withdraw(etk, _A(20), lp2, lp))
+      .to.be.revertedWithCustomError(etk, "ERC20InsufficientAllowance")
+      .withArgs(lp2, _A(10), _A(20));
   });
 
   it("Allows setting whitelist to null", async () => {
@@ -256,24 +389,35 @@ describe("Etoken", () => {
     await currency.connect(lp).approve(pool, _A(5000));
     await pool.connect(lp).deposit(etk, _A(3000), lp);
 
-    return { currency, pool, etk, lp, lp2, fakePA };
-  }
-
-  async function etkFixtureWithVault() {
-    const ret = await etokenFixture();
-    const { pool, currency, fakePA, etk } = ret;
-    const TestERC4626 = await ethers.getContractFactory("TestERC4626");
-    const yieldVault = await TestERC4626.deploy("Yield Vault", "YIELD", currency);
-
     // Impersonate pool and add fakePA as borrower
     const poolAddr = await ethers.resolveAddress(pool);
     await helpers.impersonateAccount(poolAddr);
     await helpers.setBalance(poolAddr, ethers.parseEther("100"));
     const poolImpersonated = await ethers.getSigner(poolAddr);
+
+    return { currency, poolImpersonated, pool, etk, lp, lp2, fakePA };
+  }
+
+  async function etkFixtureWithWL() {
+    const ret = await etokenFixture();
+    const { pool, etk } = ret;
+    const wl = await deployWhitelist(pool, {});
+
+    await expect(etk.setWhitelist(wl)).to.emit(etk, "WhitelistChanged").withArgs(ZeroAddress, wl);
+
+    return { wl, ...ret };
+  }
+
+  async function etkFixtureWithVault() {
+    const ret = await etokenFixture();
+    const { poolImpersonated, currency, fakePA, etk } = ret;
+    const TestERC4626 = await ethers.getContractFactory("TestERC4626");
+    const yieldVault = await TestERC4626.deploy("Yield Vault", "YIELD", currency);
+
     await expect(etk.connect(poolImpersonated).addBorrower(fakePA))
       .to.emit(etk, "InternalBorrowerAdded")
       .withArgs(fakePA);
 
-    return { poolImpersonated, TestERC4626, yieldVault, ...ret };
+    return { TestERC4626, yieldVault, ...ret };
   }
 });
