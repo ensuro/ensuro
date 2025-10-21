@@ -7,6 +7,7 @@ const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { DAY } = require("@ensuro/utils/js/constants");
 const { deployPool, addEToken, deployWhitelist } = require("../js/test-utils");
 const { makeWhitelistStatus } = require("../js/utils");
+const { ETokenParameter } = require("../js/enums");
 
 const { ethers } = hre;
 const { ZeroAddress, MaxUint256 } = ethers;
@@ -44,10 +45,132 @@ describe("Etoken", () => {
     await expect(etk.addBorrower(lp)).to.be.revertedWithCustomError(etk, "OnlyPolicyPool");
   });
 
+  it("Can add new borrowers only once", async () => {
+    const { etk, poolImpersonated, fakePA } = await helpers.loadFixture(etkFixtureWithVault);
+
+    await expect(etk.connect(poolImpersonated).addBorrower(fakePA))
+      .to.be.revertedWithCustomError(etk, "BorrowerAlreadyAdded")
+      .withArgs(fakePA);
+  });
+
   it("Only allows PolicyPool to remove borrowers", async () => {
     const { etk, lp } = await helpers.loadFixture(etokenFixture);
 
     await expect(etk.removeBorrower(lp)).to.be.revertedWithCustomError(etk, "OnlyPolicyPool");
+  });
+
+  it("Can remove existing borrowers", async () => {
+    const { etk, poolImpersonated, fakePA } = await helpers.loadFixture(etkFixtureWithVault);
+
+    await expect(etk.connect(poolImpersonated).removeBorrower(ZeroAddress))
+      .to.be.revertedWithCustomError(etk, "InvalidBorrower")
+      .withArgs(ZeroAddress);
+    await expect(etk.connect(poolImpersonated).removeBorrower(fakePA))
+      .to.emit(etk, "InternalBorrowerRemoved")
+      .withArgs(fakePA, _W(0));
+  });
+
+  it("Only can take loan on existing borrowers", async () => {
+    const { etk, currency, fakePA, lp2 } = await helpers.loadFixture(etkFixtureWithVault);
+
+    await expect(etk.connect(lp2).internalLoan(_A(100), lp2))
+      .to.be.revertedWithCustomError(etk, "OnlyBorrower")
+      .withArgs(lp2);
+    await expect(etk.connect(fakePA).internalLoan(_A(0), lp2)).not.to.emit(etk, "InternalLoan");
+    await expect(etk.connect(fakePA).internalLoan(_A(100), lp2))
+      .to.emit(etk, "InternalLoan")
+      .withArgs(fakePA, _A(100), _A(100));
+    expect(await currency.balanceOf(lp2)).to.equal(_A(100));
+
+    const maxNA = await etk.maxNegativeAdjustment();
+    expect(maxNA).to.closeTo(_A(3000 - 100), 10n);
+
+    await expect(etk.connect(fakePA).internalLoan(MaxUint256, lp2))
+      .to.emit(etk, "InternalLoan")
+      .withArgs(fakePA, maxNA, MaxUint256);
+    expect(await etk.totalSupply()).to.equal(1n);
+  });
+
+  it("Only can repay loan on existing borrowers", async () => {
+    const { etk, currency, fakePA, lp2, lp } = await helpers.loadFixture(etkFixtureWithVault);
+
+    await expect(etk.repayLoan(_A(100), lp2))
+      .to.be.revertedWithCustomError(etk, "InvalidBorrower")
+      .withArgs(lp2);
+
+    // repayLoan exceeding current debt, fails with panic
+    await expect(etk.repayLoan(_A(1), fakePA)).to.be.revertedWithPanic(0x11);
+
+    await expect(etk.connect(fakePA).internalLoan(_A(100), lp2))
+      .to.emit(etk, "InternalLoan")
+      .withArgs(fakePA, _A(100), _A(100));
+
+    // repayLoan exceeding current debt, fails with panic - Same when there's debt
+    await expect(etk.repayLoan(_A(110), fakePA)).to.be.revertedWithPanic(0x11);
+
+    await currency.connect(lp).approve(etk, _A(101));
+    await expect(etk.connect(lp).repayLoan(_A(100), fakePA))
+      .to.emit(etk, "InternalLoanRepaid")
+      .withArgs(fakePA, _A(100));
+    expect(await currency.allowance(lp, etk)).to.equal(_A(1));
+  });
+
+  it("Validates the parameter changes", async () => {
+    const { etk } = await helpers.loadFixture(etokenFixture);
+
+    await expect(etk.setParam(ETokenParameter.liquidityRequirement, _W(0)))
+      .to.be.revertedWithCustomError(etk, "InvalidParameter")
+      .withArgs(ETokenParameter.liquidityRequirement);
+    await expect(etk.setParam(ETokenParameter.liquidityRequirement, _W(2)))
+      .to.be.revertedWithCustomError(etk, "InvalidParameter")
+      .withArgs(ETokenParameter.liquidityRequirement);
+    await expect(etk.setParam(ETokenParameter.liquidityRequirement, _W("1.05")))
+      .to.emit(etk, "ParameterChanged")
+      .withArgs(ETokenParameter.liquidityRequirement, _W("1.05"));
+
+    await expect(etk.setParam(ETokenParameter.minUtilizationRate, _W(2)))
+      .to.be.revertedWithCustomError(etk, "InvalidParameter")
+      .withArgs(ETokenParameter.minUtilizationRate);
+    await expect(etk.setParam(ETokenParameter.minUtilizationRate, _W("0.10")))
+      .to.emit(etk, "ParameterChanged")
+      .withArgs(ETokenParameter.minUtilizationRate, _W("0.10"));
+
+    await expect(etk.setParam(ETokenParameter.maxUtilizationRate, _W(1) + 1n))
+      .to.be.revertedWithCustomError(etk, "InvalidParameter")
+      .withArgs(ETokenParameter.maxUtilizationRate);
+    await expect(etk.setParam(ETokenParameter.maxUtilizationRate, _W("0.80")))
+      .to.emit(etk, "ParameterChanged")
+      .withArgs(ETokenParameter.maxUtilizationRate, _W("0.80"));
+
+    await expect(etk.setParam(ETokenParameter.internalLoanInterestRate, _W("0.5") + 1n))
+      .to.be.revertedWithCustomError(etk, "InvalidParameter")
+      .withArgs(ETokenParameter.internalLoanInterestRate);
+    await expect(etk.setParam(ETokenParameter.internalLoanInterestRate, _W("0.15")))
+      .to.emit(etk, "ParameterChanged")
+      .withArgs(ETokenParameter.internalLoanInterestRate, _W("0.15"));
+
+    // Checks other parameters fails
+    await expect(
+      etk.setParam(ETokenParameter.internalLoanInterestRate + 1, _W("0.5") + 1n)
+    ).to.be.revertedWithoutReason();
+  });
+
+  it("Can remove the whitelist", async () => {
+    const { etk, wl } = await helpers.loadFixture(etkFixtureWithWL);
+
+    await expect(etk.setWhitelist(ZeroAddress)).to.emit(etk, "WhitelistChanged").withArgs(wl, ZeroAddress);
+  });
+
+  it("Checks the whitelist belongs to the same pool", async () => {
+    const { etk, wl, currency } = await helpers.loadFixture(etkFixtureWithWL);
+    const otherPool = await deployPool({
+      currency: currency,
+      treasuryAddress: "0x87c47c9a5a2aa74ae714857d64911d9a091c25b1", // Random address
+    });
+    const otherWL = await deployWhitelist(otherPool, {});
+    await expect(etk.setWhitelist(otherWL)).to.be.revertedWithCustomError(etk, "InvalidWhitelist").withArgs(otherWL);
+    await expect(etk.setWhitelist(ZeroAddress)).not.to.be.reverted;
+    await expect(etk.setWhitelist(wl)).not.to.be.reverted;
   });
 
   it("Only allows PolicyPool to call deposit", async () => {
@@ -60,6 +183,16 @@ describe("Etoken", () => {
     const { etk, lp } = await helpers.loadFixture(etokenFixture);
 
     await expect(etk.connect(lp).withdraw(_A(100), lp, lp, lp)).to.be.revertedWithCustomError(etk, "OnlyPolicyPool");
+  });
+
+  it("Checks tokenInterestRate is zero when TS is zero", async () => {
+    const { pool, lp, etk } = await helpers.loadFixture(etokenFixture);
+
+    await expect(pool.connect(lp).withdraw(etk, MaxUint256, lp, lp))
+      .to.emit(pool, "Withdraw")
+      .withArgs(etk, lp, lp, lp, _A(3000));
+    expect(await etk.totalSupply()).to.equal(0);
+    expect(await etk.tokenInterestRate()).to.equal(0);
   });
 
   it("Can deposit to a different receiver", async () => {
@@ -192,6 +325,21 @@ describe("Etoken", () => {
       .withArgs(oldWL, ZeroAddress);
 
     expect(await etk.whitelist()).to.equal(ZeroAddress);
+  });
+
+  it("Checks totalWithdrawable is zero when SCR > totalSupply", async () => {
+    const { etk, fakePA } = await helpers.loadFixture(etkFixtureWithVault);
+    await expect(etk.connect(fakePA).lockScr(_A(2000), _W("0.1")))
+      .to.emit(etk, "SCRLocked")
+      .withArgs(_W("0.1"), _A(2000));
+    expect(await etk.totalWithdrawable()).to.equal(_A(1000));
+    expect(await etk.utilizationRate()).to.closeTo(_W(".6667"), _W("0.001"));
+
+    await expect(etk.connect(fakePA).internalLoan(_A(1500), fakePA))
+      .to.emit(etk, "InternalLoan")
+      .withArgs(fakePA, _A(1500), _A(1500));
+    expect(await etk.totalWithdrawable()).to.equal(_A(0));
+    expect(await etk.utilizationRate()).to.closeTo(_W("1.333"), _W("0.001"));
   });
 
   it("Can assign a yieldVault and rebalance funds there", async () => {

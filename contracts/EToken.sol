@@ -450,7 +450,9 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
        * `maxUtilizationRate` is used to prevent selling more coverage when UR is too high, only checked on `lockScr`
        * operations, but not in withdrawals or other operations.
        */
-    } else if (param == Parameter.internalLoanInterestRate) {
+    } else {
+      // (param == Parameter.internalLoanInterestRate) - since param can only take one of 4 values
+
       // This call changes the interest rate without updating the current loans up to this point
       // So, if interest rate goes from 5% to 6%, this change will be retroactive to the lastUpdate of each
       // loan. Since it's a permissioned call, I'm ok with this. If a caller wants to reduce the impact, it can
