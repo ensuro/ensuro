@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
-const { amountFunction, captureAny, newCaptureAny, _W } = require("@ensuro/utils/js/utils");
+const { amountFunction, captureAny, newCaptureAny, _W, makeEIP2612Signature } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { DAY } = require("@ensuro/utils/js/constants");
 const { deployPool, addEToken, deployWhitelist } = require("../js/test-utils");
@@ -228,6 +228,28 @@ describe("Etoken", () => {
       .to.emit(pool, "Withdraw")
       .withArgs(etk, lp2, lp2, lp, _A(10));
     expect(await currency.balanceOf(lp2)).to.equal(_A(40));
+  });
+
+  it("Can withdraw using EIP-2612 approval", async () => {
+    const { etk, lp, pool, lp2, currency } = await helpers.loadFixture(etokenFixture);
+
+    expect(await etk.balanceOf(lp)).to.equal(_A(3000));
+    expect(await etk.balanceOf(lp2)).to.equal(_A(0));
+
+    const { sig, deadline } = await makeEIP2612Signature(hre, etk, lp, await ethers.resolveAddress(lp2), _A(300));
+
+    // Doing manual permit in a different transaction. Typically, this will be done by a contract that implements
+    // withdrawWithPermit or something like that, but I prefer to leave that outside the protocol.
+    await expect(etk.permit(lp, lp2, _A(300), deadline, sig.v, sig.r, sig.s))
+      .to.emit(etk, "Approval")
+      .withArgs(lp, lp2, _A(300));
+    expect(await etk.allowance(lp, lp2)).to.be.equal(_A(300));
+
+    await expect(pool.connect(lp2).withdraw(etk, _A(10), lp2, lp))
+      .to.emit(pool, "Withdraw")
+      .withArgs(etk, lp2, lp2, lp, _A(10));
+    expect(await currency.balanceOf(lp2)).to.equal(_A(10));
+    expect(await etk.allowance(lp, lp2)).to.be.equal(_A(290));
   });
 
   it("Can deposit to a different receiver - Whitelist version", async () => {

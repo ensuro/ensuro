@@ -1,5 +1,7 @@
+const hre = require("hardhat");
+const { ethers } = hre;
 const { expect } = require("chai");
-const { amountFunction, _W, captureAny } = require("@ensuro/utils/js/utils");
+const { amountFunction, _W, captureAny, makeEIP2612Signature } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
 const { makeFTUWInputData, defaultTestParams } = require("../js/utils");
@@ -22,7 +24,13 @@ describe("Test pause, unpause and upgrade contracts", function () {
     _A = amountFunction(6);
 
     currency = await initCurrency(
-      { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(10000) },
+      {
+        name: "Test USDC",
+        symbol: "USDC",
+        decimals: 6,
+        initial_supply: _A(10000),
+        contractClass: "TestCurrencyPermit",
+      },
       [lp, cust],
       [_A(5000), _A(500)]
     );
@@ -61,6 +69,11 @@ describe("Test pause, unpause and upgrade contracts", function () {
 
     await expect(pool.connect(lp).deposit(etk, _A(3000), lp)).to.be.revertedWithCustomError(pool, "EnforcedPause");
     await expect(pool.connect(lp).withdraw(etk, _A(3000), lp, lp)).to.be.revertedWithCustomError(pool, "EnforcedPause");
+
+    const { sig, deadline } = await makeEIP2612Signature(hre, currency, lp, await ethers.resolveAddress(pool), _A(300));
+    await expect(
+      pool.connect(lp).depositWithPermit(etk, _A(300), lp, deadline, sig.v, sig.r, sig.s)
+    ).to.be.revertedWithCustomError(pool, "EnforcedPause");
 
     // Can't create policy
     await expect(rm.connect(cust).newPolicy(testPolicyInput, cust)).to.be.revertedWithCustomError(

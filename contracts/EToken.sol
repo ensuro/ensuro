@@ -364,6 +364,10 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
     if (amount == type(uint256).max) amount = maxWithdraw;
     if (amount == 0) return 0;
     require(amount <= maxWithdraw, ExceedsMaxWithdraw(amount, maxWithdraw));
+    /**
+     * For the whitelist validation, I use the owner address. If the caller != owner, then I assume that if the
+     * owner gave spending approval to the caller, that's enough.
+     */
     require(
       address(_params.whitelist) == address(0) || _params.whitelist.acceptsWithdrawal(this, owner, amount),
       WithdrawalNotWhitelisted(owner, amount)

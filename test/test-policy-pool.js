@@ -1,11 +1,12 @@
 const { expect } = require("chai");
-const { amountFunction, _W, getTransactionEvent } = require("@ensuro/utils/js/utils");
+const { amountFunction, _W, getTransactionEvent, makeEIP2612Signature } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { addEToken, createEToken, deployPool, deployPremiumsAccount } = require("../js/test-utils");
-const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { ComponentStatus, ComponentKind } = require("../js/enums.js");
-const { ZeroAddress, ZeroHash } = hre.ethers;
+const hre = require("hardhat");
+const { ethers } = hre;
+const { ZeroAddress, ZeroHash } = ethers;
 
 const _A = amountFunction(6);
 const TREASURY = "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199"; // Random address
@@ -34,9 +35,9 @@ async function createNewPolicy(rm, cust, pool, payout, premium, lossProb, expira
 }
 
 async function deployPoolFixture() {
-  const [owner, lp, cust, backend] = await hre.ethers.getSigners();
+  const [owner, lp, cust, backend, lp2] = await hre.ethers.getSigners();
   const currency = await initCurrency(
-    { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(10000) },
+    { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(10000), contractClass: "TestCurrencyPermit" },
     [lp, cust, backend],
     [_A(5000), _A(500), _A(1000)]
   );
@@ -47,7 +48,16 @@ async function deployPoolFixture() {
   });
   pool._A = _A;
 
-  return { owner, lp, cust, backend, pool, currency };
+  return { owner, lp, cust, backend, pool, currency, lp2 };
+}
+
+async function deployETKFixture() {
+  const ret = await helpers.loadFixture(deployPoolFixture);
+  const { pool } = ret;
+  // Setup the liquidity sources
+  const etk = await addEToken(pool, {});
+
+  return { etk, ...ret };
 }
 
 async function deployRiskModuleFixture() {
@@ -259,6 +269,82 @@ describe("PolicyPool contract", function () {
     await expect(pool.newPolicy(policyData, cust, backend, 11))
       .to.be.revertedWithCustomError(pool, "ComponentNotTheRightKind")
       .withArgs(owner, ComponentKind.riskModule);
+  });
+
+  it("Fails if doing deposits to ZeroAddress receiver", async () => {
+    const { pool, lp, lp2, etk, currency } = await helpers.loadFixture(deployETKFixture);
+
+    await expect(pool.connect(lp).deposit(etk, _A(100), ZeroAddress))
+      .to.be.revertedWithCustomError(pool, "InvalidReceiver")
+      .withArgs(ZeroAddress);
+
+    // Same, but using depositWithPermit
+    const { sig, deadline } = await makeEIP2612Signature(hre, currency, lp, await ethers.resolveAddress(lp2), _A(300));
+    await expect(pool.connect(lp2).depositWithPermit(etk, _A(100), ZeroAddress, deadline, sig.v, sig.r, sig.s))
+      .to.be.revertedWithCustomError(pool, "InvalidReceiver")
+      .withArgs(ZeroAddress);
+  });
+
+  it("Can deposit with permit, even if front-runned", async () => {
+    const { pool, lp, lp2, etk, currency } = await helpers.loadFixture(deployETKFixture);
+
+    const { sig, deadline } = await makeEIP2612Signature(hre, currency, lp, await ethers.resolveAddress(pool), _A(300));
+    await expect(pool.connect(lp).depositWithPermit(etk, _A(300), lp2, deadline, sig.v, sig.r, sig.s))
+      .to.emit(pool, "Deposit")
+      .withArgs(etk, lp, lp2, _A(300));
+    expect(await currency.allowance(lp, pool)).to.equal(0);
+
+    // Repeat the same front-running the permit call
+    const { sig: sig2, deadline: deadline2 } = await makeEIP2612Signature(
+      hre,
+      currency,
+      lp,
+      await ethers.resolveAddress(pool),
+      _A(120)
+    );
+    await expect(currency.permit(lp, pool, _A(120), deadline2, sig2.v, sig2.r, sig2.s)).to.emit(currency, "Approval");
+    await expect(pool.connect(lp).depositWithPermit(etk, _A(120), lp2, deadline2, sig2.v, sig2.r, sig2.s)).to.emit(
+      pool,
+      "Deposit"
+    );
+
+    expect(await etk.balanceOf(lp2)).to.be.equal(_A(420));
+  });
+
+  it("Fails if doing withdrawals to ZeroAddress receiver, otherwise sends the money to receiver", async () => {
+    const { pool, lp, etk, currency, lp2 } = await helpers.loadFixture(deployETKFixture);
+
+    await currency.connect(lp).approve(pool, _A(100));
+    await expect(pool.connect(lp).deposit(etk, _A(100), lp)).to.emit(pool, "Deposit");
+
+    await expect(pool.connect(lp).withdraw(etk, _A(100), ZeroAddress, lp))
+      .to.be.revertedWithCustomError(pool, "InvalidReceiver")
+      .withArgs(ZeroAddress);
+
+    expect(await currency.balanceOf(lp2)).to.equal(0);
+    await expect(pool.connect(lp).withdraw(etk, _A(100), lp2, lp))
+      .to.emit(pool, "Withdraw")
+      .withArgs(etk, lp, lp2, lp, _A(100));
+    expect(await currency.balanceOf(lp2)).to.equal(_A(100));
+  });
+
+  it("Can do withdrawals on behalf of other user, if I have allowance", async () => {
+    const { pool, lp, etk, currency, lp2 } = await helpers.loadFixture(deployETKFixture);
+
+    await currency.connect(lp).approve(pool, _A(100));
+    await expect(pool.connect(lp).deposit(etk, _A(100), lp)).to.emit(pool, "Deposit");
+
+    await etk.connect(lp).approve(lp2, _A(90));
+
+    expect(await currency.balanceOf(lp2)).to.equal(0);
+    await expect(pool.connect(lp2).withdraw(etk, _A(100), lp2, lp))
+      .to.be.revertedWithCustomError(etk, "ERC20InsufficientAllowance")
+      .withArgs(lp2, _A(90), _A(100));
+    await expect(pool.connect(lp2).withdraw(etk, _A(80), lp2, lp))
+      .to.emit(pool, "Withdraw")
+      .withArgs(etk, lp2, lp2, lp, _A(80));
+    expect(await currency.balanceOf(lp2)).to.equal(_A(80));
+    expect(await etk.allowance(lp, lp2)).to.equal(_A(10));
   });
 
   it("Can't change the exposure limit to something lower than the active exposure", async () => {
