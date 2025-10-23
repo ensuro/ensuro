@@ -224,7 +224,7 @@ library ETKLib {
   }
 
   function minValue(ScaledAmount storage scaledAmount) internal view returns (uint256) {
-    return _mulDiv(uint256(scaledAmount.amount), MIN_SCALE, WAD);
+    return Math.mulDiv(uint256(scaledAmount.amount), MIN_SCALE, WAD, Math.Rounding.Ceil);
   }
   /*** END ScaledAmount functions ***/
 

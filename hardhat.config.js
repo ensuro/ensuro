@@ -122,6 +122,7 @@ module.exports = {
       "@openzeppelin/contracts/access/manager/AccessManager.sol",
       "@ensuro/utils/contracts/TestERC4626.sol",
       "@ensuro/utils/contracts/TestCurrency.sol",
+      "@ensuro/utils/contracts/TestCurrencyPermit.sol",
       "@ensuro/access-managed-proxy/contracts/amps/AccessManagedProxyS1.sol",
       "@ensuro/access-managed-proxy/contracts/amps/AccessManagedProxyS2.sol",
       "@ensuro/access-managed-proxy/contracts/amps/AccessManagedProxyS3.sol",
@@ -148,6 +149,7 @@ module.exports = {
       "@ensuro/access-managed-proxy/contracts/amps/AccessManagedProxyS24.sol",
       "@ensuro/access-managed-proxy/contracts/amps/AccessManagedProxyS35.sol",
       "@ensuro/access-managed-proxy/contracts/amps/AccessManagedProxyS36.sol",
+      "@ensuro/access-managed-proxy/contracts/amps/AccessManagedProxyS38.sol",
     ],
   },
   warnings: {

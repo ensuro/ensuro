@@ -50,30 +50,30 @@ describe("Test add, remove and change status of PolicyPool components", function
     rm = await addRiskModule(pool, premiumsAccount, {});
 
     await currency.connect(lp).approve(pool, _A(3000));
-    await pool.connect(lp).deposit(etk, _A(3000));
+    await pool.connect(lp).deposit(etk, _A(3000), lp);
   });
 
   it("Change status and remove eToken", async function () {
     // When active deposits are OK
     expect(await pool.getComponentStatus(etk)).to.be.equal(ComponentStatus.active);
     await currency.connect(lp).approve(pool, _A(500));
-    await expect(pool.connect(lp).deposit(etk, _A(300))).not.to.be.reverted;
+    await expect(pool.connect(lp).deposit(etk, _A(300), lp)).not.to.be.reverted;
 
     await expect(pool.connect(level1).changeComponentStatus(etk, ComponentStatus.deprecated)).not.to.be.reverted;
     expect(await pool.getComponentStatus(etk)).to.be.equal(ComponentStatus.deprecated);
 
     // When deprecated, deposits aren't allowed, but withdrawals are allowed
-    await expect(pool.connect(lp).deposit(etk, _A(200))).to.be.revertedWithCustomError(
+    await expect(pool.connect(lp).deposit(etk, _A(200), lp)).to.be.revertedWithCustomError(
       pool,
       "ComponentNotFoundOrNotActive"
     );
-    await expect(pool.connect(lp).withdraw(etk, _A(200))).not.to.be.reverted;
+    await expect(pool.connect(lp).withdraw(etk, _A(200), lp, lp)).not.to.be.reverted;
 
     await expect(pool.connect(guardian).changeComponentStatus(etk, ComponentStatus.suspended)).not.to.be.reverted;
     expect(await pool.getComponentStatus(etk)).to.be.equal(ComponentStatus.suspended);
 
     // When suspended, withdrawals are not allowed
-    await expect(pool.connect(lp).withdraw(etk, _A(100))).to.be.revertedWithCustomError(
+    await expect(pool.connect(lp).withdraw(etk, _A(100), lp, lp)).to.be.revertedWithCustomError(
       pool,
       "ComponentMustBeActiveOrDeprecated"
     );
@@ -81,19 +81,19 @@ describe("Test add, remove and change status of PolicyPool components", function
     await expect(pool.connect(level1).changeComponentStatus(etk, ComponentStatus.active)).not.to.be.reverted;
     expect(await pool.getComponentStatus(etk)).to.be.equal(ComponentStatus.active);
 
-    await expect(pool.connect(lp).deposit(etk, _A(200))).not.to.be.reverted;
+    await expect(pool.connect(lp).deposit(etk, _A(200), lp)).not.to.be.reverted;
 
     await expect(pool.connect(level1).changeComponentStatus(etk, ComponentStatus.deprecated)).not.to.be.reverted;
     await expect(pool.connect(level1).removeComponent(etk))
       .to.be.revertedWithCustomError(pool, "ComponentInUseCannotRemove")
       .withArgs(ComponentKind.eToken, await etk.totalSupply());
 
-    await expect(pool.connect(lp).withdraw(etk, MaxUint256)).not.to.be.reverted;
+    await expect(pool.connect(lp).withdraw(etk, MaxUint256, lp, lp)).not.to.be.reverted;
 
     await expect(pool.connect(level1).removeComponent(etk)).not.to.be.reverted;
     expect(await pool.getComponentStatus(etk)).to.be.equal(ComponentStatus.inactive);
 
-    await expect(pool.connect(lp).deposit(etk, _A(200)))
+    await expect(pool.connect(lp).deposit(etk, _A(200), lp))
       .to.be.revertedWithCustomError(pool, "ComponentNotTheRightKind")
       .withArgs(etk, ComponentKind.eToken);
   });

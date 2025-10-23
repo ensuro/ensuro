@@ -365,7 +365,7 @@ async function deployPoolFixture() {
 
   await currency.connect(lp).approve(pool, _A(5000));
   await currency.connect(backend).approve(pool, _A(5000));
-  await pool.connect(lp).deposit(etk, _A(5000));
+  await pool.connect(lp).deposit(etk, _A(5000), lp);
 
   const PolicyHolderMock = await ethers.getContractFactory("PolicyHolderMock");
   const ph = await PolicyHolderMock.deploy();

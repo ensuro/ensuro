@@ -44,7 +44,7 @@ eth-keys==0.7.0
     # via
     #   eth-account
     #   eth-keyfile
-eth-prototype[web3]==1.4.0
+eth-prototype[web3]==1.4.1
     # via -r requirements.in
 eth-rlp==2.2.0
     # via eth-account

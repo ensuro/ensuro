@@ -2,6 +2,7 @@ const ethers = require("ethers");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { DAY } = require("@ensuro/utils/js/constants");
 const { amountFunction, getAddress, _W } = require("@ensuro/utils/js/utils");
+const { WhitelistStatus } = require("./enums");
 
 const abiCoder = ethers.AbiCoder.defaultAbiCoder();
 
@@ -253,6 +254,21 @@ function makeFTUWReplacementInputData({ oldPolicy, payout, premium, lossProb, ex
   );
 }
 
+/**
+ * Converts a string of four letters that are either ("W" whitelisted, "B" blacklisted, "U" undefined) into a
+ * WhitelistStatus array
+ */
+function makeWhitelistStatus(status) {
+  if (typeof status !== "string" || status.length != 4 || !/[WBU]{4}/u.test(status))
+    throw new Error("Invalid input, only 4 letters (W/B/U) string accepted");
+  return status
+    .split("")
+    .map(
+      (letter) =>
+        ({ W: WhitelistStatus.whitelisted, B: WhitelistStatus.blacklisted, U: WhitelistStatus.notdefined })[letter]
+    );
+}
+
 module.exports = {
   defaultPolicyParams,
   defaultPolicyParamsWithBucket,
@@ -267,6 +283,7 @@ module.exports = {
   makePolicyId,
   makeQuoteMessage,
   makeSignedQuote,
+  makeWhitelistStatus,
   recoverAddress,
   computeMinimumPremium,
   packParams,

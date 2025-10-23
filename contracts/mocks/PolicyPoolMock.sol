@@ -84,11 +84,15 @@ contract PolicyPoolMock is IPolicyPool {
     return policyHashes[policyId];
   }
 
-  function deposit(IEToken, uint256) external pure override {
+  function deposit(IEToken, uint256, address) external pure override {
     revert("Not Implemented deposit");
   }
 
-  function withdraw(IEToken, uint256) external pure override returns (uint256) {
+  function depositWithPermit(IEToken, uint256, address, uint256, uint8, bytes32, bytes32) external pure override {
+    revert("Not Implemented deposit");
+  }
+
+  function withdraw(IEToken, uint256, address, address) external pure override returns (uint256) {
     revert("Not Implemented withdraw");
   }
 

@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {ERC721Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
+import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -213,6 +214,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   error InvalidPolicyReplacement(Policy.PolicyData oldPolicy, Policy.PolicyData newPolicy);
   error PayoutExceedsLimit(uint256 payout, uint256 policyPayout);
   error ExposureLimitExceeded(uint128 activeExposure, uint128 exposureLimit);
+  error InvalidReceiver(address receiver);
 
   /**
    * @dev Event emitted when the treasury (who receives ensuroCommission) changes
@@ -255,6 +257,33 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * @param newLimit Exposure limit after the change
    */
   event ExposureLimitChanged(IRiskModule indexed riskModule, uint128 oldLimit, uint128 newLimit);
+
+  /**
+   * @dev Event emitted for every deposit into an eToken
+   *
+   * @param eToken The eToken receiving the funds
+   * @param sender The sender of the funds (the user calling `deposit` or `depositWithPermit`)
+   * @param owner The user that will receive the minted eTokens
+   * @param amount Amount in `currency()` paid for the eTokens (equal to the amount of eTokens received)
+   */
+  event Deposit(IEToken indexed eToken, address indexed sender, address indexed owner, uint256 amount);
+
+  /**
+   * @dev Event emitted for every withdrawal from an eToken
+   *
+   * @param eToken The eToken where the withdrawal will be done
+   * @param sender The user calling the withdraw method. Must be the owner or have spending approval from it.
+   * @param receiver The user that receives the resulting funds (`currency()`)
+   * @param owner The owner of the burned eTokens
+   * @param amount Amount in `currency()` that will be received by `receiver`.
+   */
+  event Withdraw(
+    IEToken indexed eToken,
+    address indexed sender,
+    address indexed receiver,
+    address owner,
+    uint256 amount
+  );
 
   /**
    * @dev Instantiates a Policy Pool. Sets immutable fields.
@@ -469,16 +498,44 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
       revert ComponentMustBeActiveOrDeprecated();
   }
 
-  function deposit(IEToken eToken, uint256 amount) external override whenNotPaused {
+  function _deposit(IEToken eToken, uint256 amount, address receiver) internal {
+    require(receiver != address(0), InvalidReceiver(receiver));
     _requireCompActive(address(eToken), ComponentKind.eToken);
-    uint256 balanceBefore = _currency.balanceOf(address(eToken));
     _currency.safeTransferFrom(_msgSender(), address(eToken), amount);
-    eToken.deposit(_msgSender(), _currency.balanceOf(address(eToken)) - balanceBefore);
+    eToken.deposit(amount, _msgSender(), receiver);
+    emit Deposit(eToken, _msgSender(), receiver, amount);
   }
 
-  function withdraw(IEToken eToken, uint256 amount) external override whenNotPaused returns (uint256) {
+  function deposit(IEToken eToken, uint256 amount, address receiver) external override whenNotPaused {
+    _deposit(eToken, amount, receiver);
+  }
+
+  function depositWithPermit(
+    IEToken eToken,
+    uint256 amount,
+    address receiver,
+    uint256 deadline,
+    uint8 v,
+    bytes32 r,
+    bytes32 s
+  ) external override whenNotPaused {
+    // solhint-disable-next-line no-empty-blocks
+    try IERC20Permit(address(_currency)).permit(_msgSender(), address(this), amount, deadline, v, r, s) {} catch {}
+    // Check https://github.com/OpenZeppelin/openzeppelin-contracts/blob/1cf13771092c83a060eaef0f8809493fb4c04eb1/contracts/token/ERC20/extensions/IERC20Permit.sol#L16
+    // for explanation of this try/catch pattern
+    _deposit(eToken, amount, receiver);
+  }
+
+  function withdraw(
+    IEToken eToken,
+    uint256 amount,
+    address receiver,
+    address owner
+  ) external override whenNotPaused returns (uint256 amountWithdrawn) {
+    require(receiver != address(0), InvalidReceiver(receiver));
     _requireCompActiveOrDeprecated(address(eToken), ComponentKind.eToken);
-    return eToken.withdraw(_msgSender(), amount);
+    amountWithdrawn = eToken.withdraw(amount, _msgSender(), owner, receiver);
+    emit Withdraw(eToken, _msgSender(), receiver, owner, amountWithdrawn);
   }
 
   function newPolicy(

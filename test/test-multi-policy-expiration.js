@@ -143,7 +143,7 @@ async function poolWithPolicies() {
 
   // Fund the protocol
   await currency.connect(lp).approve(pool, _A(100000));
-  await pool.connect(lp).deposit(etk, _A(100000));
+  await pool.connect(lp).deposit(etk, _A(100000), lp);
 
   // Allow pricer spending to pay for policies
   await currency.connect(pricer).approve(pool, _A(100000));

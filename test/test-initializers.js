@@ -35,7 +35,7 @@ describe("Test Initialize contracts", function () {
     const rm = await addRiskModule(pool, premiumsAccount, {});
 
     await currency.connect(lp).approve(pool, _A(5000));
-    await pool.connect(lp).deposit(etk, _A(3000));
+    await pool.connect(lp).deposit(etk, _A(3000), lp);
 
     return {
       currency,

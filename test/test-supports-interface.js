@@ -49,11 +49,13 @@ describe("Supports interface implementation", function () {
       IERC20Metadata: "0xa219a025",
       IERC721: "0x80ac58cd",
       IAccessControl: "0x7965db0b",
-      IEToken: "0x90770621",
+      // IEToken: "0x90770621", - Up to v2.9 - changed on `permit-operate-on-behalf` branch
+      IEToken: "0x29a2308a",
       // IPolicyPool: "0x3234fad6", - Up to v2.7
       // IPolicyPool: "0x0ce33b78", - Up to v2.9
       // IPolicyPool: "0x7d73446f", - Before `refactoring-rms` branch that changed Policy struct
-      IPolicyPool: "0xea84868b",
+      // IPolicyPool: "0xea84868b", - Before `permit-operate-on-behalf` branch that changed deposit/withdraw
+      IPolicyPool: "0xab249cf4",
       IPolicyPoolComponent: "0x4d15eb03",
       // IRiskModule: "0xda40804f", - Up to v2.9
       IRiskModule: "0x21b7e09b",
