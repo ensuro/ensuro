@@ -593,20 +593,22 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     _requireCompActive(address(rm), ComponentKind.riskModule);
     IPremiumsAccount pa = rm.premiumsAccount();
     _requireCompActive(address(pa), ComponentKind.premiumsAccount);
-    require(oldPolicy.expiration > uint40(block.timestamp), PolicyAlreadyExpired(oldPolicy.id));
+    require(
+      oldPolicy.expiration > uint40(block.timestamp) && newPolicy_.expiration >= uint40(block.timestamp),
+      PolicyAlreadyExpired(oldPolicy.id)
+    );
     require(
       oldPolicy.start == newPolicy_.start &&
-        oldPolicy.payout <= newPolicy_.payout &&
         oldPolicy.purePremium <= newPolicy_.purePremium &&
         oldPolicy.ensuroCommission <= newPolicy_.ensuroCommission &&
         oldPolicy.jrCoc <= newPolicy_.jrCoc &&
         oldPolicy.srCoc <= newPolicy_.srCoc &&
-        oldPolicy.jrScr <= newPolicy_.jrScr &&
-        oldPolicy.srScr <= newPolicy_.srScr &&
-        oldPolicy.partnerCommission <= newPolicy_.partnerCommission &&
-        oldPolicy.expiration <= newPolicy_.expiration,
+        oldPolicy.partnerCommission <= newPolicy_.partnerCommission,
       InvalidPolicyReplacement(oldPolicy, newPolicy_)
     );
+    /**
+     * payout, jrScr, srScr, expiration can change in any direction
+     */
 
     // Effects
     newPolicy_.id = makePolicyId(rm, internalId);
@@ -614,7 +616,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     _policies[newPolicy_.id] = newPolicy_.hash();
     address policyHolder = ownerOf(oldPolicy.id);
     _safeMint(policyHolder, newPolicy_.id, "");
-    _changeExposure(rm, true, newPolicy_.payout - oldPolicy.payout);
+    if (newPolicy_.payout > oldPolicy.payout) _changeExposure(rm, true, newPolicy_.payout - oldPolicy.payout);
+    else _changeExposure(rm, false, oldPolicy.payout - newPolicy_.payout);
     delete _policies[oldPolicy.id];
 
     // Interactions

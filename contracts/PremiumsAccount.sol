@@ -86,7 +86,6 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   error InvalidDeficitRatio(uint256 newDeficitRatio);
   error DeficitExceedsMaxDeficit(int256 currentDeficit, int256 newMaxDeficit);
   error CannotBeBorrowed(uint256 amountLeft);
-  error InterestRateCannotChange(int256 oldIR, int256 newIR);
   error InvalidLoanLimit(uint256 loanLimit);
   error InvalidDestination(address destination);
   error WithdrawExceedsSurplus(uint256 amountRequired, int256 surplus);
@@ -477,27 +476,28 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     Policy.PolicyData calldata oldPolicy,
     Policy.PolicyData calldata newPolicy
   ) external override onlyPolicyPool {
-    int256 oldIR;
-    int256 newIR;
-    if (oldPolicy.srScr > 0 && newPolicy.srScr > 0) {
-      oldIR = int256(oldPolicy.srInterestRate());
-      newIR = int256(newPolicy.srInterestRate());
-      require(SignedMath.abs(oldIR - newIR) < 1e14, InterestRateCannotChange(oldIR, newIR));
-    }
-    if (oldPolicy.jrScr > 0 && newPolicy.jrScr > 0) {
-      oldIR = int256(oldPolicy.jrInterestRate());
-      newIR = int256(newPolicy.jrInterestRate());
-      require(SignedMath.abs(oldIR - newIR) < 1e14, InterestRateCannotChange(oldIR, newIR));
-    }
-    /*
-     * Supporting interest rate change is possible, but it would require complex computations.
-     * If new IR > old IR, then we must adjust positivelly to accrue the interests not accrued
-     * If new IR < old IR, then we must adjust negativelly to substract the interests accrued in excess
-     */
     _activePurePremiums += newPolicy.purePremium - oldPolicy.purePremium;
-    if (oldPolicy.jrScr > 0) _juniorEtk.unlockScr(oldPolicy.jrScr, oldPolicy.jrInterestRate(), 0);
-    if (oldPolicy.srScr > 0) _seniorEtk.unlockScr(oldPolicy.srScr, oldPolicy.srInterestRate(), 0);
+
+    /**
+     * Applies an adjustment based on the difference between the accrued interest with the old policy and the new
+     * policy.
+     * The CoC is disbursed linearly from policy start (the same for old and new policy) and policy.expiration (might
+     * be different).
+     * The adjustment corrects the gap between the two straight lines at the replacement time
+     */
+    if (oldPolicy.jrScr != 0)
+      _juniorEtk.unlockScr(
+        oldPolicy.jrScr,
+        oldPolicy.jrInterestRate(),
+        int256(newPolicy.jrAccruedInterest()) - int256(oldPolicy.jrAccruedInterest())
+      );
     if (newPolicy.jrScr > 0) _juniorEtk.lockScr(newPolicy.jrScr, newPolicy.jrInterestRate());
+    if (oldPolicy.srScr != 0)
+      _seniorEtk.unlockScr(
+        oldPolicy.srScr,
+        oldPolicy.srInterestRate(),
+        int256(newPolicy.srAccruedInterest()) - int256(oldPolicy.srAccruedInterest())
+      );
     if (newPolicy.srScr > 0) _seniorEtk.lockScr(newPolicy.srScr, newPolicy.srInterestRate());
   }
 
