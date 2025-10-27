@@ -172,6 +172,7 @@ class EToken(ReserveMixin, IERC20):
 
     lock_scr = MethodAdapter(
         (
+            ("policy_id", "int"),
             ("scr_amount", "amount"),
             ("policy_interest_rate", "wad"),
         ),
@@ -179,6 +180,7 @@ class EToken(ReserveMixin, IERC20):
 
     unlock_scr = MethodAdapter(
         (
+            ("policy_id", "int"),
             ("scr_amount", "amount"),
             ("policy_interest_rate", "wad"),
             ("adjustment", "amount"),

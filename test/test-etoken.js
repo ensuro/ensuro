@@ -351,9 +351,9 @@ describe("Etoken", () => {
 
   it("Checks totalWithdrawable is zero when SCR > totalSupply", async () => {
     const { etk, fakePA } = await helpers.loadFixture(etkFixtureWithVault);
-    await expect(etk.connect(fakePA).lockScr(_A(2000), _W("0.1")))
+    await expect(etk.connect(fakePA).lockScr(1234n, _A(2000), _W("0.1")))
       .to.emit(etk, "SCRLocked")
-      .withArgs(_W("0.1"), _A(2000));
+      .withArgs(1234n, _W("0.1"), _A(2000));
     expect(await etk.totalWithdrawable()).to.equal(_A(1000));
     expect(await etk.utilizationRate()).to.closeTo(_W(".6667"), _W("0.001"));
 
@@ -414,9 +414,9 @@ describe("Etoken", () => {
 
     expect(await etk.getCurrentScale(false)).to.closeTo(_W("1.1"), _W("0.0000001"));
 
-    await expect(etk.connect(fakePA).lockScr(_A(2000), _W("0.1")))
+    await expect(etk.connect(fakePA).lockScr(123, _A(2000), _W("0.1")))
       .to.emit(etk, "SCRLocked")
-      .withArgs(_W("0.1"), _A(2000));
+      .withArgs(123, _W("0.1"), _A(2000));
     await currency.connect(fakePA).transfer(etk, _A(200)); // transfer the CoC
 
     expect(await etk.balanceOf(lp)).to.closeTo(_A(3300), 10n);
@@ -434,9 +434,9 @@ describe("Etoken", () => {
     // Go to the end of the year, unlock and withdraw all
     await helpers.time.increase(DAY * (365 - 73));
 
-    await expect(etk.connect(fakePA).unlockScr(_A(2000), _W("0.1"), _A(0)))
+    await expect(etk.connect(fakePA).unlockScr(1234, _A(2000), _W("0.1"), _A(0)))
       .to.emit(etk, "SCRUnlocked")
-      .withArgs(_W("0.1"), _A(2000));
+      .withArgs(1234, _W("0.1"), _A(2000), _A(0));
 
     expect(await etk.balanceOf(lp)).to.closeTo(_A(3500), 20n);
     // now the updated scale is affected

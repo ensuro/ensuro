@@ -19,17 +19,21 @@ interface IEToken {
 
   /**
    * @dev Event emitted when part of the funds of the eToken are locked as solvency capital.
+   * @param policyId The id of the policy that locks the capital
    * @param interestRate The annualized interestRate paid for the capital (wad)
    * @param value The amount locked
    */
-  event SCRLocked(uint256 interestRate, uint256 value);
+  event SCRLocked(uint256 indexed policyId, uint256 interestRate, uint256 value);
 
   /**
    * @dev Event emitted when the locked funds are unlocked and no longer used as solvency capital.
+   * @param policyId The id of the policy that unlocks the capital (should be the that locked before with SCRLocked)
    * @param interestRate The annualized interestRate that was paid for the capital (wad)
    * @param value The amount unlocked
+   * @param adjustment Discrete amount of adjustment done to the totalSupply to reflect when more or less
+   *                   than the received cost of capital has been accrued since the SCR was locked.
    */
-  event SCRUnlocked(uint256 interestRate, uint256 value);
+  event SCRUnlocked(uint256 indexed policyId, uint256 interestRate, uint256 value, int256 adjustment);
 
   /**
    * @dev Returns the amount of capital that's locked as solvency capital for active policies.
@@ -46,10 +50,11 @@ interface IEToken {
    * Events:
    * - Emits {SCRLocked}
    *
+   * @param policyId The id of the policy that locks the capital
    * @param scrAmount The amount to lock
    * @param policyInterestRate The annualized interest rate (wad) to be paid for the `scrAmount`
    */
-  function lockScr(uint256 scrAmount, uint256 policyInterestRate) external;
+  function lockScr(uint256 policyId, uint256 scrAmount, uint256 policyInterestRate) external;
 
   /**
    * @dev Unlocks solvency capital previously locked with `lockScr`. The capital no longer needed as solvency.
@@ -61,11 +66,12 @@ interface IEToken {
    * Events:
    * - Emits {SCRUnlocked}
    *
+   * @param policyId The id of the policy that locked the scr originally
    * @param scrAmount The amount to unlock
    * @param policyInterestRate The annualized interest rate that was paid for the `scrAmount`, must be the same that was
    * sent in `lockScr` call.
    */
-  function unlockScr(uint256 scrAmount, uint256 policyInterestRate, int256 adjustment) external;
+  function unlockScr(uint256 policyId, uint256 scrAmount, uint256 policyInterestRate, int256 adjustment) external;
 
   /**
    * @dev Registers a deposit of liquidity in the pool. Called from the PolicyPool, assumes the amount has already been

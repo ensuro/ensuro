@@ -23,6 +23,10 @@ def tenv(request):
 
     class FakePolicy(FakePolicyTuple):
         @property
+        def id(self):
+            return 3333
+
+        @property
         def risk_module(self):
             return None
 
@@ -100,9 +104,9 @@ def test_only_policy_pool_validation(tenv):
     with pytest.raises(RevertError, match="OnlyPolicyPool()"):
         etk.withdraw("LP1", _W(1000))
     with pytest.raises(RevertError, match="OnlyBorrower"):
-        etk.lock_scr(_W(600), _W("0.0365"))
+        etk.lock_scr(123, _W(600), _W("0.0365"))
     with pytest.raises(RevertError, match="OnlyBorrower"):
-        etk.unlock_scr(_W(600), _W("0.0365"), _W(0))
+        etk.unlock_scr(1234, _W(600), _W("0.0365"), _W(0))
 
 
 def test_deposit_withdraw(tenv):
@@ -145,7 +149,7 @@ def test_lock_unlock_scr(tenv):
     )
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
     with etk.thru(pa):
-        etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
+        etk.lock_scr(1234, policy.sr_scr, policy.sr_interest_rate)
     assert etk.scr == _W(600)
     assert etk.scr_interest_rate == _W("0.0365")
     etk.token_interest_rate.assert_equal(_W("0.0365") * _W(600 / 1000))
@@ -161,7 +165,7 @@ def test_lock_unlock_scr(tenv):
     assert etk.scaled_total_supply() == _W(1000)
 
     with etk.thru(pa):
-        etk.unlock_scr(policy.sr_scr, policy.sr_interest_rate, _W(0))
+        etk.unlock_scr(policy.id, policy.sr_scr, policy.sr_interest_rate, _W(0))
 
     tenv.time_control.fast_forward(10 * DAY)
     expected_balance = _W(1000) + _W("0.06") * _W(5)
@@ -195,7 +199,7 @@ def test_etoken_erc20(tenv):
     )
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
     with etk.thru(pa):
-        etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
+        etk.lock_scr(1234, policy.sr_scr, policy.sr_interest_rate)
     tenv.time_control.fast_forward(2 * DAY)
     expected_balance = _W(1000) + _W("0.06") * _W(2)
     etk.balance_of("LP1").assert_equal(expected_balance)
@@ -235,7 +239,7 @@ def test_etoken_erc20(tenv):
         etk.withdraw("LP1", None).assert_equal(total_withdrawable)
 
     with etk.thru(pa):
-        etk.unlock_scr(policy.sr_scr, policy.sr_interest_rate, _W(0))
+        etk.unlock_scr(policy.id, policy.sr_scr, policy.sr_interest_rate, _W(0))
     with etk.thru_policy_pool():
         # now max to withdraw is LP balance
         etk.withdraw("LP1", None).assert_equal(expected_balance // _W(2) - total_withdrawable)
@@ -256,7 +260,7 @@ def test_multiple_policies(tenv):
     )
     tenv.currency.transfer(tenv.currency.owner, etk, policy1.sr_coc)
     with etk.thru(pa):
-        etk.lock_scr(policy1.sr_scr, policy1.sr_interest_rate)
+        etk.lock_scr(1234, policy1.sr_scr, policy1.sr_interest_rate)
     assert etk.scr_interest_rate == _W("0.0365")
     assert etk.scr == _W(300)
     etk.funds_available.assert_equal(_W(700))
@@ -270,7 +274,7 @@ def test_multiple_policies(tenv):
     )
     tenv.currency.transfer(tenv.currency.owner, etk, policy2.sr_coc)
     with etk.thru(pa):
-        etk.lock_scr(policy2.sr_scr, policy2.sr_interest_rate)
+        etk.lock_scr(1234, policy2.sr_scr, policy2.sr_interest_rate)
     etk.scr_interest_rate.assert_equal((_W("0.0365") * _W(300) + _W("0.0730") * _W(600)) // _W(900))
 
     assert etk.scr == _W(900)
@@ -289,21 +293,23 @@ def test_multiple_policies(tenv):
     )
     tenv.currency.transfer(tenv.currency.owner, etk, policy3.sr_coc)
     with etk.thru(pa):
-        etk.lock_scr(policy3.sr_scr, policy3.sr_interest_rate)
+        etk.lock_scr(1234, policy3.sr_scr, policy3.sr_interest_rate)
     etk.total_withdrawable().assert_equal(_W(0.51))  # accrued interests are withdrawable
 
     with etk.thru(pa):
-        etk.unlock_scr(policy3.sr_scr, policy3.sr_interest_rate, _W(0))
-        etk.unlock_scr(policy1.sr_scr, policy1.sr_interest_rate, _W(0))
+        etk.unlock_scr(policy3.id, policy3.sr_scr, policy3.sr_interest_rate, _W(0))
+        etk.unlock_scr(policy1.id, policy1.sr_scr, policy1.sr_interest_rate, _W(0))
 
     etk.scr_interest_rate.assert_equal(_W("0.0730"))
     assert etk.scr == policy2.sr_scr
     etk.balance_of("LP1").assert_equal(expected_balance)
     with etk.thru(pa), pytest.raises(RevertError, match="SCR|Arithmetic operation overflowed"):
-        etk.unlock_scr(policy2.sr_scr + _W(1), policy2.sr_interest_rate, _W(0))  # Can't unlock more than SCR
+        etk.unlock_scr(
+            policy2.id, policy2.sr_scr + _W(1), policy2.sr_interest_rate, _W(0)
+        )  # Can't unlock more than SCR
 
     with etk.thru(pa):
-        etk.unlock_scr(policy2.sr_scr, policy2.sr_interest_rate, _W(0))
+        etk.unlock_scr(policy2.id, policy2.sr_scr, policy2.sr_interest_rate, _W(0))
     assert etk.scr == _W(0)
     etk.total_supply().assert_equal(expected_balance)
 
@@ -321,7 +327,7 @@ def test_multiple_lps(tenv):
     )
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
     with etk.thru(pa):
-        etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
+        etk.lock_scr(1234, policy.sr_scr, policy.sr_interest_rate)
     assert etk.scr == _W(600)
     assert etk.funds_available == _W(400)
 
@@ -345,7 +351,7 @@ def test_multiple_lps(tenv):
     etk.balance_of("LP2").assert_equal(lp2_balance + _W("0.06"))
 
     with etk.thru(pa):
-        etk.unlock_scr(policy.sr_scr, policy.sr_interest_rate, _W(0))
+        etk.unlock_scr(policy.id, policy.sr_scr, policy.sr_interest_rate, _W(0))
     with etk.thru_policy_pool():
         etk.withdraw("LP2", None).assert_equal(lp2_balance + _W("0.06"))
 
@@ -366,14 +372,14 @@ def test_lock_scr_validation(tenv):
 
     with etk.thru(pa):
         with pytest.raises(RevertError, match="NotEnoughScrFunds"):
-            etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
+            etk.lock_scr(123, policy.sr_scr, policy.sr_interest_rate)
     with etk.thru_policy_pool():
         tenv.currency.transfer(tenv.currency.owner, etk, _W(200))
         etk.deposit("LP1", _W(200))
 
     with etk.thru(pa):
         with pytest.raises(RevertError, match="NotEnoughScrFunds"):
-            etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
+            etk.lock_scr(123, policy.sr_scr, policy.sr_interest_rate)
 
 
 def test_internal_loan(tenv):
@@ -400,7 +406,7 @@ def test_internal_loan(tenv):
     )
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
     with etk.thru(pa):
-        etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
+        etk.lock_scr(policy.id, policy.sr_scr, policy.sr_interest_rate)
     tenv.time_control.fast_forward(7 * DAY)
     etk.funds_available.assert_equal(_W(400) + _W(600 * 0.04 * 7 / 365))
 
@@ -499,14 +505,14 @@ def test_max_utilization_rate(tenv):
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
     with pytest.raises(RevertError, match="NotEnoughScrFunds"):
         with etk.thru(pa):
-            etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
+            etk.lock_scr(policy.id, policy.sr_scr, policy.sr_interest_rate)
 
     # Lock first policy
     policy = tenv.policy_factory(
         sr_scr=_W(150), sr_interest_rate=_W("0.0365"), expiration=tenv.time_control.now + WEEK
     )
     with etk.thru(pa):
-        etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
+        etk.lock_scr(policy.id, policy.sr_scr, policy.sr_interest_rate)
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
 
     etk.funds_available_to_lock.assert_equal(_W(950 - 150))
@@ -526,7 +532,7 @@ def test_max_utilization_rate(tenv):
         sr_scr=_W(800), sr_interest_rate=_W("0.0365"), expiration=tenv.time_control.now + WEEK
     )
     with etk.thru(pa):
-        etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
+        etk.lock_scr(policy.id, policy.sr_scr, policy.sr_interest_rate)
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
 
     etk.utilization_rate.assert_equal(_W("0.95"))
@@ -561,7 +567,7 @@ def test_unlock_scr(tenv):
     )
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
     with etk.thru(pa):
-        etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
+        etk.lock_scr(policy.id, policy.sr_scr, policy.sr_interest_rate)
     assert etk.scr == _W(600)
     assert etk.scr_interest_rate == _W("0.0365")
     etk.token_interest_rate.assert_equal(_W("0.0365") * _W(600 / 1000))
@@ -573,7 +579,7 @@ def test_unlock_scr(tenv):
     etk.balance_of("LP1").assert_equal(_W(1000) + _W("0.06") * _W(5))
 
     with etk.thru(pa):
-        etk.unlock_scr(policy.sr_scr, policy.sr_interest_rate, _W(0))
+        etk.unlock_scr(policy.id, policy.sr_scr, policy.sr_interest_rate, _W(0))
 
 
 def test_unlock_scr_with_adjustment(tenv):
@@ -589,7 +595,7 @@ def test_unlock_scr_with_adjustment(tenv):
     )
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
     with etk.thru(pa):
-        etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
+        etk.lock_scr(policy.id, policy.sr_scr, policy.sr_interest_rate)
     assert etk.scr == _W(600)
     assert etk.scr_interest_rate == _W("0.0365")
     etk.token_interest_rate.assert_equal(_W("0.0365") * _W(600 / 1000))
@@ -601,7 +607,7 @@ def test_unlock_scr_with_adjustment(tenv):
     etk.balance_of("LP1").assert_equal(_W(1000) + _W("0.06") * _W(5))
 
     with etk.thru(pa):
-        etk.unlock_scr(policy.sr_scr, policy.sr_interest_rate, policy.sr_coc - _W("0.06") * _W(5))
+        etk.unlock_scr(policy.id, policy.sr_scr, policy.sr_interest_rate, policy.sr_coc - _W("0.06") * _W(5))
 
 
 def test_unlock_scr_with_neg_adjustment(tenv):
@@ -617,7 +623,7 @@ def test_unlock_scr_with_neg_adjustment(tenv):
     )
     tenv.currency.transfer(tenv.currency.owner, etk, policy.sr_coc)
     with etk.thru(pa):
-        etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)
+        etk.lock_scr(policy.id, policy.sr_scr, policy.sr_interest_rate)
     assert etk.scr == _W(600)
     assert etk.scr_interest_rate == _W("0.0365")
     etk.token_interest_rate.assert_equal(_W("0.0365") * _W(600 / 1000))
@@ -629,7 +635,7 @@ def test_unlock_scr_with_neg_adjustment(tenv):
     etk.balance_of("LP1").assert_equal(_W(1000) + _W("0.06") * _W(10))
 
     with etk.thru(pa):
-        etk.unlock_scr(policy.sr_scr, policy.sr_interest_rate, policy.sr_coc - _W("0.06") * _W(10))
+        etk.unlock_scr(policy.id, policy.sr_scr, policy.sr_interest_rate, policy.sr_coc - _W("0.06") * _W(10))
 
 
 def test_mint_to_zero_address(tenv):

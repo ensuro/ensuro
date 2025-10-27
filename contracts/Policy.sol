@@ -155,7 +155,7 @@ library Policy {
   }
 
   function jrInterestRate(PolicyData memory policy) internal pure returns (uint256) {
-    return ((policy.jrCoc * SECONDS_PER_YEAR) / (policy.expiration - policy.start)).mulDiv(WAD, policy.jrScr);
+    return ((policy.jrCoc * SECONDS_PER_YEAR) / duration(policy)).mulDiv(WAD, policy.jrScr);
   }
 
   function jrAccruedInterest(PolicyData memory policy) internal view returns (uint256) {
@@ -163,7 +163,7 @@ library Policy {
   }
 
   function srInterestRate(PolicyData memory policy) internal pure returns (uint256) {
-    return ((policy.srCoc * SECONDS_PER_YEAR) / (policy.expiration - policy.start)).mulDiv(WAD, policy.srScr);
+    return ((policy.srCoc * SECONDS_PER_YEAR) / duration(policy)).mulDiv(WAD, policy.srScr);
   }
 
   function srAccruedInterest(PolicyData memory policy) internal view returns (uint256) {
