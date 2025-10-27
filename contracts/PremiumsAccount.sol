@@ -2,7 +2,6 @@
 pragma solidity ^0.8.28;
 
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {SignedMath} from "@openzeppelin/contracts/utils/math/SignedMath.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -468,14 +467,22 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
 
   function policyCreated(Policy.PolicyData calldata policy) external override onlyPolicyPool {
     _activePurePremiums += policy.purePremium;
-    if (policy.jrScr > 0) _juniorEtk.lockScr(policy.jrScr, policy.jrInterestRate());
-    if (policy.srScr > 0) _seniorEtk.lockScr(policy.srScr, policy.srInterestRate());
+    if (policy.jrScr > 0) _juniorEtk.lockScr(policy.id, policy.jrScr, policy.jrInterestRate());
+    if (policy.srScr > 0) _seniorEtk.lockScr(policy.id, policy.srScr, policy.srInterestRate());
   }
 
   function policyReplaced(
     Policy.PolicyData calldata oldPolicy,
     Policy.PolicyData calldata newPolicy
   ) external override onlyPolicyPool {
+    /**
+     * Assumptions:
+     * 1. newPolicy.purePremium >= oldPolicy.purePremium (validated by PolicyPool)
+     * 2. jrCoc != 0 ==> jrScr != 0 ^ srCoc != 0 ==> srScr != 0 (guaranteed by Policy.sol)
+     * 3. newPolicy.jrCoc >= oldPolicy.jrCoc (validated by PolicyPool)
+     * 4. newPolicy.srCoc >= oldPolicy.srCoc (validated by PolicyPool)
+     * 5. Then sr/jrInterestRate() never fails
+     */
     _activePurePremiums += newPolicy.purePremium - oldPolicy.purePremium;
 
     /**
@@ -487,18 +494,20 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
      */
     if (oldPolicy.jrScr != 0)
       _juniorEtk.unlockScr(
+        oldPolicy.id,
         oldPolicy.jrScr,
         oldPolicy.jrInterestRate(),
         int256(newPolicy.jrAccruedInterest()) - int256(oldPolicy.jrAccruedInterest())
       );
-    if (newPolicy.jrScr > 0) _juniorEtk.lockScr(newPolicy.jrScr, newPolicy.jrInterestRate());
+    if (newPolicy.jrScr > 0) _juniorEtk.lockScr(newPolicy.id, newPolicy.jrScr, newPolicy.jrInterestRate());
     if (oldPolicy.srScr != 0)
       _seniorEtk.unlockScr(
+        oldPolicy.id,
         oldPolicy.srScr,
         oldPolicy.srInterestRate(),
         int256(newPolicy.srAccruedInterest()) - int256(oldPolicy.srAccruedInterest())
       );
-    if (newPolicy.srScr > 0) _seniorEtk.lockScr(newPolicy.srScr, newPolicy.srInterestRate());
+    if (newPolicy.srScr > 0) _seniorEtk.lockScr(newPolicy.id, newPolicy.srScr, newPolicy.srInterestRate());
   }
 
   function policyResolvedWithPayout(
@@ -525,6 +534,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   function _unlockScr(Policy.PolicyData memory policy) internal {
     if (policy.jrScr > 0) {
       _juniorEtk.unlockScr(
+        policy.id,
         policy.jrScr,
         policy.jrInterestRate(),
         int256(policy.jrCoc) - int256(policy.jrAccruedInterest())
@@ -532,6 +542,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     }
     if (policy.srScr > 0) {
       _seniorEtk.unlockScr(
+        policy.id,
         policy.srScr,
         policy.srInterestRate(),
         int256(policy.srCoc) - int256(policy.srAccruedInterest())
