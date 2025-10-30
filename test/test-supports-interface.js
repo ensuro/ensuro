@@ -51,7 +51,7 @@ describe("Supports interface implementation", function () {
       IAccessControl: "0x7965db0b",
       // IEToken: "0x90770621", - Up to v2.9 - changed on `permit-operate-on-behalf` branch
       // IEToken: "0x29a2308a", - Up to v2.9 - Before `flexible-replacements` branch
-      IEToken: "0xf60da92b",
+      IEToken: "0xe070ef69",
       // IPolicyPool: "0x3234fad6", - Up to v2.7
       // IPolicyPool: "0x0ce33b78", - Up to v2.9
       // IPolicyPool: "0x7d73446f", - Before `refactoring-rms` branch that changed Policy struct

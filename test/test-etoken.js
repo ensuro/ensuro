@@ -105,14 +105,19 @@ describe("Etoken", () => {
       .to.emit(etk, "InternalLoan")
       .withArgs(fakePA, _A(100), _A(100));
 
+    expect(await etk.getLoan(fakePA)).to.equal(_A(100));
+
     // repayLoan exceeding current debt, fails with panic - Same when there's debt
     await expect(etk.repayLoan(_A(110), fakePA)).to.be.revertedWithPanic(0x11);
 
     await currency.connect(lp).approve(etk, _A(101));
+    await expect(etk.connect(lp).repayLoan(_A(100) + 1n, fakePA)).to.revertedWithPanic(0x11);
+
     await expect(etk.connect(lp).repayLoan(_A(100), fakePA))
       .to.emit(etk, "InternalLoanRepaid")
       .withArgs(fakePA, _A(100));
     expect(await currency.allowance(lp, etk)).to.equal(_A(1));
+    expect(await etk.getLoan(fakePA)).to.equal(_A(0));
   });
 
   it("Validates the parameter changes", async () => {

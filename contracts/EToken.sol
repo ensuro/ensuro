@@ -12,6 +12,7 @@ import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {ILPWhitelist} from "./interfaces/ILPWhitelist.sol";
+import {ICooler} from "./interfaces/ICooler.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
 import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
 import {ETKLib} from "./ETKLib.sol";
@@ -60,6 +61,7 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
   PackedParams internal _params;
 
   IERC4626 internal _yieldVault;
+  ICooler internal _cooler;
 
   error OnlyBorrower(address caller); // The caller must be a borrower
   error InvalidParameter(Parameter parameter);
@@ -72,6 +74,7 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
   error BorrowerAlreadyAdded(address borrower);
   error InvalidWhitelist(ILPWhitelist whitelist);
   error ExceedsMaxWithdraw(uint256 requested, uint256 maxWithdraw);
+  error WithdrawalsRequireCooldown(ICooler cooler);
 
   event InternalLoan(address indexed borrower, uint256 value, uint256 amountAsked);
   event InternalLoanRepaid(address indexed borrower, uint256 value);
@@ -79,6 +82,7 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
   event InternalBorrowerRemoved(address indexed borrower, uint256 defaultedDebt);
   event ParameterChanged(Parameter param, uint256 newValue);
   event WhitelistChanged(ILPWhitelist oldWhitelist, ILPWhitelist newWhitelist);
+  event ETokensRedistributed(address indexed owner, uint256 distributedProfit);
 
   modifier onlyBorrower() {
     require(_loans[_msgSender()].lastUpdate != 0, OnlyBorrower(_msgSender()));
@@ -183,7 +187,7 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
         address(_params.whitelist) == address(0) || _params.whitelist.acceptsTransfer(this, from, to, value),
         TransferNotWhitelisted(from, to, value)
       );
-      valueScaled = _tsScaled.projectScale(_scr).toScaled(value);
+      valueScaled = _tsScaled.projectScale(_scr).toScaledCeil(value);
     }
 
     ERC20Storage storage $ = _getERC20StorageFromEToken();
@@ -242,7 +246,7 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
 
   /** END Methods following AAVE's IScaledBalanceToken */
 
-  function getCurrentScale(bool updated) public view returns (uint256) {
+  function getCurrentScale(bool updated) public view override returns (uint256) {
     if (updated) return _tsScaled.projectScale(_scr).toUint256();
     else return _tsScaled.scale.toUint256();
   }
@@ -252,7 +256,18 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
   }
 
   function fundsAvailableToLock() public view returns (uint256) {
-    return _scr.fundsAvailable(totalSupply().mulDiv(maxUtilizationRate(), WAD));
+    uint256 ts = totalSupply();
+    if (address(_cooler) != address(0)) {
+      uint256 pendingWithdraw = _cooler.pendingWithdrawals(this);
+      if (pendingWithdraw >= ts) {
+        ts = 0;
+      } else {
+        ts = Math.min(ts - pendingWithdraw, ts.mulDiv(maxUtilizationRate(), WAD));
+      }
+    } else {
+      ts = ts.mulDiv(maxUtilizationRate(), WAD);
+    }
+    return _scr.fundsAvailable(ts);
   }
 
   function yieldVault() public view override returns (IERC4626) {
@@ -368,6 +383,10 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
     uint256 maxWithdraw = Math.min(balanceOf(owner), totalWithdrawable());
     if (amount == type(uint256).max) amount = maxWithdraw;
     if (amount == 0) return 0;
+    require(
+      address(_cooler) == address(0) || address(_cooler) == caller || _cooler.cooldownPeriod(this, owner, amount) == 0,
+      WithdrawalsRequireCooldown(_cooler)
+    );
     require(amount <= maxWithdraw, ExceedsMaxWithdraw(amount, maxWithdraw));
     /**
      * For the whitelist validation, I use the owner address. If the caller != owner, then I assume that if the
@@ -383,6 +402,12 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
     _burn(owner, amount);
     _transferTo(receiver, amount);
     return amount;
+  }
+
+  function redistribute(uint256 amount) external override {
+    _burn(_msgSender(), amount);
+    _discreteChange(amount.toInt256());
+    emit ETokensRedistributed(_msgSender(), amount);
   }
 
   function addBorrower(address borrower) external override onlyPolicyPool {
@@ -433,7 +458,7 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
   function getLoan(address borrower) public view virtual override returns (uint256) {
     ETKLib.ScaledAmount storage loan = _loans[borrower];
     require(loan.lastUpdate != 0, InvalidBorrower(borrower));
-    return loan.projectScale(internalLoanInterestRate()).toCurrent(uint256(loan.amount));
+    return loan.projectScale(internalLoanInterestRate()).toCurrentCeil(uint256(loan.amount));
   }
 
   function internalLoanInterestRate() public view returns (uint256) {
@@ -485,10 +510,14 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
     return _params.whitelist;
   }
 
+  function cooler() external view override returns (address) {
+    return address(_cooler);
+  }
+
   /**
    * @dev This empty reserved space is put in place to allow future versions to add new
    * variables without shifting down storage in the inheritance chain.
    * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
    */
-  uint256[45] private __gap;
+  uint256[44] private __gap;
 }
