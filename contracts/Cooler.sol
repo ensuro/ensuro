@@ -158,10 +158,7 @@ contract Cooler is ICooler, PolicyPoolComponent, ERC721Upgradeable {
     require(request.requestedAt != 0, InvalidWithdrawalRequest(tokenId));
 
     address receiver = ownerOf(tokenId);
-    uint256 amountAtExecution = uint256(request.requestedAmount).mulDiv(
-      request.etk.getCurrentScale(true), // scaleAtExecution
-      ETKLib.Scale.unwrap(request.scaleAtRequest)
-    );
+    uint256 amountAtExecution = _computeCurrentValue(request);
     uint256 amountWithdraw = Math.min(amountAtExecution, request.requestedAmount);
 
     // Clean my storage before calling other contracts
@@ -175,5 +172,19 @@ contract Cooler is ICooler, PolicyPoolComponent, ERC721Upgradeable {
       request.etk.redistribute(amountAtExecution - amountWithdraw);
     }
     emit WithdrawalExecuted(request.etk, tokenId, receiver, request.requestedAmount, amountWithdraw);
+  }
+
+  function _computeCurrentValue(WithdrawalRequest storage request) internal view returns (uint256) {
+    return
+      uint256(request.requestedAmount).mulDiv(
+        request.etk.getCurrentScale(true), // scaleAtExecution
+        ETKLib.Scale.unwrap(request.scaleAtRequest)
+      );
+  }
+
+  function getCurrentValue(uint256 tokenId) external view returns (uint256) {
+    WithdrawalRequest storage request = _withdrawalRequests[tokenId];
+    require(request.requestedAt != 0, InvalidWithdrawalRequest(tokenId));
+    return Math.min(_computeCurrentValue(request), request.requestedAmount);
   }
 }
