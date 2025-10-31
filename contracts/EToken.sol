@@ -73,6 +73,7 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
   error InvalidBorrower(address borrower);
   error BorrowerAlreadyAdded(address borrower);
   error InvalidWhitelist(ILPWhitelist whitelist);
+  error InvalidCooler(ICooler cooler);
   error ExceedsMaxWithdraw(uint256 requested, uint256 maxWithdraw);
   error WithdrawalsRequireCooldown(ICooler cooler);
 
@@ -82,6 +83,7 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
   event InternalBorrowerRemoved(address indexed borrower, uint256 defaultedDebt);
   event ParameterChanged(Parameter param, uint256 newValue);
   event WhitelistChanged(ILPWhitelist oldWhitelist, ILPWhitelist newWhitelist);
+  event CoolerChanged(ICooler oldCooler, ICooler newCooler);
   event ETokensRedistributed(address indexed owner, uint256 distributedProfit);
 
   modifier onlyBorrower() {
@@ -508,6 +510,15 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
 
   function whitelist() external view returns (ILPWhitelist) {
     return _params.whitelist;
+  }
+
+  function setCooler(ICooler newCooler) external {
+    require(
+      address(newCooler) == address(0) || IPolicyPoolComponent(address(newCooler)).policyPool() == _policyPool,
+      InvalidCooler(newCooler)
+    );
+    emit CoolerChanged(_cooler, newCooler);
+    _cooler = newCooler;
   }
 
   function cooler() external view override returns (address) {

@@ -36,6 +36,7 @@ describe("Supports interface implementation", function () {
       "IPremiumsAccount",
       "ILPWhitelist",
       "IPolicyHolder",
+      "ICooler",
     ];
     const iinterfaceIds = {};
     for (const iName of iinterfaces) {
@@ -66,6 +67,7 @@ describe("Supports interface implementation", function () {
       IPremiumsAccount: "0x19fb2a71",
       ILPWhitelist: "0xf8722d89",
       IPolicyHolder: "0x3ece0a89",
+      ICooler: "0xaf14a2ed",
     };
 
     const _A = amountFunction(6);
@@ -146,5 +148,16 @@ describe("Supports interface implementation", function () {
     expect(await wh.supportsInterface(interfaceIds.ILPWhitelist)).to.be.true;
     expect(await wh.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.false;
     expect(await wh.supportsInterface(invalidInterfaceId)).to.be.false;
+  });
+
+  it("Checks Cooler supported interfaces", async () => {
+    const { policyPool, interfaceIds } = await helpers.loadFixture(setupFixtureWithPool);
+    const Cooler = await hre.ethers.getContractFactory("Cooler");
+    const cooler = await Cooler.deploy(policyPool);
+    expect(await cooler.supportsInterface(interfaceIds.IERC165)).to.be.true;
+    expect(await cooler.supportsInterface(interfaceIds.ICooler)).to.be.true;
+    expect(await cooler.supportsInterface(interfaceIds.IERC721)).to.be.true;
+    expect(await cooler.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.false;
+    expect(await cooler.supportsInterface(invalidInterfaceId)).to.be.false;
   });
 });

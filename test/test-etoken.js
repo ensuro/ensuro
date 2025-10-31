@@ -5,7 +5,7 @@ const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { amountFunction, captureAny, newCaptureAny, _W, makeEIP2612Signature } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { DAY } = require("@ensuro/utils/js/constants");
-const { deployPool, addEToken, deployWhitelist } = require("../js/test-utils");
+const { deployPool, addEToken, deployWhitelist, deployCooler } = require("../js/test-utils");
 const { makeWhitelistStatus } = require("../js/utils");
 const { ETokenParameter } = require("../js/enums");
 
@@ -176,6 +176,32 @@ describe("Etoken", () => {
     await expect(etk.setWhitelist(otherWL)).to.be.revertedWithCustomError(etk, "InvalidWhitelist").withArgs(otherWL);
     await expect(etk.setWhitelist(ZeroAddress)).not.to.be.reverted;
     await expect(etk.setWhitelist(wl)).not.to.be.reverted;
+  });
+
+  it("Can change the cooler and emits event", async () => {
+    const { etk, pool } = await helpers.loadFixture(etokenFixture);
+
+    await expect(etk.setCooler(ZeroAddress)).to.emit(etk, "CoolerChanged").withArgs(ZeroAddress, ZeroAddress);
+
+    const cooler = await deployCooler(pool, {});
+
+    await expect(etk.setCooler(cooler)).to.emit(etk, "CoolerChanged").withArgs(ZeroAddress, cooler);
+    expect(await etk.cooler()).to.equal(cooler);
+
+    await expect(etk.setCooler(ZeroAddress)).to.emit(etk, "CoolerChanged").withArgs(cooler, ZeroAddress);
+    expect(await etk.cooler()).to.equal(ZeroAddress);
+  });
+
+  it("Checks the cooler belongs to the same pool", async () => {
+    const { etk, pool, currency } = await helpers.loadFixture(etokenFixture);
+    const otherPool = await deployPool({
+      currency: currency,
+      treasuryAddress: "0x87c47c9a5a2aa74ae714857d64911d9a091c25b1", // Random address
+    });
+    const otherCooler = await deployWhitelist(otherPool, {});
+    await expect(etk.setCooler(otherCooler)).to.be.revertedWithCustomError(etk, "InvalidCooler").withArgs(otherCooler);
+    const cooler = await deployCooler(pool, {});
+    await expect(etk.setCooler(cooler)).not.to.be.reverted;
   });
 
   it("Only allows PolicyPool to call deposit", async () => {

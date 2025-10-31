@@ -60,6 +60,7 @@ contract Cooler is ICooler, PolicyPoolComponent, ERC721Upgradeable {
   error WithdrawalRequestEarlierThanMin(uint40 minRequestTime, uint40 timeRequested);
   error InvalidEToken(IEToken eToken);
   error InvalidWithdrawalRequest(uint256 tokenId);
+  error WithdrawalNotReady(uint256 tokenId, uint40 expiration);
   error CannotDoZeroWithdrawals();
 
   /// @custom:oz-upgrades-unsafe-allow constructor
@@ -69,13 +70,14 @@ contract Cooler is ICooler, PolicyPoolComponent, ERC721Upgradeable {
   /**
    * @dev Initializes the Whitelist contract
    */
-  function initialize() public virtual initializer {
-    __Cooler_init();
+  function initialize(string memory name_, string memory symbol_) public virtual initializer {
+    __Cooler_init(name_, symbol_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
-  function __Cooler_init() internal onlyInitializing {
+  function __Cooler_init(string memory name_, string memory symbol_) internal onlyInitializing {
     __PolicyPoolComponent_init();
+    __ERC721_init(name_, symbol_);
   }
 
   /// @inheritdoc IERC165
@@ -156,6 +158,7 @@ contract Cooler is ICooler, PolicyPoolComponent, ERC721Upgradeable {
   function executeWithdrawal(uint256 tokenId) external {
     WithdrawalRequest storage request = _withdrawalRequests[tokenId];
     require(request.requestedAt != 0, InvalidWithdrawalRequest(tokenId));
+    require(block.timestamp >= request.expiration, WithdrawalNotReady(tokenId, request.expiration));
 
     address receiver = ownerOf(tokenId);
     uint256 amountAtExecution = _computeCurrentValue(request);
@@ -184,7 +187,7 @@ contract Cooler is ICooler, PolicyPoolComponent, ERC721Upgradeable {
 
   function getCurrentValue(uint256 tokenId) external view returns (uint256) {
     WithdrawalRequest storage request = _withdrawalRequests[tokenId];
-    require(request.requestedAt != 0, InvalidWithdrawalRequest(tokenId));
+    if (request.requestedAt == 0) return 0;
     return Math.min(_computeCurrentValue(request), request.requestedAmount);
   }
 }
