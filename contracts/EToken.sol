@@ -306,19 +306,24 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
     return _scr.scrAmount().mulDiv(WAD, this.totalSupply());
   }
 
-  function lockScr(uint256 scrAmount, uint256 policyInterestRate) external override onlyBorrower {
+  function lockScr(uint256 policyId, uint256 scrAmount, uint256 policyInterestRate) external override onlyBorrower {
     if (scrAmount > fundsAvailableToLock()) revert NotEnoughScrFunds(scrAmount, fundsAvailableToLock());
     _tsScaled = _tsScaled.discreteChange(0, _scr); // Accrues interests so far, to update the scale before SCR changes
     _scr = _scr.add(scrAmount, policyInterestRate);
-    emit SCRLocked(policyInterestRate, scrAmount);
+    emit SCRLocked(policyId, policyInterestRate, scrAmount);
   }
 
-  function unlockScr(uint256 scrAmount, uint256 policyInterestRate, int256 adjustment) external override onlyBorrower {
+  function unlockScr(
+    uint256 policyId,
+    uint256 scrAmount,
+    uint256 policyInterestRate,
+    int256 adjustment
+  ) external override onlyBorrower {
     // Require removed, since it shouldn't happen and if happens it will fail in _scr.sub
     // require(scrAmount <= uint256(_scr.scr), "Current SCR less than the amount you want to unlock");
     _tsScaled = _tsScaled.discreteChange(adjustment, _scr);
     _scr = _scr.sub(scrAmount, policyInterestRate);
-    emit SCRUnlocked(policyInterestRate, scrAmount);
+    emit SCRUnlocked(policyId, policyInterestRate, scrAmount, adjustment);
   }
 
   function _yieldEarnings(int256 earnings) internal override {

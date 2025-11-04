@@ -1,5 +1,12 @@
 const { expect } = require("chai");
-const { amountFunction, _W, getTransactionEvent, makeEIP2612Signature } = require("@ensuro/utils/js/utils");
+const {
+  amountFunction,
+  _W,
+  getTransactionEvent,
+  makeEIP2612Signature,
+  newCaptureAny,
+} = require("@ensuro/utils/js/utils");
+const { HOUR } = require("@ensuro/utils/js/constants");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { addEToken, createEToken, deployPool, deployPremiumsAccount } = require("../js/test-utils");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
@@ -11,18 +18,30 @@ const { ZeroAddress, ZeroHash } = ethers;
 const _A = amountFunction(6);
 const TREASURY = "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199"; // Random address
 
-async function createNewPolicy(rm, cust, pool, payout, premium, lossProb, expiration, payer, holder, internalId) {
+async function createNewPolicy(
+  rm,
+  cust,
+  pool,
+  payout,
+  purePremium,
+  lossProb,
+  expiration,
+  payer,
+  holder,
+  internalId,
+  overrides = {}
+) {
   const policyData = [
     0, // id - ignored
     payout,
-    _A(0), // jrScr
-    _A(0), // srScr
+    overrides.jrScr || _A(0), // jrScr
+    overrides.srScr || _A(0), // srScr
     lossProb,
-    premium,
-    _A(0), // ensuroCommission
-    _A(0), // partnerCommission
-    _A(0), // jrCoc
-    _A(0), // srCoc
+    purePremium,
+    overrides.ensuroCommission || _A(0), // ensuroCommission
+    overrides.partnerCommission || _A(0), // partnerCommission
+    overrides.jrCoc || _A(0), // jrCoc
+    overrides.srCoc || _A(0), // srCoc
     await helpers.time.latest(),
     expiration,
   ];
@@ -64,11 +83,14 @@ async function deployRiskModuleFixture() {
   const ret = await helpers.loadFixture(deployPoolFixture);
   const { pool, currency, lp } = ret;
   // Setup the liquidity sources
-  const etk = await addEToken(pool, {});
-  const premiumsAccount = await deployPremiumsAccount(pool, { srEtk: etk });
+  const jrEtk = await addEToken(pool, {});
+  const srEtk = await addEToken(pool, {});
+  const premiumsAccount = await deployPremiumsAccount(pool, { srEtk, jrEtk });
 
   await currency.connect(lp).approve(pool, _A(5000));
-  await pool.connect(lp).deposit(etk, _A(5000), lp);
+  await pool.connect(lp).deposit(srEtk, _A(4000), lp);
+
+  await pool.connect(lp).deposit(jrEtk, _A(1000), lp);
 
   // Setup the risk module
   const RiskModuleMock = await hre.ethers.getContractFactory("RiskModuleMock");
@@ -77,7 +99,7 @@ async function deployRiskModuleFixture() {
   const rm = PolicyPool.attach(rmMock);
   await pool.addComponent(rm, ComponentKind.riskModule);
 
-  return { etk, premiumsAccount, rm, ...ret };
+  return { jrEtk, srEtk, premiumsAccount, rm, ...ret };
 }
 
 async function deployRmWithPolicyFixture() {
@@ -102,7 +124,7 @@ async function deployRmWithPolicyFixture() {
     _A(0), // jrCoc
     _A(0), // srCoc
     0, // start
-    now + 3600 * 5, // expiration
+    now + HOUR * 5, // expiration
   ];
 
   const tx = await rm.newPolicy(policyData, cust, cust, 123);
@@ -263,7 +285,7 @@ describe("PolicyPool contract", function () {
       _W(0), // jrCoc
       _W(0), // srCoc
       now, // start
-      now + 3600 * 5, // expiration
+      now + HOUR * 5, // expiration
     ];
 
     await expect(pool.newPolicy(policyData, cust, backend, 11))
@@ -372,7 +394,7 @@ describe("PolicyPool contract", function () {
       _W(0), // jrCoc
       _W(0), // srCoc
       now, // start
-      now + 3600 * 5, // expiration
+      now + HOUR * 5, // expiration
     ];
 
     await expect(rm.newPolicy(policyData, cust, backend, 123))
@@ -469,13 +491,52 @@ describe("PolicyPool contract", function () {
       .withArgs(policy.id);
   });
 
-  it("Must revert if new policy values must be greater or equal than old policy", async () => {
+  it("Does not allow to replace with expired policy", async () => {
+    const { policy, rm, pool, backend } = await helpers.loadFixture(deployRmWithPolicyFixture);
+    await helpers.time.increaseTo(policy.expiration - BigInt(HOUR));
+    const newPolicy = [...policy];
+    newPolicy[11] = policy.expiration - BigInt(2 * HOUR); // change expiration
+    await expect(rm.replacePolicy([...policy], [...newPolicy], backend, 1234))
+      .to.be.revertedWithCustomError(pool, "PolicyAlreadyExpired")
+      .withArgs(policy.id);
+  });
+
+  it("Must revert if new policy premiums components are lower than old policy", async () => {
     const { rm, pool, backend, cust } = await helpers.loadFixture(deployRmWithPolicyFixture);
 
     const now = await helpers.time.latest();
-    const p1 = await createNewPolicy(rm, backend, pool, _A(1000), _A(10), _W(0), now + 3600 * 5, cust, cust, 222);
+    const p1 = await createNewPolicy(rm, backend, pool, _A(1000), _A(9), _W(0), now + HOUR * 5, cust, cust, 222, {
+      partnerCommission: _A("0.4"),
+      jrCoc: _A("0.3"),
+      srCoc: _A("0.2"),
+      ensuroCommission: _A("0.1"),
+    });
     let p2 = [...p1];
-    p2[1] -= _A(1); // change new policy payout
+    p2[7] -= _A("0.1"); // decrease partnerCommission
+    await expect(rm.replacePolicy([...p1], [...p2], backend, 1234))
+      .to.be.revertedWithCustomError(pool, "InvalidPolicyReplacement")
+      .withArgs(p1, p2);
+
+    p2 = [...p1];
+    p2[6] -= _A("0.1"); // decrease ensuroCommission
+    await expect(rm.replacePolicy([...p1], [...p2], backend, 1234))
+      .to.be.revertedWithCustomError(pool, "InvalidPolicyReplacement")
+      .withArgs(p1, p2);
+
+    p2 = [...p1];
+    p2[8] -= _A("0.1"); // decrease jrCoc
+    await expect(rm.replacePolicy([...p1], [...p2], backend, 1234))
+      .to.be.revertedWithCustomError(pool, "InvalidPolicyReplacement")
+      .withArgs(p1, p2);
+
+    p2 = [...p1];
+    p2[9] -= _A("0.1"); // decrease srCoc
+    await expect(rm.replacePolicy([...p1], [...p2], backend, 1234))
+      .to.be.revertedWithCustomError(pool, "InvalidPolicyReplacement")
+      .withArgs(p1, p2);
+
+    p2 = [...p1];
+    p2[5] -= _A("0.1"); // decrease purePremium
     await expect(rm.replacePolicy([...p1], [...p2], backend, 1234))
       .to.be.revertedWithCustomError(pool, "InvalidPolicyReplacement")
       .withArgs(p1, p2);
@@ -486,10 +547,161 @@ describe("PolicyPool contract", function () {
 
     await helpers.time.increaseTo(policy.start + 100n);
     const now = await helpers.time.latest();
-    const p = await createNewPolicy(rm, backend, pool, _A(1000), _A(10), _W(0), now + 3600 * 5, cust, cust, 1234);
+    const p = await createNewPolicy(rm, backend, pool, _A(1000), _A(10), _W(0), now + HOUR * 5, cust, cust, 1234);
     await expect(rm.replacePolicy([...policy], [...p], backend, 123))
       .to.be.revertedWithCustomError(pool, "InvalidPolicyReplacement")
       .withArgs(policy, p);
+  });
+
+  it("Should accept changes in the interest rate - Longer policy", async () => {
+    const { rm, pool, jrEtk, srEtk, backend, cust } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    const now = await helpers.time.latest();
+    const p1 = await createNewPolicy(rm, backend, pool, _A(1000), _A(9), _W(0), now + HOUR * 10, cust, cust, 222, {
+      partnerCommission: _A("0.4"),
+      jrScr: _A(100),
+      srScr: _A(500),
+      jrCoc: _A("0.3"),
+      srCoc: _A("0.2"),
+      ensuroCommission: _A("0.1"),
+    });
+    let p2 = [...p1];
+    p2[11] = now + HOUR * 20; // Double duration
+    await helpers.time.increaseTo(now + HOUR * 7);
+    const replacementIRJr = newCaptureAny();
+    const originalIRJr = newCaptureAny();
+    const adjustmentJr = newCaptureAny();
+    const replacementIRSr = newCaptureAny();
+    const originalIRSr = newCaptureAny();
+    const adjustmentSr = newCaptureAny();
+    const [oldPolicyId, newPolicyId] = [p1[0], p1[0] - 222n + 234n];
+    await expect(rm.replacePolicy([...p1], [...p2], backend, 234))
+      .to.emit(pool, "PolicyReplaced")
+      .withArgs(rm, oldPolicyId, newPolicyId)
+      .to.emit(jrEtk, "SCRLocked")
+      .withArgs(newPolicyId, replacementIRJr.uint, p1[2])
+      .to.emit(jrEtk, "SCRUnlocked")
+      .withArgs(oldPolicyId, originalIRJr.uint, p1[2], adjustmentJr.value)
+      .to.emit(srEtk, "SCRLocked")
+      .withArgs(newPolicyId, replacementIRSr.uint, p1[3])
+      .to.emit(srEtk, "SCRUnlocked")
+      .withArgs(oldPolicyId, originalIRSr.uint, p1[3], adjustmentSr.value);
+
+    // Interest rate halfs (because same CoC for double of the duration)
+    expect(replacementIRJr.lastUint).to.closeTo(originalIRJr.lastUint / 2n, originalIRJr.lastUint / 1000n);
+    // Adjustment happens at 7/10 duration, for an amount that is half of the accrued so far (because IR is 1/2)
+    expect(adjustmentJr.lastValue).to.closeTo((_A("0.3") * -7n) / 10n / 2n, 10n);
+    // Interest rate doubles (because same CoC for half of the duration)
+    expect(replacementIRSr.lastUint).to.closeTo(originalIRSr.lastUint / 2n, originalIRSr.lastUint / 1000n);
+    // Adjustment happens at 3/5 duration, for an amount that is half of the accrued so far (because IR is 2x)
+    expect(adjustmentSr.lastValue).to.closeTo((_A("0.2") * -7n) / 10n / 2n, 10n);
+  });
+
+  it("Should accept changes in the interest rate - Shorter policy", async () => {
+    const { rm, pool, jrEtk, srEtk, backend, cust } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    const now = await helpers.time.latest();
+    const p1 = await createNewPolicy(rm, backend, pool, _A(1000), _A(9), _W(0), now + HOUR * 10, cust, cust, 222, {
+      partnerCommission: _A("0.4"),
+      jrScr: _A(100),
+      srScr: _A(500),
+      jrCoc: _A("0.3"),
+      srCoc: _A("0.2"),
+      ensuroCommission: _A("0.1"),
+    });
+    let p2 = [...p1];
+    p2[11] = now + HOUR * 5; // Cut duration by half
+    await helpers.time.increaseTo(now + HOUR * 3);
+    const replacementIRJr = newCaptureAny();
+    const originalIRJr = newCaptureAny();
+    const adjustmentJr = newCaptureAny();
+    const replacementIRSr = newCaptureAny();
+    const originalIRSr = newCaptureAny();
+    const adjustmentSr = newCaptureAny();
+    const [oldPolicyId, newPolicyId] = [p1[0], p1[0] - 222n + 234n];
+    await expect(rm.replacePolicy([...p1], [...p2], backend, 234))
+      .to.emit(pool, "PolicyReplaced")
+      .withArgs(rm, oldPolicyId, newPolicyId)
+      .to.emit(jrEtk, "SCRLocked")
+      .withArgs(newPolicyId, replacementIRJr.uint, p1[2])
+      .to.emit(jrEtk, "SCRUnlocked")
+      .withArgs(oldPolicyId, originalIRJr.uint, p1[2], adjustmentJr.uint)
+      .to.emit(srEtk, "SCRLocked")
+      .withArgs(newPolicyId, replacementIRSr.uint, p1[3])
+      .to.emit(srEtk, "SCRUnlocked")
+      .withArgs(oldPolicyId, originalIRSr.uint, p1[3], adjustmentSr.uint);
+
+    // Interest rate doubles (because same CoC for half of the duration)
+    expect(replacementIRJr.lastUint).to.closeTo(originalIRJr.lastUint * 2n, originalIRJr.lastUint / 1000n);
+    // Adjustment happens at 3/5 duration, for an amount that is half of the accrued so far (because IR is 2x)
+    expect(adjustmentJr.lastUint).to.closeTo((_A("0.3") * 3n) / 5n / 2n, 10n);
+    // Interest rate doubles (because same CoC for half of the duration)
+    expect(replacementIRSr.lastUint).to.closeTo(originalIRSr.lastUint * 2n, originalIRSr.lastUint / 1000n);
+    // Adjustment happens at 3/5 duration, for an amount that is half of the accrued so far (because IR is 2x)
+    expect(adjustmentSr.lastUint).to.closeTo((_A("0.2") * 3n) / 5n / 2n, 10n);
+  });
+
+  it("Should accept changes in the payout and locked capital", async () => {
+    const { rm, pool, jrEtk, srEtk, backend, cust, currency } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    const now = await helpers.time.latest();
+    const p1 = await createNewPolicy(rm, backend, pool, _A(1000), _A(9), _W(0), now + HOUR * 10, cust, cust, 222, {
+      partnerCommission: _A("0.4"),
+      jrScr: _A(100),
+      srScr: _A(500),
+      jrCoc: _A("0.3"),
+      srCoc: _A("0.2"),
+      ensuroCommission: _A("0.1"),
+    });
+    let p2 = [...p1];
+    p2[1] = _A(2000); // payout 2x
+    p2[2] = _A(50); // jrScr 1/2x
+    p2[3] = _A(1000); // srScr 2x
+    p2[9] = _A("0.6"); // srCoc 3x
+
+    await helpers.time.increaseTo(now + HOUR * 3);
+
+    // Check exposure is increased
+    await expect(rm.replacePolicy([...p1], [...p2], backend, 234))
+      .to.be.revertedWithCustomError(pool, "ExposureLimitExceeded")
+      .withArgs(_A(3000), _A(2000));
+
+    await pool.setExposureLimit(rm, _A(3000));
+
+    // Increase in srCoc requires new allowance
+    await expect(rm.replacePolicy([...p1], [...p2], backend, 234))
+      .to.be.revertedWithCustomError(currency, "ERC20InsufficientAllowance")
+      .withArgs(pool, _A(0), _A("0.4"));
+
+    await currency.connect(backend).approve(pool, _A("0.4"));
+
+    const replacementIRJr = newCaptureAny();
+    const originalIRJr = newCaptureAny();
+    const adjustmentJr = newCaptureAny();
+    const replacementIRSr = newCaptureAny();
+    const originalIRSr = newCaptureAny();
+    const adjustmentSr = newCaptureAny();
+    const [oldPolicyId, newPolicyId] = [p1[0], p1[0] - 222n + 234n];
+    await expect(rm.replacePolicy([...p1], [...p2], backend, 234))
+      .to.emit(pool, "PolicyReplaced")
+      .withArgs(rm, oldPolicyId, newPolicyId)
+      .to.emit(jrEtk, "SCRLocked")
+      .withArgs(newPolicyId, replacementIRJr.uint, _A(50))
+      .to.emit(jrEtk, "SCRUnlocked")
+      .withArgs(oldPolicyId, originalIRJr.uint, _A(100), adjustmentJr.uint)
+      .to.emit(srEtk, "SCRLocked")
+      .withArgs(newPolicyId, replacementIRSr.uint, _A(1000))
+      .to.emit(srEtk, "SCRUnlocked")
+      .withArgs(oldPolicyId, originalIRSr.uint, _A(500), adjustmentSr.uint);
+
+    // Interest rate doubles (because same CoC for half of the SCR)
+    expect(replacementIRJr.lastUint).to.closeTo(originalIRJr.lastUint * 2n, originalIRJr.lastUint / 1000n);
+    // Adjustment is zero because even when IR doubles, SCR cuts by half, then accrued interest remains the same
+    expect(adjustmentJr.lastUint).to.closeTo(0n, 10n);
+    // Interest rate increases 50% (2x SCR vs 3x CoC)
+    expect(replacementIRSr.lastUint).to.closeTo((originalIRSr.lastUint * 3n) / 2n, originalIRSr.lastUint / 1000n);
+    // Adjustment is the difference of accrued interest with 0.6 CoC vs 0.2 CoC.
+    expect(adjustmentSr.lastUint).to.closeTo((_A("0.6") * 3n) / 10n - (_A("0.2") * 3n) / 10n, 100n);
   });
 
   it("Only PolicyPool can call PA policyReplaced", async () => {

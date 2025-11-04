@@ -491,7 +491,7 @@ class EToken(ReserveMixin, ERC20Token):
         return max(self.total_supply() * self.max_utilization_rate - self.scr, _W(0))
 
     @external
-    def lock_scr(self, scr_amount, interest_rate):
+    def lock_scr(self, policy_id, scr_amount, interest_rate):
         self._update_current_scale()
         require(
             scr_amount <= self.funds_available_to_lock,
@@ -511,7 +511,7 @@ class EToken(ReserveMixin, ERC20Token):
         self._check_balance()
 
     @external
-    def unlock_scr(self, scr_amount, interest_rate, adjustment):
+    def unlock_scr(self, policy_id, scr_amount, interest_rate, adjustment):
         # Pre condition: the pool needs to transfer the amount of the interests
         require(scr_amount <= self.scr, "Want to unlock more SCR than locked")
         self._update_current_scale()
@@ -846,9 +846,11 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
     def policy_created(self, policy):
         self.active_pure_premiums += policy.pure_premium
         if policy.sr_scr:
-            self.senior_etk.lock_scr(policy.sr_scr, policy.sr_interest_rate)  # TODO take roc from RM
+            self.senior_etk.lock_scr(
+                policy.id, policy.sr_scr, policy.sr_interest_rate
+            )  # TODO take roc from RM
         if policy.jr_scr:
-            self.junior_etk.lock_scr(policy.jr_scr, policy.jr_interest_rate)
+            self.junior_etk.lock_scr(policy.id, policy.jr_scr, policy.jr_interest_rate)
 
     @external
     def policy_replaced(self, old_policy, new_policy):
@@ -867,13 +869,13 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
         # If new IR < old IR, then we must adjust negativelly to substract the interests accrued in excess
         self.active_pure_premiums += new_policy.pure_premium - old_policy.pure_premium
         if old_policy.sr_scr > 0:
-            self.senior_etk.unlock_scr(old_policy.sr_scr, old_policy.sr_interest_rate, Wad(0))
+            self.senior_etk.unlock_scr(old_policy.id, old_policy.sr_scr, old_policy.sr_interest_rate, Wad(0))
         if new_policy.sr_scr > 0:
-            self.senior_etk.lock_scr(new_policy.sr_scr, new_policy.sr_interest_rate)
+            self.senior_etk.lock_scr(new_policy.id, new_policy.sr_scr, new_policy.sr_interest_rate)
         if old_policy.jr_scr > 0:
-            self.junior_etk.unlock_scr(old_policy.jr_scr, old_policy.jr_interest_rate, Wad(0))
+            self.junior_etk.unlock_scr(old_policy.id, old_policy.jr_scr, old_policy.jr_interest_rate, Wad(0))
         if new_policy.jr_scr > 0:
-            self.junior_etk.lock_scr(new_policy.jr_scr, new_policy.jr_interest_rate)
+            self.junior_etk.lock_scr(new_policy.id, new_policy.jr_scr, new_policy.jr_interest_rate)
 
     @external
     def policy_resolved_with_payout(self, customer, policy, payout):
@@ -915,11 +917,11 @@ class PremiumsAccount(ReserveMixin, AccessControlContract):
         # Unlock SCR and adjust eToken
         if policy.sr_scr:
             adjustment = policy.sr_coc - policy.sr_accrued_interest()
-            self.senior_etk.unlock_scr(policy.sr_scr, policy.sr_interest_rate, adjustment)
+            self.senior_etk.unlock_scr(policy.id, policy.sr_scr, policy.sr_interest_rate, adjustment)
 
         if policy.jr_scr:
             adjustment = policy.jr_coc - policy.jr_accrued_interest()
-            self.junior_etk.unlock_scr(policy.jr_scr, policy.jr_interest_rate, adjustment)
+            self.junior_etk.unlock_scr(policy.id, policy.jr_scr, policy.jr_interest_rate, adjustment)
 
     @contextmanager
     def thru_policy_pool(self):
