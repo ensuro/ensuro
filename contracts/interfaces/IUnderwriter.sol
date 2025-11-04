@@ -37,4 +37,17 @@ interface IUnderwriter {
       uint96 internalId,
       Policy.Params memory params
     );
+
+  function pricePolicyCancellation(
+    address rm,
+    bytes calldata inputData
+  )
+    external
+    view
+    returns (
+      Policy.PolicyData memory policyToCancel,
+      uint256 purePremiumRefund,
+      uint256 jrCocRefund,
+      uint256 srCocRefund
+    );
 }

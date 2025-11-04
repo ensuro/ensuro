@@ -510,6 +510,24 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     if (newPolicy.srScr > 0) _seniorEtk.lockScr(newPolicy.id, newPolicy.srScr, newPolicy.srInterestRate());
   }
 
+  function policyCancelled(
+    Policy.PolicyData calldata policy,
+    uint256 purePremiumRefund,
+    uint256 jrCocRefund,
+    uint256 srCocRefund,
+    address policyHolder
+  ) external override onlyPolicyPool {
+    _activePurePremiums -= policy.purePremium;
+    uint256 borrowFromScr = _payFromPremiums(int256(purePremiumRefund) - int256(policy.purePremium));
+    if (borrowFromScr != 0) {
+      _unlockScrWithRefund(policy, jrCocRefund, srCocRefund);
+      _borrowFromEtk(borrowFromScr, policyHolder, policy.jrScr > 0);
+    } else {
+      _unlockScrWithRefund(policy, jrCocRefund, srCocRefund);
+    }
+    _transferTo(policyHolder, purePremiumRefund - borrowFromScr);
+  }
+
   function policyResolvedWithPayout(
     address policyHolder,
     Policy.PolicyData calldata policy,
@@ -527,11 +545,41 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   }
 
   /**
-   * @dev Internal function that calls the eTokens to lock the solvency capital when the policy is created.
+   * @dev Internal function that calls the eTokens to unlock the solvency capital when the policy expires
    *
-   * @param policy The policy created
+   * @param policy The policy expired
    */
   function _unlockScr(Policy.PolicyData memory policy) internal {
+    if (policy.jrScr > 0) {
+      _juniorEtk.unlockScr(
+        policy.id,
+        policy.jrScr,
+        policy.jrInterestRate(),
+        int256(policy.jrCoc) - int256(policy.jrAccruedInterest())
+      );
+    }
+    if (policy.srScr > 0) {
+      _seniorEtk.unlockScr(
+        policy.id,
+        policy.srScr,
+        policy.srInterestRate(),
+        int256(policy.srCoc) - int256(policy.srAccruedInterest())
+      );
+    }
+  }
+
+  /**
+   * @dev Internal function that calls the eTokens to unlock the solvency capital when the policy is cancelled, doing
+   *      refund of the jr and sr Coc
+   *
+   * @param policy The policy cancelled
+   */
+  function _unlockScrWithRefund(
+    Policy.PolicyData memory policy,
+    uint256 /* jrCocRefund */,
+    uint256 /* srCocRefund */
+  ) internal {
+    // TODO: think this function
     if (policy.jrScr > 0) {
       _juniorEtk.unlockScr(
         policy.id,
