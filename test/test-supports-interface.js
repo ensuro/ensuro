@@ -157,6 +157,8 @@ describe("Supports interface implementation", function () {
     expect(await cooler.supportsInterface(interfaceIds.IERC165)).to.be.true;
     expect(await cooler.supportsInterface(interfaceIds.ICooler)).to.be.true;
     expect(await cooler.supportsInterface(interfaceIds.IERC721)).to.be.true;
+    expect(await cooler.supportsInterface(interfaceIds.IPolicyPoolComponent)).to.be.true;
+    expect(await cooler.supportsInterface(interfaceIds.IERC20)).to.be.false;
     expect(await cooler.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.false;
     expect(await cooler.supportsInterface(invalidInterfaceId)).to.be.false;
   });

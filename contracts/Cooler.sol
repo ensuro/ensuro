@@ -131,6 +131,7 @@ contract Cooler is ICooler, PolicyPoolComponent, ERC721Upgradeable {
 
   function _scheduleWithdrawal(IEToken eToken, uint40 when, uint256 amount) internal returns (uint256 tokenId) {
     require(eToken.cooler() == address(this), InvalidEToken(eToken));
+    if (amount == type(uint256).max) amount = IERC20(address(eToken)).balanceOf(_msgSender());
     require(amount > 0, CannotDoZeroWithdrawals());
     // Check or compute the withdrawal time
     uint40 minCooldownWhen = uint40(block.timestamp) + cooldownPeriod(eToken, _msgSender(), amount);
@@ -172,7 +173,11 @@ contract Cooler is ICooler, PolicyPoolComponent, ERC721Upgradeable {
     PolicyPool(address(_policyPool)).withdraw(request.etk, amountWithdraw, receiver, address(this));
     if (amountAtExecution > amountWithdraw) {
       // Burn some eTokens to generate additional yields to remaining LPs
-      request.etk.redistribute(amountAtExecution - amountWithdraw);
+      // uses balanceOf just in case there's small difference in the funds available to redistribute because
+      // of pessimistic rounding
+      request.etk.redistribute(
+        Math.min(amountAtExecution - amountWithdraw, IERC20(address(request.etk)).balanceOf(address(this)))
+      );
     }
     emit WithdrawalExecuted(request.etk, tokenId, receiver, request.requestedAmount, amountWithdraw);
   }
