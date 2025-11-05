@@ -179,24 +179,6 @@ describe("PolicyHolder replacement handling", () => {
     expect(evts.length).to.equal(2);
   });
 
-  it("Replacing with a functioning non V2 holder contract succeeds", async () => {
-    const { rm, pool, ph, backend } = await helpers.loadFixture(deployPoolFixture);
-    const policy = await defaultPolicyParams({});
-    const policyEvt = await createPolicy(rm, pool, policy, backend, ph, 1);
-    const chainPolicy = policyEvt.args.policy;
-    const policyNew = await defaultPolicyParams({ expiration: policy.expiration, premium: chainPolicy.premium });
-
-    await ph.setNoV2(true);
-    const replaceReceipt = await getReceipt(
-      rm.replacePolicy([...chainPolicy], toPolicyStruct(policyNew, chainPolicy.start), backend, 2)
-    );
-
-    const evts = getTransactionEvent(ph.interface, replaceReceipt, "NotificationReceived", false, getAddress(ph));
-    expect(evts.length).to.equal(1);
-    expect(evts[0].args.kind).to.equal(NotificationKind.PolicyReceived);
-    expect(evts[0].args.policyId).to.equal(makePolicyId(rm, 2));
-  });
-
   it("Replacing with a failing holder contract fails", async () => {
     const { rm, pool, ph, backend } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});

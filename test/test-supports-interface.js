@@ -52,19 +52,22 @@ describe("Supports interface implementation", function () {
       IAccessControl: "0x7965db0b",
       // IEToken: "0x90770621", - Up to v2.9 - changed on `permit-operate-on-behalf` branch
       // IEToken: "0x29a2308a", - Up to v2.9 - Before `flexible-replacements` branch
-      IEToken: "0xe070ef69",
+      // IEToken: "0xe070ef69", - Before `policy-cancellation` branch
+      IEToken: "0xdaa26d62",
       // IPolicyPool: "0x3234fad6", - Up to v2.7
       // IPolicyPool: "0x0ce33b78", - Up to v2.9
       // IPolicyPool: "0x7d73446f", - Before `refactoring-rms` branch that changed Policy struct
       // IPolicyPool: "0xea84868b", - Before `permit-operate-on-behalf` branch that changed deposit/withdraw
-      IPolicyPool: "0xab249cf4",
+      // IPolicyPool: "0xab249cf4", - Before `policy-cancellation` branch
+      IPolicyPool: "0xc4769787",
       IPolicyPoolComponent: "0x4d15eb03",
       // IRiskModule: "0xda40804f", - Up to v2.9
       IRiskModule: "0x21b7e09b",
       // IPremiumsAccount: "0xb76712ec", - Up to v2.7
       // IPremiumsAccount: "0x1ce4a652", - Up to v2.9
       // IPremiumsAccount: "0x42a0fe0b", - Before `refactoring-rms` branch that changed Policy struct
-      IPremiumsAccount: "0x19fb2a71",
+      // IPremiumsAccount: "0x19fb2a71", - Before `policy-cancellation` branch
+      IPremiumsAccount: "0xf7e4b01b",
       ILPWhitelist: "0xf8722d89",
       IPolicyHolder: "0x3ece0a89",
       ICooler: "0xaf14a2ed",

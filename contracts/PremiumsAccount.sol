@@ -520,10 +520,10 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     _activePurePremiums -= policy.purePremium;
     uint256 borrowFromScr = _payFromPremiums(int256(purePremiumRefund) - int256(policy.purePremium));
     if (borrowFromScr != 0) {
-      _unlockScrWithRefund(policy, jrCocRefund, srCocRefund);
+      _unlockScrWithRefund(policy, jrCocRefund, srCocRefund, policyHolder);
       _borrowFromEtk(borrowFromScr, policyHolder, policy.jrScr > 0);
     } else {
-      _unlockScrWithRefund(policy, jrCocRefund, srCocRefund);
+      _unlockScrWithRefund(policy, jrCocRefund, srCocRefund, policyHolder);
     }
     _transferTo(policyHolder, purePremiumRefund - borrowFromScr);
   }
@@ -576,24 +576,28 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    */
   function _unlockScrWithRefund(
     Policy.PolicyData memory policy,
-    uint256 /* jrCocRefund */,
-    uint256 /* srCocRefund */
+    uint256 jrCocRefund,
+    uint256 srCocRefund,
+    address policyHolder
   ) internal {
-    // TODO: think this function
     if (policy.jrScr > 0) {
-      _juniorEtk.unlockScr(
+      _juniorEtk.unlockScrWithRefund(
         policy.id,
         policy.jrScr,
         policy.jrInterestRate(),
-        int256(policy.jrCoc) - int256(policy.jrAccruedInterest())
+        int256(policy.jrCoc - jrCocRefund) - int256(policy.jrAccruedInterest()),
+        policyHolder,
+        jrCocRefund
       );
     }
     if (policy.srScr > 0) {
-      _seniorEtk.unlockScr(
+      _seniorEtk.unlockScrWithRefund(
         policy.id,
         policy.srScr,
         policy.srInterestRate(),
-        int256(policy.srCoc) - int256(policy.srAccruedInterest())
+        int256(policy.srCoc - srCocRefund) - int256(policy.srAccruedInterest()),
+        policyHolder,
+        srCocRefund
       );
     }
   }

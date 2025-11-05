@@ -67,7 +67,7 @@ contract FullTrustedUW is IUnderwriter {
       inputData,
       (Policy.PolicyData, uint256, uint256, uint256)
     );
-    if (jrCocRefund == type(uint256).max) jrCocRefund = policyToCancel.jrAccruedInterest();
-    if (srCocRefund == type(uint256).max) srCocRefund = policyToCancel.srAccruedInterest();
+    if (jrCocRefund == type(uint256).max) jrCocRefund = policyToCancel.jrCoc - policyToCancel.jrAccruedInterest();
+    if (srCocRefund == type(uint256).max) srCocRefund = policyToCancel.srCoc - policyToCancel.srAccruedInterest();
   }
 }
