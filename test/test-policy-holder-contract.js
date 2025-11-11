@@ -16,6 +16,7 @@ const NotificationKind = {
   PayoutReceived: 1,
   PolicyExpired: 2,
   PolicyReplaced: 3,
+  PolicyCancelled: 4,
 };
 
 function toPolicyStruct(policy, start = 0) {
@@ -202,6 +203,57 @@ describe("PolicyHolder replacement handling", () => {
     await expect(rm.replacePolicy([...chainPolicy], toPolicyStruct(policyNew, chainPolicy.start), backend, 2))
       .to.be.revertedWithCustomError(pool, "InvalidNotificationResponse")
       .withArgs("0x0badf00d");
+  });
+});
+
+describe("PolicyHolder cancelation handling", () => {
+  it("Canceling with a functioning holder contract succeeds and executes the handler code", async () => {
+    const { rm, pool, ph, backend } = await helpers.loadFixture(deployPoolFixture);
+    const policy = await defaultPolicyParams({});
+    const policyEvt = await createPolicy(rm, pool, policy, backend, ph, 1);
+    const chainPolicy = policyEvt.args.policy;
+    const cancelReceipt = await getReceipt(rm.cancelPolicy([...chainPolicy], 0, 0, 0));
+
+    const evts = getTransactionEvent(ph.interface, cancelReceipt, "NotificationReceived", false, getAddress(ph));
+    expect(evts.length).to.equal(1);
+    expect(evts[0].args.kind).to.equal(NotificationKind.PolicyCancelled);
+    expect(evts[0].args.policyId).to.equal(makePolicyId(rm, 1));
+  });
+
+  it("Cancelling with a functioning holder contract succeeds even if it spends a lot of gas", async () => {
+    const { rm, pool, ph, backend } = await helpers.loadFixture(deployPoolFixture);
+    const policy = await defaultPolicyParams({});
+    const policyEvt = await createPolicy(rm, pool, policy, backend, ph, 1);
+    const chainPolicy = policyEvt.args.policy;
+
+    await ph.setSpendGasCount(10);
+    const cancelReceipt = await getReceipt(rm.cancelPolicy([...chainPolicy], chainPolicy.purePremium, 0, 0));
+
+    const evts = getTransactionEvent(ph.interface, cancelReceipt, "NotificationReceived", false, getAddress(ph));
+    expect(evts.length).to.equal(1);
+  });
+
+  it("Cancelling with a failing holder contract fails", async () => {
+    const { rm, pool, ph, backend } = await helpers.loadFixture(deployPoolFixture);
+    const policy = await defaultPolicyParams({});
+    const policyEvt = await createPolicy(rm, pool, policy, backend, ph, 1);
+    const chainPolicy = policyEvt.args.policy;
+
+    await ph.setFailCancellation(true);
+    await expect(rm.cancelPolicy([...chainPolicy], 0n, 0n, 0n)).to.be.revertedWith(
+      "onPolicyCancelled: They told me I have to fail"
+    );
+
+    // Same happens with an empty revert
+    await ph.setEmptyRevert(true);
+    await expect(rm.cancelPolicy([...chainPolicy], 0n, 0n, 0n)).to.be.reverted;
+
+    // Also fails if returns wrong value
+    await ph.setFailCancellation(false);
+    await ph.setBadlyImplementedReplace(true);
+    await expect(rm.cancelPolicy([...chainPolicy], 0n, 0n, 0n))
+      .to.be.revertedWithCustomError(pool, "InvalidNotificationResponse")
+      .withArgs("0x0badfeed");
   });
 });
 

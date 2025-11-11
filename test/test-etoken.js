@@ -91,6 +91,22 @@ describe("Etoken", () => {
     expect(await etk.totalSupply()).to.equal(1n);
   });
 
+  it("Checks only borrower can lock and unlock capital", async () => {
+    const { etk, fakePA, lp2 } = await helpers.loadFixture(etkFixtureWithVault);
+
+    await expect(etk.connect(lp2).lockScr(1234n, _A(100), _W("0.1")))
+      .to.be.revertedWithCustomError(etk, "OnlyBorrower")
+      .withArgs(lp2);
+
+    await expect(etk.connect(lp2).unlockScr(1234n, _A(100), _W("0.1"), _A(0)))
+      .to.be.revertedWithCustomError(etk, "OnlyBorrower")
+      .withArgs(lp2);
+
+    await expect(etk.connect(lp2).unlockScrWithRefund(1234n, _A(100), _W("0.1"), _A(0), fakePA, _A(0)))
+      .to.be.revertedWithCustomError(etk, "OnlyBorrower")
+      .withArgs(lp2);
+  });
+
   it("Only can repay loan on existing borrowers", async () => {
     const { etk, currency, fakePA, lp2, lp } = await helpers.loadFixture(etkFixtureWithVault);
 
@@ -378,6 +394,28 @@ describe("Etoken", () => {
       .withArgs(oldWL, ZeroAddress);
 
     expect(await etk.whitelist()).to.equal(ZeroAddress);
+  });
+
+  it("Checks funds can be unlocked with refund of CoC", async () => {
+    const { etk, fakePA, currency } = await helpers.loadFixture(etkFixtureWithVault);
+    await expect(etk.connect(fakePA).lockScr(1234n, _A(2000), _W("0.1")))
+      .to.emit(etk, "SCRLocked")
+      .withArgs(1234n, _W("0.1"), _A(2000));
+    await currency.connect(fakePA).transfer(etk, _A(200)); // Transfer the CoC (assuming annual policy)
+    expect(await etk.totalWithdrawable()).to.closeTo(_A(1000), 100n);
+    expect(await currency.balanceOf(etk)).to.equal(_A(3200));
+
+    const balanceBefore = await currency.balanceOf(fakePA);
+
+    await helpers.time.increase(DAY * 180); // ~100 accrued
+    await expect(etk.connect(fakePA).unlockScrWithRefund(1234n, _A(2000), _W("0.1"), _A(-10), fakePA, _A(110)))
+      .to.emit(etk, "SCRUnlocked")
+      .withArgs(1234n, _W("0.1"), _A(2000), _A(-10))
+      .to.emit(etk, "CoCRefunded")
+      .withArgs(1234n, fakePA, _A(110));
+
+    expect(await etk.utilizationRate()).to.equal(_A(0));
+    expect(await currency.balanceOf(fakePA)).to.equal(balanceBefore + _A(110));
   });
 
   it("Checks totalWithdrawable is zero when SCR > totalSupply", async () => {

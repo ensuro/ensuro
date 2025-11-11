@@ -205,7 +205,7 @@ contract PolicyHolderMock is IPolicyHolder {
     policyId = cancelledPolicyId;
     emit NotificationReceived(NotificationKind.PolicyCancelled, cancelledPolicyId, operator, from);
 
-    if (badlyImplementedReplace) return bytes4(0x0badf00d);
+    if (badlyImplementedReplace) return bytes4(0x0badfeed);
 
     spendGas();
 
