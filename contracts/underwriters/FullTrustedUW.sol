@@ -4,8 +4,8 @@ import {Policy} from "../Policy.sol";
 import {IUnderwriter} from "../interfaces/IUnderwriter.sol";
 
 /**
- * @title Underwriter interface
- * @dev Interface for a contract that validates inputs and converts it into the fields required to create a policy
+ * @title FullTrustedUW
+ * @dev Underwriter that just decodes what it receives. The access validations should be done on risk module methods.
  */
 contract FullTrustedUW is IUnderwriter {
   using Policy for Policy.PolicyData;
