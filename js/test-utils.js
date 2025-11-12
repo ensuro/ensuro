@@ -217,6 +217,25 @@ async function deployWhitelist(pool, options) {
   return wl;
 }
 
+async function deployCooler(pool, { name, symbol, extraArgs, extraConstructorArgs, disableAC, coolerClass }) {
+  const Cooler = await ethers.getContractFactory(coolerClass || "Cooler");
+  const poolAddr = await ethers.resolveAddress(pool);
+  const accessManager = await getAccessManager(pool);
+  extraArgs = extraArgs || [];
+  extraConstructorArgs = extraConstructorArgs || [];
+  const cooler = await deployAMPProxy(Cooler, [name || "Withdrawal Cooldown", symbol || "COOL", ...extraArgs], {
+    kind: "uups",
+    constructorArgs: [poolAddr, ...extraConstructorArgs],
+    acMgr: accessManager,
+    ...ampConfig.Cooler,
+  });
+
+  await cooler.waitForDeployment();
+  if (disableAC || disableAC === undefined) await makeAllPublic(cooler, accessManager);
+
+  return cooler;
+}
+
 async function makePolicy(pool, rm, cust, payout, premium, lossProb, expiration, internalId, params) {
   let tx = await rm.newPolicy(makeFTUWInputData({ payout, premium, lossProb, expiration, internalId, params }), cust);
   let receipt = await tx.wait();
@@ -233,6 +252,7 @@ module.exports = {
   deployPool,
   deployPremiumsAccount,
   deployWhitelist,
+  deployCooler,
   makePolicy,
   makeAllPublic,
 };

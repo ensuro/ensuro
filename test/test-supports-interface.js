@@ -36,6 +36,7 @@ describe("Supports interface implementation", function () {
       "IPremiumsAccount",
       "ILPWhitelist",
       "IPolicyHolder",
+      "ICooler",
     ];
     const iinterfaceIds = {};
     for (const iName of iinterfaces) {
@@ -51,7 +52,7 @@ describe("Supports interface implementation", function () {
       IAccessControl: "0x7965db0b",
       // IEToken: "0x90770621", - Up to v2.9 - changed on `permit-operate-on-behalf` branch
       // IEToken: "0x29a2308a", - Up to v2.9 - Before `flexible-replacements` branch
-      IEToken: "0xf60da92b",
+      IEToken: "0xe070ef69",
       // IPolicyPool: "0x3234fad6", - Up to v2.7
       // IPolicyPool: "0x0ce33b78", - Up to v2.9
       // IPolicyPool: "0x7d73446f", - Before `refactoring-rms` branch that changed Policy struct
@@ -66,6 +67,7 @@ describe("Supports interface implementation", function () {
       IPremiumsAccount: "0x19fb2a71",
       ILPWhitelist: "0xf8722d89",
       IPolicyHolder: "0x3ece0a89",
+      ICooler: "0xaf14a2ed",
     };
 
     const _A = amountFunction(6);
@@ -146,5 +148,18 @@ describe("Supports interface implementation", function () {
     expect(await wh.supportsInterface(interfaceIds.ILPWhitelist)).to.be.true;
     expect(await wh.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.false;
     expect(await wh.supportsInterface(invalidInterfaceId)).to.be.false;
+  });
+
+  it("Checks Cooler supported interfaces", async () => {
+    const { policyPool, interfaceIds } = await helpers.loadFixture(setupFixtureWithPool);
+    const Cooler = await hre.ethers.getContractFactory("Cooler");
+    const cooler = await Cooler.deploy(policyPool);
+    expect(await cooler.supportsInterface(interfaceIds.IERC165)).to.be.true;
+    expect(await cooler.supportsInterface(interfaceIds.ICooler)).to.be.true;
+    expect(await cooler.supportsInterface(interfaceIds.IERC721)).to.be.true;
+    expect(await cooler.supportsInterface(interfaceIds.IPolicyPoolComponent)).to.be.true;
+    expect(await cooler.supportsInterface(interfaceIds.IERC20)).to.be.false;
+    expect(await cooler.supportsInterface(interfaceIds.IPremiumsAccount)).to.be.false;
+    expect(await cooler.supportsInterface(invalidInterfaceId)).to.be.false;
   });
 });

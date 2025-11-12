@@ -150,6 +150,7 @@ module.exports = {
       "@ensuro/access-managed-proxy/contracts/amps/AccessManagedProxyS35.sol",
       "@ensuro/access-managed-proxy/contracts/amps/AccessManagedProxyS36.sol",
       "@ensuro/access-managed-proxy/contracts/amps/AccessManagedProxyS38.sol",
+      "@ensuro/access-managed-proxy/contracts/amps/AccessManagedProxyS39.sol",
     ],
   },
   warnings: {

@@ -195,4 +195,24 @@ interface IEToken {
    * @dev The weighted average annualized interest rate paid by the currently locked `scr()`.
    */
   function scrInterestRate() external view returns (uint256);
+
+  /**
+   * @dev Returns the number that scales the shares to reflect the earnings or losses (rebasing token)
+   *
+   * @param updated When it's false, it returns the last scale stored. When it's true, it projects that scale applying
+   *                the accrued returns of the scr
+   */
+  function getCurrentScale(bool updated) external view returns (uint256);
+
+  /**
+   * @dev Redistributes a given amount of eTokens of the caller between the remaining LPs
+   *
+   * @param amount The amount of eTokens to burn
+   */
+  function redistribute(uint256 amount) external;
+
+  /**
+   * @dev Returns the cooler contract plugged into the eToken
+   */
+  function cooler() external view returns (address);
 }

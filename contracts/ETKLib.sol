@@ -12,7 +12,6 @@ import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
  * @author Ensuro
  */
 library ETKLib {
-  using Math for uint256;
   using SafeCast for uint256;
   using ETKLib for Scale;
 
@@ -61,6 +60,17 @@ library ETKLib {
     }
   }
 
+  /**
+   * @dev unchecked version of Math.mulDiv that returns the result of a * b / c.
+   *
+   * Assumes a * b < 2**256
+   */
+  function _mulDivCeil(uint256 a, uint256 b, uint256 c) internal pure returns (uint256) {
+    unchecked {
+      return (a * b) / c + SafeCast.toUint(mulmod(a, b, c) > 0);
+    }
+  }
+
   /*** BEGIN Scale functions ***/
 
   /**
@@ -75,6 +85,17 @@ library ETKLib {
   }
 
   /**
+   * @dev Converts a "scaled amount" (raw value, without applying earnings) to the current value after
+   *      after applying the scale, rounding to the ceil
+   * @param scaledAmount The `scaled amount` as the ones stored in `$._balances`
+   * @param scale        The scale to apply.
+   * @return The current amount, that results of `scaledAmount * scale`
+   */
+  function toCurrentCeil(Scale scale, uint256 scaledAmount) internal pure returns (uint256) {
+    return _mulDivCeil(scaledAmount, scale.toUint256(), WAD);
+  }
+
+  /**
    * @dev Converts a "current amount" (end user value, after applying earnings) to the scaled amount (raw value)
    * @param currentAmount The `current amount` as the ones obtainted by the user in balanceOf or totalSupply()
    * @param scale        The scale to un-apply.
@@ -82,6 +103,17 @@ library ETKLib {
    */
   function toScaled(Scale scale, uint256 currentAmount) internal pure returns (uint256) {
     return _mulDiv(currentAmount, WAD, scale.toUint256());
+  }
+
+  /**
+   * @dev Converts a "current amount" (end user value, after applying earnings) to the scaled amount (raw value),
+   *      rounding to the ceil
+   * @param currentAmount The `current amount` as the ones obtainted by the user in balanceOf or totalSupply()
+   * @param scale        The scale to un-apply.
+   * @return The scaled amount, that results of `currentAmount / scale`
+   */
+  function toScaledCeil(Scale scale, uint256 currentAmount) internal pure returns (uint256) {
+    return _mulDivCeil(currentAmount, WAD, scale.toUint256());
   }
 
   /**
@@ -168,8 +200,15 @@ library ETKLib {
     uint256 amount,
     Scale scale
   ) internal view returns (ScaledAmount memory newScaledAmount, uint256 scaledSub) {
-    scaledSub = scale.toScaled(amount);
-    uint256 newAmount = uint256(scaledAmount.amount) - scaledSub;
+    scaledSub = scale.toScaledCeil(amount);
+    uint256 oldAmount = uint256(scaledAmount.amount);
+    (bool success, uint256 newAmount) = Math.trySub(oldAmount, scaledSub);
+    if (!success) {
+      // The operation can fail if scaledSub was rounded up and `scaledSub - 1 = scaledAmount.amount`
+      // try again using toScaled to floor
+      scaledSub = scale.toScaled(amount);
+      newAmount = oldAmount - scaledSub; // If it was a different error, it will fail
+    }
     if (newAmount == 0) {
       // Reset scale if amount == 0
       scale = SCALE_ONE;
@@ -224,7 +263,7 @@ library ETKLib {
   }
 
   function minValue(ScaledAmount storage scaledAmount) internal view returns (uint256) {
-    return Math.mulDiv(uint256(scaledAmount.amount), MIN_SCALE, WAD, Math.Rounding.Ceil);
+    return _mulDivCeil(uint256(scaledAmount.amount), MIN_SCALE, WAD);
   }
   /*** END ScaledAmount functions ***/
 

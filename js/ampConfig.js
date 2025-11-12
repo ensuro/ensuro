@@ -17,6 +17,8 @@ const ampConfig = {
     skipMethods: ["policyCreated", "policyExpired", "policyReplaced", "policyResolvedWithPayout"],
   },
   EToken: {
+    // TO DO: too many methods skipped... It's better to define the ones that will be called more frequently
+    // and make the rest public with the AccessManager configuration
     skipViewsAndPure: true,
     skipMethods: [
       // Methods with onlyPolicyPool
@@ -32,6 +34,10 @@ const ampConfig = {
     ],
   },
   LPManualWhitelist: {
+    skipViewsAndPure: true,
+    skipMethods: [],
+  },
+  Cooler: {
     skipViewsAndPure: true,
     skipMethods: [],
   },
