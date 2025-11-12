@@ -2,29 +2,29 @@
 pragma solidity ^0.8.28;
 
 import {IPolicyHolder} from "../interfaces/IPolicyHolder.sol";
-import {IPolicyHolderV2} from "../interfaces/IPolicyHolderV2.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {StorageSlot} from "@openzeppelin/contracts/utils/StorageSlot.sol";
 
-contract PolicyHolderMock is IPolicyHolderV2 {
+contract PolicyHolderMock is IPolicyHolder {
   uint256 public policyId;
   uint256 public payout;
   bool public fail;
   bool public failReplace;
+  bool public failCancellation;
   bool public emptyRevert;
   bool public notImplemented;
   bool public badlyImplemented;
   bool public badlyImplementedReplace;
   bool public noERC165;
-  bool public noV2;
   uint256 public spendGasCount;
 
   enum NotificationKind {
     PolicyReceived,
     PayoutReceived,
     PolicyExpired,
-    PolicyReplaced
+    PolicyReplaced,
+    PolicyCancelled
   }
 
   event NotificationReceived(NotificationKind kind, uint256 policyId, address operator, address from);
@@ -47,6 +47,10 @@ contract PolicyHolderMock is IPolicyHolderV2 {
     failReplace = failReplace_;
   }
 
+  function setFailCancellation(bool fail_) external {
+    failCancellation = fail_;
+  }
+
   function setSpendGasCount(uint256 spendGasCount_) external {
     spendGasCount = spendGasCount_;
   }
@@ -61,10 +65,6 @@ contract PolicyHolderMock is IPolicyHolderV2 {
 
   function setBadlyImplementedReplace(bool badlyImplementedReplace_) external {
     badlyImplementedReplace = badlyImplementedReplace_;
-  }
-
-  function setNoV2(bool noV2_) external {
-    noV2 = noV2_;
   }
 
   function setNoERC165(bool noERC165_) external {
@@ -91,10 +91,7 @@ contract PolicyHolderMock is IPolicyHolderV2 {
         revert(0, 0)
       }
     if (notImplemented) return false;
-    return
-      interfaceId == type(IPolicyHolder).interfaceId ||
-      (!noV2 && interfaceId == type(IPolicyHolderV2).interfaceId) ||
-      interfaceId == type(IERC165).interfaceId;
+    return interfaceId == type(IPolicyHolder).interfaceId || interfaceId == type(IERC165).interfaceId;
   }
 
   function onERC721Received(
@@ -174,7 +171,6 @@ contract PolicyHolderMock is IPolicyHolderV2 {
     uint256 oldPolicyId,
     uint256 newPolicyId
   ) external override returns (bytes4) {
-    if (noV2) revert("Shouldn't call this method if V2 not enabled");
     if (failReplace)
       if (emptyRevert)
         assembly {
@@ -189,6 +185,30 @@ contract PolicyHolderMock is IPolicyHolderV2 {
 
     spendGas();
 
-    return IPolicyHolderV2.onPolicyReplaced.selector;
+    return IPolicyHolder.onPolicyReplaced.selector;
+  }
+
+  function onPolicyCancelled(
+    address operator,
+    address from,
+    uint256 cancelledPolicyId,
+    uint256 /* purePremiumRefund */,
+    uint256 /* jrCocRefund */,
+    uint256 /* srCocRefund */
+  ) external returns (bytes4) {
+    if (failCancellation)
+      if (emptyRevert)
+        assembly {
+          revert(0, 0)
+        }
+      else revert("onPolicyCancelled: They told me I have to fail");
+    policyId = cancelledPolicyId;
+    emit NotificationReceived(NotificationKind.PolicyCancelled, cancelledPolicyId, operator, from);
+
+    if (badlyImplementedReplace) return bytes4(0x0badfeed);
+
+    spendGas();
+
+    return IPolicyHolder.onPolicyCancelled.selector;
   }
 }

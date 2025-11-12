@@ -74,6 +74,34 @@ interface IEToken {
   function unlockScr(uint256 policyId, uint256 scrAmount, uint256 policyInterestRate, int256 adjustment) external;
 
   /**
+   * @dev Unlocks solvency capital previously locked with `lockScr`. The capital no longer needed as solvency and
+   *      refunds part of the Coc received that wasn't accrued (or if it was already accrued, it is adjusted).
+   *      The refund doesn't affect the totalSupply. It just changes the reserves.
+   *
+   * Requirements:
+   * - Must be called by a _borrower_ previously added with `addBorrower`.
+   *
+   * Events:
+   * - Emits {SCRUnlocked}
+   * - Emits {CoCRefunded}
+   *
+   * @param policyId The id of the policy that locked the scr originally
+   * @param scrAmount The amount to unlock
+   * @param policyInterestRate The annualized interest rate that was paid for the `scrAmount`, must be the same that was
+   * sent in `lockScr` call.
+   * @param receiver The address of the receiver of the refund
+   * @param refundAmount The amount to refund
+   */
+  function unlockScrWithRefund(
+    uint256 policyId,
+    uint256 scrAmount,
+    uint256 policyInterestRate,
+    int256 adjustment,
+    address receiver,
+    uint256 refundAmount
+  ) external;
+
+  /**
    * @dev Registers a deposit of liquidity in the pool. Called from the PolicyPool, assumes the amount has already been
    * transferred. `amount` of eToken are minted and given to the provider in exchange of the liquidity provided.
    *

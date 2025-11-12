@@ -8,6 +8,8 @@ import {IUnderwriter} from "../interfaces/IUnderwriter.sol";
  * @dev Interface for a contract that validates inputs and converts it into the fields required to create a policy
  */
 contract FullTrustedUW is IUnderwriter {
+  using Policy for Policy.PolicyData;
+
   function priceNewPolicy(
     address /* rm */,
     bytes calldata inputData
@@ -45,5 +47,27 @@ contract FullTrustedUW is IUnderwriter {
     )
   {
     return abi.decode(inputData, (Policy.PolicyData, uint256, uint256, uint256, uint40, uint96, Policy.Params));
+  }
+
+  function pricePolicyCancellation(
+    address /* rm */,
+    bytes calldata inputData
+  )
+    external
+    view
+    override
+    returns (
+      Policy.PolicyData memory policyToCancel,
+      uint256 purePremiumRefund,
+      uint256 jrCocRefund,
+      uint256 srCocRefund
+    )
+  {
+    (policyToCancel, purePremiumRefund, jrCocRefund, srCocRefund) = abi.decode(
+      inputData,
+      (Policy.PolicyData, uint256, uint256, uint256)
+    );
+    if (jrCocRefund == type(uint256).max) jrCocRefund = policyToCancel.jrCoc - policyToCancel.jrAccruedInterest();
+    if (srCocRefund == type(uint256).max) srCocRefund = policyToCancel.srCoc - policyToCancel.srAccruedInterest();
   }
 }

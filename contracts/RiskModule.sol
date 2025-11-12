@@ -176,6 +176,23 @@ contract RiskModule is IRiskModule, PolicyPoolComponent {
   }
 
   /**
+   * @dev Cancels a policy, giving back all (or part) of the pure premium and the non-accrued CoC
+   *
+   * @param inputData Input data that will be decoded by the _underwriter to construct the oldPolicy and the
+   *                  parameters for the new policy.
+   */
+  function cancelPolicy(bytes calldata inputData) external virtual {
+    (
+      Policy.PolicyData memory policyToCancel,
+      uint256 purePremiumRefund,
+      uint256 jrCocRefund,
+      uint256 srCocRefund
+    ) = _underwriter.pricePolicyCancellation(address(this), inputData);
+
+    _policyPool.cancelPolicy(policyToCancel, purePremiumRefund, jrCocRefund, srCocRefund);
+  }
+
+  /**
    * @dev Resolves a policy, if payout > 0, it pays to the policy holder.
    *
    * Requirements:

@@ -31,6 +31,7 @@ const ampConfig = {
       "unlockScr",
       // internalLoan, - Moderate frequency, high risk, better to keep AC to enable pause or other security
       // repayLoan, - Moderate frequency, high risk, better to keep AC to enable pause or other security
+      // refundCoc, - Moderate frequency, high risk, better to keep AC to enable pause or other security
     ],
   },
   LPManualWhitelist: {

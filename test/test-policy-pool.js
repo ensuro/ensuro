@@ -415,10 +415,14 @@ describe("PolicyPool contract", function () {
       .withArgs(policy.id);
   });
 
-  it("Only allows riskmodule to resolve unexpired policies", async () => {
+  it("Only allows riskmodule to resolve/cancel unexpired policies", async () => {
     const { policy, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
 
     await expect(pool.resolvePolicy([...policy], 0)).to.be.revertedWithCustomError(pool, "OnlyRiskModuleAllowed");
+    await expect(pool.cancelPolicy([...policy], 0n, 0n, 0n)).to.be.revertedWithCustomError(
+      pool,
+      "OnlyRiskModuleAllowed"
+    );
   });
 
   it("Does not allow a bigger payout than the one setup in the policy", async () => {
@@ -465,6 +469,14 @@ describe("PolicyPool contract", function () {
     );
   });
 
+  it("Rejects cancel policy if the pool is paused", async () => {
+    const { policy, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    await expect(pool.pause()).to.emit(pool, "Paused");
+
+    await expect(pool.cancelPolicy([...policy], 0n, 0n, 0n)).to.be.revertedWithCustomError(pool, "EnforcedPause");
+  });
+
   it("Components must be active to replace policies", async () => {
     const { policy, pool, rm, premiumsAccount, backend } = await helpers.loadFixture(deployRmWithPolicyFixture);
     await pool.changeComponentStatus(premiumsAccount, ComponentStatus.deprecated);
@@ -481,12 +493,40 @@ describe("PolicyPool contract", function () {
     );
   });
 
+  it("Components must be active or deprecated to cancel policies", async () => {
+    const { policy, pool, rm, premiumsAccount } = await helpers.loadFixture(deployRmWithPolicyFixture);
+    await pool.changeComponentStatus(premiumsAccount, ComponentStatus.suspended);
+
+    await expect(rm.cancelPolicy([...policy], 0n, 0n, 0n)).to.be.revertedWithCustomError(
+      pool,
+      "ComponentMustBeActiveOrDeprecated"
+    );
+    await pool.changeComponentStatus(premiumsAccount, ComponentStatus.active);
+    await pool.changeComponentStatus(rm, ComponentStatus.suspended);
+    await expect(rm.cancelPolicy([...policy], 0n, 0n, 0n)).to.be.revertedWithCustomError(
+      pool,
+      "ComponentMustBeActiveOrDeprecated"
+    );
+    await pool.changeComponentStatus(rm, ComponentStatus.deprecated); // deprecated works
+    await expect(rm.cancelPolicy([...policy], 0n, 0n, 0n)).not.to.be.reverted;
+  });
+
   it("Does not allow to replace expired policies", async () => {
     const { policy, rm, pool, backend } = await helpers.loadFixture(deployRmWithPolicyFixture);
     await helpers.time.increaseTo(policy.expiration + 100n);
     const newPolicy = [...policy];
     newPolicy[11] += 1000n; // change expiration
     await expect(rm.replacePolicy([...policy], [...newPolicy], backend, 1234))
+      .to.be.revertedWithCustomError(pool, "PolicyAlreadyExpired")
+      .withArgs(policy.id);
+  });
+
+  it("Does not allow to cancel expired policies", async () => {
+    const { policy, rm, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
+    await helpers.time.increaseTo(policy.expiration + 100n);
+    const newPolicy = [...policy];
+    newPolicy[11] += 1000n; // change expiration
+    await expect(rm.cancelPolicy([...policy], 0n, 0n, 0n))
       .to.be.revertedWithCustomError(pool, "PolicyAlreadyExpired")
       .withArgs(policy.id);
   });
@@ -704,6 +744,127 @@ describe("PolicyPool contract", function () {
     expect(adjustmentSr.lastUint).to.closeTo((_A("0.6") * 3n) / 10n - (_A("0.2") * 3n) / 10n, 100n);
   });
 
+  it("Must revert if cancelation refunds exceed premium components", async () => {
+    const { rm, pool, backend, cust } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    const now = await helpers.time.latest();
+    const p1 = await createNewPolicy(rm, backend, pool, _A(1000), _A(9), _W(0), now + HOUR * 5, cust, cust, 222, {
+      partnerCommission: _A("0.4"),
+      jrCoc: _A("0.3"),
+      srCoc: _A("0.2"),
+      ensuroCommission: _A("0.1"),
+    });
+    expect(p1.purePremium).to.equal(_A(9));
+
+    await expect(rm.cancelPolicy([...p1], _A(9) + 1n, 0n, 0n))
+      .to.be.revertedWithCustomError(pool, "InvalidPolicyCancellation")
+      .withArgs(p1, _A(9) + 1n, 0n, 0n);
+
+    await expect(rm.cancelPolicy([...p1], _A(9), _A("0.3") + 1n, 0n))
+      .to.be.revertedWithCustomError(pool, "InvalidPolicyCancellation")
+      .withArgs(p1, _A(9), _A("0.3") + 1n, 0n);
+
+    await expect(rm.cancelPolicy([...p1], _A(9), _A("0.3"), _A("0.2") + 1n))
+      .to.be.revertedWithCustomError(pool, "InvalidPolicyCancellation")
+      .withArgs(p1, _A(9), _A("0.3"), _A("0.2") + 1n);
+
+    await expect(rm.cancelPolicy([...p1], _A(9), _A("0.3"), _A("0.2"))).not.to.be.reverted;
+  });
+
+  it("Can cancel policies giving zero refund", async () => {
+    const { rm, pool, currency, policy } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    expect(await pool.getExposure(rm)).to.deep.equal([_A(1000), _A(2000)]);
+    await expect(rm.cancelPolicy([...policy], 0n, 0n, 0n))
+      .to.emit(pool, "PolicyCancelled")
+      .withArgs(rm, policy.id, 0n, 0n, 0n)
+      .not.to.emit(currency, "Transfer");
+    expect(await pool.getExposure(rm)).to.deep.equal([0n, _A(2000)]);
+  });
+
+  it("Can cancel policies and transfers refund to customer", async () => {
+    const { rm, pool, currency, cust, premiumsAccount, jrEtk, srEtk, backend } =
+      await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    const now = await helpers.time.latest();
+    const p1 = await createNewPolicy(rm, backend, pool, _A(1000), _A(9), _W(0), now + HOUR * 5, cust, cust, 222, {
+      partnerCommission: _A("0.4"),
+      jrScr: _A(200),
+      srScr: _A(800),
+      jrCoc: _A("0.3"),
+      srCoc: _A("0.2"),
+      ensuroCommission: _A("0.1"),
+    });
+    expect(await pool.getExposure(rm)).to.deep.equal([_A(2000), _A(2000)]);
+
+    expect(await pool.getPolicyHash(p1.id)).not.to.equal(ZeroHash);
+
+    await expect(rm.cancelPolicy([...p1], _A(8), _A("0.25"), _A("0.15")))
+      .to.emit(pool, "PolicyCancelled")
+      .withArgs(rm, p1.id, _A(8), _A("0.25"), _A("0.15"))
+      .to.emit(currency, "Transfer")
+      .withArgs(premiumsAccount, cust, _A(8))
+      .to.emit(jrEtk, "CoCRefunded")
+      .withArgs(p1.id, cust, _A("0.25"))
+      .to.emit(srEtk, "CoCRefunded")
+      .withArgs(p1.id, cust, _A("0.15"))
+      .to.emit(currency, "Transfer")
+      .withArgs(jrEtk, cust, _A("0.25"))
+      .to.emit(currency, "Transfer")
+      .withArgs(srEtk, cust, _A("0.15"));
+
+    expect(await pool.getPolicyHash(p1.id)).to.equal(ZeroHash);
+    expect(await pool.getExposure(rm)).to.deep.equal([_A(1000), _A(2000)]); // Initial
+  });
+
+  it("Can cancel policies and refund pure premium even if purePremiums are exhausted", async () => {
+    const { rm, pool, currency, cust, premiumsAccount, jrEtk, srEtk, backend, lp2, policy } =
+      await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    const now = await helpers.time.latest();
+    const p1 = await createNewPolicy(rm, backend, pool, _A(1000), _A(9), _W(0), now + HOUR * 5, cust, cust, 222, {
+      partnerCommission: _A("0.4"),
+      jrScr: _A(200),
+      srScr: _A(800),
+      jrCoc: _A("0.3"),
+      srCoc: _A("0.2"),
+      ensuroCommission: _A("0.1"),
+    });
+
+    expect(await premiumsAccount.purePremiums()).to.equal(_A(109));
+    await rm.resolvePolicy([...policy], _A(108));
+    expect(await premiumsAccount.purePremiums()).to.equal(_A(1));
+
+    expect(await pool.getExposure(rm)).to.deep.equal([_A(1000), _A(2000)]);
+
+    expect(await pool.getPolicyHash(p1.id)).not.to.equal(ZeroHash);
+
+    // Change p1 policy holder
+    await expect(pool.connect(cust).safeTransferFrom(cust, lp2, p1.id)).to.emit(pool, "Transfer");
+
+    // Now cancel the 2nd policy and only 1 out of 8 can be paid from pure premiums.
+    await expect(rm.cancelPolicy([...p1], _A(8), _A("0.25"), _A("0.15")))
+      .to.emit(pool, "PolicyCancelled")
+      .withArgs(rm, p1.id, _A(8), _A("0.25"), _A("0.15"))
+      .to.emit(currency, "Transfer")
+      .withArgs(premiumsAccount, lp2, _A(1))
+      .to.emit(currency, "Transfer")
+      .withArgs(jrEtk, lp2, _A(7))
+      .to.emit(jrEtk, "InternalLoan")
+      .withArgs(premiumsAccount, _A(7), _A(7))
+      .to.emit(jrEtk, "CoCRefunded")
+      .withArgs(p1.id, lp2, _A("0.25"))
+      .to.emit(srEtk, "CoCRefunded")
+      .withArgs(p1.id, lp2, _A("0.15"))
+      .to.emit(currency, "Transfer")
+      .withArgs(jrEtk, lp2, _A("0.25"))
+      .to.emit(currency, "Transfer")
+      .withArgs(srEtk, lp2, _A("0.15"));
+
+    expect(await pool.getPolicyHash(p1.id)).to.equal(ZeroHash);
+    expect(await pool.getExposure(rm)).to.deep.equal([_A(0), _A(2000)]);
+  });
+
   it("Only PolicyPool can call PA policyReplaced", async () => {
     const { pool, policy } = await helpers.loadFixture(deployRmWithPolicyFixture);
 
@@ -717,6 +878,17 @@ describe("PolicyPool contract", function () {
     await expect(rm.replacePolicy([...policy], [...policy], backend, 123))
       .to.be.revertedWithCustomError(pool, "PolicyAlreadyExists")
       .withArgs(policy.id);
+  });
+
+  it("Only PolicyPool can call PA policyCancelled", async () => {
+    const { pool, policy } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    const etk = await createEToken(pool, {});
+    const pa = await deployPremiumsAccount(pool, { srEtk: etk });
+    await expect(pa.policyCancelled([...policy], 0n, 0n, 0n, ZeroAddress)).to.be.revertedWithCustomError(
+      pa,
+      "OnlyPolicyPool"
+    );
   });
 
   it("Can change the baseURI and after the change the tokenURI works", async () => {

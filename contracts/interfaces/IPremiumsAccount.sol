@@ -41,6 +41,29 @@ interface IPremiumsAccount {
   function policyReplaced(Policy.PolicyData memory oldPolicy, Policy.PolicyData memory newPolicy) external;
 
   /**
+   * @dev Reflects the cancellation of a policy, doing the required refunds.
+   *
+   * Requirements:
+   * - Must be called by `policyPool()`
+   *
+   * Events:
+   * - {EToken-SCRUnlocked}
+   *
+   * @param policyToCancel The policy that is being cancelled
+   * @param purePremiumRefund The pure premium amount that will be reimbursed to the policy holder
+   * @param jrCocRefund The jrCoc that will be reimbursed to the policy holder
+   * @param srCocRefund The srCoc that will be reimbursed to the policy holder
+   * @param policyHolder Owner of the policy that will receive the reimbursement
+   */
+  function policyCancelled(
+    Policy.PolicyData calldata policyToCancel,
+    uint256 purePremiumRefund,
+    uint256 jrCocRefund,
+    uint256 srCocRefund,
+    address policyHolder
+  ) external;
+
+  /**
    * @dev The PremiumsAccount is notified that the policy was resolved and issues the payout to the policyHolder.
    *
    * Requirements:

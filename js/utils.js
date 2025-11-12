@@ -254,6 +254,18 @@ function makeFTUWReplacementInputData({ oldPolicy, payout, premium, lossProb, ex
   );
 }
 
+function makeFTUWCancelInputData({ policyToCancel, purePremiumRefund, jrCocRefund, srCocRefund }) {
+  return abiCoder.encode(
+    [
+      "(uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint40, uint40)",
+      "uint256",
+      "uint256",
+      "uint256",
+    ],
+    [policyToCancel, purePremiumRefund, jrCocRefund, srCocRefund]
+  );
+}
+
 /**
  * Converts a string of four letters that are either ("W" whitelisted, "B" blacklisted, "U" undefined) into a
  * WhitelistStatus array
@@ -277,6 +289,7 @@ module.exports = {
   defaultTestParams,
   makeFTUWInputData,
   makeFTUWReplacementInputData,
+  makeFTUWCancelInputData,
   makeBucketQuoteMessage,
   makeFullQuoteMessage,
   paramsAsUint256,

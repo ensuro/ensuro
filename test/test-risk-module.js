@@ -1,9 +1,22 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { MaxUint256, ZeroAddress } = require("ethers");
-const { defaultTestParams, getPremium, makeFTUWInputData, makeFTUWReplacementInputData } = require("../js/utils");
+const {
+  defaultTestParams,
+  getPremium,
+  makeFTUWInputData,
+  makeFTUWReplacementInputData,
+  makeFTUWCancelInputData,
+} = require("../js/utils");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
-const { amountFunction, _W, getTransactionEvent, captureAny, getAddress } = require("@ensuro/utils/js/utils");
+const {
+  amountFunction,
+  _W,
+  getTransactionEvent,
+  captureAny,
+  getAddress,
+  newCaptureAny,
+} = require("@ensuro/utils/js/utils");
 const { HOUR } = require("@ensuro/utils/js/constants");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
@@ -30,6 +43,15 @@ async function makeReplacementInputData({ oldPolicy, payout, premium, lossProb, 
     expiration: expiration || oldPolicy.expiration,
     internalId: internalId || 1234,
     params: defaultTestParams(params || {}),
+  });
+}
+
+async function makeCancelInputData({ policyToCancel, purePremiumRefund, jrCocRefund, srCocRefund }) {
+  return makeFTUWCancelInputData({
+    policyToCancel,
+    purePremiumRefund: purePremiumRefund || policyToCancel.purePremium,
+    jrCocRefund: jrCocRefund === undefined ? MaxUint256 : jrCocRefund,
+    srCocRefund: srCocRefund === undefined ? MaxUint256 : srCocRefund,
   });
 }
 
@@ -243,7 +265,7 @@ describe("RiskModule contract", function () {
     ).to.be.revertedWithCustomError(pool, "InvalidPolicyReplacement");
   });
 
-  it("It reverts if the premium >= payout", async () => {
+  it("It reverts if the replacement premium >= payout", async () => {
     const { policy, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
 
     await expect(
@@ -352,5 +374,52 @@ describe("RiskModule contract", function () {
       .to.emit(pool, "NewPolicy")
       .to.emit(pool, "PolicyReplaced")
       .withArgs(rm, policy.id, policy.id - 123n + 1234n);
+  });
+
+  it("It can cancel a policy with pure premium and non accrued CoC", async () => {
+    const { policy, rm, pool, currency } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    const srCocRefund = newCaptureAny();
+
+    await helpers.time.increase(3 * HOUR);
+
+    const balanceBefore = await currency.balanceOf(cust);
+
+    await expect(
+      rm.connect(backend).cancelPolicy(
+        makeCancelInputData({
+          policyToCancel: policy,
+        })
+      )
+    )
+      .to.emit(pool, "PolicyCancelled")
+      .withArgs(rm, policy.id, policy.purePremium, _A(0), srCocRefund.uint);
+
+    expect(srCocRefund.lastUint).to.closeTo((policy.srCoc * 2n) / 5n, 10n); // 2/5 of srCoc refunded
+    expect(await currency.balanceOf(cust)).to.equal(balanceBefore + policy.purePremium + srCocRefund.lastUint);
+  });
+
+  it("It can cancel a policy with pure premium and custom CoC", async () => {
+    const { policy, rm, pool, currency } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    await helpers.time.increase(3 * HOUR);
+
+    const balanceBefore = await currency.balanceOf(cust);
+
+    const srCocRefund = (policy.srCoc * 4n) / 5n;
+
+    await expect(
+      rm.connect(backend).cancelPolicy(
+        makeCancelInputData({
+          policyToCancel: policy,
+          srCocRefund,
+          jrCocRefund: 0n,
+        })
+      )
+    )
+      .to.emit(pool, "PolicyCancelled")
+      .withArgs(rm, policy.id, policy.purePremium, _A(0), srCocRefund);
+
+    expect(await currency.balanceOf(cust)).to.equal(balanceBefore + policy.purePremium + srCocRefund);
   });
 });

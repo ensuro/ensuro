@@ -157,7 +157,7 @@ describe("Test pause, unpause and upgrade contracts", function () {
     await expect(rm.connect(cust).resolvePolicy([...policy], policy.payout)).not.to.be.reverted;
   });
 
-  it("Pause/Unpause and expire policy", async function () {
+  it("Pause/Unpause and expire/cancel policy", async function () {
     await currency.connect(cust).approve(pool, _A(100));
 
     // Pause PolicyPool
@@ -184,6 +184,8 @@ describe("Test pause, unpause and upgrade contracts", function () {
     await pool.connect(guardian).pause();
     // Can't expire Policy
     await expect(pool.expirePolicy([...policy])).to.be.revertedWithCustomError(pool, "EnforcedPause");
+    // Can't cancel Policy
+    await expect(pool.cancelPolicy([...policy], 0n, 0n, 0n)).to.be.revertedWithCustomError(pool, "EnforcedPause");
     // UnPause PolicyPool
     await pool.connect(level1).unpause();
     // Can expire Policy

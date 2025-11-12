@@ -30,4 +30,38 @@ interface IPolicyHolder is IERC721Receiver {
    * The selector can be obtained in Solidity with `IPolicyHolder.onPayoutReceived.selector`.
    */
   function onPayoutReceived(address operator, address from, uint256 policyId, uint256 amount) external returns (bytes4);
+
+  /**
+   * @dev Whenever a policy is replaced, this function is called
+   *
+   * It must return its Solidity selector to confirm the operation.
+   * If interface is not implemented by the recipient, it will be ignored and the replacement will be successful.
+   * If any other value is returned or it reverts, the policy replacement will be reverted.
+   *
+   * The selector can be obtained in Solidity with `IPolicyHolder.onPolicyReplaced.selector`.
+   */
+  function onPolicyReplaced(
+    address operator,
+    address from,
+    uint256 oldPolicyId,
+    uint256 newPolicyId
+  ) external returns (bytes4);
+
+  /**
+   * @dev Whenever a policy is cancelled, this function is called
+   *
+   * It must return its Solidity selector to confirm the operation.
+   * If interface is not implemented by the recipient, it will be ignored and the cancellation will be successful.
+   * If any other value is returned or it reverts, the policy cancellation will be reverted.
+   *
+   * The selector can be obtained in Solidity with `IPolicyHolder.onPolicyCancelled.selector`.
+   */
+  function onPolicyCancelled(
+    address operator,
+    address from,
+    uint256 cancelledPolicyId,
+    uint256 purePremiumRefund,
+    uint256 jrCocRefund,
+    uint256 srCocRefund
+  ) external returns (bytes4);
 }
