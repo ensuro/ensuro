@@ -5,8 +5,10 @@ const {
   defaultTestParams,
   getPremium,
   makeFTUWInputData,
+  makeAndSignFTUWInputData,
   makeFTUWReplacementInputData,
   makeFTUWCancelInputData,
+  makeHashSelector,
 } = require("../js/utils");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const {
@@ -16,21 +18,24 @@ const {
   captureAny,
   getAddress,
   newCaptureAny,
+  getAccessManagerRole,
 } = require("@ensuro/utils/js/utils");
 const { HOUR } = require("@ensuro/utils/js/constants");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
+const { getAccessManager } = require("@ensuro/access-managed-proxy/js/deployProxy");
 
 const _A = amountFunction(6);
 
-function makeInputData({ payout, premium, lossProb, expiration, internalId, params }) {
-  return makeFTUWInputData({
+function makeInputData({ payout, premium, lossProb, expiration, internalId, params, signer }) {
+  return (signer === undefined ? makeFTUWInputData : makeAndSignFTUWInputData)({
     payout: payout || _A(1000),
     premium: premium || _A(200),
     lossProb: lossProb || _W("0.10"),
     expiration,
     internalId: internalId || 123,
     params: defaultTestParams(params || {}),
+    signer,
   });
 }
 
@@ -179,6 +184,47 @@ describe("RiskModule contract", function () {
 
     await expect(
       rm.connect(backend).newPolicy(makeInputData({ expiration: now + HOUR * 5, premium: MaxUint256 }), cust)
+    )
+      .to.emit(pool, "NewPolicy")
+      .withArgs(rm, captureAny.value);
+
+    const createdPolicy = captureAny.lastValue;
+    expect(createdPolicy.partnerCommission).to.equal(0);
+    expect(getPremium(createdPolicy)).not.to.equal(createdPolicy.purePremium);
+    expect(getPremium(createdPolicy)).to.equal(
+      createdPolicy.purePremium + createdPolicy.srCoc + createdPolicy.jrCoc + createdPolicy.ensuroCommission
+    );
+  });
+
+  it("Can create policies using FullSignedUW", async () => {
+    const { pool, rm, currency, now, uw } = await helpers.loadFixture(deployRiskModuleFixture);
+
+    const FullSignedUW = await ethers.getContractFactory("FullSignedUW");
+    const newUW = await FullSignedUW.deploy();
+    await expect(rm.setUnderwriter(newUW)).to.emit(rm, "UnderwriterChanged").withArgs(uw, newUW);
+
+    const acMgr = await getAccessManager(pool);
+    const FULL_NEW_POLICY_SIGNER = getAccessManagerRole("FULL_NEW_POLICY_SIGNER");
+    const operationSelector = makeHashSelector("FULL_PRICE_NEW_POLICY");
+
+    // The customer approved the spending for the pool
+    await currency.connect(backend).approve(pool, _A(110));
+
+    await expect(
+      rm
+        .connect(backend)
+        .newPolicy(makeInputData({ expiration: now + HOUR * 5, premium: MaxUint256, signer: backend }), cust)
+    )
+      .to.revertedWithCustomError(newUW, "UnauthorizedSigner")
+      .withArgs(backend, operationSelector);
+
+    await acMgr.setTargetFunctionRole(rm, [operationSelector], FULL_NEW_POLICY_SIGNER);
+    await acMgr.grantRole(FULL_NEW_POLICY_SIGNER, backend, 0);
+
+    await expect(
+      rm
+        .connect(backend)
+        .newPolicy(makeInputData({ expiration: now + HOUR * 5, premium: MaxUint256, signer: backend }), cust)
     )
       .to.emit(pool, "NewPolicy")
       .withArgs(rm, captureAny.value);

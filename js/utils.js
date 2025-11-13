@@ -239,6 +239,11 @@ function makeFTUWInputData({ payout, premium, lossProb, expiration, internalId, 
   );
 }
 
+async function makeAndSignFTUWInputData({ payout, premium, lossProb, expiration, internalId, params, signer }) {
+  const input = makeFTUWInputData({ payout, premium, lossProb, expiration, internalId, params });
+  return ethers.concat([input, await signer.signMessage(ethers.getBytes(input))]);
+}
+
 function makeFTUWReplacementInputData({ oldPolicy, payout, premium, lossProb, expiration, internalId, params }) {
   return abiCoder.encode(
     [
@@ -254,6 +259,20 @@ function makeFTUWReplacementInputData({ oldPolicy, payout, premium, lossProb, ex
   );
 }
 
+async function makeAndSignFTUWReplacementInputData({
+  oldPolicy,
+  payout,
+  premium,
+  lossProb,
+  expiration,
+  internalId,
+  params,
+  signer,
+}) {
+  const input = makeFTUWReplacementInputData({ oldPolicy, payout, premium, lossProb, expiration, internalId, params });
+  return ethers.concat([input, await signer.signMessage(ethers.getBytes(input))]);
+}
+
 function makeFTUWCancelInputData({ policyToCancel, purePremiumRefund, jrCocRefund, srCocRefund }) {
   return abiCoder.encode(
     [
@@ -264,6 +283,11 @@ function makeFTUWCancelInputData({ policyToCancel, purePremiumRefund, jrCocRefun
     ],
     [policyToCancel, purePremiumRefund, jrCocRefund, srCocRefund]
   );
+}
+
+async function makeAndSignFTUWCancelInputData({ policyToCancel, purePremiumRefund, jrCocRefund, srCocRefund, signer }) {
+  const input = makeFTUWCancelInputData({ policyToCancel, purePremiumRefund, jrCocRefund, srCocRefund });
+  return ethers.concat([input, await signer.signMessage(ethers.getBytes(input))]);
 }
 
 /**
@@ -281,6 +305,13 @@ function makeWhitelistStatus(status) {
     );
 }
 
+/**
+ * Returns a bytes4 selector from a string. Equivalent to Solidity `bytes4(keccak256(name))`
+ */
+function makeHashSelector(name) {
+  return ethers.keccak256(ethers.toUtf8Bytes(name)).slice(0, 10);
+}
+
 module.exports = {
   defaultPolicyParams,
   defaultPolicyParamsWithBucket,
@@ -288,8 +319,12 @@ module.exports = {
   defaultBucketParams,
   defaultTestParams,
   makeFTUWInputData,
+  makeAndSignFTUWInputData,
   makeFTUWReplacementInputData,
+  makeAndSignFTUWReplacementInputData,
   makeFTUWCancelInputData,
+  makeAndSignFTUWCancelInputData,
+  makeHashSelector,
   makeBucketQuoteMessage,
   makeFullQuoteMessage,
   paramsAsUint256,
