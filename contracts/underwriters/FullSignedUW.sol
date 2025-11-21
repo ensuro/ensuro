@@ -1,0 +1,109 @@
+// SPDX-License-Identifier: Apache-2.0
+pragma solidity ^0.8.28;
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {Policy} from "../Policy.sol";
+import {IUnderwriter} from "../interfaces/IUnderwriter.sol";
+import {AccessManagedProxy} from "@ensuro/access-managed-proxy/contracts/AccessManagedProxy.sol";
+
+/**
+ * @title FullSignedUW
+ * @dev Underwriter that just decodes what it receives and checks it was signed by an authorized account.
+ *      The signer needs to have the specific selectors granted in the target RM
+ */
+contract FullSignedUW is IUnderwriter {
+  using Policy for Policy.PolicyData;
+
+  bytes4 internal constant FULL_PRICE_NEW_POLICY = bytes4(keccak256("FULL_PRICE_NEW_POLICY"));
+  bytes4 internal constant FULL_PRICE_REPLACE_POLICY = bytes4(keccak256("FULL_PRICE_REPLACE_POLICY"));
+  bytes4 internal constant FULL_PRICE_CANCEL_POLICY = bytes4(keccak256("FULL_PRICE_CANCEL_POLICY"));
+  uint256 private constant NEW_POLICY_DATA_SIZE = 5 * 32 + 7 * 32 /* Params */;
+  uint256 private constant REPLACE_POLICY_DATA_SIZE = NEW_POLICY_DATA_SIZE + 12 * 32 /* Policy */;
+  uint256 private constant CANCEL_POLICY_DATA_SIZE = 12 * 32 /* Policy */ + 3 * 32;
+  uint256 private constant SIGNATURE_SIZE = 65;
+
+  error UnauthorizedSigner(address signer, bytes4 selector);
+  error InvalidInputSize(uint256 actual, uint256 expected);
+
+  function _checkSignature(address rm, bytes calldata inputData, uint256 inputSize, bytes4 requiredRole) internal view {
+    // Check length
+    uint256 inputLength = inputData.length;
+    if (inputLength != (inputSize + SIGNATURE_SIZE)) revert InvalidInputSize(inputLength, inputSize + SIGNATURE_SIZE);
+
+    // Recover signer
+    bytes32 inputHash = MessageHashUtils.toEthSignedMessageHash(inputData[0:inputSize]);
+    address signer = ECDSA.recover(inputHash, inputData[inputSize:inputLength]);
+
+    // Check it has the permission in the RM
+    (bool immediate, ) = AccessManagedProxy(payable(rm)).ACCESS_MANAGER().canCall(signer, rm, requiredRole);
+    require(immediate, UnauthorizedSigner(signer, requiredRole));
+  }
+
+  function priceNewPolicy(
+    address rm,
+    bytes calldata inputData
+  )
+    external
+    view
+    override
+    returns (
+      uint256 payout,
+      uint256 premium,
+      uint256 lossProb,
+      uint40 expiration,
+      uint96 internalId,
+      Policy.Params memory params
+    )
+  {
+    _checkSignature(rm, inputData, NEW_POLICY_DATA_SIZE, FULL_PRICE_NEW_POLICY);
+    return abi.decode(inputData[0:NEW_POLICY_DATA_SIZE], (uint256, uint256, uint256, uint40, uint96, Policy.Params));
+  }
+
+  function pricePolicyReplacement(
+    address rm,
+    bytes calldata inputData
+  )
+    external
+    view
+    override
+    returns (
+      Policy.PolicyData memory oldPolicy,
+      uint256 payout,
+      uint256 premium,
+      uint256 lossProb,
+      uint40 expiration,
+      uint96 internalId,
+      Policy.Params memory params
+    )
+  {
+    _checkSignature(rm, inputData, REPLACE_POLICY_DATA_SIZE, FULL_PRICE_REPLACE_POLICY);
+    return
+      abi.decode(
+        inputData[0:REPLACE_POLICY_DATA_SIZE],
+        (Policy.PolicyData, uint256, uint256, uint256, uint40, uint96, Policy.Params)
+      );
+  }
+
+  function pricePolicyCancellation(
+    address rm,
+    bytes calldata inputData
+  )
+    external
+    view
+    override
+    returns (
+      Policy.PolicyData memory policyToCancel,
+      uint256 purePremiumRefund,
+      uint256 jrCocRefund,
+      uint256 srCocRefund
+    )
+  {
+    _checkSignature(rm, inputData, CANCEL_POLICY_DATA_SIZE, FULL_PRICE_CANCEL_POLICY);
+    (policyToCancel, purePremiumRefund, jrCocRefund, srCocRefund) = abi.decode(
+      inputData[0:CANCEL_POLICY_DATA_SIZE],
+      (Policy.PolicyData, uint256, uint256, uint256)
+    );
+    if (jrCocRefund == type(uint256).max) jrCocRefund = policyToCancel.jrCoc - policyToCancel.jrAccruedInterest();
+    if (srCocRefund == type(uint256).max) srCocRefund = policyToCancel.srCoc - policyToCancel.srAccruedInterest();
+  }
+}

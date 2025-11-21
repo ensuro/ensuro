@@ -126,7 +126,7 @@ contract RiskModule is IRiskModule, PolicyPoolComponent {
    *                  new policy.
    * @param onBehalfOf The address that will be the owner of the created policy
    */
-  function newPolicy(bytes calldata inputData, address onBehalfOf) external returns (Policy.PolicyData memory policy) {
+  function newPolicy(bytes calldata inputData, address onBehalfOf) public returns (Policy.PolicyData memory policy) {
     (
       uint256 payout,
       uint256 premium,
@@ -145,6 +145,19 @@ contract RiskModule is IRiskModule, PolicyPoolComponent {
     policy = Policy.initialize(params_, premium, payout, lossProb, expiration, now_);
     policy.id = _policyPool.newPolicy(policy, msg.sender, onBehalfOf, internalId);
     return policy;
+  }
+
+  /**
+   * @dev Creates several policies, the premium is paid by msg.sender
+   *
+   * @param inputData Input data that will be decoded by the _underwriter to construct the parameters for the
+   *                  new policy.
+   * @param onBehalfOf The address that will be the owner of the created policy (same for all the policies)
+   */
+  function newPolicies(bytes[] calldata inputData, address onBehalfOf) external {
+    for (uint256 i = 0; i < inputData.length; ++i) {
+      newPolicy(inputData[i], onBehalfOf);
+    }
   }
 
   /**
