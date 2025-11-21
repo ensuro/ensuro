@@ -312,6 +312,13 @@ function makeHashSelector(name) {
   return ethers.keccak256(ethers.toUtf8Bytes(name)).slice(0, 10);
 }
 
+function encodePolicy(policy) {
+  return abiCoder.encode(
+    ["(uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint40, uint40)"],
+    [policy]
+  );
+}
+
 module.exports = {
   defaultPolicyParams,
   defaultPolicyParamsWithBucket,
@@ -336,4 +343,5 @@ module.exports = {
   computeMinimumPremium,
   packParams,
   getPremium,
+  encodePolicy,
 };

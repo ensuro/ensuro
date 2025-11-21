@@ -6,6 +6,7 @@ import {ERC721Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC72
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import {MulticallUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/MulticallUpgradeable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -31,7 +32,7 @@ import {Policy} from "./Policy.sol";
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
-contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721Upgradeable {
+contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721Upgradeable, MulticallUpgradeable {
   using Policy for Policy.PolicyData;
   using SafeERC20 for IERC20Metadata;
   using SafeCast for uint256;
@@ -704,14 +705,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   function expirePolicy(Policy.PolicyData calldata policy) external override whenNotPaused {
     if (policy.expiration > block.timestamp) revert PolicyNotExpired(policy.id, policy.expiration, block.timestamp);
     return _resolvePolicy(policy, 0, true);
-  }
-
-  function expirePolicies(Policy.PolicyData[] calldata policies) external whenNotPaused {
-    for (uint256 i = 0; i < policies.length; ++i) {
-      if (policies[i].expiration > block.timestamp)
-        revert PolicyNotExpired(policies[i].id, policies[i].expiration, block.timestamp);
-      _resolvePolicy(policies[i], 0, true);
-    }
   }
 
   function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external override whenNotPaused {

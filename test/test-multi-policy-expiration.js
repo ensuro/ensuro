@@ -3,8 +3,9 @@ const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { amountFunction, _W, getTransactionEvent, captureAny } = require("@ensuro/utils/js/utils");
 const { deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("../js/test-utils");
 const hre = require("hardhat");
+const { ethers } = hre;
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
-const { defaultTestParams, makeFTUWInputData } = require("../js/utils");
+const { defaultTestParams, makeFTUWInputData, encodePolicy } = require("../js/utils");
 
 const _A = amountFunction(6);
 
@@ -32,8 +33,10 @@ describe("Multiple policy expirations", function () {
 
     await helpers.time.increaseTo(policies[policies.length - 1].expiration);
 
-    const toExpire = policies.map((p) => [...p]);
-    const tx = await pool.connect(backend).expirePolicies(toExpire);
+    const toExpire = policies.map((p) =>
+      ethers.concat([pool.interface.getFunction("expirePolicy").selector, encodePolicy(p)])
+    );
+    const tx = await pool.connect(backend).multicall(toExpire);
     const receipt = await tx.wait();
     console.log("Total gas used by multiple expiration of %s policies: %s", policies.length, receipt.gasUsed);
     console.log("Avg gas per policy expiration: %s", receipt.gasUsed / BigInt(policies.length.toString()));
@@ -47,8 +50,10 @@ describe("Multiple policy expirations", function () {
     const chunkSize = 10;
     let gasUsed = 0n;
     for (let i = 0; i < policies.length; i += chunkSize) {
-      const toExpire = policies.slice(i, i + chunkSize).map((p) => [...p]);
-      const tx = await pool.connect(backend).expirePolicies(toExpire);
+      const toExpire = policies
+        .slice(i, i + chunkSize)
+        .map((p) => ethers.concat([pool.interface.getFunction("expirePolicy").selector, encodePolicy(p)]));
+      const tx = await pool.connect(backend).multicall(toExpire);
       const receipt = await tx.wait();
       gasUsed += receipt.gasUsed;
     }
@@ -66,7 +71,7 @@ describe("Multiple policy expirations", function () {
   it.skip("Measure what's the max number of policies that can be expired without exceeding the max gas", async () => {
     const { pool, rm, backend, pricer, policies } = await helpers.loadFixture(poolWithPolicies);
 
-    const additionalPolicies = 500; // number arrived at by trial-and-error
+    const additionalPolicies = 400; // number arrived at by trial-and-error
 
     for (let i = 0; i < additionalPolicies; i++) {
       const tx = await rm.connect(pricer).newPolicy(makeInputData({ internalId: 100000 + i }), pricer);
@@ -75,8 +80,11 @@ describe("Multiple policy expirations", function () {
       policies.push(newPolicyEvt.args.policy);
     }
 
-    await helpers.time.increaseTo(policies[policies.length - 1].expiration + 100);
-    const tx = await pool.connect(backend).expirePolicies(policies, {
+    await helpers.time.increaseTo(policies[policies.length - 1].expiration + 100n);
+    const toExpire = policies.map((p) =>
+      ethers.concat([pool.interface.getFunction("expirePolicy").selector, encodePolicy(p)])
+    );
+    const tx = await pool.connect(backend).multicall(toExpire, {
       gasLimit: 15_000_000, // Half the polygon PoS block limit as of may 2023
     });
     const receipt = await tx.wait();
@@ -88,8 +96,10 @@ describe("Multiple policy expirations", function () {
 
     await helpers.time.increaseTo(policies[policies.length - 1].expiration);
 
-    const toExpire = policies.map((p) => [...p]);
-    const tx = await pool.connect(backend).expirePolicies(toExpire);
+    const toExpire = policies.map((p) =>
+      ethers.concat([pool.interface.getFunction("expirePolicy").selector, encodePolicy(p)])
+    );
+    const tx = await pool.connect(backend).multicall(toExpire);
     const receipt = await tx.wait();
 
     const expiredPolicyIds = receipt.logs
@@ -112,9 +122,11 @@ describe("Multiple policy expirations", function () {
     const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
 
     // Try to expire this unexpired policy along with an expired one
-    const toExpire = [[...policies[0]], [...newPolicyEvt.args.policy]];
     expect(newPolicyEvt.args.policy.expiration).to.be.greaterThan(await helpers.time.latest());
-    await expect(pool.connect(backend).expirePolicies(toExpire))
+    const toExpire = [policies[0], newPolicyEvt.args.policy].map((p) =>
+      ethers.concat([pool.interface.getFunction("expirePolicy").selector, encodePolicy(p)])
+    );
+    await expect(pool.connect(backend).multicall(toExpire))
       .to.be.revertedWithCustomError(pool, "PolicyNotExpired")
       .withArgs(newPolicyEvt.args.policy.id, newPolicyEvt.args.policy.expiration, captureAny.uint);
   });

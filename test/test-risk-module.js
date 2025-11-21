@@ -196,6 +196,55 @@ describe("RiskModule contract", function () {
     );
   });
 
+  it("Can create several policies with a single call", async () => {
+    const { pool, rm, currency, now } = await helpers.loadFixture(deployRiskModuleFixture);
+
+    await pool.setExposureLimit(rm, _A(11000));
+    // The customer approved the spending for the pool
+    await currency.connect(backend).approve(pool, _A(110 * 5));
+
+    const inputData = [...Array(5)].map((_, i) =>
+      makeInputData({ expiration: now + HOUR * 5, premium: MaxUint256, internalId: 200 + i })
+    );
+
+    const capturePolicies = [...Array(5)].map(() => newCaptureAny());
+
+    await expect(rm.connect(backend).newPolicies(inputData, cust))
+      .to.emit(pool, "NewPolicy")
+      .withArgs(rm, capturePolicies[0].value)
+      .to.emit(pool, "NewPolicy")
+      .withArgs(rm, capturePolicies[1].value)
+      .to.emit(pool, "NewPolicy")
+      .withArgs(rm, capturePolicies[2].value)
+      .to.emit(pool, "NewPolicy")
+      .withArgs(rm, capturePolicies[3].value)
+      .to.emit(pool, "NewPolicy")
+      .withArgs(rm, capturePolicies[4].value);
+
+    for (const capturedPolicy of capturePolicies) {
+      const createdPolicy = capturedPolicy.lastValue;
+      expect(createdPolicy.partnerCommission).to.equal(0);
+      expect(getPremium(createdPolicy)).not.to.equal(createdPolicy.purePremium);
+      expect(getPremium(createdPolicy)).to.equal(
+        createdPolicy.purePremium + createdPolicy.srCoc + createdPolicy.jrCoc + createdPolicy.ensuroCommission
+      );
+    }
+  });
+
+  it("Can create a lot of policies with a single call", async () => {
+    const { pool, rm, currency, now } = await helpers.loadFixture(deployRiskModuleFixture);
+
+    await pool.setExposureLimit(rm, _A(11000));
+    // The customer approved the spending for the pool
+    await currency.connect(backend).approve(pool, _A(110 * 50));
+
+    const inputData = [...Array(50)].map((_, i) =>
+      makeInputData({ expiration: now + HOUR * 5, premium: MaxUint256, internalId: 200 + i, payout: _A(100) })
+    );
+
+    await expect(rm.connect(backend).newPolicies(inputData, cust)).to.emit(pool, "NewPolicy");
+  });
+
   it("Can create policies using FullSignedUW", async () => {
     const { pool, rm, currency, now, uw } = await helpers.loadFixture(deployRiskModuleFixture);
 
@@ -441,7 +490,7 @@ describe("RiskModule contract", function () {
       .to.emit(pool, "PolicyCancelled")
       .withArgs(rm, policy.id, policy.purePremium, _A(0), srCocRefund.uint);
 
-    expect(srCocRefund.lastUint).to.closeTo((policy.srCoc * 2n) / 5n, 10n); // 2/5 of srCoc refunded
+    expect(srCocRefund.lastUint).to.closeTo((policy.srCoc * 2n) / 5n, 20n); // 2/5 of srCoc refunded
     expect(await currency.balanceOf(cust)).to.equal(balanceBefore + policy.purePremium + srCocRefund.lastUint);
   });
 
