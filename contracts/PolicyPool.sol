@@ -11,7 +11,6 @@ import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import {IEToken} from "./interfaces/IEToken.sol";
-import {IPolicyHolderV2} from "./interfaces/IPolicyHolderV2.sol";
 import {IPolicyHolder} from "./interfaces/IPolicyHolder.sol";
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
 import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
@@ -212,6 +211,12 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   error PolicyNotFound(uint256 policyId);
   error PolicyNotExpired(uint256 policyId, uint40 expiration, uint256 now);
   error InvalidPolicyReplacement(Policy.PolicyData oldPolicy, Policy.PolicyData newPolicy);
+  error InvalidPolicyCancellation(
+    Policy.PolicyData oldPolicy,
+    uint256 purePremiumRefund,
+    uint256 jrCocRefund,
+    uint256 srCocRefund
+  );
   error PayoutExceedsLimit(uint256 payout, uint256 policyPayout);
   error ExposureLimitExceeded(uint128 activeExposure, uint128 exposureLimit);
   error InvalidReceiver(address receiver);
@@ -644,6 +649,39 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     return newPolicy_.id;
   }
 
+  function cancelPolicy(
+    Policy.PolicyData calldata policyToCancel,
+    uint256 purePremiumRefund,
+    uint256 jrCocRefund,
+    uint256 srCocRefund
+  ) external override whenNotPaused {
+    // Checks
+    _validatePolicy(policyToCancel);
+    IRiskModule rm = IRiskModule(_msgSender());
+    if (extractRiskModule(policyToCancel.id) != rm) revert OnlyRiskModuleAllowed();
+    _requireCompActiveOrDeprecated(address(rm), ComponentKind.riskModule);
+    IPremiumsAccount pa = rm.premiumsAccount();
+    _requireCompActiveOrDeprecated(address(pa), ComponentKind.premiumsAccount);
+    require(policyToCancel.expiration > uint40(block.timestamp), PolicyAlreadyExpired(policyToCancel.id));
+    require(
+      purePremiumRefund <= policyToCancel.purePremium &&
+        jrCocRefund <= policyToCancel.jrCoc &&
+        srCocRefund <= policyToCancel.srCoc,
+      InvalidPolicyCancellation(policyToCancel, purePremiumRefund, jrCocRefund, srCocRefund)
+    );
+
+    // Effects
+    address policyHolder = ownerOf(policyToCancel.id);
+    _changeExposure(rm, false, policyToCancel.payout);
+    delete _policies[policyToCancel.id];
+
+    // Interactions
+    pa.policyCancelled(policyToCancel, purePremiumRefund, jrCocRefund, srCocRefund, policyHolder);
+
+    emit PolicyCancelled(rm, policyToCancel.id, purePremiumRefund, jrCocRefund, srCocRefund);
+    _notifyCancellation(policyToCancel.id, purePremiumRefund, jrCocRefund, srCocRefund);
+  }
+
   function _transferIfNonZero(address payer, address target, uint256 new_, uint256 old_) internal {
     uint256 aux = new_ - old_;
     if (aux != 0) {
@@ -791,11 +829,35 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    */
   function _notifyReplacement(uint256 oldPolicyId, uint256 newPolicyId) internal {
     address customer = ownerOf(oldPolicyId);
-    if (!ERC165Checker.supportsInterface(customer, type(IPolicyHolderV2).interfaceId)) return;
+    if (!ERC165Checker.supportsInterface(customer, type(IPolicyHolder).interfaceId)) return;
 
-    bytes4 retval = IPolicyHolderV2(customer).onPolicyReplaced(_msgSender(), address(this), oldPolicyId, newPolicyId);
+    bytes4 retval = IPolicyHolder(customer).onPolicyReplaced(_msgSender(), address(this), oldPolicyId, newPolicyId);
     // PolicyHolder can revert and cancel the policy replacement
-    if (retval != IPolicyHolderV2.onPolicyReplaced.selector) revert InvalidNotificationResponse(retval);
+    if (retval != IPolicyHolder.onPolicyReplaced.selector) revert InvalidNotificationResponse(retval);
+  }
+
+  /**
+   * @dev Notifies the replacement with a callback if the policyholder is a contract. Never reverts.
+   */
+  function _notifyCancellation(
+    uint256 cancelledPolicyId,
+    uint256 purePremiumRefund,
+    uint256 jrCocRefund,
+    uint256 srCocRefund
+  ) internal {
+    address customer = ownerOf(cancelledPolicyId);
+    if (!ERC165Checker.supportsInterface(customer, type(IPolicyHolder).interfaceId)) return;
+
+    bytes4 retval = IPolicyHolder(customer).onPolicyCancelled(
+      _msgSender(),
+      address(this),
+      cancelledPolicyId,
+      purePremiumRefund,
+      jrCocRefund,
+      srCocRefund
+    );
+    // PolicyHolder can revert and cancel the policy replacement
+    if (retval != IPolicyHolder.onPolicyCancelled.selector) revert InvalidNotificationResponse(retval);
   }
 
   /**

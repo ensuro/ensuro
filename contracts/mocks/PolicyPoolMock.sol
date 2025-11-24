@@ -56,6 +56,13 @@ contract PolicyPoolMock is IPolicyPool {
     return newPolicy_.id;
   }
 
+  function cancelPolicy(
+    Policy.PolicyData memory policyToCancel,
+    uint256 purePremiumRefund,
+    uint256 jrCocRefund,
+    uint256 srCocRefund
+  ) external override {}
+
   function extractRiskModule(uint256 policyId) public pure returns (IRiskModule) {
     return IRiskModule(address(uint160(policyId >> 96)));
   }

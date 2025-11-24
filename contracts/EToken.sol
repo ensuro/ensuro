@@ -85,6 +85,7 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
   event WhitelistChanged(ILPWhitelist oldWhitelist, ILPWhitelist newWhitelist);
   event CoolerChanged(ICooler oldCooler, ICooler newCooler);
   event ETokensRedistributed(address indexed owner, uint256 distributedProfit);
+  event CoCRefunded(uint256 indexed policyId, address indexed receiver, uint256 amount);
 
   modifier onlyBorrower() {
     require(_loans[_msgSender()].lastUpdate != 0, OnlyBorrower(_msgSender()));
@@ -330,17 +331,36 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
     emit SCRLocked(policyId, policyInterestRate, scrAmount);
   }
 
+  function _unlockScr(uint256 policyId, uint256 scrAmount, uint256 policyInterestRate, int256 adjustment) internal {
+    // Require removed, since it shouldn't happen and if happens it will fail in _scr.sub
+    // require(scrAmount <= uint256(_scr.scr), "Current SCR less than the amount you want to unlock");
+    _tsScaled = _tsScaled.discreteChange(adjustment, _scr);
+    _scr = _scr.sub(scrAmount, policyInterestRate);
+    emit SCRUnlocked(policyId, policyInterestRate, scrAmount, adjustment);
+  }
+
   function unlockScr(
     uint256 policyId,
     uint256 scrAmount,
     uint256 policyInterestRate,
     int256 adjustment
   ) external override onlyBorrower {
-    // Require removed, since it shouldn't happen and if happens it will fail in _scr.sub
-    // require(scrAmount <= uint256(_scr.scr), "Current SCR less than the amount you want to unlock");
-    _tsScaled = _tsScaled.discreteChange(adjustment, _scr);
-    _scr = _scr.sub(scrAmount, policyInterestRate);
-    emit SCRUnlocked(policyId, policyInterestRate, scrAmount, adjustment);
+    _unlockScr(policyId, scrAmount, policyInterestRate, adjustment);
+  }
+
+  function unlockScrWithRefund(
+    uint256 policyId,
+    uint256 scrAmount,
+    uint256 policyInterestRate,
+    int256 adjustment,
+    address receiver,
+    uint256 refundAmount
+  ) external override onlyBorrower {
+    _unlockScr(policyId, scrAmount, policyInterestRate, adjustment);
+    if (refundAmount != 0) {
+      _transferTo(receiver, refundAmount);
+      emit CoCRefunded(policyId, receiver, refundAmount);
+    }
   }
 
   function _yieldEarnings(int256 earnings) internal override {

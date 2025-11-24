@@ -27,6 +27,24 @@ interface IPolicyPool {
   event PolicyReplaced(IRiskModule indexed riskModule, uint256 indexed oldPolicyId, uint256 indexed newPolicyId);
 
   /**
+   * @dev Event emitted every time a new policy replaces an old Policy Contains all the data about the policy that is
+   * later required for doing operations with the policy like resolution or expiration.
+   *
+   * @param riskModule The risk module that created the policy
+   * @param cancelledPolicyId The id of the cancelled policy.
+   * @param purePremiumRefund The amount of pure premium refunded
+   * @param jrCocRefund The amount of Jr CoC refunded
+   * @param srCocRefund The amount of Sr CoC refunded
+   */
+  event PolicyCancelled(
+    IRiskModule indexed riskModule,
+    uint256 indexed cancelledPolicyId,
+    uint256 purePremiumRefund,
+    uint256 jrCocRefund,
+    uint256 srCocRefund
+  );
+
+  /**
    * @dev Event emitted every time a policy is removed from the pool. If the policy expired, the `payout` is 0,
    * otherwise is the amount transferred to the policyholder.
    *
@@ -99,6 +117,31 @@ interface IPolicyPool {
     address payer,
     uint96 internalId
   ) external returns (uint256);
+
+  /**
+   * @dev Cancels a policy, doing optional refunds of parts of the premium. Must be called from an active
+   *      or deprecated RiskModule
+   *
+   * Requirements:
+   * - `msg.sender` must be an active or deprecated RiskModule
+   * - Policy not expired
+   *
+   * Events:
+   * - {PolicyPool-PolicyCancelled}: with all the details about the policy
+   * - {ERC20-Transfer}: does several transfers from caller address to the different receivers of the premium
+   * (see Premium Split in the docs)
+   *
+   * @param policyToCancel A policy created previously and not expired, that will be cancelled
+   * @param purePremiumRefund The amount to refund from pure premiums (<= policyToCancel.purePremium)
+   * @param jrCocRefund The amount to refund from jrCoc (<= policyToCancel.jrCoc)
+   * @param srCocRefund The amount to refund from srCoc (<= policyToCancel.jrCoc)
+   */
+  function cancelPolicy(
+    Policy.PolicyData calldata policyToCancel,
+    uint256 purePremiumRefund,
+    uint256 jrCocRefund,
+    uint256 srCocRefund
+  ) external;
 
   /**
    * @dev Resolves a policy with a payout. Must be called from an active RiskModule
