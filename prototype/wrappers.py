@@ -849,7 +849,7 @@ class PolicyPool(IERC721):
     get_investable = MethodAdapter((), "amount")
 
     expire_policy_ = MethodAdapter((("policy", "tuple"),))
-    expire_policies_ = MethodAdapter((("policies", "list"),))
+    multicall = MethodAdapter((("calls", "list"),))
 
     def expire_policy(self, policy_id):
         if isinstance(policy_id, tuple):
@@ -866,7 +866,18 @@ class PolicyPool(IERC721):
         policies = [
             policy_db.get_policy(self.contract.address, policy_id).as_tuple() for policy_id in policies
         ]
-        return self.expire_policies_(policies)
+        EXPIRE_POLICY_SELECTOR = bytes.fromhex("f720bbbf")
+        input_data = [
+            EXPIRE_POLICY_SELECTOR
+            + abi_encode(
+                [
+                    "(" + "uint256," * 10 + "uint40,uint40)",
+                ],
+                [policy],
+            )
+            for policy in policies
+        ]
+        return self.multicall(input_data)
 
 
 class PremiumsAccount(ReserveMixin, ETHWrapper):

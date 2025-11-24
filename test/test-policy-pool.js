@@ -8,10 +8,12 @@ const {
 } = require("@ensuro/utils/js/utils");
 const { HOUR } = require("@ensuro/utils/js/constants");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
+const { getAccessManager } = require("@ensuro/access-managed-proxy/js/deployProxy");
 const { addEToken, createEToken, deployPool, deployPremiumsAccount } = require("../js/test-utils");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { ComponentStatus, ComponentKind } = require("../js/enums.js");
 const hre = require("hardhat");
+const { encodePolicy } = require("../js/utils.js");
 const { ethers } = hre;
 const { ZeroAddress, ZeroHash } = ethers;
 
@@ -152,6 +154,32 @@ describe("PolicyPool contract", function () {
     await expect(pool.setTreasury(newTreasury)).to.emit(pool, "TreasuryChanged").withArgs(TREASURY, newTreasury);
 
     expect(await pool.treasury()).to.equal(newTreasury);
+  });
+
+  it("can't change the treasury without permission, not even using multicall", async () => {
+    const { pool, owner } = await helpers.loadFixture(deployPoolFixture);
+    const AccessManagedProxy = await ethers.getContractFactory("AccessManagedProxy");
+    const acMgr = await getAccessManager(pool);
+    const setTreasurySelector = pool.interface.getFunction("setTreasury").selector;
+    await acMgr.connect(owner).setTargetFunctionRole(pool, [setTreasurySelector], 1234n);
+    const newTreasury = "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199";
+
+    await expect(pool.connect(owner).setTreasury(newTreasury))
+      .to.be.revertedWithCustomError(AccessManagedProxy, "AccessManagedUnauthorized")
+      .withArgs(owner);
+
+    const abiCoder = ethers.AbiCoder.defaultAbiCoder();
+    await expect(
+      pool.connect(owner).multicall([ethers.concat([setTreasurySelector, abiCoder.encode(["address"], [newTreasury])])])
+    )
+      .to.be.revertedWithCustomError(AccessManagedProxy, "AccessManagedUnauthorized")
+      .withArgs(owner);
+
+    await acMgr.connect(owner).setTargetFunctionRole(pool, [setTreasurySelector], await acMgr.PUBLIC_ROLE());
+
+    await expect(pool.multicall([ethers.concat([setTreasurySelector, abiCoder.encode(["address"], [newTreasury])])]))
+      .to.emit(pool, "TreasuryChanged")
+      .withArgs(TREASURY, newTreasury);
   });
 
   it("can add components", async () => {
@@ -438,7 +466,11 @@ describe("PolicyPool contract", function () {
 
     await expect(pool.pause()).to.emit(pool, "Paused");
 
-    await expect(pool.expirePolicies([[...policy]])).to.be.revertedWithCustomError(pool, "EnforcedPause");
+    const expirePolicySelector = pool.interface.getFunction("expirePolicy").selector;
+
+    await expect(
+      pool.multicall([ethers.concat([expirePolicySelector, encodePolicy(policy)])])
+    ).to.be.revertedWithCustomError(pool, "EnforcedPause");
   });
 
   it("Can't replace resolved policies", async () => {

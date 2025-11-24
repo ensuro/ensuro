@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.28;
 
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
+import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IPolicyPool} from "./interfaces/IPolicyPool.sol";
@@ -17,7 +18,7 @@ import {IPolicyPoolComponent} from "./interfaces/IPolicyPoolComponent.sol";
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
-abstract contract PolicyPoolComponent is UUPSUpgradeable, IPolicyPoolComponent {
+abstract contract PolicyPoolComponent is Initializable, UUPSUpgradeable, IPolicyPoolComponent {
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IPolicyPool internal immutable _policyPool;
 
@@ -37,10 +38,8 @@ abstract contract PolicyPoolComponent is UUPSUpgradeable, IPolicyPoolComponent {
     _policyPool = policyPool_;
   }
 
-  // solhint-disable-next-line func-name-mixedcase
-  function __PolicyPoolComponent_init() internal onlyInitializing {
-    __UUPSUpgradeable_init();
-  }
+  // solhint-disable-next-line func-name-mixedcase, no-empty-blocks
+  function __PolicyPoolComponent_init() internal onlyInitializing {}
 
   function _authorizeUpgrade(address newImpl) internal view override {
     _upgradeValidations(newImpl);
