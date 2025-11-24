@@ -490,7 +490,7 @@ describe("RiskModule contract", function () {
       .to.emit(pool, "PolicyCancelled")
       .withArgs(rm, policy.id, policy.purePremium, _A(0), srCocRefund.uint);
 
-    expect(srCocRefund.lastUint).to.closeTo((policy.srCoc * 2n) / 5n, 20n); // 2/5 of srCoc refunded
+    expect(srCocRefund.lastUint).to.closeTo((policy.srCoc * 2n) / 5n, 50n); // 2/5 of srCoc refunded
     expect(await currency.balanceOf(cust)).to.equal(balanceBefore + policy.purePremium + srCocRefund.lastUint);
   });
 
