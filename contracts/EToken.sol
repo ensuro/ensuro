@@ -249,7 +249,6 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
 
   /** END Methods following AAVE's IScaledBalanceToken */
 
-
   /// @inheritdoc IEToken
   function getCurrentScale(bool updated) public view override returns (uint256) {
     if (updated) return _tsScaled.projectScale(_scr).toUint256();
