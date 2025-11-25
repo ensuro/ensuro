@@ -1,6 +1,6 @@
 {
   "name": "@ensuro/core",
-  "description": "Ensuro - Decentralized insurance protocol",
+  "description": "Ensuro - Blockchain-based insurance protocol",
   "version": "%%VERSION%%",
   "files": [
     "**/*.sol",
