@@ -249,15 +249,27 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
 
   /** END Methods following AAVE's IScaledBalanceToken */
 
+
+  /// @inheritdoc IEToken
   function getCurrentScale(bool updated) public view override returns (uint256) {
     if (updated) return _tsScaled.projectScale(_scr).toUint256();
     else return _tsScaled.scale.toUint256();
   }
 
+  /**
+   * @dev Returns the amount of funds reported as available by the current SCR state.
+   * @return Amount of funds currently marked as available by the SCR state.
+   */
   function fundsAvailable() public view returns (uint256) {
     return _scr.fundsAvailable(totalSupply());
   }
 
+  /**
+   * @dev Returns the amount of funds that can be considered available for locking
+   *      new SCR positions, after applying the current utilization constraints.
+   * @return Amount of funds that the contract treats as available to lock as SCR,
+   *         given the current total supply, cooler state and max utilization settings.
+   */
   function fundsAvailableToLock() public view returns (uint256) {
     uint256 ts = totalSupply();
     if (address(_cooler) != address(0)) {
@@ -273,6 +285,7 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
     return _scr.fundsAvailable(ts);
   }
 
+  /// @inheritdoc Reserve
   function yieldVault() public view override returns (IERC4626) {
     return _yieldVault;
   }
@@ -292,14 +305,17 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
     return (value / FOUR_DECIMAL_TO_WAD).toUint16();
   }
 
+  /// @inheritdoc IEToken
   function scr() public view virtual override returns (uint256) {
     return _scr.scrAmount();
   }
 
+  /// @inheritdoc IEToken
   function scrInterestRate() public view override returns (uint256) {
     return uint256(_scr.interestRate);
   }
 
+  /// @inheritdoc IEToken
   function tokenInterestRate() public view override returns (uint256) {
     uint256 ts = totalSupply();
     if (ts == 0) return 0;
@@ -308,18 +324,34 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
     }
   }
 
+  /**
+   * @dev Returns the current liquidity requirement parameter.
+   * @return Liquidity requirement.
+   */
   function liquidityRequirement() public view returns (uint256) {
     return _4toWad(_params.liquidityRequirement);
   }
 
+  /**
+   * @dev Returns the configured maximum utilization rate.
+   * @return Maximum utilization rate.
+   */
   function maxUtilizationRate() public view returns (uint256) {
     return _4toWad(_params.maxUtilizationRate);
   }
 
+  /**
+   * @dev Returns the configured minimum utilization rate.
+   * @return Minimum utilization rate.
+   */
   function minUtilizationRate() public view returns (uint256) {
     return _4toWad(_params.minUtilizationRate);
   }
 
+  /**
+   * @dev Returns the current utilization rate of the eToken.
+   * @return Current utilization rate
+   */
   function utilizationRate() public view returns (uint256) {
     return _scr.scrAmount().mulDiv(WAD, this.totalSupply());
   }
@@ -383,6 +415,7 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
     if (utilizationRate() < minUtilizationRate()) revert UtilizationRateTooLow(utilizationRate(), minUtilizationRate());
   }
 
+  /// @inheritdoc IEToken
   function totalWithdrawable() public view virtual override returns (uint256) {
     uint256 locked = _scr.scrAmount().mulDiv(liquidityRequirement(), WAD);
     uint256 totalSupply_ = totalSupply();
@@ -477,12 +510,17 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
     currency().safeTransferFrom(_msgSender(), address(this), amount);
   }
 
+  /// @inheritdoc IEToken
   function getLoan(address borrower) public view virtual override returns (uint256) {
     ETKLib.ScaledAmount storage loan = _loans[borrower];
     require(loan.lastUpdate != 0, InvalidBorrower(borrower));
     return loan.projectScale(internalLoanInterestRate()).toCurrentCeil(uint256(loan.amount));
   }
 
+  /**
+   * @dev Returns the interest rate used for internal loans.
+   * @return Internal loan interest rate.
+   */
   function internalLoanInterestRate() public view returns (uint256) {
     return _4toWad(_params.internalLoanInterestRate);
   }

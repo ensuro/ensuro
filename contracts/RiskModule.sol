@@ -85,20 +85,33 @@ contract RiskModule is IRiskModule, PolicyPoolComponent {
     return super.supportsInterface(interfaceId) || interfaceId == type(IRiskModule).interfaceId;
   }
 
+  /// @inheritdoc IRiskModule
   function wallet() public view override returns (address) {
     return _wallet;
   }
 
+  /**
+   * @dev Updates the provider wallet address for this RiskModule and emits PartnerWalletChanged event.
+   * @param newWallet New wallet address to store in `_wallet`.
+   */
   function setWallet(address newWallet) public {
     require(newWallet != address(0), InvalidWallet(newWallet));
     emit PartnerWalletChanged(_wallet, newWallet);
     _wallet = newWallet;
   }
 
+  /**
+   * @dev Returns the underwriter contract currently configured for this RiskModule.
+   * @return The current underwriter.
+   */
   function underwriter() public view returns (IUnderwriter) {
     return _underwriter;
   }
 
+  /**
+   * @dev Updates the underwriter contract used by this RiskModule and emits UnderwriterChanged event.
+   * @param newUW New underwriter contract address to store in `_underwriter`.
+   */
   function setUnderwriter(IUnderwriter newUW) public {
     require(address(newUW) != address(0), InvalidUnderwriter(newUW));
     emit UnderwriterChanged(_underwriter, newUW);
