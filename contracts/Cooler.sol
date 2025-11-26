@@ -39,7 +39,25 @@ contract Cooler is ICooler, PolicyPoolComponent, ERC721Upgradeable {
   mapping(IEToken => uint256) internal _pendingWithdrawals;
   uint256 internal _nextTokenId;
 
+  /**
+   * @dev Event emitted when the cooldown period is changed
+   *
+   * @param eToken The EToken contract address for which the cooldown period was modified
+   * @param oldCooldownPeriod The previous cooldown period value (in seconds)
+   * @param newCooldownPeriod The new cooldown period value (in seconds)
+   */
   event CooldownPeriodChanged(IEToken indexed eToken, uint40 oldCooldownPeriod, uint40 newCooldownPeriod);
+
+  /**
+   * @dev Event emitted when a withdrawal is requested
+   *
+   * @param eToken The EToken contract from which the withdrawal is being requested
+   * @param tokenId The NFT id of the withdrawal position created
+   * @param owner The owner initiating the withdrawal request
+   * @param when The timestamp when the withdrawal can be executed
+   * @param scaleAtRequest The token scale (see {EToken.getCurrentScale(true)}) at the time of the withdrawal request
+   * @param amount The amount of eTokens being requested for withdrawal
+   */
   event WithdrawalRequested(
     IEToken indexed eToken,
     uint256 indexed tokenId,
@@ -49,6 +67,15 @@ contract Cooler is ICooler, PolicyPoolComponent, ERC721Upgradeable {
     uint256 amount
   );
 
+  /**
+   * @dev Event emitted when a withdrawal is executed
+   *
+   * @param eToken The EToken contract from which the withdrawal was processed
+   * @param tokenId The unique identifier of the token position that was withdrawn
+   * @param receiver The address that received the withdrawn funds
+   * @param amountRequested The original amount of eTokens requested for withdrawal
+   * @param amountWithdrawn The actual amount withdrawn to the receiver
+   */
   event WithdrawalExecuted(
     IEToken indexed eToken,
     uint256 indexed tokenId,
@@ -57,10 +84,29 @@ contract Cooler is ICooler, PolicyPoolComponent, ERC721Upgradeable {
     uint256 amountWithdrawn
   );
 
+  /**
+   * @dev Error produced when requesting a withdrawal earlier than the minimum withdrawal period
+   */
   error WithdrawalRequestEarlierThanMin(uint40 minRequestTime, uint40 timeRequested);
+
+  /**
+   * @dev Error produced when requesting a withdrawal from a  eToken that doesn't have address(this) as cooler
+   */
   error InvalidEToken(IEToken eToken);
+
+  /**
+   * @dev Error produced when trying to execute a withdrawal of an non-existent or already used NFT
+   */
   error InvalidWithdrawalRequest(uint256 tokenId);
+
+  /**
+   * @dev Error produced when trying to execute a withdrawal ahead of time (WithdrawalRequest.when)
+   */
   error WithdrawalNotReady(uint256 tokenId, uint40 expiration);
+
+  /**
+   * @dev Error produced when trying to schedule a withdrawal with zero amount
+   */
   error CannotDoZeroWithdrawals();
 
   /// @custom:oz-upgrades-unsafe-allow constructor
@@ -104,11 +150,37 @@ contract Cooler is ICooler, PolicyPoolComponent, ERC721Upgradeable {
     return _cooldownPeriods[eToken];
   }
 
+  /**
+   * @dev Sets the cooldown period for a specific EToken
+   *
+   * @param eToken The EToken contract address to configure the cooldown period for
+   * @param newCooldownPeriod The new cooldown period duration in seconds
+   *
+   * - Emits a {CooldownPeriodChanged} event with the old and new cooldown periods
+   */
   function setCooldownPeriod(IEToken eToken, uint40 newCooldownPeriod) external {
     emit CooldownPeriodChanged(eToken, _cooldownPeriods[eToken], newCooldownPeriod);
     _cooldownPeriods[eToken] = newCooldownPeriod;
   }
 
+  /**
+   * @dev Schedules a withdrawal using EIP-2612 permit for gasless approval
+   *
+   * @notice This function allows users to schedule withdrawals without prior ERC20 approvals
+   * by using EIP-2612 permit signatures for gasless transactions
+   *
+   * Emits:
+   * - {WithdrawalRequested}
+   *
+   * @param eToken The EToken contract from which to withdraw
+   * @param when The timestamp when the withdrawal should be executable (when =0 uses the minimum cooldown period)
+   * @param amount The amount of eTokens to withdraw
+   * @param deadline The expiration timestamp for the permit signature
+   * @param v The recovery byte of the signature
+   * @param r The R component of the signature
+   * @param s The S component of the signature
+   * @return tokenId The NFT ID of the token representing the withdrawal position
+   */
   function scheduleWithdrawalWithPermit(
     IEToken eToken,
     uint40 when,
@@ -125,6 +197,14 @@ contract Cooler is ICooler, PolicyPoolComponent, ERC721Upgradeable {
     return _scheduleWithdrawal(eToken, when, amount);
   }
 
+  /**
+   * @dev Schedules a withdrawal
+   *
+   * @param eToken The EToken contract from which to withdraw
+   * @param when The timestamp when the withdrawal should be executable (when =0 uses the minimum cooldown period)
+   * @param amount The amount of eTokens to withdraw
+   * @return tokenId The NFT ID of the token representing the withdrawal position
+   */
   function scheduleWithdrawal(IEToken eToken, uint40 when, uint256 amount) external returns (uint256 tokenId) {
     return _scheduleWithdrawal(eToken, when, amount);
   }
@@ -156,6 +236,20 @@ contract Cooler is ICooler, PolicyPoolComponent, ERC721Upgradeable {
     emit WithdrawalRequested(eToken, tokenId, _msgSender(), when, scaleAtRequest, amount);
   }
 
+  /**
+   * @dev Executes a previously scheduled withdrawal after the cooldown period has elapsed
+   *
+   * @param tokenId The ID of the token representing the withdrawal position to execute
+   *
+   * @notice This function processes a withdrawal request that has completed its cooldown period,
+   * transferring the underlying tokens to the token owner and cleaning up the withdrawal state.
+   *
+   * Requirements:
+   * - The withdrawal request must exist (`request.requestedAt != 0`)
+   * - The cooldown period must have elapsed (`block.timestamp >= request.expiration`)
+   *
+   * Emits a {WithdrawalExecuted} event with the requested and actual withdrawn amounts
+   */
   function executeWithdrawal(uint256 tokenId) external {
     WithdrawalRequest storage request = _withdrawalRequests[tokenId];
     require(request.requestedAt != 0, InvalidWithdrawalRequest(tokenId));
@@ -190,6 +284,12 @@ contract Cooler is ICooler, PolicyPoolComponent, ERC721Upgradeable {
       );
   }
 
+  /**
+   * @dev Returns the current withdrawable value for a given withdrawal position
+   *
+   * @param tokenId The ID of the token representing the withdrawal position
+   * @return The current withdrawable amount in underlying tokens
+   */
   function getCurrentValue(uint256 tokenId) external view returns (uint256) {
     WithdrawalRequest storage request = _withdrawalRequests[tokenId];
     if (request.requestedAt == 0) return 0;
