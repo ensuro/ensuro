@@ -1,6 +1,6 @@
 #!/bin/bash
 
-source `dirname $0`/utils.sh
+source $(dirname $0)/utils.sh
 
 if [ "xx$1" == "xxclean" ]; then
     rm -fR docs/*.md docs/interfaces/ docs/audits docs/*.png
@@ -14,7 +14,7 @@ npx prettier --write docs
 dieOnError "Error running prettier"
 
 cp README.md docs/index.md
-cp -r CONTRIBUTING.md CODE_OF_CONDUCT.md audits docs/
+cp -r CHANGES_V3.md CONTRIBUTING.md CODE_OF_CONDUCT.md audits docs/
 cp Architecture.png docs/
 
 if [ "xx$1" == "xxserve" ]; then

@@ -7,26 +7,25 @@ nav:
     - IRiskModule: interfaces/IRiskModule.md
     - IPremiumsAccount: interfaces/IPremiumsAccount.md
     - IPolicyHolder: interfaces/IPolicyHolder.md
-    - ILPWhitelist: interfaces/ILPWhitelist.md
     - IPolicyPoolComponent: interfaces/IPolicyPoolComponent.md
-    - IAccessManager: interfaces/IAccessManager.md
-    - IAssetManager: interfaces/IAssetManager.md
+    - ILPWhitelist: interfaces/ILPWhitelist.md
+    - ICooler: interfaces/ICooler.md
+    - IUnderwriter: interfaces/IUnderwriter.md
   - Core contracts:
     - PolicyPool: PolicyPool.md
     - EToken: EToken.md
     - PremiumsAccount: PremiumsAccount.md
     - RiskModule: RiskModule.md
-    - AccessManager: AccessManager.md
   - Base contracts:
     - PolicyPoolComponent: PolicyPoolComponent.md
     - Reserve: Reserve.md
+  - Underwriters:
+    - FullTrustedUW: underwriters/FullTrustedUW.md
+    - FullSignedUW: underwriters/FullSignedUW.md
   - Extensions:
-    - TrustfulRiskModule: TrustfulRiskModule.md
-    - SignedQuoteRiskModule: SignedQuoteRiskModule.md
+    - Cooler: Cooler.md
     - LPManualWhitelist: LPManualWhitelist.md
-    - LiquidityThresholdAssetManager: LiquidityThresholdAssetManager.md
-    - ERC4626AssetManager: ERC4626AssetManager.md
   - Libraries:
     - Policy: Policy.md
-    - TimeScaled: TimeScaled.md
+    - ETKLib: ETKLib.md
 theme: readthedocs
