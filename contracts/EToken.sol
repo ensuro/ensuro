@@ -328,8 +328,8 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
   }
 
   /**
-   * @dev Returns the maximum utilization rate (UR) that is acceptable when locking funds. 
-   *      The UR can be higher than this value as a consequence of withdrawals or other operations, 
+   * @dev Returns the maximum utilization rate (UR) that is acceptable when locking funds.
+   *      The UR can be higher than this value as a consequence of withdrawals or other operations,
    *      but not as a consequence of a lockScr call.
    */
   function maxUtilizationRate() public view returns (uint256) {
@@ -337,8 +337,8 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
   }
 
   /**
-   * @dev Returns the minimum utilization rate (UR) that is acceptable after deposits. 
-   *      The UR can be lower than this value as a consequence of SCR unlocks or other operations, 
+   * @dev Returns the minimum utilization rate (UR) that is acceptable after deposits.
+   *      The UR can be lower than this value as a consequence of SCR unlocks or other operations,
    *      but not as a consequence of a deposit call.
    */
   function minUtilizationRate() public view returns (uint256) {
