@@ -256,18 +256,15 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
   }
 
   /**
-   * @dev Returns the amount of funds reported as available by the current SCR state.
-   * @return Amount of funds currently marked as available by the SCR state.
+   * @dev Returns the amount of totalSupply that isn't utilized as SCR.
    */
   function fundsAvailable() public view returns (uint256) {
     return _scr.fundsAvailable(totalSupply());
   }
 
   /**
-   * @dev Returns the amount of funds that can be considered available for locking
-   *      new SCR positions, after applying the current utilization constraints.
-   * @return Amount of funds that the contract treats as available to lock as SCR,
-   *         given the current total supply, cooler state and max utilization settings.
+   * @dev Returns the funds that can be treated as available to lock as SCR, after applying the
+   *      max utilization cap and (if a Cooler is configured) subtracting pending withdrawals.
    */
   function fundsAvailableToLock() public view returns (uint256) {
     uint256 ts = totalSupply();
@@ -324,32 +321,32 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
   }
 
   /**
-   * @dev Returns the current liquidity requirement parameter.
-   * @return Liquidity requirement.
+   * @dev Returns the factor applied to SCR when computing the non-withdrawable. Typically 1.0 (in wad).
    */
   function liquidityRequirement() public view returns (uint256) {
     return _4toWad(_params.liquidityRequirement);
   }
 
   /**
-   * @dev Returns the configured maximum utilization rate.
-   * @return Maximum utilization rate.
+   * @dev Returns the maximum utilization rate (UR) that is acceptable when locking funds. 
+   *      The UR can be higher than this value as a consequence of withdrawals or other operations, 
+   *      but not as a consequence of a lockScr call.
    */
   function maxUtilizationRate() public view returns (uint256) {
     return _4toWad(_params.maxUtilizationRate);
   }
 
   /**
-   * @dev Returns the configured minimum utilization rate.
-   * @return Minimum utilization rate.
+   * @dev Returns the minimum utilization rate (UR) that is acceptable after deposits. 
+   *      The UR can be lower than this value as a consequence of SCR unlocks or other operations, 
+   *      but not as a consequence of a deposit call.
    */
   function minUtilizationRate() public view returns (uint256) {
     return _4toWad(_params.minUtilizationRate);
   }
 
   /**
-   * @dev Returns the current utilization rate of the eToken.
-   * @return Current utilization rate
+   * @dev Returns the percentage of the total supply that is used as SCR (solvency capital backing risks)
    */
   function utilizationRate() public view returns (uint256) {
     return _scr.scrAmount().mulDiv(WAD, this.totalSupply());
@@ -517,8 +514,7 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
   }
 
   /**
-   * @dev Returns the interest rate used for internal loans.
-   * @return Internal loan interest rate.
+   * @dev Returns the annualized interest rate charged to borrowers (see PremiumsAccount) when they take funds
    */
   function internalLoanInterestRate() public view returns (uint256) {
     return _4toWad(_params.internalLoanInterestRate);
