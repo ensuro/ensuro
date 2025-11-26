@@ -19,6 +19,10 @@ on:
           - latest
           - beta
 
+permissions:
+  id-token: write  # Required for OIDC
+  contents: read
+
 jobs:
   npm-upload:
     name: NPM Package Build and Upload
@@ -33,6 +37,11 @@ jobs:
         with:
           node-version: "22"
           cache: "npm"
+          registry-url: 'https://registry.npmjs.org'
+
+      # Ensure npm 11.5.1 or later is installed
+      - name: Update npm
+        run: npm install -g npm@latest
 
       - run: npm ci
 
@@ -47,8 +56,6 @@ jobs:
 
       - run: scripts/make-npm-package.sh "${{ steps.semver.outputs.semver }}" ./build/npm-package
 
-      - run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_AUTOMATION_TOKEN }}" > ./build/npm-package/.npmrc
-
       - run: |
           RELEASE_TAG="${{ github.event.inputs.tag }}"
           if [ -z "$RELEASE_TAG" ]; then
@@ -60,5 +67,5 @@ jobs:
             fi
           fi
           echo "RELEASE_TAG: $RELEASE_TAG / SEMVER: $SEMVER"
-          npm publish --tag "$RELEASE_TAG"
+          npm publish --tag "$RELEASE_TAG" --access public
         working-directory: ./build/npm-package

@@ -23,9 +23,6 @@ npx hardhat clean
 env COMPILE_MODE=production npx hardhat compile
 
 git archive --format tar HEAD README.md contracts/ js/ | tar xv -C $TARGET_DIR
-# rm -fR $TARGET_DIR/contracts/mocks/
-echo "Changing fixed pragma to developer friendly one '^0.8.0'"
-scripts/change-pragma.sh $TARGET_DIR/contracts '^0.8.0'
 
 mkdir $TARGET_DIR/build
 cp -r artifacts/contracts $TARGET_DIR/build
@@ -40,7 +37,7 @@ cp scripts/change-pragma.sh scripts/utils.sh \
     scripts/storageLayout.js $TARGET_DIR/scripts/
 
 find $TARGET_DIR -name "*.dbg.json" -delete
-sed "s/%%VERSION%%/$VERSION/" npm-package/package.json > "$TARGET_DIR/package.json"
+sed "s/%%VERSION%%/$VERSION/" npm-package/package.json >"$TARGET_DIR/package.json"
 find $TARGET_DIR
 
 echo "
