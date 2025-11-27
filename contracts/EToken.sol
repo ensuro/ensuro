@@ -249,15 +249,23 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
 
   /** END Methods following AAVE's IScaledBalanceToken */
 
+  /// @inheritdoc IEToken
   function getCurrentScale(bool updated) public view override returns (uint256) {
     if (updated) return _tsScaled.projectScale(_scr).toUint256();
     else return _tsScaled.scale.toUint256();
   }
 
+  /**
+   * @dev Returns the amount of totalSupply that isn't utilized as SCR.
+   */
   function fundsAvailable() public view returns (uint256) {
     return _scr.fundsAvailable(totalSupply());
   }
 
+  /**
+   * @dev Returns the funds that can be treated as available to lock as SCR, after applying the
+   *      max utilization cap and (if a Cooler is configured) subtracting pending withdrawals.
+   */
   function fundsAvailableToLock() public view returns (uint256) {
     uint256 ts = totalSupply();
     if (address(_cooler) != address(0)) {
@@ -273,6 +281,7 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
     return _scr.fundsAvailable(ts);
   }
 
+  /// @inheritdoc Reserve
   function yieldVault() public view override returns (IERC4626) {
     return _yieldVault;
   }
@@ -292,14 +301,17 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
     return (value / FOUR_DECIMAL_TO_WAD).toUint16();
   }
 
+  /// @inheritdoc IEToken
   function scr() public view virtual override returns (uint256) {
     return _scr.scrAmount();
   }
 
+  /// @inheritdoc IEToken
   function scrInterestRate() public view override returns (uint256) {
     return uint256(_scr.interestRate);
   }
 
+  /// @inheritdoc IEToken
   function tokenInterestRate() public view override returns (uint256) {
     uint256 ts = totalSupply();
     if (ts == 0) return 0;
@@ -308,18 +320,34 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
     }
   }
 
+  /**
+   * @dev Returns the factor applied to SCR when computing the non-withdrawable. Typically 1.0 (in wad).
+   */
   function liquidityRequirement() public view returns (uint256) {
     return _4toWad(_params.liquidityRequirement);
   }
 
+  /**
+   * @dev Returns the maximum utilization rate (UR) that is acceptable when locking funds.
+   *      The UR can be higher than this value as a consequence of withdrawals or other operations,
+   *      but not as a consequence of a lockScr call.
+   */
   function maxUtilizationRate() public view returns (uint256) {
     return _4toWad(_params.maxUtilizationRate);
   }
 
+  /**
+   * @dev Returns the minimum utilization rate (UR) that is acceptable after deposits.
+   *      The UR can be lower than this value as a consequence of SCR unlocks or other operations,
+   *      but not as a consequence of a deposit call.
+   */
   function minUtilizationRate() public view returns (uint256) {
     return _4toWad(_params.minUtilizationRate);
   }
 
+  /**
+   * @dev Returns the percentage of the total supply that is used as SCR (solvency capital backing risks)
+   */
   function utilizationRate() public view returns (uint256) {
     return _scr.scrAmount().mulDiv(WAD, this.totalSupply());
   }
@@ -383,6 +411,7 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
     if (utilizationRate() < minUtilizationRate()) revert UtilizationRateTooLow(utilizationRate(), minUtilizationRate());
   }
 
+  /// @inheritdoc IEToken
   function totalWithdrawable() public view virtual override returns (uint256) {
     uint256 locked = _scr.scrAmount().mulDiv(liquidityRequirement(), WAD);
     uint256 totalSupply_ = totalSupply();
@@ -477,12 +506,16 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
     currency().safeTransferFrom(_msgSender(), address(this), amount);
   }
 
+  /// @inheritdoc IEToken
   function getLoan(address borrower) public view virtual override returns (uint256) {
     ETKLib.ScaledAmount storage loan = _loans[borrower];
     require(loan.lastUpdate != 0, InvalidBorrower(borrower));
     return loan.projectScale(internalLoanInterestRate()).toCurrentCeil(uint256(loan.amount));
   }
 
+  /**
+   * @dev Returns the annualized interest rate charged to borrowers (see PremiumsAccount) when they take funds
+   */
   function internalLoanInterestRate() public view returns (uint256) {
     return _4toWad(_params.internalLoanInterestRate);
   }
