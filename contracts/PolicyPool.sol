@@ -21,14 +21,19 @@ import {Policy} from "./Policy.sol";
 
 /**
  * @title Ensuro PolicyPool contract
- * @dev This is the main contract of the protocol, it stores the eTokens (liquidity pools) and has the operations
- *      to interact with them. This is also the contract that receives and sends the underlying asset (currency).
- *      Also this contract keeps track of accumulated premiums in different stages:
- *      - activePurePremiums
- *      - wonPurePremiums (surplus)
- *      - borrowedActivePP (deficit borrowed from activePurePremiums)
- *      This contract also implements the ERC721 standard, because it mints and NFT for each policy created. The
+ * @dev This is the main contract of the protocol, it stores the registry of components (eTokens, PremiumsAccounts,
+ *      and RiskModules). It also tracks the active exposure and exposure limit per risk module.
+ *
+ *      This is also the contract that receives and sends the underlying asset (currency, typically USDC).
+ *      The currency spending approvals should be done to this protocol for deposits or premium payments.
+ *
+ *      This contract implements the ERC721 standard, because it mints and NFT for each policy created. The
  *      property of the NFT represents the one that will receive the payout.
+ *
+ *      The active policies are tracked in _policies as hashes, but for gas optimization we just store the hash
+ *      of the policy struct, and the struct needs to be stored off-chain and provided on every subsequent call.
+ *
+ *
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
@@ -207,19 +212,58 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    */
   error InvalidNotificationResponse(bytes4 response);
 
+  /// @notice Thrown when attempting to create a policy with an ID that already exists
   error PolicyAlreadyExists(uint256 policyId);
+
+  /// @notice Thrown when attempting to process an action (other than expiration) on a policy after its expiration date
   error PolicyAlreadyExpired(uint256 policyId);
+
+  /// @notice Thrown when attempting to execute an action on a policy that does not exist (or was already expired)
   error PolicyNotFound(uint256 policyId);
+
+  /**
+   * @notice Thrown when attempting to expire a policy, but the policy is still active (policy.expiration >
+   * block.timestamp)
+   *
+   * @param policyId The ID of the policy that is not yet expired
+   * @param expiration The timestamp when the policy expires
+   * @param now The current block timestamp
+   */
   error PolicyNotExpired(uint256 policyId, uint40 expiration, uint256 now);
+
+  /**
+   * @notice Thrown when attempting to replace a policy with an invalid replacement
+   * @dev This could occur if the policies have a different start, or if any of the premium components of the
+   *      newPolicy are lower than the same component of the original policy.
+   *
+   * @param oldPolicy The original policy data
+   * @param newPolicy The proposed replacement policy data
+   */
   error InvalidPolicyReplacement(Policy.PolicyData oldPolicy, Policy.PolicyData newPolicy);
+
+  /**
+   * @notice Thrown when attempting to cancel a policy with invalid refunds
+   * @dev The refunds amounts can never exceed the original premium components.
+   *
+   * @param policyToCancel The data of the policy being cancelled
+   * @param purePremiumRefund The amount to refund from pure premium charged
+   * @param jrCocRefund The amount to refund from jrCoc charged
+   * @param srCocRefund The amount to refund from srCoc charged
+   */
   error InvalidPolicyCancellation(
-    Policy.PolicyData oldPolicy,
+    Policy.PolicyData policyToCancel,
     uint256 purePremiumRefund,
     uint256 jrCocRefund,
     uint256 srCocRefund
   );
+
+  /// @notice Thrown when a requested payout exceeds the policy's maximum payout limit
   error PayoutExceedsLimit(uint256 payout, uint256 policyPayout);
+
+  /// @notice Thrown when an action would cause the active exposure to exceed the configured limit
   error ExposureLimitExceeded(uint128 activeExposure, uint128 exposureLimit);
+
+  /// @notice Thrown when an invalid receiver address (address(0)) is provided as received of deposit or withdraw
   error InvalidReceiver(address receiver);
 
   /**
@@ -294,8 +338,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   /**
    * @dev Instantiates a Policy Pool. Sets immutable fields.
    *
-   * @param access_ The address of the {AccessManager} that manages the access permissions for the pool governance
-   * operations.
    * @param currency_ The {ERC20} token that's used as a currency in the protocol. Usually a stablecoin such as USDC.
    */
   /// @custom:oz-upgrades-unsafe-allow constructor
@@ -320,9 +362,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     __PolicyPool_init_unchained(treasury_);
   }
 
-  /**
-   * @dev See {IERC165-supportsInterface}.
-   */
+  /// @inheritdoc IERC165
   function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
     return super.supportsInterface(interfaceId) || interfaceId == type(IPolicyPool).interfaceId;
   }
@@ -350,6 +390,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     _unpause();
   }
 
+  /// @inheritdoc IPolicyPool
   function currency() external view virtual override returns (IERC20Metadata) {
     return _currency;
   }
@@ -370,9 +411,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     _setTreasury(treasury_);
   }
 
-  /**
-   * @dev Returns the address of the treasury, the one that receives the protocol fees.
-   */
+  /// @inheritdoc IPolicyPool
   function treasury() external view override returns (address) {
     return _treasury;
   }
@@ -462,17 +501,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   function changeComponentStatus(IPolicyPoolComponent component, ComponentStatus newStatus) external {
     Component storage comp = _components[component];
     if (comp.status == ComponentStatus.inactive) revert ComponentNotFound();
-    // TODO: re-add custom access checks?
-    // Only LEVEL1_ROLE canCall if newStatus = active or deprecated
-    // Only GUARDIAN_ROLE canCall if newStatus = suspended
-    /*
-    if (newStatus == ComponentStatus.active || newStatus == ComponentStatus.deprecated) {
-      _access.checkRole(LEVEL1_ROLE, _msgSender());
-    } else {
-      // ComponentStatus.suspended requires GUARDIAN_ROLE
-      _access.checkRole(GUARDIAN_ROLE, _msgSender());
-    }
-    */
     comp.status = newStatus;
     emit ComponentStatusChanged(component, comp.kind, newStatus);
   }
@@ -511,10 +539,12 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     emit Deposit(eToken, _msgSender(), receiver, amount);
   }
 
+  /// @inheritdoc IPolicyPool
   function deposit(IEToken eToken, uint256 amount, address receiver) external override whenNotPaused {
     _deposit(eToken, amount, receiver);
   }
 
+  /// @inheritdoc IPolicyPool
   function depositWithPermit(
     IEToken eToken,
     uint256 amount,
@@ -531,6 +561,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     _deposit(eToken, amount, receiver);
   }
 
+  /// @inheritdoc IPolicyPool
   function withdraw(
     IEToken eToken,
     uint256 amount,
@@ -543,6 +574,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     emit Withdraw(eToken, _msgSender(), receiver, owner, amountWithdrawn);
   }
 
+  /// @inheritdoc IPolicyPool
   function newPolicy(
     Policy.PolicyData memory policy,
     address payer,
@@ -584,6 +616,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     return policy.id;
   }
 
+  /// @inheritdoc IPolicyPool
   // solhint-disable-next-line function-max-lines
   function replacePolicy(
     Policy.PolicyData calldata oldPolicy,
@@ -611,9 +644,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
         oldPolicy.partnerCommission <= newPolicy_.partnerCommission,
       InvalidPolicyReplacement(oldPolicy, newPolicy_)
     );
-    /**
-     * payout, jrScr, srScr, expiration can change in any direction
-     */
+    // payout, jrScr, srScr, expiration can change in any direction
 
     // Effects
     newPolicy_.id = makePolicyId(rm, internalId);
@@ -649,6 +680,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     return newPolicy_.id;
   }
 
+  /// @inheritdoc IPolicyPool
   function cancelPolicy(
     Policy.PolicyData calldata policyToCancel,
     uint256 purePremiumRefund,
@@ -693,27 +725,41 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     require(policy.id != 0 && policy.hash() == _policies[policy.id], PolicyNotFound(policy.id));
   }
 
+  /**
+   * @dev Generates a policyId, combining the riskModule (first 20 bytes) with the internalId (last 12 bytes)
+   *
+   * @param rm The risk module
+   * @param internalId An identifier for the policy that is unique within a given risk module
+   * @return The policy id, that will be used as the tokenId for the minted policy NFT
+   */
   function makePolicyId(IRiskModule rm, uint96 internalId) public pure returns (uint256) {
     return (uint256(uint160(address(rm))) << 96) + internalId;
   }
 
+  /**
+   * @dev Extracts the risk module address from a policyId (first 20 bytes)
+   */
   function extractRiskModule(uint256 policyId) public pure returns (IRiskModule) {
     return IRiskModule(address(uint160(policyId >> 96)));
   }
 
+  /// @inheritdoc IPolicyPool
   function expirePolicy(Policy.PolicyData calldata policy) external override whenNotPaused {
     if (policy.expiration > block.timestamp) revert PolicyNotExpired(policy.id, policy.expiration, block.timestamp);
     return _resolvePolicy(policy, 0, true);
   }
 
+  /// @inheritdoc IPolicyPool
   function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external override whenNotPaused {
     return _resolvePolicy(policy, payout, false);
   }
 
+  /// @inheritdoc IPolicyPool
   function isActive(uint256 policyId) external view override returns (bool) {
     return _policies[policyId] != bytes32(0);
   }
 
+  /// @inheritdoc IPolicyPool
   function getPolicyHash(uint256 policyId) external view override returns (bytes32) {
     return _policies[policyId];
   }
@@ -773,6 +819,16 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     }
   }
 
+  /**
+   * @notice  Changes the maximum cumulative loss limit (exposure limit) for a given risk module
+   * @dev     This function allows updating the exposure limit for a risk module.
+   *          The new limit must be greater than or equal to the current active exposure.
+   *          Emits an `ExposureLimitChanged` event upon successful update.
+   * @param   rm  The risk module interface for which to update the exposure limit
+   * @param   newLimit  The new exposure limit to set (will be converted to uint128)
+   * @custom:throws ExposureLimitExceeded if the new limit is less than the current active exposure
+   * @custom:emits  ExposureLimitChanged with parameters: (risk module, old limit, new limit)
+   */
   function setExposureLimit(IRiskModule rm, uint256 newLimit) external {
     Exposure storage exposure = _exposureByRm[rm];
     uint128 newLimit128 = newLimit.toUint128();
@@ -781,6 +837,15 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     exposure.limit = newLimit128;
   }
 
+  /**
+   * @notice  Retrieves the current exposure data for a specific risk module
+   * @dev     Returns both the active exposure (current cumulative losses)
+   *          and the configured exposure limit for the given risk module.
+   *          This is a view function that does not modify state.
+   * @param   rm  The risk module interface to query exposure data for
+   * @return  active  The current active exposure (cumulative losses) for the risk module
+   * @return  limit   The configured maximum exposure limit for the risk module
+   */
   function getExposure(IRiskModule rm) external view returns (uint256 active, uint256 limit) {
     Exposure storage exposure = _exposureByRm[rm];
     active = exposure.active;
@@ -788,8 +853,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   /**
-   * @dev Notifies the payout with a callback if the policyholder is a contract and implementes the IPolicyHolder interface.
-   * Only reverts if the policyholder contract explicitly reverts or it doesn't return the IPolicyHolder.onPayoutReceived selector.
+   * @dev Notifies the payout with a callback if the policyholder implements the IPolicyHolder interface.
+   *      Only reverts if the policyholder contract explicitly reverts or it doesn't return the
+   *      IPolicyHolder.onPayoutReceived selector.
    */
   function _notifyPayout(uint256 policyId, uint256 payout) internal {
     address customer = ownerOf(policyId);
@@ -800,7 +866,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   /**
-   * @dev Notifies the expiration with a callback if the policyholder is a contract. Never reverts.
+   * @dev Notifies the expiration with a callback if the policyholder implements the IPolicyHolder interface.
+   *      Never reverts. The onPolicyExpired has a gas limit = HOLDER_GAS_LIMIT
    */
   function _notifyExpiration(uint256 policyId) internal {
     address customer = ownerOf(policyId);
@@ -817,7 +884,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   /**
-   * @dev Notifies the replacement with a callback if the policyholder is a contract. Never reverts.
+   * @dev Notifies the replacement with a callback if the policyholder implements the IPolicyHolder interface.
+   *      Only reverts if the policyholder contract explicitly reverts or it doesn't return the
+   *      IPolicyHolder.onPolicyReplaced selector.
    */
   function _notifyReplacement(uint256 oldPolicyId, uint256 newPolicyId) internal {
     address customer = ownerOf(oldPolicyId);
@@ -829,7 +898,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   /**
-   * @dev Notifies the replacement with a callback if the policyholder is a contract. Never reverts.
+   * @dev Notifies the cancellation with a callback if the policyholder implements the IPolicyHolder interface.
+   *      Only reverts if the policyholder contract explicitly reverts or it doesn't return the
+   *      IPolicyHolder.onPolicyCancelled selector.
    */
   function _notifyCancellation(
     uint256 cancelledPolicyId,

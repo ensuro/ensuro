@@ -17,8 +17,8 @@ interface IPolicyPool {
   event NewPolicy(IRiskModule indexed riskModule, Policy.PolicyData policy);
 
   /**
-   * @dev Event emitted every time a new policy replaces an old Policy Contains all the data about the policy that is
-   * later required for doing operations with the policy like resolution or expiration.
+   * @dev Event emitted every time a new policy replaces an old Policy. The event contains only the id of the
+   *      replacement policy, the full data is available in the NewPolicy event.
    *
    * @param riskModule The risk module that created the policy
    * @param oldPolicyId The id of the replaced policy.
@@ -27,8 +27,7 @@ interface IPolicyPool {
   event PolicyReplaced(IRiskModule indexed riskModule, uint256 indexed oldPolicyId, uint256 indexed newPolicyId);
 
   /**
-   * @dev Event emitted every time a new policy replaces an old Policy Contains all the data about the policy that is
-   * later required for doing operations with the policy like resolution or expiration.
+   * @dev Event emitted when a policy is cancelled, and part of the paid premium is refunded..
    *
    * @param riskModule The risk module that created the policy
    * @param cancelledPolicyId The id of the cancelled policy.
@@ -55,14 +54,12 @@ interface IPolicyPool {
   event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, uint256 payout);
 
   /**
-   * @dev Reference to the main currency (ERC20) used in the protocol
-   * @return The address of the currency (e.g. USDC) token used in the protocol
+   * @dev Reference to the main currency (ERC20, e.g. USDC) used in the protocol
    */
   function currency() external view returns (IERC20Metadata);
 
   /**
    * @dev Address of the treasury, that receives protocol fees.
-   * @return The address of the treasury
    */
   function treasury() external view returns (address);
 
@@ -101,7 +98,8 @@ interface IPolicyPool {
    * - `internalId` must be unique within `policy.riskModule` and not used before
    *
    * Events:
-   * - {PolicyPool-PolicyReplaced}: with all the details about the policy
+   * - {PolicyPool-PolicyReplaced}: with the ids of the new and replaced policy
+   * - {PolicyPool-NewPolicy}: with all the details of the new policy
    * - {ERC20-Transfer}: does several transfers from caller address to the different receivers of the premium
    * (see Premium Split in the docs)
    *
@@ -119,8 +117,7 @@ interface IPolicyPool {
   ) external returns (uint256);
 
   /**
-   * @dev Cancels a policy, doing optional refunds of parts of the premium. Must be called from an active
-   *      or deprecated RiskModule
+   * @dev Cancels a policy, doing optional refunds of parts of the premium.
    *
    * Requirements:
    * - `msg.sender` must be an active or deprecated RiskModule
@@ -144,9 +141,10 @@ interface IPolicyPool {
   ) external;
 
   /**
-   * @dev Resolves a policy with a payout. Must be called from an active RiskModule
+   * @dev Resolves a policy with a payout, sending the payment to the owner of the policy NFT.
    *
    * Requirements:
+   * - `msg.sender` must be an active or deprecated RiskModule
    * - `policy`: must be a Policy previously created with `newPolicy` (checked with `policy.hash()`) and not
    *   resolved before and not expired (if payout > 0).
    * - `payout`: must be less than equal to `policy.payout`.
