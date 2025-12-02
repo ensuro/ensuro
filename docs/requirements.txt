@@ -11,7 +11,9 @@ ghp-import==2.1.0
 jinja2==3.1.6
     # via mkdocs
 markdown==3.10
-    # via mkdocs
+    # via
+    #   mkdocs
+    #   pymdown-extensions
 markupsafe==3.0.3
     # via
     #   jinja2
@@ -30,12 +32,17 @@ pathspec==0.12.1
     # via mkdocs
 platformdirs==4.5.0
     # via mkdocs-get-deps
+pygments==2.19.2
+    # via -r requirements.in
+pymdown-extensions==10.17.2
+    # via -r requirements.in
 python-dateutil==2.9.0.post0
     # via ghp-import
 pyyaml==6.0.3
     # via
     #   mkdocs
     #   mkdocs-get-deps
+    #   pymdown-extensions
     #   pyyaml-env-tag
 pyyaml-env-tag==1.1
     # via mkdocs

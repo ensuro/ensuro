@@ -92,22 +92,23 @@ interface IPolicyPool {
   /**
    * @dev Replaces a policy with another. Must be called from an active RiskModule
    *
-   * Requirements:
-   * - `msg.sender` must be an active RiskModule
-   * - `caller` approved the spending of `currency()` for at least `newPolicy_.premium - oldPolicy.premium`
-   * - `internalId` must be unique within `policy.riskModule` and not used before
-   *
-   * Events:
-   * - {PolicyPool-PolicyReplaced}: with the ids of the new and replaced policy
-   * - {PolicyPool-NewPolicy}: with all the details of the new policy
-   * - {ERC20-Transfer}: does several transfers from caller address to the different receivers of the premium
-   * (see Premium Split in the docs)
-   *
    * @param oldPolicy A policy created previously and not expired
    * @param newPolicy_ A policy created with {Policy-initialize}
    * @param payer The address that will pay for the premium
    * @param internalId A unique id within the RiskModule, that will be used to compute the policy id
    * @return The policy id, identifying the NFT and the policy
+   *
+   * @custom:pre `msg.sender` must be an active RiskModule
+   * @custom:pre `caller` approved the spending of `currency()` for at least `newPolicy_.premium - oldPolicy.premium`
+   * @custom:pre `internalId` must be unique within `policy.riskModule` and not used before
+   *
+   * @custom:throws PolicyAlreadyExpired when trying to replace an expired policy
+   * @custom:throws InvalidPolicyReplacement when trying to reduce some of the premium componentsa
+   *
+   * @custom:emits PolicyReplaced with the ids of the new and replaced policy
+   * @custom:emits NewPolicy with all the details of the new policy
+   * @custom:emits ERC20-Transfer does several transfers from caller address to the different receivers of the premium
+   *               (see Premium Split in the docs) with all the details of the new policy
    */
   function replacePolicy(
     Policy.PolicyData memory oldPolicy,
