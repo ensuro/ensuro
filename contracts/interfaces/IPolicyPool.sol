@@ -6,10 +6,20 @@ import {Policy} from "../Policy.sol";
 import {IEToken} from "./IEToken.sol";
 import {IRiskModule} from "./IRiskModule.sol";
 
+/**
+ * @title Interface of PolicyPool contracts
+ * @notice There's a single instance of PolicyPool contract for a given deployment of the protocol
+ * @dev Some methods of this interface will be called by other components of the protocol (like RiskModule or
+ *      PremiumsAccount).
+ *
+ * @custom:security-contact security@ensuro.co
+ * @author Ensuro
+ */
 interface IPolicyPool {
   /**
-   * @dev Event emitted every time a new policy is added to the pool. Contains all the data about the policy that is
-   * later required for doing operations with the policy like resolution or expiration.
+   * @notice Event emitted every time a new policy is added to the pool
+   * @dev Contains all the data about the policy that is later required for doing operations with the policy like
+   *      resolution or expiration.
    *
    * @param riskModule The risk module that created the policy
    * @param policy The {Policy-PolicyData} struct with all the immutable fields of the policy.
@@ -17,8 +27,8 @@ interface IPolicyPool {
   event NewPolicy(IRiskModule indexed riskModule, Policy.PolicyData policy);
 
   /**
-   * @dev Event emitted every time a new policy replaces an old Policy. The event contains only the id of the
-   *      replacement policy, the full data is available in the NewPolicy event.
+   * @notice Event emitted every time a new policy replaces an old Policy.
+   * @dev The event contains only the id of the replacement policy, the full data is available in the NewPolicy event.
    *
    * @param riskModule The risk module that created the policy
    * @param oldPolicyId The id of the replaced policy.
@@ -27,7 +37,8 @@ interface IPolicyPool {
   event PolicyReplaced(IRiskModule indexed riskModule, uint256 indexed oldPolicyId, uint256 indexed newPolicyId);
 
   /**
-   * @dev Event emitted when a policy is cancelled, and part of the paid premium is refunded..
+   * @notice Event emitted when a policy is cancelled, and part of the paid premium is refunded.
+   * @dev After this, the policy is no longer active. The refund amounts are transferred to the policy holder.
    *
    * @param riskModule The risk module that created the policy
    * @param cancelledPolicyId The id of the cancelled policy.
@@ -44,8 +55,8 @@ interface IPolicyPool {
   );
 
   /**
-   * @dev Event emitted every time a policy is removed from the pool. If the policy expired, the `payout` is 0,
-   * otherwise is the amount transferred to the policyholder.
+   * @notice Event emitted every time a policy is removed from the pool
+   * @dev If the policy expired, the `payout` is 0, otherwise is the amount transferred to the policyholder.
    *
    * @param riskModule The risk module where that created the policy initially.
    * @param policyId The unique id of the policy
@@ -54,28 +65,30 @@ interface IPolicyPool {
   event PolicyResolved(IRiskModule indexed riskModule, uint256 indexed policyId, uint256 payout);
 
   /**
-   * @dev Reference to the main currency (ERC20, e.g. USDC) used in the protocol
+   * @notice Reference to the main currency (ERC20, e.g. USDC) used in the protocol
    */
   function currency() external view returns (IERC20Metadata);
 
   /**
-   * @dev Address of the treasury, that receives protocol fees.
+   * @notice Address of the treasury, that receives protocol fees.
    */
   function treasury() external view returns (address);
 
   /**
-   * @dev Creates a new Policy. Must be called from an active RiskModule
+   * @notice Creates a new Policy
+   * @dev It charges the premium and distributes it to the different parties (PremiumsAccount, ETokens, treasury)
    *
-   * Requirements:
-   * - `msg.sender` must be an active RiskModule
-   * - `caller` approved the spending of `currency()` for at least `policy.premium`
-   * - `internalId` must be unique within `policy.riskModule` and not used before
+   * @custom:pre `msg.sender` must be an active RiskModule
+   * @custom:pre `rm.premiumsAccount()` must be an active PremiumsAccount
+   * @custom:pre `payer` approved the spending of `currency()` for at least `policy.premium`
+   * @custom:pre `internalId` must be unique within the risk module (`msg.sender`) and not used before
    *
-   * Events:
-   * - {PolicyPool-NewPolicy}: with all the details about the policy
-   * - {ERC20-Transfer}: does several transfers from caller address to the different receivers of the premium
-   * (see Premium Split in the docs)
+   * @custom:emits NewPolicy with all the details about the policy
+   * @custom:emits ERC20-Transfer transfers from `payer` to the different receivers of the premium
+   *               (see Premium Split in the docs)
    *
+   * @custom:throws PolicyAlreadyExists when reusing an internalId
+
    * @param policy A policy created with {Policy-initialize}
    * @param payer The address that will pay for the premium
    * @param policyHolder The address of the policy holder
@@ -90,16 +103,19 @@ interface IPolicyPool {
   ) external returns (uint256);
 
   /**
-   * @dev Replaces a policy with another. Must be called from an active RiskModule
+   * @notice Replaces a policy with another
+   * @dev After this call, the oldPolicy is no longer active and a new policy is created. Diferencial changes to
+   *      premiums and locked SCR.
    *
    * @param oldPolicy A policy created previously and not expired
    * @param newPolicy_ A policy created with {Policy-initialize}
-   * @param payer The address that will pay for the premium
+   * @param payer The address that will pay for the premium difference
    * @param internalId A unique id within the RiskModule, that will be used to compute the policy id
    * @return The policy id, identifying the NFT and the policy
    *
    * @custom:pre `msg.sender` must be an active RiskModule
-   * @custom:pre `caller` approved the spending of `currency()` for at least `newPolicy_.premium - oldPolicy.premium`
+   * @custom:pre `rm.premiumsAccount()` must be an active PremiumsAccount
+   * @custom:pre `payer` approved the spending of `currency()` for at least `newPolicy_.premium - oldPolicy.premium`
    * @custom:pre `internalId` must be unique within `policy.riskModule` and not used before
    *
    * @custom:throws PolicyAlreadyExpired when trying to replace an expired policy
@@ -107,8 +123,6 @@ interface IPolicyPool {
    *
    * @custom:emits PolicyReplaced with the ids of the new and replaced policy
    * @custom:emits NewPolicy with all the details of the new policy
-   * @custom:emits ERC20-Transfer does several transfers from caller address to the different receivers of the premium
-   *               (see Premium Split in the docs) with all the details of the new policy
    */
   function replacePolicy(
     Policy.PolicyData memory oldPolicy,
@@ -118,16 +132,15 @@ interface IPolicyPool {
   ) external returns (uint256);
 
   /**
-   * @dev Cancels a policy, doing optional refunds of parts of the premium.
+   * @notice Cancels a policy, doing optional refunds of parts of the premium.
+   * @dev After this call the policy is not claimable and funds are unlocked
    *
-   * Requirements:
-   * - `msg.sender` must be an active or deprecated RiskModule
-   * - Policy not expired
+   * @custom:pre `msg.sender` must be an active or deprecated RiskModule
+   * @custom:pre Policy not expired
    *
    * Events:
-   * - {PolicyPool-PolicyCancelled}: with all the details about the policy
-   * - {ERC20-Transfer}: does several transfers from caller address to the different receivers of the premium
-   * (see Premium Split in the docs)
+   * @custom:emits PolicyCancelled with the refund amounts
+   * @custom:emits ERC20-Transfer transfers of the refunds amount to the policy holder
    *
    * @param policyToCancel A policy created previously and not expired, that will be cancelled
    * @param purePremiumRefund The amount to refund from pure premiums (<= policyToCancel.purePremium)
@@ -142,41 +155,38 @@ interface IPolicyPool {
   ) external;
 
   /**
-   * @dev Resolves a policy with a payout, sending the payment to the owner of the policy NFT.
+   * @notice Resolves a policy with a payout, sending the payment to the owner of the policy NFT.
+   * @dev After this call the policy is no longer active and the funds have been unlocked.
    *
-   * Requirements:
-   * - `msg.sender` must be an active or deprecated RiskModule
-   * - `policy`: must be a Policy previously created with `newPolicy` (checked with `policy.hash()`) and not
-   *   resolved before and not expired (if payout > 0).
-   * - `payout`: must be less than equal to `policy.payout`.
+   * @custom:pre `msg.sender` must be an active or deprecated RiskModule
+   * @custom:pre `payout`: must be less than equal to `policy.payout`.
+   * @custom:pre `policy`: must be a Policy not resolved before and not expired (if payout > 0).
    *
-   * Events:
-   * - {PolicyPool-PolicyResolved}: with the payout
-   * - {ERC20-Transfer}: to the policyholder with the payout
+   * @custom:emits PolicyResolved with the payout amount
+   * @custom:emits ERC20-Transfer to the policyholder with the payout
    *
    * @param policy A policy previously created with `newPolicy`
-   * @param payout The amount to paid to the policyholder
+   * @param payout The amount to pay to the policyholder
    */
   function resolvePolicy(Policy.PolicyData calldata policy, uint256 payout) external;
 
   /**
+   * @notice Expires a policy, unlocked the solvency.
    * @dev Resolves a policy with a payout 0, unlocking the solvency. Can be called by anyone, but only after
-   * `Policy.expiration`.
+   *      `Policy.expiration`.
    *
-   * Requirements:
-   * - `policy`: must be a Policy previously created with `newPolicy` (checked with `policy.hash()`) and not resolved
-   * before
-   * - Policy expired: `Policy.expiration` <= block.timestamp
+   * @custom:pre `policy`: must be a Policy not resolved before
+   * @custom:pre `policy.expiration` <= block.timestamp
    *
-   * Events:
-   * - {PolicyPool-PolicyResolved}: with payout == 0
+   * @custom:emits PolicyResolved with the payout == 0
    *
    * @param policy A policy previously created with `newPolicy`
    */
   function expirePolicy(Policy.PolicyData calldata policy) external;
 
   /**
-   * @dev Returns whether a policy is active, i.e., it's still in the PolicyPool, not yet resolved or expired.
+   * @notice Returns whether a policy is active
+   * @dev A policy is active when it's still in the PolicyPool, not yet resolved or expired.
    *      Be aware that a policy might be active but the `block.timestamp` might be after the expiration date, so it
    *      can't be triggered with a payout.
    *
@@ -186,7 +196,8 @@ interface IPolicyPool {
   function isActive(uint256 policyId) external view returns (bool);
 
   /**
-   * @dev Returns the stored hash of the policy. It's `bytes32(0)` is the policy isn't active.
+   * @notice Returns the stored hash of the policy
+   * @dev Returns `bytes32(0)` if the policy isn't active.
    *
    * @param policyId The id of the policy queried
    * @return Returns the hash of a given policy id
@@ -194,16 +205,15 @@ interface IPolicyPool {
   function getPolicyHash(uint256 policyId) external view returns (bytes32);
 
   /**
-   * @dev Deposits liquidity into an eToken. Forwards the call to {EToken-deposit}, after transferring the funds.
-   * The user will receive etokens for the same amount deposited.
+   * @notice Deposits liquidity into an eToken
+   * @dev Forwards the call to {EToken-deposit}, after transferring the funds.
+   *      The user will receive etokens for the same amount deposited.
    *
-   * Requirements:
-   * - `msg.sender` approved the spending of `currency()` for at least `amount`
-   * - `eToken` is an active eToken installed in the pool.
+   * @custom:pre `msg.sender` approved the spending of `currency()` for at least `amount`
+   * @custom:pre `eToken` is an active eToken installed in the pool.
    *
-   * Events:
-   * - {EToken-Transfer}: from 0x0 to `receiver`, reflects the eTokens minted.
-   * - {ERC20-Transfer}: from `msg.sender` to address(eToken)
+   * @custom:emits EToken-Transfer from 0x0 to `receiver`, reflects the eTokens minted.
+   * @custom:emits ERC20-Transfer from `msg.sender` to address(eToken)
    *
    * @param eToken The address of the eToken to which the user wants to provide liquidity
    * @param amount The amount to deposit
@@ -212,17 +222,16 @@ interface IPolicyPool {
   function deposit(IEToken eToken, uint256 amount, address receiver) external;
 
   /**
-   * @dev Deposits liquidity into an eToken. Forwards the call to {EToken-deposit}, after transferring the funds.
-   * The user will receive etokens for the same amount deposited. EIP-2612 compatible version, allows sending a
-   * signed permit in the same operation.
+   * @notice Deposits liquidity into an eToken, EIP-2612 compatible version.
+   * @dev Forwards the call to {EToken-deposit}, after transferring the funds.
+   *      The user will receive etokens for the same amount deposited. EIP-2612 compatible version, allows sending a
+   *      signed permit in the same operation.
    *
-   * Requirements:
-   * - `msg.sender` approved the spending of `currency()` for at least `amount`
-   * - `eToken` is an active eToken installed in the pool.
+   * @custom:pre `msg.sender` approved the spending of `currency()` for at least `amount`
+   * @custom:pre `eToken` is an active eToken installed in the pool.
    *
-   * Events:
-   * - {EToken-Transfer}: from 0x0 to `receiver`, reflects the eTokens minted.
-   * - {ERC20-Transfer}: from `msg.sender` to address(eToken)
+   * @custom:emits EToken-Transfer from 0x0 to `receiver`, reflects the eTokens minted.
+   * @custom:emits ERC20-Transfer from `msg.sender` to address(eToken)
    *
    * @param eToken The address of the eToken to which the user wants to provide liquidity
    * @param receiver The user that will receive the minted tokens
@@ -243,15 +252,14 @@ interface IPolicyPool {
   ) external;
 
   /**
-   * @dev Withdraws an amount from an eToken. Forwards the call to {EToken-withdraw}.
-   * `amount` of eTokens will be burned and the user will receive the same amount in `currency()`.
+   * @notice Withdraws an amount from an eToken
+   * @dev Forwards the call to {EToken-withdraw}. `amount` of eTokens will be burned and the user will receive the
+   *      same amount in `currency()`.
    *
-   * Requirements:
-   * - `eToken` is an active (or deprecated) eToken installed in the pool.
+   * @custom:pre `eToken` is an active (or deprecated) eToken installed in the pool.
    *
-   * Events:
-   * - {EToken-Transfer}: from `owner` to `0x0`, reflects the eTokens burned.
-   * - {ERC20-Transfer}: from address(eToken) to `receiver`
+   * @custom:emits EToken-Transfer from `owner` to `0x0`, reflects the eTokens burned.
+   * @custom:emits ERC20-Transfer from address(eToken) to `receiver`
    *
    * @param eToken The address of the eToken from where the user wants to withdraw liquidity
    * @param amount The amount to withdraw. If equal to type(uint256).max, means full withdrawal.

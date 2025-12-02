@@ -22,17 +22,19 @@ import {Policy} from "./Policy.sol";
 
 /**
  * @title Ensuro PolicyPool contract
- * @dev This is the main contract of the protocol, it stores the registry of components (eTokens, PremiumsAccounts,
- *      and RiskModules). It also tracks the active exposure and exposure limit per risk module.
+ * @notice This is the main contract of the protocol.
+ * @dev There's a single instance of PolicyPool contract for a given deployment of the protocol.
+ * It stores the registry of components (eTokens, PremiumsAccounts, and RiskModules). It also tracks the active
+ * exposure and exposure limit per risk module.
  *
- *      This is also the contract that receives and sends the underlying asset (currency, typically USDC).
- *      The currency spending approvals should be done to this protocol for deposits or premium payments.
+ * This is also the contract that receives and sends the underlying asset (currency, typically USDC).
+ * The currency spending approvals should be done to this protocol for deposits or premium payments.
  *
- *      This contract implements the ERC721 standard, because it mints and NFT for each policy created. The
- *      property of the NFT represents the one that will receive the payout.
+ * This contract implements the ERC721 standard, because it mints and NFT for each policy created. The
+ * property of the NFT represents the one that will receive the payout.
  *
- *      The active policies are tracked in _policies as hashes, but for gas optimization we just store the hash
- *      of the policy struct, and the struct needs to be stored off-chain and provided on every subsequent call.
+ * The active policies are tracked in _policies as hashes, but for gas optimization we just store the hash
+ * of the policy struct, and the struct needs to be stored off-chain and provided on every subsequent call.
  *
  *
  * @custom:security-contact security@ensuro.co

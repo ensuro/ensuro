@@ -1,5 +1,6 @@
 {{>common}}
 
+{{#if hasTypes}}
 {{#hsection}}
 {{h 1}} Types
 
@@ -10,7 +11,9 @@
 
 {{/each}}
 {{/hsection}}
+{{/if}}
 
+{{#if hasVariables}}
 {{#hsection}}
 {{h 1}} Variables
 
@@ -21,7 +24,9 @@
 
 {{/each}}
 {{/hsection}}
+{{/if}}
 
+{{#if hasEvents}}
 {{#hsection}}
 {{h 1}} Events
 
@@ -32,7 +37,9 @@
 
 {{/each}}
 {{/hsection}}
+{{/if}}
 
+{{#if hasErrors}}
 {{#hsection}}
 {{h 1}} Errors
 
@@ -43,7 +50,9 @@
 
 {{/each}}
 {{/hsection}}
+{{/if}}
 
+{{#if hasPublicFunctions}}
 {{#hsection}}
 {{h 1}} Public Functions
 
@@ -54,7 +63,9 @@
 
 {{/each}}
 {{/hsection}}
+{{/if}}
 
+{{#if hasPrivateFunctions}}
 {{#hsection}}
 {{h 1}} Private Functions
 
@@ -65,3 +76,4 @@
 
 {{/each}}
 {{/hsection}}
+{{/if}}
