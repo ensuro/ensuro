@@ -27,13 +27,8 @@ abstract contract Reserve is PolicyPoolComponent {
    */
   uint256 internal _invested;
 
-  /// @dev Thrown when the yield vault is unset or invalid for the configured currency.
   error InvalidYieldVault();
-
-  /// @dev Thrown when trying to invest more cash than currently liquid in the reserve.
   error NotEnoughCash(uint256 required, uint256 available);
-
-  /// @dev Thrown when attempting to transfer to the zero address.
   error ReserveInvalidReceiver(address receiver);
 
   /**
