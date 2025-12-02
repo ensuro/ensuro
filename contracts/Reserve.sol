@@ -27,11 +27,32 @@ abstract contract Reserve is PolicyPoolComponent {
    */
   uint256 internal _invested;
 
+  /// @dev Thrown when the yield vault is unset or invalid for the configured currency.
   error InvalidYieldVault();
+
+  /// @dev Thrown when trying to invest more cash than currently liquid in the reserve.
   error NotEnoughCash(uint256 required, uint256 available);
+
+  /// @dev Thrown when attempting to transfer to the zero address.
   error ReserveInvalidReceiver(address receiver);
 
+  /**
+   * @dev Emitted when the yield vault is changed.
+   *
+   * When replacing an existing vault, the reserve attempts to redeem the full position (unless `force` is used).
+   *
+   * @param oldVault The previous yield vault (can be `address(0)`)
+   * @param newVault The new yield vault (can be `address(0)`)
+   * @param forced True if the switch ignored a partial/failed deinvestment and proceeded anyway
+   */
   event YieldVaultChanged(IERC4626 indexed oldVault, IERC4626 indexed newVault, bool forced);
+
+  /**
+   * @dev Emitted when a forced deinvestment ignored a redeem failure.
+   *
+   * @param oldVault The vault that failed to redeem
+   * @param shares The number of shares attempted to redeem
+   */
   event ErrorIgnoredDeinvestingVault(IERC4626 indexed oldVault, uint256 shares);
 
   /**
@@ -65,6 +86,11 @@ abstract contract Reserve is PolicyPoolComponent {
    * @param destination The destination of the transfer. If destination == address(this) it doesn't transfer, just
    *                    makes sure the amount is available.
    * @param amount The amount to be transferred.
+   *
+   * @custom:pre `destination` must not be `address(0)`
+   * @custom:pre If a yield vault is configured, it must be compatible with {currency()}
+   *
+   * @custom:throws ReserveInvalidReceiver if `destination == address(0)`
    */
   function _transferTo(address destination, uint256 amount) internal {
     require(destination != address(0), ReserveInvalidReceiver(destination));
@@ -108,6 +134,8 @@ abstract contract Reserve is PolicyPoolComponent {
    *
    * @param earnings The amount of earnings (or losses if negative) generated since last time the earnings were
    * recorded.
+   *
+   * @custom:emits {EarningsRecorded}
    */
   function _yieldEarnings(int256 earnings) internal virtual {
     emit EarningsRecorded(earnings);
@@ -126,6 +154,7 @@ abstract contract Reserve is PolicyPoolComponent {
    * @param force When a previous yield vault exists, before setting the new one, the funds are deinvested. When
    *              `force` is true, an error in the deinvestment of the assets (or some assets not withdrawable)
    *              will be ignored. When `force` is false, it will revert if `oldVault.balanceOf(address(this)) != 0`.
+   * @custom:emits {YieldVaultChanged}
    */
   function setYieldVault(IERC4626 newYieldVault, bool force) external {
     bool forced;
@@ -158,6 +187,15 @@ abstract contract Reserve is PolicyPoolComponent {
     emit YieldVaultChanged(oldYV, newYieldVault, forced);
   }
 
+  /**
+   * @dev Internal helper to deinvest `amount` assets from `yieldVault_`.
+   *
+   * It calls `withdraw(amount, address(this), address(this))` on the vault and updates `_invested`,
+   * also recording earnings if more than the tracked `_invested` is recovered.
+   *
+   * @param yieldVault_ Yield vault to deinvest from
+   * @param amount Amount of assets to withdraw from the vault
+   */
   function _deinvest(IERC4626 yieldVault_, uint256 amount) internal {
     yieldVault_.withdraw(amount, address(this), address(this));
     if (amount > _invested) {
@@ -171,9 +209,14 @@ abstract contract Reserve is PolicyPoolComponent {
 
   /**
    * @dev Deinvests all the funds or as much as possible, without failing.
-   * @param yieldVault_ The yield vault
+   *
+   * @param yieldVault_ Yield vault to deinvest from
+   * @param sharesToRedeem Initial amount of shares to redeem
+   *
    * @return deinvested The amount that was withdrawn from the vault
    * @return forced If true, it indicates that something failed and it wasn't able to withdraw all the funds
+   *
+   * @custom:emits {ErrorIgnoredDeinvestingVault}
    */
   function _safeDeInvestAll(
     IERC4626 yieldVault_,
@@ -194,6 +237,9 @@ abstract contract Reserve is PolicyPoolComponent {
     }
   }
 
+  /**
+   * @dev Returns the liquid balance of `currency()` held directly by this reserve.
+   */
   function _balance() internal view returns (uint256) {
     return IERC20Metadata(currency()).balanceOf(address(this));
   }
@@ -201,10 +247,9 @@ abstract contract Reserve is PolicyPoolComponent {
   /**
    * @dev Deinvest from the vault a given amount.
    *
-   *      Requires yieldVault() != address(0) and yieldVault().maxWithdraw() <= amount
-   *
    * @param amount Amount to withdraw from the `yieldVault()`. If equal type(uint256).max, deinvests maxWithdraw()
    * @return deinvested The amount that was deinvested and added as liquid funds to the reserve
+   * @custom:pre yieldVault() != address(0) and yieldVault().maxWithdraw() <= amount
    */
   function withdrawFromYieldVault(uint256 amount) external returns (uint256 deinvested) {
     IERC4626 yv = yieldVault();
@@ -216,10 +261,8 @@ abstract contract Reserve is PolicyPoolComponent {
 
   /**
    * @dev Moves money that's liquid in the contract to the yield vault, to generate yields
-   *
-   *      Requires _balance() >= amount
-   *
    * @param amount Amount to transfer to the `$._yieldVault`. If equal type(uint256).max, transfers `_balance()`
+   * @custom:pre _balance() >= amount
    */
   function depositIntoYieldVault(uint256 amount) external {
     IERC4626 yv = yieldVault();
@@ -237,8 +280,7 @@ abstract contract Reserve is PolicyPoolComponent {
   /**
    * @dev Computes the value of the assets invested in the yieldVault() and then calls `_assetEarnings` to
    *      reflect the earnings in the way defined for each reserve.
-   *
-   * - Emits {EarningsRecorded}
+   * @custom:emits {EarningsRecorded}
    */
   function recordEarnings() public {
     IERC4626 yv = yieldVault();

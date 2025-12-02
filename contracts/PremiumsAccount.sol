@@ -172,10 +172,16 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     return super.supportsInterface(interfaceId) || interfaceId == type(IPremiumsAccount).interfaceId;
   }
 
+  /**
+   * @dev See {Reserve-yieldVault}.
+   */
   function yieldVault() public view override returns (IERC4626) {
     return _params.yieldVault;
   }
 
+  /**
+   * @dev See {Reserve-_setYieldVault}.
+   */
   function _setYieldVault(IERC4626 newYV) internal override {
     _params.yieldVault = newYV;
   }
@@ -304,12 +310,19 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   /**
    * @dev Changes the `deficitRatio` parameter.
    *
-   * Events:
-   * - Emits DeficitRatioChanged
+   * @param newRatio New deficit ratio (wad). Must be `<= WAD` and exactly representable with 4 decimals
+   *                 (multiple of `FOUR_DECIMAL_TO_WAD`).
+   * @param adjustment If true, allows borrowing from eTokens to satisfy the new max-deficit bound when needed.
    *
-   * @param adjustment If true and the new ratio leaves `_surplus < -_maxDeficit()`, it adjusts the _surplus to the new
-   *                   `_maxDeficit()` and borrows the difference from the eTokens.
-   *                   If false and the new ratio leaves `_surplus < -_maxDeficit()`, the operation is reverted.
+   * @custom:pre `newRatio <= WAD`
+   * @custom:pre `newRatio` must be exactly representable with 4 decimals:
+   *             `uint256(uint16(newRatio / FOUR_DECIMAL_TO_WAD)) * FOUR_DECIMAL_TO_WAD == newRatio`
+   * @custom:pre If `adjustment == false`, then `_surplus >= _maxDeficit(newRatio)`
+   *
+   * @custom:throws {InvalidDeficitRatio} if `newRatio` is out of range or not representable with 4 decimals
+   * @custom:throws {DeficitExceedsMaxDeficit} if `adjustment == false` and `_surplus < _maxDeficit(newRatio)`
+   *
+   * @custom:emits {DeficitRatioChanged}
    */
   function setDeficitRatio(uint256 newRatio, bool adjustment) external {
     uint16 truncatedRatio = (newRatio / FOUR_DECIMAL_TO_WAD).toUint16();
@@ -335,13 +348,17 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   /**
    * @dev Changes the `jrLoanLimit` or `srLoanLimit` parameter.
    *
-   * Events:
-   * - Emits up to two LoanLimitChanged events
+   * @param newLimitJr The new limit to be set for the loans taken from the Junior eToken.
+   *                   If newLimitJr == MAX_UINT, it's ignored. If == 0, means the loans are unbounded.
+   * @param newLimitSr The new limit to be set for the loans taken from the Senior eToken.
+   *                   If newLimitSr == MAX_UINT, it's ignored. If == 0, means the loans are unbounded.
    *
-   * @param newLimitJr     The new limit to be set for the loans taken from the Junior eToken.
-                           If newLimitJr == MAX_UINT, it's ignored. If == 0, means the loans are unbounded.
-   * @param newLimitSr     The new limit to be set for the loans taken from the Senior eToken.
-                           If newLimitSr == MAX_UINT, it's ignored. If == 0, means the loans are unbounded.
+   * @custom:pre For each limit `newLimit` that is updated (`newLimit != type(uint256).max`), it must be representable with 0 decimals:
+   *             `_toAmount(_toZeroDecimals(newLimit)) == newLimit`
+   *
+   * @custom:throws {InvalidLoanLimit} if any provided limit cannot be packed/unpacked without losing precision
+   *
+   * @custom:emits {LoanLimitChanged} once per updated limit (up to two emits)
    */
   function setLoanLimits(uint256 newLimitJr, uint256 newLimitSr) external {
     if (newLimitJr != type(uint256).max) {
@@ -414,18 +431,14 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   }
 
   /**
-   *
-   * Endpoint to receive "free money" and inject that money into the premium pool.
-   *
-   * Can be used for example if the PolicyPool subscribes an excess loss policy with other company.
-   *
-   * Requirements:
-   * - The sender needs to approve the spending of `currency()` by this contract.
-   *
-   * Events:
-   * - Emits {WonPremiumsInOut} with moneyIn = true
+   * @dev Endpoint to receive "free money" and inject that money into the premium pool.
+   *      Can be used for example if the PolicyPool subscribes an excess loss policy with other company.
    *
    * @param amount The amount to be transferred.
+   *
+   * @custom:pre `msg.sender` approved `currency()` to this contract for at least `amount`
+   *
+   * @custom:emits {WonPremiumsInOut} with `moneyIn = true`
    */
   function receiveGrant(uint256 amount) external {
     _storePurePremiumWon(amount);
@@ -434,22 +447,22 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   }
 
   /**
-   *
    * @dev Withdraws excess premiums (surplus) to the destination.
-   *
-   * This might be needed in some cases for example if we are deprecating the protocol or the excess premiums
-   * are needed to compensate something. Or to extract profits accrued either by Ensuro or the partners.
-   *
-   * Requirements:
-   * - _surplus > 0
-   *
-   * Events:
-   * - Emits {WonPremiumsInOut} with moneyIn = false
+   *      This might be needed in some cases for example if we are deprecating the protocol or the excess premiums
+   *      are needed to compensate something. Or to extract profits accrued either by Ensuro or the partners.
    *
    * @param amount The amount to withdraw. If amount == type(uint256).max it withdraws as much as possible and doesn't
    *               fails. If amount != type(uint256).max it tries to withdraw that amount or it fails
    * @param destination The address that will receive the transferred funds.
    * @return Returns the actual amount withdrawn.
+   *
+   * @custom:pre `destination != address(0)`
+   * @custom:pre If `amount != type(uint256).max`, then `int256(amount) <= _surplus`
+   *
+   * @custom:throws {InvalidDestination} if `destination == address(0)`
+   * @custom:throws {WithdrawExceedsSurplus} if `amount != type(uint256).max` and `int256(amount) > _surplus`
+   *
+   * @custom:emits {WonPremiumsInOut} with `moneyIn = false`
    */
   function withdrawWonPremiums(uint256 amount, address destination) external returns (uint256) {
     require(destination != address(0), InvalidDestination(destination));
