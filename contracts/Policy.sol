@@ -4,8 +4,9 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 /**
  * @title Policy library
- * @dev Library for PolicyData struct. This struct represents an active policy, how the premium is
- *      distributed, the probability of payout, duration and how the capital is locked.
+ * @notice Library for PolicyData struct. This struct represents an active policy, the premium and solvency breakdown
+ * @dev Tracks how the premium is distributed, the probability of payout, duration and how the capital is locked.
+ * It is never stored on-chain, but instead we store a hash and we receive the policy on each operation
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
@@ -16,7 +17,7 @@ library Policy {
   uint256 internal constant SECONDS_PER_YEAR = 365 days;
 
   /**
-   * Struct of the parameters of the risk module that are used to calculate the different Policy fields (see
+   * @notice Struct of the parameters of the risk module that are used to calculate the different Policy fields (see
    * {Policy-PolicyData}.
    */
   struct Params {
@@ -57,7 +58,13 @@ library Policy {
      */
     uint256 srRoc;
   }
-  // Active Policies
+
+  /**
+   * @notice Struct with all the info of a given policy
+   * @dev It includes the premium breakdown
+   * (`premium=purePremium + jrCoc + srCoc + ensuroCommission + partnerCommission`), the solvency breakdown
+   * (`solvency = purePremium + jrScr + srScr = payout * collRatio`), and the start and end of the policy.
+   */
   struct PolicyData {
     uint256 id;
     uint256 payout;
@@ -74,6 +81,11 @@ library Policy {
     uint40 expiration;
   }
 
+  /**
+   * @notice Struct that contains the breakdown of premium and policy solvency
+   * @dev Used for internal calculations.
+   * `totalPremium = purePremium + jrCoc + srCoc + ensuroCommission + partnerCommission`
+   */
   struct PremiumComposition {
     uint256 purePremium;
     uint256 jrScr;
@@ -85,10 +97,31 @@ library Policy {
     uint256 totalPremium;
   }
 
+  /**
+   * @notice Raised when the received premium is less than the minimum
+   * @dev The minPremium is the one that results of computing the CoCs, purePremium and ensuroCommission for the given
+   * parameters, assuming partnerCommission = 0.
+   */
   error PremiumLessThanMinimum(uint256 premium, uint256 minPremium);
+
+  /// @notice Raised when the premium exceeds the payoutreceived premium is less than the minimum
   error PremiumExceedsPayout(uint256 premium, uint256 payout);
+
+  /// @notice Raised when the computed hash is bytes32(0)
   error ZeroHash(PolicyData policy);
 
+  /**
+   * @notice Computes the minimum premium
+   * @dev The minPremium is the one that results of computing the CoCs, purePremium and ensuroCommission for the given
+   * parameters, assuming partnerCommission = 0.
+   *
+   * @param rmParams Struct with the business and quantitative parameters that define the risk (see {Params}).
+   * @param payout Maximum payout (exposure) of the policy
+   * @param lossProb Probability of paying the maximum payout (purePremium = rmParams.moc * lossProb * payout)
+   * @param expiration Timestamp when the policy expires (can't be claimed anymore)
+   * @param start Timestamp when the policy starts (block.timestamp for new policies)
+   * @return minPremium PremiumComposition struct with the computed premium and its breakdown
+   */
   function getMinimumPremium(
     Params memory rmParams,
     uint256 payout,
@@ -123,6 +156,20 @@ library Policy {
     minPremium.totalPremium = minPremium.purePremium + minPremium.ensuroCommission + totalCoc;
   }
 
+  /**
+   * @notice Initializes a policy struct
+   * @dev Computes the minimum premium and the remaining (premium - minPremium) is assigned as partnerCommissiona
+   *
+   * @custom:throws PremiumLessThanMinimum when `premium` parameter is less than the computed minPremium
+   *
+   * @param rmParams Struct with the business and quantitative parameters that define the risk (see {Params}).
+   * @param premium The premium that will be paid for the policy
+   * @param payout Maximum payout (exposure) of the policy
+   * @param lossProb Probability of paying the maximum payout (purePremium = rmParams.moc * lossProb * payout)
+   * @param expiration Timestamp when the policy expires (can't be claimed anymore)
+   * @param start Timestamp when the policy starts (block.timestamp for new policies)
+   * @return newPolicy PolicyData struct with the fields initialized (all except .id)
+   */
   function initialize(
     Params memory rmParams,
     uint256 premium,
@@ -154,26 +201,58 @@ library Policy {
     return policy;
   }
 
+  /**
+   * @notice Computes the annualized interest rate paid to Junior LPs, for a given policy
+   * @dev Computed as `(jrCoc / jrScr) * (SECONDS_PER_YEAR / duration)`. The result should be almost the same as
+   * the initial rmParams.jrRoc sent to `initialize`.
+   *
+   * @param policy Struct with all the info of the policy
+   * @return Annualized interest rate in WAD
+   */
   function jrInterestRate(PolicyData memory policy) internal pure returns (uint256) {
     return ((policy.jrCoc * SECONDS_PER_YEAR) / duration(policy)).mulDiv(WAD, policy.jrScr);
   }
 
+  /**
+   * @notice Computed the interest accrued by junior LPs
+   * @dev The value is directly proportional to the elapsed time since policy.start with respect to the duration
+   *
+   * @param policy Struct with all the info of the policy
+   * @return Amount of the JrCoc accrued so far
+   */
   function jrAccruedInterest(PolicyData memory policy) internal view returns (uint256) {
     return (policy.jrCoc * (block.timestamp - policy.start)) / duration(policy);
   }
 
+  /**
+   * @notice Computes the annualized interest rate paid to Senior LPs, for a given policy
+   * @dev Computed as `(srCoc / srScr) * (SECONDS_PER_YEAR / duration)`. The result should be almost the same as
+   * the initial rmParams.srRoc sent to `initialize`.
+   *
+   * @param policy Struct with all the info of the policy
+   * @return Annualized interest rate in WAD
+   */
   function srInterestRate(PolicyData memory policy) internal pure returns (uint256) {
     return ((policy.srCoc * SECONDS_PER_YEAR) / duration(policy)).mulDiv(WAD, policy.srScr);
   }
 
+  /**
+   * @notice Computed the interest accrued by senior LPs
+   * @dev The value is directly proportional to the elapsed time since policy.start with respect to the duration
+   *
+   * @param policy Struct with all the info of the policy
+   * @return Amount of the SrCoc accrued so far
+   */
   function srAccruedInterest(PolicyData memory policy) internal view returns (uint256) {
     return (policy.srCoc * (block.timestamp - policy.start)) / duration(policy);
   }
 
+  /// @notice Returns the duration in seconds of the policy
   function duration(PolicyData memory policy) internal pure returns (uint40) {
     return policy.expiration - policy.start;
   }
 
+  /// @notice Returns a hash of all the fields of the policy
   function hash(PolicyData memory policy) internal pure returns (bytes32 retHash) {
     retHash = keccak256(abi.encode(policy));
     require(retHash != bytes32(0), ZeroHash(policy));

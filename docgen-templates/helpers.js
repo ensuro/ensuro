@@ -2,6 +2,7 @@ function formatThrows(throws) {
   const lines = throws.split("\n");
   let ret = "<dl>\n";
   for (const line of lines) {
+    if (line.replaceAll(" ", "") === "") continue;
     const errorClass = line.split(" ")[0];
     const rest = line.substring(errorClass.length + 1);
     ret += `<dt>${errorClass}</dt>\n<dd>${rest}</dd>\n`;
@@ -14,6 +15,7 @@ function formatEmits(emits) {
   const lines = emits.split("\n");
   let ret = "<dl>\n";
   for (const line of lines) {
+    if (line.replaceAll(" ", "") === "") continue;
     const errorClass = line.split(" ")[0];
     const rest = line.substring(errorClass.length + 1);
     ret += `<dt>${errorClass}</dt>\n<dd>${rest}</dd>\n`;
