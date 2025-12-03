@@ -146,6 +146,9 @@ library ETKLib {
     return Scale.wrap(newScaleInt.toUint96());
   }
 
+  /**
+   * @dev Unwraps {Scale} into uint256.
+   */
   function toUint256(Scale scale) internal pure returns (uint256) {
     return Scale.unwrap(scale);
   }
@@ -179,6 +182,15 @@ library ETKLib {
     scaledAmount.lastUpdate = uint32(block.timestamp);
   }
 
+  /**
+   * @dev Internal helper to add `amount` (current units) to a {ScaledAmount} using a given `scale`.
+   *
+   * @return newScaledAmount Updated in-memory struct (caller is expected to store it).
+   * @return scaledAdd Amount converted to scaled units (rounded down).
+   *
+   * @custom:pre `uint256(scale) != 0`
+   * @custom:pre `uint256(scaledAmount.amount) + scale.toScaled(amount)` fits in uint128
+   */
   function _add(
     ScaledAmount storage scaledAmount,
     uint256 amount,
@@ -195,6 +207,21 @@ library ETKLib {
     );
   }
 
+  /**
+   * @dev Subtracts `amount` (current units) from a {ScaledAmount} using the provided `scale`.
+   *
+   * It uses `toScaledCeil` (round up) to avoid leaving dust due to rounding. If the ceil conversion
+   * would underflow by 1 unit, it retries with `toScaled` (round down).
+   *
+   * @param scaledAmount The storage record to update.
+   * @param amount Amount expressed in current units.
+   * @param scale Scale (wad) to use to convert `amount` into scaled units.
+   * @return newScaledAmount Updated in-memory struct (caller is expected to store it).
+   * @return scaledSub The subtracted value expressed in scaled units (ceil, or floor in the retry path).
+   *
+   * @custom:pre `uint256(scale) != 0`
+   * @custom:pre `scale.toScaledCeil(amount) <= scaledAmount.amount` OR `scale.toScaled(amount) <= scaledAmount.amount`
+   */
   function _sub(
     ScaledAmount storage scaledAmount,
     uint256 amount,
@@ -219,6 +246,9 @@ library ETKLib {
     );
   }
 
+  /**
+   * @dev Adds `amount` (current units) projecting the scale forward using a linear `interestRate`.
+   */
   function add(
     ScaledAmount storage scaledAmount,
     uint256 amount,
@@ -227,6 +257,9 @@ library ETKLib {
     return _add(scaledAmount, amount, projectScale(scaledAmount, interestRate));
   }
 
+  /**
+   * @dev Subtracts `amount` (current units) projecting the scale forward using a linear `interestRate`.
+   */
   function sub(
     ScaledAmount storage scaledAmount,
     uint256 amount,
@@ -235,6 +268,9 @@ library ETKLib {
     return _sub(scaledAmount, amount, projectScale(scaledAmount, interestRate));
   }
 
+  /**
+   * @dev Adds `amount` (current units) projecting the scale forward using SCR earnings.
+   */
   function add(
     ScaledAmount storage scaledAmount,
     uint256 amount,
@@ -243,6 +279,9 @@ library ETKLib {
     return _add(scaledAmount, amount, projectScale(scaledAmount, scr));
   }
 
+  /**
+   * @dev Subtracts `amount` (current units) projecting the scale forward using SCR earnings.
+   */
   function sub(
     ScaledAmount storage scaledAmount,
     uint256 amount,
@@ -251,6 +290,15 @@ library ETKLib {
     return _sub(scaledAmount, amount, projectScale(scaledAmount, scr));
   }
 
+  /**
+   * @dev Applies a discrete signed change (in current units) to the scale, and also accounts for SCR earnings accrued
+   * since `scaledAmount.lastUpdate`.
+   *
+   * @param amount Signed discrete change in current units.
+   * @return newScaledAmount Updated in-memory struct with the same stored `amount`, but an adjusted `scale`.
+   *
+   * @custom:pre `scaledAmount.amount != 0` (required to compute proportional scale change)
+   */
   function discreteChange(
     ScaledAmount storage scaledAmount,
     int256 amount,
@@ -262,12 +310,25 @@ library ETKLib {
     return ScaledAmount({amount: scaledAmount.amount, scale: newScale, lastUpdate: uint32(block.timestamp)});
   }
 
+  /**
+   * @dev Returns the minimum current value representable by `scaledAmount.amount` under the minimum scale.
+   */
   function minValue(ScaledAmount storage scaledAmount) internal view returns (uint256) {
     return _mulDivCeil(uint256(scaledAmount.amount), MIN_SCALE, WAD);
   }
   /*** END ScaledAmount functions ***/
 
   /*** BEGIN Scr functions ***/
+  /**
+   * @dev Adds SCR and updates the weighted-average `interestRate`.
+   *
+   * @param scrAmount_ Amount of SCR to add.
+   * @param policyInterestRate Annualized rate (wad) associated with `scrAmount_`.
+   * @return modifiedScr New in-memory SCR struct reflecting the addition.
+   *
+   * @custom:pre If `scr.scr != 0`, then `uint256(scr.scr) + scrAmount_` fits in uint256
+   * @custom:pre `policyInterestRate` is expressed in wad
+   */
   function add(
     Scr storage scr,
     uint256 scrAmount_,
@@ -289,6 +350,15 @@ library ETKLib {
     }
   }
 
+  /**
+   * @dev Subtracts SCR and updates the weighted-average `interestRate`.
+   *
+   * @param scrAmount_ Amount of SCR to remove.
+   * @param policyInterestRate Annualized rate (wad) associated with `scrAmount_`.
+   * @return modifiedScr New in-memory SCR struct reflecting the subtraction.
+   *
+   * @custom:pre `scrAmount_ <= scr.scr`
+   */
   function sub(
     Scr storage scr,
     uint256 scrAmount_,
@@ -322,12 +392,21 @@ library ETKLib {
       );
   }
 
+  /**
+   * @dev Returns liquid funds available given `totalSupply`, excluding locked SCR.
+   *
+   * @param totalSupply Total supply expressed in current units.
+   * @return available `max(totalSupply - scr.scr, 0)`.
+   */
   function fundsAvailable(Scr storage scr, uint256 totalSupply) internal view returns (uint256) {
     uint256 scr_ = uint256(scr.scr);
     if (totalSupply > scr_) return totalSupply - scr_;
     else return 0;
   }
 
+  /**
+   * @dev Returns the SCR amount (locked capital) in current units.
+   */
   function scrAmount(Scr storage scr) internal view returns (uint256) {
     return uint256(scr.scr);
   }

@@ -10,6 +10,8 @@ import {AccessManagedProxy} from "@ensuro/access-managed-proxy/contracts/AccessM
  * @title FullSignedUW
  * @dev Underwriter that just decodes what it receives and checks it was signed by an authorized account.
  *      The signer needs to have the specific selectors granted in the target RM
+ * @custom:security-contact security@ensuro.co
+ * @author Ensuro
  */
 contract FullSignedUW is IUnderwriter {
   using Policy for Policy.PolicyData;
@@ -25,6 +27,21 @@ contract FullSignedUW is IUnderwriter {
   error UnauthorizedSigner(address signer, bytes4 selector);
   error InvalidInputSize(uint256 actual, uint256 expected);
 
+  /**
+   * @dev Validates the signature appended to `inputData` and checks the recovered signer is authorized in `rm`.
+   *
+   * @param rm           Target RiskModule (must be an {AccessManagedProxy}).
+   * @param inputData    Concatenated bytes: `payload || signature`.
+   * @param inputSize    Expected length of the payload portion (without signature).
+   * @param requiredRole Role/selector id required for this operation (one of the `FULL_PRICE_*` constants).
+   *
+   * @custom:pre `inputData` is exactly `inputSize + 65` bytes long.
+   * @custom:pre `rm` is an {AccessManagedProxy} instance whose `ACCESS_MANAGER()` supports `canCall(...)`.
+   *
+   * @custom:throws InvalidInputSize if `inputData.length != inputSize + 65`.
+   * @custom:throws (via {ECDSA-recover}) if the signature is malformed/invalid.
+   * @custom:throws UnauthorizedSigner if the recovered signer is not permitted to call `rm` with `requiredRole`.
+   */
   function _checkSignature(address rm, bytes calldata inputData, uint256 inputSize, bytes4 requiredRole) internal view {
     // Check length
     uint256 inputLength = inputData.length;
@@ -39,6 +56,9 @@ contract FullSignedUW is IUnderwriter {
     require(immediate, UnauthorizedSigner(signer, requiredRole));
   }
 
+  /**
+   * @dev See {IUnderwriter-priceNewPolicy}.
+   */
   function priceNewPolicy(
     address rm,
     bytes calldata inputData
@@ -59,6 +79,9 @@ contract FullSignedUW is IUnderwriter {
     return abi.decode(inputData[0:NEW_POLICY_DATA_SIZE], (uint256, uint256, uint256, uint40, uint96, Policy.Params));
   }
 
+  /**
+   * @dev See {IUnderwriter-pricePolicyReplacement}.
+   */
   function pricePolicyReplacement(
     address rm,
     bytes calldata inputData
@@ -84,6 +107,9 @@ contract FullSignedUW is IUnderwriter {
       );
   }
 
+  /**
+   * @dev See {IUnderwriter-pricePolicyCancellation}.
+   */
   function pricePolicyCancellation(
     address rm,
     bytes calldata inputData

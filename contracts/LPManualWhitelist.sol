@@ -34,6 +34,12 @@ contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
   error InvalidProvider(address provider);
   error InvalidWhitelistStatus(WhitelistStatus newStatus);
 
+  /**
+   * @dev Emitted when the whitelist status for a provider (or the defaults entry at address(0)) is updated.
+   *
+   * @param provider The provider whose status was changed. `address(0)` denotes the defaults entry.
+   * @param whitelisted The new status stored for the provider.
+   */
   event LPWhitelistStatusChanged(address provider, WhitelistStatus whitelisted);
 
   /// @custom:oz-upgrades-unsafe-allow constructor
@@ -60,11 +66,33 @@ contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
     emit LPWhitelistStatusChanged(address(0), defaultStatus);
   }
 
+  /**
+   * @dev Sets a custom whitelist status for `provider`.
+   *
+   * @param provider The LP address whose status will be updated. Must be non-zero.
+   * @param newStatus The status to store for `provider`. Fields may be `undefined` to indicate "use defaults".
+   *
+   * @custom:pre `provider != address(0)`
+   *
+   * @custom:throws {InvalidProvider} if `provider == address(0)`
+   */
   function whitelistAddress(address provider, WhitelistStatus calldata newStatus) external {
     require(provider != address(0), InvalidProvider(provider));
     _whitelistAddress(provider, newStatus);
   }
 
+  /**
+   * @dev Internal validator for the defaults entry. All fields must be explicitly set (non-`undefined`).
+   *
+   * @param newStatus Candidate defaults status.
+   *
+   * @custom:pre `newStatus.deposit != WhitelistOptions.undefined`
+   * @custom:pre `newStatus.withdraw != WhitelistOptions.undefined`
+   * @custom:pre `newStatus.sendTransfer != WhitelistOptions.undefined`
+   * @custom:pre `newStatus.receiveTransfer != WhitelistOptions.undefined`
+   *
+   * @custom:throws {InvalidWhitelistStatus} if any field is `undefined`
+   */
   function _checkDefaultStatus(WhitelistStatus calldata newStatus) internal pure {
     require(
       newStatus.deposit != WhitelistOptions.undefined &&
@@ -75,15 +103,38 @@ contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
     );
   }
 
+  /**
+   * @dev Updates the default whitelist status stored at `_wlStatus[address(0)]`.
+   *
+   * @param newStatus The new defaults entry. All fields must be non-`undefined`.
+   *
+   * @custom:pre `newStatus.deposit != WhitelistOptions.undefined`
+   * @custom:pre `newStatus.withdraw != WhitelistOptions.undefined`
+   * @custom:pre `newStatus.sendTransfer != WhitelistOptions.undefined`
+   * @custom:pre `newStatus.receiveTransfer != WhitelistOptions.undefined`
+   *
+   * @custom:throws {InvalidWhitelistStatus} if any defaults field is `undefined`
+   */
   function setWhitelistDefaults(WhitelistStatus calldata newStatus) external {
     _checkDefaultStatus(newStatus);
     _whitelistAddress(address(0), newStatus);
   }
 
+  /**
+   * @dev Returns the default whitelist status stored at `_wlStatus[address(0)]`.
+   */
   function getWhitelistDefaults() external view returns (WhitelistStatus memory) {
     return _wlStatus[address(0)];
   }
 
+  /**
+   * @dev Stores `newStatus` for `provider`.
+   *
+   * @param provider The provider whose entry is being written.
+   * @param newStatus The status to store.
+   *
+   * @custom:emits {LPWhitelistStatusChanged}
+   */
   function _whitelistAddress(address provider, WhitelistStatus memory newStatus) internal {
     _wlStatus[provider] = newStatus;
     emit LPWhitelistStatusChanged(provider, newStatus);
