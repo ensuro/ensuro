@@ -172,16 +172,12 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
     return super.supportsInterface(interfaceId) || interfaceId == type(IPremiumsAccount).interfaceId;
   }
 
-  /**
-   * @dev See {Reserve-yieldVault}.
-   */
+  /// @inheritdoc Reserve
   function yieldVault() public view override returns (IERC4626) {
     return _params.yieldVault;
   }
 
-  /**
-   * @dev See {Reserve-_setYieldVault}.
-   */
+  /// @inheritdoc Reserve
   function _setYieldVault(IERC4626 newYV) internal override {
     _params.yieldVault = newYV;
   }

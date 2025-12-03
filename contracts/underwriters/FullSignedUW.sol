@@ -56,9 +56,7 @@ contract FullSignedUW is IUnderwriter {
     require(immediate, UnauthorizedSigner(signer, requiredRole));
   }
 
-  /**
-   * @dev See {IUnderwriter-priceNewPolicy}.
-   */
+  /// @inheritdoc IUnderwriter
   function priceNewPolicy(
     address rm,
     bytes calldata inputData
@@ -79,9 +77,7 @@ contract FullSignedUW is IUnderwriter {
     return abi.decode(inputData[0:NEW_POLICY_DATA_SIZE], (uint256, uint256, uint256, uint40, uint96, Policy.Params));
   }
 
-  /**
-   * @dev See {IUnderwriter-pricePolicyReplacement}.
-   */
+  /// @inheritdoc IUnderwriter
   function pricePolicyReplacement(
     address rm,
     bytes calldata inputData
@@ -107,9 +103,7 @@ contract FullSignedUW is IUnderwriter {
       );
   }
 
-  /**
-   * @dev See {IUnderwriter-pricePolicyCancellation}.
-   */
+  /// @inheritdoc IUnderwriter
   function pricePolicyCancellation(
     address rm,
     bytes calldata inputData
