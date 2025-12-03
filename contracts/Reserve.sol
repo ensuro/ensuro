@@ -9,10 +9,10 @@ import {PolicyPoolComponent} from "./PolicyPoolComponent.sol";
 
 /**
  * @title Base contract for Ensuro cash reserves
- * @dev This contract implements the methods related with management of the reserves and payments. {EToken} and
+ * @notice Implements the methods related with management of the reserves and payments. {EToken} and
  * {PremiumsAccount} inherit from this contract.
  *
- * These contracts have an asset manager {IAssetManager} that's a strategy contract that runs in the same context
+ * @dev These contracts have an asset manager {IAssetManager} that's a strategy contract that runs in the same context
  * (called with delegatecall) that apply some strategy to reinvest the assets managed by the contract to generate
  * additional returns.
  *
@@ -27,14 +27,23 @@ abstract contract Reserve is PolicyPoolComponent {
    */
   uint256 internal _invested;
 
+  /// @notice Thrown when the yield vault is unset or invalid for the configured currency.
   error InvalidYieldVault();
+  /**
+   * @notice Thrown when trying to invest more cash than currently liquid in the reserve.
+   * @param required The requested amount of liquid funds
+   * @param available The currently available liquid balance
+   */
   error NotEnoughCash(uint256 required, uint256 available);
+  /**
+   * @notice Thrown when attempting to transfer to the zero address.
+   * @param receiver The receiver that was provided (cannot be the zero address)
+   */
   error ReserveInvalidReceiver(address receiver);
 
   /**
-   * @dev Emitted when the yield vault is changed.
-   *
-   * When replacing an existing vault, the reserve attempts to redeem the full position (unless `force` is used).
+   * @notice Emitted when the yield vault is changed.
+   * @dev When replacing an existing vault, the reserve attempts to redeem the full position (unless `force` is used).
    *
    * @param oldVault The previous yield vault (can be `address(0)`)
    * @param newVault The new yield vault (can be `address(0)`)
@@ -43,7 +52,7 @@ abstract contract Reserve is PolicyPoolComponent {
   event YieldVaultChanged(IERC4626 indexed oldVault, IERC4626 indexed newVault, bool forced);
 
   /**
-   * @dev Emitted when a forced deinvestment ignored a redeem failure.
+   * @notice Emitted when a forced deinvestment ignored a redeem failure.
    *
    * @param oldVault The vault that failed to redeem
    * @param shares The number of shares attempted to redeem
@@ -51,7 +60,7 @@ abstract contract Reserve is PolicyPoolComponent {
   event ErrorIgnoredDeinvestingVault(IERC4626 indexed oldVault, uint256 shares);
 
   /**
-   * @dev Event emitted when investment yields are accounted in the reserve
+   * @notice Event emitted when investment yields are accounted in the reserve
    *
    * @param earnings The amount of earnings generated since last record. It's positive in the case of earnings or
    * negative when there are losses.
@@ -102,7 +111,7 @@ abstract contract Reserve is PolicyPoolComponent {
   }
 
   /**
-   * @dev Returns the address of the yield vault, where the part of the funds are invested to generate additional
+   * @notice Returns the address of the yield vault, where the part of the funds are invested to generate additional
    *      yields. Can be `address(0)` if no yieldVault has been set.
    */
   function yieldVault() public view virtual returns (IERC4626);
@@ -117,7 +126,7 @@ abstract contract Reserve is PolicyPoolComponent {
   function _setYieldVault(IERC4626 newYieldVault) internal virtual;
 
   /**
-   * @dev Returns the amount of funds that were invested in the yieldVault, up to the last recorded earnings / losses
+   * @notice Returns the amount of funds that were invested in the yieldVault, up to the last recorded earnings / losses
    */
   function investedInYV() public view returns (uint256) {
     return _invested;
@@ -137,11 +146,9 @@ abstract contract Reserve is PolicyPoolComponent {
   }
 
   /**
-   * @dev Sets the new yield vault for this reserve. If the reserve had previously a yield vault, it will deinvest all
+   * @notice Sets the new yield vault for this reserve. If the reserve had previously a yield vault, it will deinvest all
    * the funds, making all of the liquid in the reserve balance.
    *
-   * Events:
-   * - Emits YieldVaultChanged
    *
    * @param newYieldVault The address of the new yield vault to assign to the reserve. If is `address(0)` it means
    *                      the reserve will not have a yield vault. If not `address(0)` it MUST be an IERC4626
@@ -240,7 +247,7 @@ abstract contract Reserve is PolicyPoolComponent {
   }
 
   /**
-   * @dev Deinvest from the vault a given amount.
+   * @notice Deinvest from the vault a given amount.
    *
    * @param amount Amount to withdraw from the `yieldVault()`. If equal type(uint256).max, deinvests maxWithdraw()
    * @return deinvested The amount that was deinvested and added as liquid funds to the reserve
@@ -255,7 +262,7 @@ abstract contract Reserve is PolicyPoolComponent {
   }
 
   /**
-   * @dev Moves money that's liquid in the contract to the yield vault, to generate yields
+   * @notice Moves money that's liquid in the contract to the yield vault, to generate yields
    * @param amount Amount to transfer to the `$._yieldVault`. If equal type(uint256).max, transfers `_balance()`
    * @custom:pre _balance() >= amount
    */
