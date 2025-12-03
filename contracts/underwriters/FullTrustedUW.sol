@@ -5,7 +5,7 @@ import {IUnderwriter} from "../interfaces/IUnderwriter.sol";
 
 /**
  * @title FullTrustedUW
- * @dev Underwriter that just decodes what it receives. The access validations should be done on risk module methods.
+ * @notice Underwriter that just decodes what it receives. The access validations should be done on risk module methods.
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */

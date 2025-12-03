@@ -7,7 +7,7 @@ import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 /**
  * @title ETKLib
- * @dev Library with different datatypes and utils used by the eToken contract
+ * @notice Library with different datatypes and utils used by the eToken contract
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
@@ -39,7 +39,7 @@ library ETKLib {
   error ScaleTooSmall(uint256 rejectedScale); // Scale too small, can lead to rounding errors
 
   /**
-   * @dev unchecked version of Math.mulDiv that returns the result of a * b / c.
+   * @notice unchecked version of Math.mulDiv that returns the result of a * b / c.
    *
    * Assumes a * b < 2**256
    */
@@ -50,7 +50,7 @@ library ETKLib {
   }
 
   /**
-   * @dev unchecked version of Math.mulDiv that returns the result of a * b / c. (signed version)
+   * @notice unchecked version of Math.mulDiv that returns the result of a * b / c. (signed version)
    *
    * Assumes a * b < 2**256
    */
@@ -61,7 +61,7 @@ library ETKLib {
   }
 
   /**
-   * @dev unchecked version of Math.mulDiv that returns the result of a * b / c.
+   * @notice unchecked version of Math.mulDiv that returns the result of a * b / c.
    *
    * Assumes a * b < 2**256
    */
@@ -74,7 +74,7 @@ library ETKLib {
   /*** BEGIN Scale functions ***/
 
   /**
-   * @dev Converts a "scaled amount" (raw value, without applying earnings) to the current value after
+   * @notice Converts a "scaled amount" (raw value, without applying earnings) to the current value after
    *      after applying the scale.
    * @param scaledAmount The `scaled amount` as the ones stored in `$._balances`
    * @param scale        The scale to apply.
@@ -85,7 +85,7 @@ library ETKLib {
   }
 
   /**
-   * @dev Converts a "scaled amount" (raw value, without applying earnings) to the current value after
+   * @notice Converts a "scaled amount" (raw value, without applying earnings) to the current value after
    *      after applying the scale, rounding to the ceil
    * @param scaledAmount The `scaled amount` as the ones stored in `$._balances`
    * @param scale        The scale to apply.
@@ -96,7 +96,7 @@ library ETKLib {
   }
 
   /**
-   * @dev Converts a "current amount" (end user value, after applying earnings) to the scaled amount (raw value)
+   * @notice Converts a "current amount" (end user value, after applying earnings) to the scaled amount (raw value)
    * @param currentAmount The `current amount` as the ones obtainted by the user in balanceOf or totalSupply()
    * @param scale        The scale to un-apply.
    * @return The scaled amount, that results of `currentAmount / scale`
@@ -106,7 +106,7 @@ library ETKLib {
   }
 
   /**
-   * @dev Converts a "current amount" (end user value, after applying earnings) to the scaled amount (raw value),
+   * @notice Converts a "current amount" (end user value, after applying earnings) to the scaled amount (raw value),
    *      rounding to the ceil
    * @param currentAmount The `current amount` as the ones obtainted by the user in balanceOf or totalSupply()
    * @param scale        The scale to un-apply.
@@ -117,7 +117,7 @@ library ETKLib {
   }
 
   /**
-   * @dev Increases the scale for a given factor
+   * @notice Increases the scale for a given factor
    * @param factor In wad
    * @return newScale Returns a `newScale = scale * (1 + factor)`
    */
@@ -126,7 +126,7 @@ library ETKLib {
   }
 
   /**
-   * @dev Increases the scale for a given factor
+   * @notice Increases the scale for a given factor
    * @param factor In wad
    * @return newScale Returns a `newScale = scale * (1 + factor)`
    */
@@ -135,7 +135,7 @@ library ETKLib {
   }
 
   /**
-   * @dev Increases the scale for a given factor. The factor is signed, so the new scale can be lower. Checks
+   * @notice Increases the scale for a given factor. The factor is signed, so the new scale can be lower. Checks
    *      the resulting scale is greater than MIN_SCALE.
    * @param factor In wad
    * @return newScale Returns a `newScale = scale * (1 + factor)`
@@ -147,7 +147,7 @@ library ETKLib {
   }
 
   /**
-   * @dev Unwraps {Scale} into uint256.
+   * @notice Unwraps {Scale} into uint256.
    */
   function toUint256(Scale scale) internal pure returns (uint256) {
     return Scale.unwrap(scale);
@@ -156,7 +156,7 @@ library ETKLib {
   /*** BEGIN ScaledAmount functions ***/
 
   /**
-   * @dev Computes the scale of the scaledAmount projecting the last recorded value to the future asumming linear rate
+   * @notice Computes the scale of the scaledAmount projecting the last recorded value to the future asumming linear rate
    */
   function projectScale(ScaledAmount storage scaledAmount, uint256 interestRate) internal view returns (Scale) {
     uint32 now_ = uint32(block.timestamp);
@@ -168,7 +168,7 @@ library ETKLib {
   }
 
   /**
-   * @dev Computes the scale of the scaledAmount projecting the last recorded value to the future asumming linear rate
+   * @notice Computes the scale of the scaledAmount projecting the last recorded value to the future asumming linear rate
    */
   function projectScale(ScaledAmount storage scaledAmount, Scr storage scr) internal view returns (Scale ret) {
     uint256 scrEarnings = earnings(scr, scaledAmount.lastUpdate);
@@ -183,7 +183,7 @@ library ETKLib {
   }
 
   /**
-   * @dev Internal helper to add `amount` (current units) to a {ScaledAmount} using a given `scale`.
+   * @notice Internal helper to add `amount` (current units) to a {ScaledAmount} using a given `scale`.
    *
    * @return newScaledAmount Updated in-memory struct (caller is expected to store it).
    * @return scaledAdd Amount converted to scaled units (rounded down).
@@ -208,9 +208,9 @@ library ETKLib {
   }
 
   /**
-   * @dev Subtracts `amount` (current units) from a {ScaledAmount} using the provided `scale`.
+   * @notice Subtracts `amount` (current units) from a {ScaledAmount} using the provided `scale`.
    *
-   * It uses `toScaledCeil` (round up) to avoid leaving dust due to rounding. If the ceil conversion
+   * @dev It uses `toScaledCeil` (round up) to avoid leaving dust due to rounding. If the ceil conversion
    * would underflow by 1 unit, it retries with `toScaled` (round down).
    *
    * @param scaledAmount The storage record to update.
@@ -247,7 +247,7 @@ library ETKLib {
   }
 
   /**
-   * @dev Adds `amount` (current units) projecting the scale forward using a linear `interestRate`.
+   * @notice Adds `amount` (current units) projecting the scale forward using a linear `interestRate`.
    */
   function add(
     ScaledAmount storage scaledAmount,
@@ -258,7 +258,7 @@ library ETKLib {
   }
 
   /**
-   * @dev Subtracts `amount` (current units) projecting the scale forward using a linear `interestRate`.
+   * @notice Subtracts `amount` (current units) projecting the scale forward using a linear `interestRate`.
    */
   function sub(
     ScaledAmount storage scaledAmount,
@@ -269,7 +269,7 @@ library ETKLib {
   }
 
   /**
-   * @dev Adds `amount` (current units) projecting the scale forward using SCR earnings.
+   * @notice Adds `amount` (current units) projecting the scale forward using SCR earnings.
    */
   function add(
     ScaledAmount storage scaledAmount,
@@ -280,7 +280,7 @@ library ETKLib {
   }
 
   /**
-   * @dev Subtracts `amount` (current units) projecting the scale forward using SCR earnings.
+   * @notice Subtracts `amount` (current units) projecting the scale forward using SCR earnings.
    */
   function sub(
     ScaledAmount storage scaledAmount,
@@ -291,7 +291,7 @@ library ETKLib {
   }
 
   /**
-   * @dev Applies a discrete signed change (in current units) to the scale, and also accounts for SCR earnings accrued
+   * @notice Applies a discrete signed change (in current units) to the scale, and also accounts for SCR earnings accrued
    * since `scaledAmount.lastUpdate`.
    *
    * @param amount Signed discrete change in current units.
@@ -311,7 +311,7 @@ library ETKLib {
   }
 
   /**
-   * @dev Returns the minimum current value representable by `scaledAmount.amount` under the minimum scale.
+   * @notice Returns the minimum current value representable by `scaledAmount.amount` under the minimum scale.
    */
   function minValue(ScaledAmount storage scaledAmount) internal view returns (uint256) {
     return _mulDivCeil(uint256(scaledAmount.amount), MIN_SCALE, WAD);
@@ -320,7 +320,7 @@ library ETKLib {
 
   /*** BEGIN Scr functions ***/
   /**
-   * @dev Adds SCR and updates the weighted-average `interestRate`.
+   * @notice Adds SCR and updates the weighted-average `interestRate`.
    *
    * @param scrAmount_ Amount of SCR to add.
    * @param policyInterestRate Annualized rate (wad) associated with `scrAmount_`.
@@ -351,7 +351,7 @@ library ETKLib {
   }
 
   /**
-   * @dev Subtracts SCR and updates the weighted-average `interestRate`.
+   * @notice Subtracts SCR and updates the weighted-average `interestRate`.
    *
    * @param scrAmount_ Amount of SCR to remove.
    * @param policyInterestRate Annualized rate (wad) associated with `scrAmount_`.
@@ -381,7 +381,7 @@ library ETKLib {
   }
 
   /**
-   * @dev Returns the earnings of the SCR since a given date
+   * @notice Returns the earnings of the SCR since a given date
    */
   function earnings(Scr storage scr, uint32 since) internal view returns (uint256) {
     return
@@ -393,7 +393,7 @@ library ETKLib {
   }
 
   /**
-   * @dev Returns liquid funds available given `totalSupply`, excluding locked SCR.
+   * @notice Returns liquid funds available given `totalSupply`, excluding locked SCR.
    *
    * @param totalSupply Total supply expressed in current units.
    * @return available `max(totalSupply - scr.scr, 0)`.
@@ -405,7 +405,7 @@ library ETKLib {
   }
 
   /**
-   * @dev Returns the SCR amount (locked capital) in current units.
+   * @notice Returns the SCR amount (locked capital) in current units.
    */
   function scrAmount(Scr storage scr) internal view returns (uint256) {
     return uint256(scr.scr);

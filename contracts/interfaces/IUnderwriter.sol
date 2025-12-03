@@ -4,13 +4,13 @@ import {Policy} from "../Policy.sol";
 
 /**
  * @title Underwriter interface
- * @dev Interface for a contract that validates inputs and converts it into the fields required to create a policy
+ * @notice Interface for a contract that validates inputs and converts it into the fields required to create a policy
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
 interface IUnderwriter {
   /**
-   * @dev Prices a new policy request for RiskModule `rm`.
+   * @notice Prices a new policy request for RiskModule `rm`.
    *
    * @param rm        The RiskModule address requesting pricing (implementations may use it for access checks).
    * @param inputData Opaque payload consumed by the Underwriter implementation.
@@ -41,7 +41,7 @@ interface IUnderwriter {
     );
 
   /**
-   * @dev Prices a policy replacement request for RiskModule `rm`.
+   * @notice Prices a policy replacement request for RiskModule `rm`.
    *
    * @param rm        The RiskModule address requesting pricing (implementations may use it for access checks).
    * @param inputData Opaque payload consumed by the Underwriter implementation.
@@ -74,7 +74,7 @@ interface IUnderwriter {
     );
 
   /**
-   * @dev Prices a policy cancellation request for RiskModule `rm`.
+   * @notice Prices a policy cancellation request for RiskModule `rm`.
    *
    * @param rm        The RiskModule address requesting pricing (implementations may use it for access checks).
    * @param inputData Opaque payload consumed by the Underwriter implementation.

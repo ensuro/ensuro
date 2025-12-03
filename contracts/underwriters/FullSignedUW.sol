@@ -8,7 +8,7 @@ import {AccessManagedProxy} from "@ensuro/access-managed-proxy/contracts/AccessM
 
 /**
  * @title FullSignedUW
- * @dev Underwriter that just decodes what it receives and checks it was signed by an authorized account.
+ * @notice Underwriter that just decodes what it receives and checks it was signed by an authorized account.
  *      The signer needs to have the specific selectors granted in the target RM
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
@@ -24,11 +24,25 @@ contract FullSignedUW is IUnderwriter {
   uint256 private constant CANCEL_POLICY_DATA_SIZE = 12 * 32 /* Policy */ + 3 * 32;
   uint256 private constant SIGNATURE_SIZE = 65;
 
+  /**
+   * @notice Thrown when the recovered signer is not authorized to perform the requested pricing operation on `rm`.
+   * @dev `selector` is the permission/role identifier checked through the RM's AccessManager (one of `FULL_PRICE_*`).
+   *
+   * @param signer   The address recovered from the appended ECDSA signature.
+   * @param selector The required permission/role id for the operation.
+   */
   error UnauthorizedSigner(address signer, bytes4 selector);
+  /**
+   * @notice Thrown when `inputData` does not have the expected length: `payload || signature`.
+   * @dev The signature is expected to be exactly 65 bytes, so `inputData.length` must be `inputSize + 65`.
+   *
+   * @param actual   The actual length of `inputData` in bytes.
+   * @param expected The expected length of `inputData` in bytes.
+   */
   error InvalidInputSize(uint256 actual, uint256 expected);
 
   /**
-   * @dev Validates the signature appended to `inputData` and checks the recovered signer is authorized in `rm`.
+   * @notice Validates the signature appended to `inputData` and checks the recovered signer is authorized in `rm`.
    *
    * @param rm           Target RiskModule (must be an {AccessManagedProxy}).
    * @param inputData    Concatenated bytes: `payload || signature`.
