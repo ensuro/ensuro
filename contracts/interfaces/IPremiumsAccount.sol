@@ -6,54 +6,48 @@ import {Policy} from "../Policy.sol";
 
 /**
  * @title IPremiumsAccount interface
- * @dev Interface for Premiums Account contracts.
+ * @notice Interface for Premiums Account contracts.
  * @author Ensuro
  */
 interface IPremiumsAccount {
   /**
-   * @dev Adds a policy to the PremiumsAccount. Stores the pure premiums and locks the aditional funds from junior and
+   * @notice Adds a policy to the PremiumsAccount. Stores the pure premiums and locks the aditional funds from junior and
    * senior eTokens.
    *
-   * Requirements:
-   * - Must be called by `policyPool()`
-   *
-   * Events:
-   * - {EToken-SCRLocked}
-   *
    * @param policy The policy to add (created in this transaction)
+   *
+   * @custom:pre Must be called by `policyPool()`
+   *
+   * @custom:emits {EToken-SCRLocked}
    */
   function policyCreated(Policy.PolicyData memory policy) external;
 
   /**
-   * @dev Replaces a policy with another in PremiumsAccount. Stores the pure premiums difference and
+   * @notice Replaces a policy with another in PremiumsAccount. Stores the pure premiums difference and
    * re-locks the aditional funds from junior and senior eTokens.
-   *
-   * Requirements:
-   * - Must be called by `policyPool()`
-   *
-   * Events:
-   * - {EToken-SCRUnlocked}
-   * - {EToken-SCRLocked}
    *
    * @param oldPolicy The policy to replace (created in a previous transaction)
    * @param newPolicy The policy that will replace the old one (created in this transaction)
+   *
+   * @custom:pre Must be called by `policyPool()`
+   *
+   * @custom:emits {EToken-SCRUnlocked}
+   * @custom:emits {EToken-SCRLocked}
    */
   function policyReplaced(Policy.PolicyData memory oldPolicy, Policy.PolicyData memory newPolicy) external;
 
   /**
-   * @dev Reflects the cancellation of a policy, doing the required refunds.
-   *
-   * Requirements:
-   * - Must be called by `policyPool()`
-   *
-   * Events:
-   * - {EToken-SCRUnlocked}
+   * @notice Reflects the cancellation of a policy, doing the required refunds.
    *
    * @param policyToCancel The policy that is being cancelled
    * @param purePremiumRefund The pure premium amount that will be reimbursed to the policy holder
    * @param jrCocRefund The jrCoc that will be reimbursed to the policy holder
    * @param srCocRefund The srCoc that will be reimbursed to the policy holder
    * @param policyHolder Owner of the policy that will receive the reimbursement
+   *
+   * @custom:pre Must be called by `policyPool()`
+   *
+   * @custom:emits {EToken-SCRUnlocked}
    */
   function policyCancelled(
     Policy.PolicyData calldata policyToCancel,
@@ -64,53 +58,47 @@ interface IPremiumsAccount {
   ) external;
 
   /**
-   * @dev The PremiumsAccount is notified that the policy was resolved and issues the payout to the policyHolder.
-   *
-   * Requirements:
-   * - Must be called by `policyPool()`
-   *
-   * Events:
-   * - {ERC20-Transfer}: `to == policyHolder`, `amount == payout`
-   * - {EToken-InternalLoan}: optional, if a loan needs to be taken
-   * - {EToken-SCRUnlocked}
+   * @notice The PremiumsAccount is notified that the policy was resolved and issues the payout to the policyHolder.
    *
    * @param policyHolder The one that will receive the payout
    * @param policy The policy that was resolved
    * @param payout The amount that has to be transferred to `policyHolder`
+   *
+   * @custom:pre Must be called by `policyPool()`
+   * @custom:emits {ERC20-Transfer}: `to == policyHolder`, `amount == payout`
+   * @custom:emits {EToken-InternalLoan}: optional, if a loan needs to be taken
+   * @custom:emits {EToken-SCRUnlocked}
    */
   function policyResolvedWithPayout(address policyHolder, Policy.PolicyData memory policy, uint256 payout) external;
 
   /**
-   * @dev The PremiumsAccount is notified that the policy has expired, unlocks the SCR and earns the pure premium.
-   *
-   * Requirements:
-   * - Must be called by `policyPool()`
-   *
-   * Events:
-   * - {ERC20-Transfer}: `to == policyHolder`, `amount == payout`
-   * - {EToken-InternalLoanRepaid}: optional, if a loan was taken before
+   * @notice The PremiumsAccount is notified that the policy has expired, unlocks the SCR and earns the pure premium.
    *
    * @param policy The policy that has expired
+   *
+   * @custom:pre Must be called by `policyPool()`
+   * @custom:emits {ERC20-Transfer}: `to == policyHolder`, `amount == payout`
+   * @custom:emits {EToken-InternalLoanRepaid}: optional, if a loan was taken before
    */
   function policyExpired(Policy.PolicyData memory policy) external;
 
   /**
-   * @dev The senior eToken, the secondary source of solvency, used if the premiums account is exhausted and junior too
+   * @notice The senior eToken, the secondary source of solvency, used if the premiums account is exhausted and junior too
    */
   function seniorEtk() external view returns (IEToken);
 
   /**
-   * @dev The junior eToken, the primary source of solvency, used if the premiums account is exhausted.
+   * @notice The junior eToken, the primary source of solvency, used if the premiums account is exhausted.
    */
   function juniorEtk() external view returns (IEToken);
 
   /**
-   * @dev Returns the juniorEtk and seniorEtk. See {juniorEtk()} and {seniorEtk()}
+   * @notice Returns the juniorEtk and seniorEtk. See {juniorEtk()} and {seniorEtk()}
    */
   function etks() external view returns (IEToken juniorEtk, IEToken seniorEtk);
 
   /**
-   * @dev The total amount of premiums hold by this PremiumsAccount
+   * @notice The total amount of premiums hold by this PremiumsAccount
    */
   function purePremiums() external view returns (uint256);
 }

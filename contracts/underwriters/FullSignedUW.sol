@@ -8,8 +8,10 @@ import {AccessManagedProxy} from "@ensuro/access-managed-proxy/contracts/AccessM
 
 /**
  * @title FullSignedUW
- * @dev Underwriter that just decodes what it receives and checks it was signed by an authorized account.
+ * @notice Underwriter that just decodes what it receives and checks it was signed by an authorized account.
  *      The signer needs to have the specific selectors granted in the target RM
+ * @custom:security-contact security@ensuro.co
+ * @author Ensuro
  */
 contract FullSignedUW is IUnderwriter {
   using Policy for Policy.PolicyData;
@@ -22,9 +24,38 @@ contract FullSignedUW is IUnderwriter {
   uint256 private constant CANCEL_POLICY_DATA_SIZE = 12 * 32 /* Policy */ + 3 * 32;
   uint256 private constant SIGNATURE_SIZE = 65;
 
+  /**
+   * @notice Thrown when the recovered signer is not authorized to perform the requested pricing operation on `rm`.
+   * @dev `selector` is the permission/role identifier checked through the RM's AccessManager (one of `FULL_PRICE_*`).
+   *
+   * @param signer   The address recovered from the appended ECDSA signature.
+   * @param selector The required permission/role id for the operation.
+   */
   error UnauthorizedSigner(address signer, bytes4 selector);
+  /**
+   * @notice Thrown when `inputData` does not have the expected length: `payload || signature`.
+   * @dev The signature is expected to be exactly 65 bytes, so `inputData.length` must be `inputSize + 65`.
+   *
+   * @param actual   The actual length of `inputData` in bytes.
+   * @param expected The expected length of `inputData` in bytes.
+   */
   error InvalidInputSize(uint256 actual, uint256 expected);
 
+  /**
+   * @notice Validates the signature appended to `inputData` and checks the recovered signer is authorized in `rm`.
+   *
+   * @param rm           Target RiskModule (must be an {AccessManagedProxy}).
+   * @param inputData    Concatenated bytes: `payload || signature`.
+   * @param inputSize    Expected length of the payload portion (without signature).
+   * @param requiredRole Role/selector id required for this operation (one of the `FULL_PRICE_*` constants).
+   *
+   * @custom:pre `inputData` is exactly `inputSize + 65` bytes long.
+   * @custom:pre `rm` is an {AccessManagedProxy} instance whose `ACCESS_MANAGER()` supports `canCall(...)`.
+   *
+   * @custom:throws InvalidInputSize if `inputData.length != inputSize + 65`.
+   * @custom:throws (via {ECDSA-recover}) if the signature is malformed/invalid.
+   * @custom:throws UnauthorizedSigner if the recovered signer is not permitted to call `rm` with `requiredRole`.
+   */
   function _checkSignature(address rm, bytes calldata inputData, uint256 inputSize, bytes4 requiredRole) internal view {
     // Check length
     uint256 inputLength = inputData.length;
@@ -39,6 +70,7 @@ contract FullSignedUW is IUnderwriter {
     require(immediate, UnauthorizedSigner(signer, requiredRole));
   }
 
+  /// @inheritdoc IUnderwriter
   function priceNewPolicy(
     address rm,
     bytes calldata inputData
@@ -59,6 +91,7 @@ contract FullSignedUW is IUnderwriter {
     return abi.decode(inputData[0:NEW_POLICY_DATA_SIZE], (uint256, uint256, uint256, uint40, uint96, Policy.Params));
   }
 
+  /// @inheritdoc IUnderwriter
   function pricePolicyReplacement(
     address rm,
     bytes calldata inputData
@@ -84,6 +117,7 @@ contract FullSignedUW is IUnderwriter {
       );
   }
 
+  /// @inheritdoc IUnderwriter
   function pricePolicyCancellation(
     address rm,
     bytes calldata inputData

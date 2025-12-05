@@ -1,0 +1,79 @@
+{{>common}}
+
+{{#if hasTypes}}
+{{#hsection}}
+{{h 1}} Types
+
+{{#each types}}
+{{#hsection}}
+{{>item}}
+{{/hsection}}
+
+{{/each}}
+{{/hsection}}
+{{/if}}
+
+{{#if hasVariables}}
+{{#hsection}}
+{{h 1}} Variables
+
+{{#each variables}}
+{{#hsection}}
+{{>item}}
+{{/hsection}}
+
+{{/each}}
+{{/hsection}}
+{{/if}}
+
+{{#if hasEvents}}
+{{#hsection}}
+{{h 1}} Events
+
+{{#each events}}
+{{#hsection}}
+{{>item}}
+{{/hsection}}
+
+{{/each}}
+{{/hsection}}
+{{/if}}
+
+{{#if hasErrors}}
+{{#hsection}}
+{{h 1}} Errors
+
+{{#each errors}}
+{{#hsection}}
+{{>item}}
+{{/hsection}}
+
+{{/each}}
+{{/hsection}}
+{{/if}}
+
+{{#if hasPublicFunctions}}
+{{#hsection}}
+{{h 1}} Public Functions
+
+{{#each publicFunctions}}
+{{#hsection}}
+{{>item}}
+{{/hsection}}
+
+{{/each}}
+{{/hsection}}
+{{/if}}
+
+{{#if hasPrivateFunctions}}
+{{#hsection}}
+{{h 1}} Private Functions
+
+{{#each privateFunctions}}
+{{#hsection}}
+{{>item}}
+{{/hsection}}
+
+{{/each}}
+{{/hsection}}
+{{/if}}

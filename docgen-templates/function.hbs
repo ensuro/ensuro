@@ -1,0 +1,19 @@
+{{>common}}
+
+{{#if natspec.custom.pre}}
+{{h 2}} Pre-conditions
+
+{{{formatPreConditions natspec.custom.pre}}}
+{{/if}}
+
+{{#if natspec.custom.throws}}
+{{h 2}} Throws
+
+{{{formatThrows natspec.custom.throws}}}
+{{/if}}
+
+{{#if natspec.custom.emits}}
+{{h 2}} Emits
+
+{{{formatEmits natspec.custom.emits}}}
+{{/if}}

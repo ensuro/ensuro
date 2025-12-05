@@ -22,18 +22,19 @@ import {Policy} from "./Policy.sol";
 
 /**
  * @title Ensuro PolicyPool contract
- * @dev This is the main contract of the protocol, it stores the registry of components (eTokens, PremiumsAccounts,
- *      and RiskModules). It also tracks the active exposure and exposure limit per risk module.
+ * @notice This is the main contract of the protocol.
+ * @dev There's a single instance of PolicyPool contract for a given deployment of the protocol.
+ * It stores the registry of components (eTokens, PremiumsAccounts, and RiskModules). It also tracks the active
+ * exposure and exposure limit per risk module.
  *
- *      This is also the contract that receives and sends the underlying asset (currency, typically USDC).
- *      The currency spending approvals should be done to this protocol for deposits or premium payments.
+ * This is also the contract that receives and sends the underlying asset (currency, typically USDC).
+ * The currency spending approvals should be done to this protocol for deposits or premium payments.
  *
- *      This contract implements the ERC721 standard, because it mints and NFT for each policy created. The
- *      property of the NFT represents the one that will receive the payout.
+ * This contract implements the ERC721 standard, because it mints and NFT for each policy created. The
+ * property of the NFT represents the one that will receive the payout.
  *
- *      The active policies are tracked in _policies as hashes, but for gas optimization we just store the hash
- *      of the policy struct, and the struct needs to be stored off-chain and provided on every subsequent call.
- *
+ * The active policies are tracked in _policies as hashes, but for gas optimization we just store the hash
+ * of the policy struct, and the struct needs to be stored off-chain and provided on every subsequent call.
  *
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
@@ -46,47 +47,47 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   uint256 internal constant HOLDER_GAS_LIMIT = 150000;
 
   /**
-   * @dev {ERC20} token used in PolicyPool as currency. Usually it will be a stablecoin such as USDC.
+   * @notice {ERC20} token used in PolicyPool as currency. Usually it will be a stablecoin such as USDC.
    */
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IERC20Metadata internal immutable _currency;
 
   /**
-   * @dev Address of Ensuro's treasury that receives the protocol fees.
+   * @notice Address of Ensuro's treasury that receives the protocol fees.
    */
   address internal _treasury; // address of Ensuro treasury
 
   /**
-   * @dev This enum tracks the different status that a component ({PremiumsAccount}, {EToken} or {RiskModule} can have.
+   * @notice Different statuses that a component ({PremiumsAccount}, {EToken} or {RiskModule} can have.
    */
   enum ComponentStatus {
     /**
-     * @dev inactive status = 0 means the component doesn't exists - All operations rejected
+     * @notice inactive status = 0 means the component doesn't exists - All operations rejected
      */
     inactive,
     /**
-     * @dev active means the component is fully functional, all the component operations are allowed.
-     *      deposit / withdraw for eTokens
-     *      newPolicy / resolvePolicy for riskModules
-     *      policyCreated / policyExpired / policyResolvedWithPayout for premiumsAccount
+     * @notice active means the component is fully functional, all the component operations are allowed.
+     *         deposit / withdraw for eTokens
+     *         newPolicy / resolvePolicy for riskModules
+     *         policyCreated / policyExpired / policyResolvedWithPayout for premiumsAccount
      */
     active,
     /**
-     * @dev deprecated means the component is in process of being deactivated. Only some operations are allowed:
-     *      withdraw for eTokens
-     *      resolvePolicy / expirePolicy for riskModules
-     *      policyExpired / policyResolvedWithPayout for premiumsAccount
+     * @notice deprecated means the component is in process of being deactivated. Only some operations are allowed:
+     *         withdraw for eTokens
+     *         resolvePolicy / expirePolicy for riskModules
+     *         policyExpired / policyResolvedWithPayout for premiumsAccount
      */
     deprecated,
     /**
-     * @dev suspended means the component is temporarily deactivated. All the operations are rejected. Only GUARDIAN
-     *      can suspend.
+     * @notice suspended means the component is temporarily deactivated. All the operations are rejected. Only GUARDIAN
+     *         can suspend.
      */
     suspended
   }
 
   /**
-   * @dev Enum of the different kind of top level components that can be plugged into the pool. Each one corresponds
+   * @notice Enum of the different kind of top level components that can be plugged into the pool. Each one corresponds
    * with the {EToken}, {RiskModule} and {PremiumsAccount} respectively.
    */
   enum ComponentKind {
@@ -97,8 +98,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   /**
-   * @dev Struct to keep the state and type of the components installed. The `kind` never changes. The `status`
-   * initially is `active` and can be changes with {PolicyPool-changeComponentStatus} and {PolicyPool-removeComponent}.
+   * @notice Struct to keep the state and type of the components installed
+   * @dev The `kind` never changes. The `status` initially is `active` and can be changes with
+   * {PolicyPool-changeComponentStatus} and {PolicyPool-removeComponent}.
    */
   struct Component {
     ComponentStatus status;
@@ -106,13 +108,14 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   /**
-   * @dev Mapping of installed components (see {EToken}, {RiskModule}, {PremiumsAccount}) in the PolicyPool.
+   * @notice Mapping of installed components (see {EToken}, {RiskModule}, {PremiumsAccount}) in the PolicyPool.
    */
   mapping(IPolicyPoolComponent => Component) internal _components;
 
   /**
-   * @dev Mapping that stores the active policies (the policyId is the key). It just saves the hash of the policies,
-   * the full {Policy-PolicyData} struct has to be sent for each operation (hash is used to verify).
+   * @notice Mapping that stores the active policies (the policyId is the key).
+   * @dev It just saves the hash of the policies, the full {Policy-PolicyData} struct has to be sent for each
+   * operation (hash is used to verify).
    */
   mapping(uint256 => bytes32) internal _policies;
 
@@ -122,94 +125,95 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   /**
-   * @dev Base URI for the minted policy NFTs.
+   * @notice Base URI for the minted policy NFTs.
    */
   string internal _nftBaseURI;
 
   /**
-   * @dev Mapping of current exposures and limits for each risk module.
+   * @notice Mapping of current exposures and limits for each risk module.
    */
   mapping(IRiskModule => Exposure) internal _exposureByRm;
 
   /**
-   * @dev Constructor error when address(0) is sent as `access()`
+   * @notice Constructor error when address(0) is sent as `access()`
    */
   error NoZeroAccess();
 
   /**
-   * @dev Constructor error when address(0) is sent as `currency()`
+   * @notice Constructor error when address(0) is sent as `currency()`
    */
   error NoZeroCurrency();
 
   /**
-   * @dev Constructor error (or setTreasury) when address(0) is sent as `treasury()`
+   * @notice Constructor error (or setTreasury) when address(0) is sent as `treasury()`
    */
   error NoZeroTreasury();
 
   /**
-   * @dev Initialization error when empty name for the ERC721 is sent
+   * @notice Initialization error when empty name for the ERC721 is sent
    */
   error NoEmptyName();
 
   /**
-   * @dev Initialization error when empty symbol for the ERC721 is sent
+   * @notice Initialization error when empty symbol for the ERC721 is sent
    */
   error NoEmptySymbol();
 
   /**
-   * @dev Error when trying to add a component that was already added to the PolicyPool
+   * @notice Error when trying to add a component that was already added to the PolicyPool
    */
   error ComponentAlreadyInThePool();
 
   /**
-   * @dev Error when trying to add a component that isn't linked to this pool (`.policyPool() != this`)
+   * @notice Error when trying to add a component that isn't linked to this pool (`.policyPool() != this`)
    */
   error ComponentNotLinkedToThisPool();
 
   /**
-   * @dev Error when a component is not of the right kind, it might happen if a component declared as
-   *      ComponentKind.eToken doesn't support the IEToken interface (or similar) or when in a given operation
-   *      we expect a component to be a risk module and the stored kind is different.
+   * @notice Raised when a component is not of the right kind
+   * @dev It might happen if a component declared as ComponentKind.eToken doesn't support the IEToken interface (or
+   * similar) or when in a given operation we expect a component to be a risk module and the stored kind is different.
    */
   error ComponentNotTheRightKind(IPolicyPoolComponent component, ComponentKind expectedKind);
 
   /**
-   * @dev Error when a component is expected to be deprecated for the operation (see `removeComponent`) and it isn't.
+   * @notice Error when a component is not deprecated for the operation (see `removeComponent`), when it must.
    */
   error ComponentNotDeprecated();
 
   /**
-   * @dev Error when trying to remove a component that is still in use. The "in use" definition can change from one
-   *      component to the other. For eToken in use means `totalSupply() != 0`. For PremiumsAccount means
-   *      `purePremiums() != 0`. For RiskModule means `activeExposure() != 0`.
+   * @notice Error when trying to remove a component that is still in use.
+   * @dev The "in use" definition can change from one component to the other. For eToken in use means
+   * `totalSupply() != 0`. For PremiumsAccount means `purePremiums() != 0`. For RiskModule means
+   * `activeExposure() != 0`.
    */
   error ComponentInUseCannotRemove(ComponentKind kind, uint256 amount);
 
   /**
-   * @dev Error when a component is not found in the pool (status = 0 = inactive)
+   * @notice Error when a component is not found in the pool (status = 0 = inactive)
    */
   error ComponentNotFound();
 
   /**
-   * @dev Error when a component is not found in the pool or is not active (status != active)
+   * @notice Error when a component is not found in the pool or is not active (status != active)
    */
   error ComponentNotFoundOrNotActive();
 
   /**
-   * @dev Error when a component is not active or deprecated. Happens on some operations like eToken withdrawals or
-   *      policy resolutions that accept the component might be active or deprecated and isn't on any of those states.
+   * @notice Error when a component is not active or deprecated. Happens on some operations like eToken withdrawals or
+   * policy resolutions that accept the component might be active or deprecated and isn't on any of those states.
    */
   error ComponentMustBeActiveOrDeprecated();
 
   /**
-   * @dev Error when a method intented to be called by riskModule (and by policy's risk module) is called by someone
-   *      else.
+   * @notice Error when a method intented to be called by riskModule (and by policy's risk module) is called by
+   * someone else.
    */
   error OnlyRiskModuleAllowed();
 
   /**
-   * @dev Error raised when IPolicyHolder doesn't return the expected selector answer when notified of policy payout,
-   *      reception or replacement.
+   * @notice Raised when IPolicyHolder doesn't return the expected selector answer when notified of policy payout,
+   * replacement or cancellation.
    */
   error InvalidNotificationResponse(bytes4 response);
 
@@ -268,7 +272,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   error InvalidReceiver(address receiver);
 
   /**
-   * @dev Event emitted when the treasury (who receives ensuroCommission) changes
+   * @notice Event emitted when the treasury (who receives ensuroCommission) changes
    *
    * @param oldTreasury The address of the treasury before the change
    * @param newTreasury  The address of the treasury after the change
@@ -276,7 +280,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   event TreasuryChanged(address oldTreasury, address newTreasury);
 
   /**
-   * @dev Event emitted when the baseURI (for policy NFTs) changes
+   * @notice Event emitted when the baseURI (for policy NFTs) changes
    *
    * @param oldBaseURI The baseURI before the change
    * @param newBaseURI The baseURI after the change
@@ -284,7 +288,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   event BaseURIChanged(string oldBaseURI, string newBaseURI);
 
   /**
-   * @dev Event emitted when a new component added/removed to the pool or the status changes.
+   * @notice Event emitted when a new component added/removed to the pool or the status changes.
    *
    * @param component The address of the component, it can be an {EToken}, {RiskModule} or {PremiumsAccount}
    * @param kind Value indicating the kind of component. See {ComponentKind}
@@ -293,7 +297,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   event ComponentStatusChanged(IPolicyPoolComponent indexed component, ComponentKind kind, ComponentStatus newStatus);
 
   /**
-   * @dev Event emitted when a IPolicyHolder reverts on the expiration notification. The operation doesn't reverts
+   * @notice Event emitted when a IPolicyHolder reverts on the expiration notification. The operation doesn't reverts
    *
    * @param policyId The id of the policy being expired
    * @param holder The address of the contract that owns the policy
@@ -301,7 +305,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   event ExpirationNotificationFailed(uint256 indexed policyId, IPolicyHolder holder);
 
   /**
-   * @dev Event emitted when the exposure limit for a given risk module is changed
+   * @notice Event emitted when the exposure limit for a given risk module is changed
    *
    * @param riskModule The risk module whose limit will be changed
    * @param oldLimit Exposure limit before the change
@@ -310,7 +314,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   event ExposureLimitChanged(IRiskModule indexed riskModule, uint128 oldLimit, uint128 newLimit);
 
   /**
-   * @dev Event emitted for every deposit into an eToken
+   * @notice Event emitted for every deposit into an eToken
    *
    * @param eToken The eToken receiving the funds
    * @param sender The sender of the funds (the user calling `deposit` or `depositWithPermit`)
@@ -320,7 +324,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   event Deposit(IEToken indexed eToken, address indexed sender, address indexed owner, uint256 amount);
 
   /**
-   * @dev Event emitted for every withdrawal from an eToken
+   * @notice Event emitted for every withdrawal from an eToken
    *
    * @param eToken The eToken where the withdrawal will be done
    * @param sender The user calling the withdraw method. Must be the owner or have spending approval from it.
@@ -377,7 +381,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   function _authorizeUpgrade(address newImpl) internal view override {}
 
   /**
-   * @dev Pauses the contract. When the contract is paused, several operations are rejected: deposits, withdrawals, new
+   * @notice Pauses the contract.
+   * @dev When the contract is paused, several operations are rejected: deposits, withdrawals, new
    * policies, policy resolution and expiration, nft transfers.
    */
   function pause() public {
@@ -385,7 +390,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   /**
-   * @dev Unpauses the contract. All the operations disabled when the contract was paused are re-enabled.
+   * @notice Unpauses the contract.
+   * @dev All the operations disabled when the contract was paused are re-enabled.
    */
   function unpause() public {
     _unpause();
@@ -403,10 +409,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   /**
-   * @dev Changes the address of the treasury, the one that receives the protocol fees.
+   * @notice Changes the address of the treasury, the one that receives the protocol fees.
    *
-   * Events:
-   * - Emits {TreasuryChanged}
+   * @custom:emits TreasuryChanged with the previous and current treasury
    */
   function setTreasury(address treasury_) external {
     _setTreasury(treasury_);
@@ -418,11 +423,11 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   /**
-   * @dev Adds a new component (either an {EToken}, {RiskModule} or {PremiumsAccount}) to the protocol. The component
-   * status will be `active`.
+   * @notice Adds a new component (either an {EToken}, {RiskModule} or {PremiumsAccount}) to the protocol.
+   * @dev The component status will be `active`.
    *
-   * Events:
-   * - Emits {ComponentStatusChanged} with status active.
+   * @custom:emits ComponentStatusChanged with status active.
+   * @custom:throws ComponentNotTheRightKind When there's a mismatch between the specified kind and supported interface
    *
    * @param component The address of component contract. Must be an {EToken}, {RiskModule} or {PremiumsAccount} linked
    * to this specific {PolicyPool} and matching the `kind` specified in the next paramter.
@@ -456,11 +461,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   /**
-   * @dev Removes a component from the protocol. The component needs to be in `deprecated` status before doing this
-   * operation.
+   * @notice Removes a component from the protocol
+   * @dev The component needs to be in `deprecated` status before doing this operation.
    *
-   * Events:
-   * - Emits {ComponentStatusChanged} with status inactive.
+   * @custom:emits ComponentStatusChanged with status inactive.
    *
    * @param component The address of component contract. Must be a component added before.
    */
@@ -491,10 +495,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   /**
-   * @dev Changes the status of a component.
+   * @notice Changes the status of a component.
    *
-   * Events:
-   * - Emits {ComponentStatusChanged} with the new status.
+   * @custom:emits ComponentStatusChanged with the new status.
    *
    * @param component The address of component contract. Must be a component added before.
    * @param newStatus The new status, must be either `active`, `deprecated` or `suspended`.
@@ -507,7 +510,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   /**
-   * @dev Returns the status of a component.
+   * @notice Returns the status of a component.
    *
    * @param component The address of the component
    * @return The status of the component. See {ComponentStatus}
@@ -727,7 +730,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   /**
-   * @dev Generates a policyId, combining the riskModule (first 20 bytes) with the internalId (last 12 bytes)
+   * @notice Generates a policyId, combining the riskModule (first 20 bytes) with the internalId (last 12 bytes)
    *
    * @param rm The risk module
    * @param internalId An identifier for the policy that is unique within a given risk module
@@ -738,7 +741,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   /**
-   * @dev Extracts the risk module address from a policyId (first 20 bytes)
+   * @notice Extracts the risk module address from a policyId (first 20 bytes)
    */
   function extractRiskModule(uint256 policyId) public pure returns (IRiskModule) {
     return IRiskModule(address(uint160(policyId >> 96)));
@@ -766,11 +769,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   /**
-   * @dev Internal function that handles the different alternative resolutions for a policy, with or without payout and
-   * expiration.
+   * @notice Internal function that handles the different alternative resolutions for a policy.
+   * @dev Alternatives: with or without payout and expiration.
    *
-   * Events:
-   * - Emits {PolicyResolved} with the payout
+   * @custom:emits PolicyResolved with the payout amount
    *
    * @param policy A policy created with {Policy-initialize}
    * @param payout The amount to paid to the policyholder
@@ -824,7 +826,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * @notice  Changes the maximum cumulative loss limit (exposure limit) for a given risk module
    * @dev     This function allows updating the exposure limit for a risk module.
    *          The new limit must be greater than or equal to the current active exposure.
-   *          Emits an `ExposureLimitChanged` event upon successful update.
+   *
    * @param   rm  The risk module interface for which to update the exposure limit
    * @param   newLimit  The new exposure limit to set (will be converted to uint128)
    * @custom:throws ExposureLimitExceeded if the new limit is less than the current active exposure
@@ -841,8 +843,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   /**
    * @notice  Retrieves the current exposure data for a specific risk module
    * @dev     Returns both the active exposure (current cumulative losses)
-   *          and the configured exposure limit for the given risk module.
-   *          This is a view function that does not modify state.
+   * and the configured exposure limit for the given risk module.
+   *
    * @param   rm  The risk module interface to query exposure data for
    * @return  active  The current active exposure (cumulative losses) for the risk module
    * @return  limit   The configured maximum exposure limit for the risk module
@@ -854,9 +856,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   /**
-   * @dev Notifies the payout with a callback if the policyholder implements the IPolicyHolder interface.
-   *      Only reverts if the policyholder contract explicitly reverts or it doesn't return the
-   *      IPolicyHolder.onPayoutReceived selector.
+   * @notice Notifies the payout with a callback
+   * @dev Only if the policyholder implements the IPolicyHolder interface.
+   * Reverts if the policyholder contract explicitly reverts or it doesn't return the
+   * IPolicyHolder.onPayoutReceived selector.
    */
   function _notifyPayout(uint256 policyId, uint256 payout) internal {
     address customer = ownerOf(policyId);
@@ -867,8 +870,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   /**
-   * @dev Notifies the expiration with a callback if the policyholder implements the IPolicyHolder interface.
-   *      Never reverts. The onPolicyExpired has a gas limit = HOLDER_GAS_LIMIT
+   * @notice Notifies the expiration with a callback
+   * @dev Only if the policyholder implements the IPolicyHolder interface. Never reverts. The onPolicyExpired has
+   * a gas limit = HOLDER_GAS_LIMIT
    */
   function _notifyExpiration(uint256 policyId) internal {
     address customer = ownerOf(policyId);
@@ -885,9 +889,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   /**
-   * @dev Notifies the replacement with a callback if the policyholder implements the IPolicyHolder interface.
-   *      Only reverts if the policyholder contract explicitly reverts or it doesn't return the
-   *      IPolicyHolder.onPolicyReplaced selector.
+   * @notice Notifies the replacement with a callback
+   * @dev Only if the policyholder implements the IPolicyHolder interface.
+   * Reverts if the policyholder contract explicitly reverts or it doesn't return the
+   * IPolicyHolder.onPolicyReplaced selector.
    */
   function _notifyReplacement(uint256 oldPolicyId, uint256 newPolicyId) internal {
     address customer = ownerOf(oldPolicyId);
@@ -899,9 +904,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   /**
-   * @dev Notifies the cancellation with a callback if the policyholder implements the IPolicyHolder interface.
-   *      Only reverts if the policyholder contract explicitly reverts or it doesn't return the
-   *      IPolicyHolder.onPolicyCancelled selector.
+   * @notice Notifies the cancellation with a callback
+   * @dev Only if the policyholder implements the IPolicyHolder interface.
+   * Reverts if the policyholder contract explicitly reverts or it doesn't return the
+   * IPolicyHolder.onPolicyCancelled selector.
    */
   function _notifyCancellation(
     uint256 cancelledPolicyId,
@@ -925,8 +931,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   /**
-   * @dev Base URI for computing {tokenURI}. If set, the resulting URI for each
-   * token will be the concatenation of the `baseURI` and the `tokenId`. Empty
+   * @notice Base URI for computing {tokenURI}.
+   * @dev If set, the resulting URI for each token will be the concatenation of the `baseURI` and the `tokenId`. Empty
    * by default, can be modified calling {setBaseURI}.
    */
   function _baseURI() internal view virtual override returns (string memory) {
@@ -934,10 +940,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   }
 
   /**
-   * @dev Changes the baseURI of the minted policy NFTs
+   * @notice Changes the baseURI of the minted policy NFTs
    *
-   * Events:
-   * - Emits {BaseURIChanged}
+   * @custom:emits BaseURIChanged With the new and old URIs
    */
   function setBaseURI(string calldata nftBaseURI_) external {
     emit BaseURIChanged(_nftBaseURI, nftBaseURI_);

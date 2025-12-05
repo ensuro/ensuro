@@ -114,6 +114,7 @@ module.exports = {
   docgen: {
     pages: "files",
     outputDir: "docs",
+    templates: "./docgen-templates",
     exclude: ["mocks", "dependencies", "upgraded"],
   },
   dependencyCompiler: {
@@ -169,4 +170,5 @@ module.exports = {
       "missing-receive": "off",
     },
   },
+  
 };
