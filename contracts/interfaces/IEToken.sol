@@ -10,9 +10,10 @@ interface IEToken {
   /**
    * @notice Enum of the configurable parameters in an EToken.
    *
-   * - liquidityRequirement: target solvency/liquidity constraint (protocol-specific meaning)
+   * @dev These are the supported parameter types:
+   * - liquidityRequirement: target solvency/liquidity constraint (typically 1, scales the SCR to lock more)
    * - minUtilizationRate: lower bound for utilization rate after deposits (prevents excess idle liquidity)
-   * - maxUtilizationRate: upper bound for utilization rate (risk control)
+   * - maxUtilizationRate: upper bound for utilization rate after capital lock (prevents locking all the capital)
    * - internalLoanInterestRate: annualized rate charged on internal loans (wad)
    */
   enum Parameter {
@@ -52,46 +53,47 @@ interface IEToken {
    * @param scrAmount The amount to lock
    * @param policyInterestRate The annualized interest rate (wad) to be paid for the `scrAmount`
    *
-   * @custom:pre Must be called by a _borrower_ previously added with `addBorrower`.
+   * @custom:pre Must be called by a _borrower_ (PremiumsAccount) previously added with `addBorrower`.
    * @custom:pre `scrAmount` <= `fundsAvailableToLock()`
    *
-   * @custom:emits {SCRLocked}
+   * @custom:emits SCRLocked
    */
   function lockScr(uint256 policyId, uint256 scrAmount, uint256 policyInterestRate) external;
 
   /**
-   * @notice Unlocks solvency capital previously locked with `lockScr`. The capital no longer needed as solvency.
+   * @notice Unlocks solvency capital previously locked with `lockScr`.
+   * @dev The capital no longer needed as solvency, enabling withdrawal.
    *
    * @param policyId The id of the policy that locked the scr originally
    * @param scrAmount The amount to unlock
-   * @param policyInterestRate The annualized interest rate that was paid for the `scrAmount`, must be the same that was
-   *                           sent in `lockScr` call.
+   * @param policyInterestRate The annualized interest rate that was paid for the `scrAmount`, must be the same that
+   *                           was sent in `lockScr` call.
    * @param adjustment Discrete amount of adjustment done to the totalSupply to reflect when more or less
    *                   than the received cost of capital has been accrued since the SCR was locked.
    *
-   * @custom:pre Must be called by a _borrower_ previously added with `addBorrower`.
+   * @custom:pre Must be called by a _borrower_ (PremiumsAccount) previously added with `addBorrower`.
    * @custom:pre `scrAmount` must be <= {scr}
    *
-   * @custom:emits {SCRUnlocked}
+   * @custom:emits SCRUnlocked
    */
   function unlockScr(uint256 policyId, uint256 scrAmount, uint256 policyInterestRate, int256 adjustment) external;
 
   /**
-   * @notice Unlocks solvency capital previously locked with `lockScr`. The capital no longer needed as solvency and
-   *      refunds part of the Coc received that wasn't accrued (or if it was already accrued, it is adjusted).
-   *      The refund doesn't affect the totalSupply. It just changes the reserves.
+   * @notice Unlocks solvency capital previously locked with `lockScr`, doing a refund of the CoC previously received
+   * @dev The capital no longer needed as solvency . It refunds part of the Coc received that wasn't accrued (or if
+   * it was already accrued, it is adjusted). The refund doesn't affect the totalSupply. It just changes the reserves.
    *
    * @param policyId The id of the policy that locked the scr originally
    * @param scrAmount The amount to unlock
-   * @param policyInterestRate The annualized interest rate that was paid for the `scrAmount`, must be the same that was
-   * sent in `lockScr` call.
+   * @param policyInterestRate The annualized interest rate that was paid for the `scrAmount`, must be the same that
+   * was sent in `lockScr` call.
    * @param receiver The address of the receiver of the refund
    * @param refundAmount The amount to refund
    *
    * @custom:pre Must be called by a _borrower_ previously added with `addBorrower`.
    *
-   * @custom:emits {SCRUnlocked}
-   * @custom:emits {CoCRefunded}
+   * @custom:emits SCRUnlocked
+   * @custom:emits CoCRefunded
    */
   function unlockScrWithRefund(
     uint256 policyId,
@@ -103,8 +105,9 @@ interface IEToken {
   ) external;
 
   /**
-   * @notice Registers a deposit of liquidity in the pool. Called from the PolicyPool, assumes the amount has already been
-   * transferred. `amount` of eToken are minted and given to the provider in exchange of the liquidity provided.
+   * @notice Registers a deposit of liquidity in the pool.
+   * @dev Called from the PolicyPool, assumes the amount has already been transferred. `amount` of eToken are minted
+   * and given to the provider in exchange of the liquidity provided.
    *
    * @param amount The amount deposited.
    * @param caller The user that initiates the deposit
@@ -116,12 +119,13 @@ interface IEToken {
    * @custom:pre If there is a whitelist, caller must be authorized to deposit. If caller != receiver, then transfer from caller
    *             to received must be authorized
    *
-   * @custom:emits Emits {Transfer} with `from` = 0x0 and to = `provider`
+   * @custom:emits Transfer with `from` = 0x0 and to = `provider` (mint)
    */
   function deposit(uint256 amount, address caller, address receiver) external;
 
   /**
-   * @notice Withdraws an amount from an eToken. `withdrawn` eTokens are be burned and the user receives the same amount
+   * @notice Withdraws an amount from an eToken.
+   * @dev `withdrawn` eTokens are be burned and the user receives the same amount
    * in `currency()`. If the asked `amount` can't be withdrawn, it withdraws as much as possible
    *
    * @param amount The amount to withdraw. If `amount` == `type(uint256).max`, then tries to withdraw all the balance.
@@ -131,7 +135,7 @@ interface IEToken {
    *
    * @custom:pre Must be called by `policyPool()`
    *
-   * @custom:emits Emits {Transfer} with `from` = `provider` and to = `0x0`
+   * @custom:emits Transfer with `from` = `provider` and to = `0x0` (burn)
    */
   function withdraw(
     uint256 amount,
@@ -155,8 +159,8 @@ interface IEToken {
    *
    * @param borrower The address of the _borrower_, a PremiumsAccount that has this eToken as senior or junior eToken.
    *
-   * @custom:pre - Must be called by `policyPool()`
-   * @custom:emits Emits {InternalBorrowerAdded}
+   * @custom:pre Must be called by `policyPool()`
+   * @custom:emits InternalBorrowerAdded
    */
   function addBorrower(address borrower) external;
 
@@ -166,13 +170,14 @@ interface IEToken {
    * @param borrower The address of the _borrower_, a PremiumsAccount that has this eToken as senior or junior eToken.
    *
    * @custom:pre Must be called by `policyPool()`
-   * @custom:emits {InternalBorrowerRemoved} with the defaulted debt
+   * @custom:emits InternalBorrowerRemoved with the defaulted debt
    */
   function removeBorrower(address borrower) external;
 
   /**
-   * @notice Lends `amount` to the borrower (msg.sender), transferring the money to `receiver`. This reduces the
-   * `totalSupply()` of the eToken, and stores a debt that will be repaid (hopefully) with `repayLoan`.
+   * @notice Lends `amount` to the borrower (msg.sender), transferring the money to `receiver`.
+   * @dev This reduces the `totalSupply()` of the eToken, and stores a debt that will be repaid (hopefully) with
+   * `repayLoan`.
    *
    * @param amount The amount required
    * @param receiver The received of the funds lent. This is usually the policyholder if the loan is used for a payout.

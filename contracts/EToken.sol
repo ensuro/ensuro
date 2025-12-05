@@ -20,6 +20,7 @@ import {Reserve} from "./Reserve.sol";
 
 /**
  * @title Ensuro ERC20 EToken - interest-bearing token
+ * @notice These are the liquidity pools where users provide funds to cover insurance products
  * @dev Implementation of the interest/earnings bearing token for the Ensuro protocol.
  *      `_tsScaled.scale` scales the balances stored in _balances. _tsScaled (totalSupply scaled) grows
  *      continuoulsly at tokenInterestRate().
@@ -47,9 +48,13 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
 
   ETKLib.Scr internal _scr;
 
-  // Mapping that keeps track of allowed borrowers (PremiumsAccount) and their current debt
+  /// @notice Mapping that keeps track of allowed borrowers (PremiumsAccount) and their current debt
   mapping(address => ETKLib.ScaledAmount) internal _loans;
 
+  /**
+   * @notice Struct to store different parameters of the eToken
+   * @dev Packed so it fits in 256 bits. The parameters are stored with 4 decimals.
+   */
   struct PackedParams {
     ILPWhitelist whitelist; // Whitelist for deposits and transfers
     uint16 liquidityRequirement; // Liquidity requirement to lock more/less than SCR - 4 decimals
@@ -58,35 +63,125 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
     uint16 internalLoanInterestRate; // Annualized interest rate charged to internal borrowers (premiums accounts) - 4dec
   }
 
+  /// @notice eToken parameters
   PackedParams internal _params;
 
+  /// @notice ERC-4626 vault where the funds of the eToken are invested to generate additional yields
   IERC4626 internal _yieldVault;
+
+  /// @notice When defined (not address(0)), it's a contract that will handle the coooldown period and process
   ICooler internal _cooler;
 
-  error OnlyBorrower(address caller); // The caller must be a borrower
+  /// @notice Thrown when called by a non-borrower on borrower operations (internalLoan and lock/unlock scr)
+  error OnlyBorrower(address caller);
+
+  /// @notice Thrown on setParam when the given value doesn't match the specific validations
   error InvalidParameter(Parameter parameter);
+
+  /// @notice Thrown when a transfer is rejected by the Whitelist
   error TransferNotWhitelisted(address from_, address to_, uint256 value);
+
+  /// @notice Thrown when a deposit is rejected by the Whitelist
   error DepositNotWhitelisted(address account, uint256 value);
+
+  /// @notice Thrown when a withdrawal is rejected by the Whitelist
   error WithdrawalNotWhitelisted(address account, uint256 value);
+
+  /// @notice Thrown when trying to lock more funds than the ones that are available
   error NotEnoughScrFunds(uint256 required, uint256 available);
+
+  /// @notice Thrown when a deposit leaves the utilizationRate under the minUtilization
   error UtilizationRateTooLow(uint256 actualUtilization, uint256 minUtilization);
+
+  /// @notice Thrown when trying to repayLoan or query a loan of a non-borrower
   error InvalidBorrower(address borrower);
+
+  /// @notice Thrown when trying to add a borrower twice
   error BorrowerAlreadyAdded(address borrower);
+
+  /// @notice Thrown when trying to change the whitelist to a contract that doesn't belong to the same policyPool()
   error InvalidWhitelist(ILPWhitelist whitelist);
+
+  /// @notice Thrown when trying to change the cooler to a contract that doesn't belong to the same policyPool()
   error InvalidCooler(ICooler cooler);
+
+  /// @notice Thrown when trying to withdraw an amount that exceeds either the user funds or totalWithdrawable()
   error ExceedsMaxWithdraw(uint256 requested, uint256 maxWithdraw);
+
+  /// @notice Thrown when trying to execute an instant withdraw when the eToken has non-zero cooldownPeriod
   error WithdrawalsRequireCooldown(ICooler cooler);
 
+  /**
+   * @notice Event emitted when a PremiumsAccount takes funds (loan) from the eToken
+   * @dev These funds are used to cover the losses and may be later repaid if the performance of the product improves
+   * and accumulates surplus.
+   *
+   * @param borrower The address of the borrower, a {PremiumsAccount}
+   * @param value The amount of the loan
+   * @param amountAsked The amount originally asked
+   */
   event InternalLoan(address indexed borrower, uint256 value, uint256 amountAsked);
+
+  /**
+   * @notice Event emitted when a PremiumsAccount repays a loan previously taken
+   *
+   * @param borrower The address of the borrower, a {PremiumsAccount}
+   * @param value The amount of the repayment
+   */
   event InternalLoanRepaid(address indexed borrower, uint256 value);
+
+  /// @notice Event emitted when a new borrower (PremiumsAccount) is added
   event InternalBorrowerAdded(address indexed borrower);
+
+  /**
+   * @notice Event emitted when a borrower is removed (it can't lock funds or take loans anymore)
+   *
+   * @param borrower The address of the borrower, a {PremiumsAccount}
+   * @param defaultedDebt The unpaid amount left by the borrower
+   */
   event InternalBorrowerRemoved(address indexed borrower, uint256 defaultedDebt);
+
+  /**
+   * @notice Event emitted when a parameter was changed
+   *
+   * @param param Type of parameter change
+   * @param newValue The new value set
+   */
   event ParameterChanged(Parameter param, uint256 newValue);
+
+  /**
+   * @notice Event emitted when the whitelist is changed
+   * @dev The event reports the old and new whitelist
+   */
   event WhitelistChanged(ILPWhitelist oldWhitelist, ILPWhitelist newWhitelist);
+
+  /**
+   * @notice Event emitted when the cooler is changed
+   * @dev The event reports the old and new cooler
+   */
   event CoolerChanged(ICooler oldCooler, ICooler newCooler);
+
+  /**
+   * @notice Event emitted when tokens are burn, redistributing the value to the rest of LPs
+   * @dev This typically happens when a cooldown is executed and there were profits during the period
+   *
+   * @param owner The owner of the burned tokens (the cooler)
+   * @param distributedProfit The amount that is distributed between all the LPs
+   */
   event ETokensRedistributed(address indexed owner, uint256 distributedProfit);
+
+  /**
+   * @notice Event emitted when part of a previously received CoC is refunded
+   * @dev This happends when a policy is cancelled with refund. It doesn't affect the totalSupply since it should
+   * be not yet accrued money.
+   *
+   * @param policyId The owner of the burned tokens (the cooler)
+   * @param receiver The user that received the refund
+   * @param amount The amount of the refund
+   */
   event CoCRefunded(uint256 indexed policyId, address indexed receiver, uint256 amount);
 
+  /// @notice Modifier used to validate the methods that can be called only by borrowers (PremiumsAccount)
   modifier onlyBorrower() {
     require(_loans[_msgSender()].lastUpdate != 0, OnlyBorrower(_msgSender()));
     _;
