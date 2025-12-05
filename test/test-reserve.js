@@ -86,8 +86,7 @@ describe("Reserve base contract", () => {
       .withArgs(0)
       .to.emit(reserve, "YieldVaultChanged")
       .withArgs(ZeroAddress, yieldVault, false)
-      .to.emit(currency, "Approval")
-      .withArgs(reserve, yieldVault, MaxUint256);
+      .not.to.emit(currency, "Approval");
     expect(await reserve.yieldVault()).to.equal(yieldVault);
   });
 
@@ -110,7 +109,9 @@ describe("Reserve base contract", () => {
 
     await expect(reserve.depositIntoYieldVault(_A(30)))
       .to.emit(yieldVault, "Deposit")
-      .withArgs(reserve, reserve, _A(30), _A(30));
+      .withArgs(reserve, reserve, _A(30), _A(30))
+      .to.emit(currency, "Approval")
+      .withArgs(reserve, yieldVault, _A(30));
 
     expect(await reserve.investedInYV()).to.equal(_A(30));
 
@@ -128,7 +129,10 @@ describe("Reserve base contract", () => {
     // With MaxUint256 invest all the cash
     await expect(reserve.depositIntoYieldVault(MaxUint256))
       .to.emit(yieldVault, "Deposit")
-      .withArgs(reserve, reserve, _A(70), captureAny.uint);
+      .withArgs(reserve, reserve, _A(70), captureAny.uint)
+      .to.emit(currency, "Approval")
+      .withArgs(reserve, yieldVault, _A(70));
+    expect(await currency.allowance(reserve, yieldVault)).to.equal(0);
     expect(captureAny.lastUint).to.closeTo(await yieldVault.convertToShares(_A(70)), 10n);
     expect(await currency.balanceOf(reserve)).to.equal(_A(0));
     expect(await reserve.investedInYV()).to.closeTo(_A(110), 10n);
@@ -185,12 +189,11 @@ describe("Reserve base contract", () => {
     await expect(reserve.setYieldVault(ZeroAddress, false))
       .to.emit(reserve, "YieldVaultChanged")
       .withArgs(yieldVault, ZeroAddress, false)
-      .to.emit(currency, "Approval")
-      .withArgs(reserve, yieldVault, 0)
       .to.emit(yieldVault, "Withdraw")
       .withArgs(reserve, reserve, reserve, _A(100), _A(100))
       .to.emit(reserve, "EarningsRecorded")
-      .withArgs(0);
+      .withArgs(0)
+      .not.to.emit(currency, "Approval");
 
     expect(await reserve.investedInYV()).to.equal(_A(0));
     expect(await currency.balanceOf(reserve)).to.equal(_A(100));
@@ -215,12 +218,11 @@ describe("Reserve base contract", () => {
     await expect(reserve.setYieldVault(ZeroAddress, false))
       .to.emit(reserve, "YieldVaultChanged")
       .withArgs(yieldVault, ZeroAddress, false)
-      .to.emit(currency, "Approval")
-      .withArgs(reserve, yieldVault, 0)
       .to.emit(yieldVault, "Withdraw")
       .withArgs(reserve, reserve, reserve, _A(110) - 1n, _A(100))
       .to.emit(reserve, "EarningsRecorded")
-      .withArgs(_A(10) - 1n);
+      .withArgs(_A(10) - 1n)
+      .not.to.emit(currency, "Approval");
 
     expect(await reserve.investedInYV()).to.equal(_A(0));
     expect(await currency.balanceOf(reserve)).to.equal(_A(110) - 1n);
@@ -251,21 +253,19 @@ describe("Reserve base contract", () => {
     await expect(reserve.setYieldVault(ZeroAddress, true))
       .to.emit(reserve, "YieldVaultChanged")
       .withArgs(yieldVault, ZeroAddress, true)
-      .to.emit(currency, "Approval")
-      .withArgs(reserve, yieldVault, 0)
       .to.emit(yieldVault, "Withdraw")
       .withArgs(reserve, reserve, reserve, _A(40), _A(40))
       .to.emit(reserve, "EarningsRecorded")
-      .withArgs(-_A(60));
+      .withArgs(-_A(60))
+      .not.to.emit(currency, "Approval");
 
     // Connecting the YV again...
     await expect(reserve.setYieldVault(yieldVault, false))
       .to.emit(reserve, "YieldVaultChanged")
       .withArgs(ZeroAddress, yieldVault, false)
-      .to.emit(currency, "Approval")
-      .withArgs(reserve, yieldVault, MaxUint256)
       .to.emit(reserve, "EarningsRecorded")
-      .withArgs(0);
+      .withArgs(0)
+      .not.to.emit(currency, "Approval");
 
     // When I recordEarnings, the lost funds are recovered
     await expect(reserve.recordEarnings()).to.emit(reserve, "EarningsRecorded").withArgs(_A(60));
@@ -281,12 +281,11 @@ describe("Reserve base contract", () => {
     await expect(reserve.setYieldVault(ZeroAddress, true))
       .to.emit(reserve, "YieldVaultChanged")
       .withArgs(yieldVault, ZeroAddress, true)
-      .to.emit(currency, "Approval")
-      .withArgs(reserve, yieldVault, 0)
       .to.emit(reserve, "ErrorIgnoredDeinvestingVault")
       .withArgs(yieldVault, _A(60))
       .to.emit(reserve, "EarningsRecorded")
-      .withArgs(-_A(60));
+      .withArgs(-_A(60))
+      .not.to.emit(currency, "Approval");
     expect(await reserve.investedInYV()).to.equal(_A(0));
   });
 
