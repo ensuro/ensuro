@@ -145,8 +145,8 @@ library Policy {
     }
 
     // Calculate CoCs
-    minPremium.jrCoc = minPremium.jrScr.mulDiv((rmParams.jrRoc * (expiration - start)) / SECONDS_PER_YEAR, WAD);
-    minPremium.srCoc = minPremium.srScr.mulDiv((rmParams.srRoc * (expiration - start)) / SECONDS_PER_YEAR, WAD);
+    minPremium.jrCoc = minPremium.jrScr.mulDiv(rmParams.jrRoc * (expiration - start), WAD * SECONDS_PER_YEAR);
+    minPremium.srCoc = minPremium.srScr.mulDiv(rmParams.srRoc * (expiration - start), WAD * SECONDS_PER_YEAR);
     uint256 totalCoc = minPremium.jrCoc + minPremium.srCoc;
 
     minPremium.ensuroCommission =
@@ -210,7 +210,7 @@ library Policy {
    * @return Annualized interest rate in WAD
    */
   function jrInterestRate(PolicyData memory policy) internal pure returns (uint256) {
-    return ((policy.jrCoc * SECONDS_PER_YEAR) / duration(policy)).mulDiv(WAD, policy.jrScr);
+    return (policy.jrCoc * SECONDS_PER_YEAR).mulDiv(WAD, policy.jrScr * duration(policy));
   }
 
   /**
@@ -233,7 +233,7 @@ library Policy {
    * @return Annualized interest rate in WAD
    */
   function srInterestRate(PolicyData memory policy) internal pure returns (uint256) {
-    return ((policy.srCoc * SECONDS_PER_YEAR) / duration(policy)).mulDiv(WAD, policy.srScr);
+    return (policy.srCoc * SECONDS_PER_YEAR).mulDiv(WAD, policy.srScr * duration(policy));
   }
 
   /**
