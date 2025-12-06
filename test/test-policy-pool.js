@@ -897,6 +897,44 @@ describe("PolicyPool contract", function () {
     expect(await pool.getExposure(rm)).to.deep.equal([_A(0), _A(2000)]);
   });
 
+  it("Allows borrowing exactly up to srLoanLimit", async () => {
+    const { owner, rm, pool, currency, cust, backend, premiumsAccount, jrEtk, srEtk, policy } =
+      await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    const now = await helpers.time.latest();
+    const p1 = await createNewPolicy(
+      rm,
+      backend,
+      pool,
+      _A(1000),
+      _A(9),
+      _W(0),
+      now + HOUR * 5,
+      cust,
+      cust,
+      222,
+      {
+        partnerCommission: _A("0.4"),
+        jrScr: _A(200),
+        srScr: _A(800),
+        jrCoc: _A("0.3"),
+        srCoc: _A("0.2"),
+        ensuroCommission: _A("0.1"),
+      }
+    );
+
+    await rm.resolvePolicy([...policy], _A(108));
+    expect(await premiumsAccount.purePremiums()).to.equal(_A(1));
+
+    await premiumsAccount.connect(owner).setLoanLimits(_A(1), _A(6));
+
+    await expect(rm.cancelPolicy([...p1], _A(8), 0n, 0n))
+      .to.emit(jrEtk, "InternalLoan")
+      .withArgs(premiumsAccount, _A(1), _A(1))
+      .to.emit(srEtk, "InternalLoan")
+      .withArgs(premiumsAccount, _A(6), _A(6));
+  });
+
   it("Only PolicyPool can call PA policyReplaced", async () => {
     const { pool, policy } = await helpers.loadFixture(deployRmWithPolicyFixture);
 
