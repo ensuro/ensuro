@@ -199,6 +199,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    */
   error ComponentNotFoundOrNotActive();
 
+  /// @notice Thrown when attempting to set a component status to `inactive` via changeComponentStatus, use removeComponent() instead.
+  error InvalidComponentStatus();
+
   /**
    * @notice Error when a component is not active or deprecated. Happens on some operations like eToken withdrawals or
    * policy resolutions that accept the component might be active or deprecated and isn't on any of those states.
@@ -498,13 +501,14 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * @notice Changes the status of a component.
    *
    * @custom:emits ComponentStatusChanged with the new status.
-   *
+   * @custom:throws InvalidComponentStatus() when newStatus is inactive (use removeComponent() instead)
    * @param component The address of component contract. Must be a component added before.
    * @param newStatus The new status, must be either `active`, `deprecated` or `suspended`.
    */
   function changeComponentStatus(IPolicyPoolComponent component, ComponentStatus newStatus) external {
     Component storage comp = _components[component];
-    if (comp.status == ComponentStatus.inactive) revert ComponentNotFound();
+    require(comp.status != ComponentStatus.inactive, ComponentNotFound());
+    require(newStatus != ComponentStatus.inactive, InvalidComponentStatus());
     comp.status = newStatus;
     emit ComponentStatusChanged(component, comp.kind, newStatus);
   }
