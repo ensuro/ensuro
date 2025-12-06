@@ -90,8 +90,15 @@ describe("Test add, remove and change status of PolicyPool components", function
 
     await expect(pool.connect(lp).withdraw(etk, MaxUint256, lp, lp)).not.to.be.reverted;
 
+    // Reverts when newStatus is inactive (use removeComponent() instead)
+    await expect(pool.connect(level1).changeComponentStatus(etk, ComponentStatus.inactive))
+      .to.be.revertedWithCustomError(pool, "InvalidComponentStatus");
+
     await expect(pool.connect(level1).removeComponent(etk)).not.to.be.reverted;
     expect(await pool.getComponentStatus(etk)).to.be.equal(ComponentStatus.inactive);
+
+    await expect(pool.connect(level1).changeComponentStatus(etk, ComponentStatus.active))
+      .to.be.revertedWithCustomError(pool, "ComponentNotFound");
 
     await expect(pool.connect(lp).deposit(etk, _A(200), lp))
       .to.be.revertedWithCustomError(pool, "ComponentNotTheRightKind")
@@ -166,6 +173,10 @@ describe("Test add, remove and change status of PolicyPool components", function
     );
     await expect(pool.connect(level1).changeComponentStatus(rm, ComponentStatus.deprecated)).not.to.be.reverted;
 
+    // Reverts when newStatus is inactive (use removeComponent() instead)
+    await expect(pool.connect(level1).changeComponentStatus(rm, ComponentStatus.inactive))
+      .to.be.revertedWithCustomError(pool, "InvalidComponentStatus");
+
     await expect(pool.connect(level1).removeComponent(rm))
       .to.be.revertedWithCustomError(pool, "ComponentInUseCannotRemove")
       .withArgs(ComponentKind.riskModule, (await pool.getExposure(rm))[0]);
@@ -173,6 +184,9 @@ describe("Test add, remove and change status of PolicyPool components", function
     await expect(rm.connect(cust).resolvePolicy([...policy], _A(10))).not.to.be.reverted;
     await expect(pool.connect(level1).removeComponent(rm)).not.to.be.reverted;
     expect(await pool.getComponentStatus(rm)).to.be.equal(ComponentStatus.inactive);
+
+    await expect(pool.connect(level1).changeComponentStatus(rm, ComponentStatus.active))
+      .to.be.revertedWithCustomError(pool, "ComponentNotFound");
 
     await expect(rm.connect(cust).newPolicy(makeInputData({ expiration: start + 3600 }), cust))
       .to.be.revertedWithCustomError(pool, "ComponentNotTheRightKind")
@@ -257,9 +271,17 @@ describe("Test add, remove and change status of PolicyPool components", function
     await expect(rm.connect(cust).resolvePolicy([...policy], _A(10))).not.to.be.reverted;
     let internalLoan = await etk.getLoan(premiumsAccount);
     expect(internalLoan > _A(0)).to.be.true;
+
+    // Reverts when newStatus is inactive (use removeComponent() instead)
+    await expect(pool.connect(level1).changeComponentStatus(premiumsAccount, ComponentStatus.inactive))
+      .to.be.revertedWithCustomError(pool, "InvalidComponentStatus");
+
     const tx = await pool.connect(level1).removeComponent(premiumsAccount);
     const receipt = await tx.wait();
     const borrowerRemovedEvt = getTransactionEvent(etk.interface, receipt, "InternalBorrowerRemoved");
+
+    await expect(pool.connect(level1).changeComponentStatus(premiumsAccount, ComponentStatus.active))
+      .to.be.revertedWithCustomError(pool, "ComponentNotFound");
 
     await expect(etk.getLoan(premiumsAccount))
       .to.be.revertedWithCustomError(etk, "InvalidBorrower")
