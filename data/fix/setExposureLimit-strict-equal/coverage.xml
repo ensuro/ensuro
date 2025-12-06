@@ -1,6 +1,6 @@
 <?xml version="1.0" ?>
 <!DOCTYPE coverage SYSTEM "http://cobertura.sourceforge.net/xml/coverage-04.dtd">
-<coverage lines-valid="779"  lines-covered="779"  line-rate="1"  branches-valid="524"  branches-covered="507"  branch-rate="0.9676"  timestamp="1765020250913" complexity="0" version="0.1">
+<coverage lines-valid="779"  lines-covered="779"  line-rate="1"  branches-valid="524"  branches-covered="507"  branch-rate="0.9676"  timestamp="1765020638951" complexity="0" version="0.1">
 <sources>
 	<source>/home/runner/work/ensuro/ensuro</source>
 </sources>
@@ -785,11 +785,11 @@
 			<method name="_changeExposure"  hits="3211"  signature="()V" >
 				<lines><line number="815"  hits="3211" /></lines>
 			</method>
-			<method name="setExposureLimit"  hits="319"  signature="()V" >
-				<lines><line number="835"  hits="319" /></lines>
+			<method name="setExposureLimit"  hits="318"  signature="()V" >
+				<lines><line number="835"  hits="318" /></lines>
 			</method>
-			<method name="getExposure"  hits="29"  signature="()V" >
-				<lines><line number="852"  hits="29" /></lines>
+			<method name="getExposure"  hits="27"  signature="()V" >
+				<lines><line number="852"  hits="27" /></lines>
 			</method>
 			<method name="_notifyPayout"  hits="202"  signature="()V" >
 				<lines><line number="864"  hits="202" /></lines>
@@ -985,14 +985,14 @@
 			<line number="818"  hits="1564"  branch="false" />
 			<line number="819"  hits="1564"  branch="true"  condition-coverage="100% (2/2)" />
 			<line number="821"  hits="1647"  branch="false" />
-			<line number="836"  hits="319"  branch="false" />
-			<line number="837"  hits="319"  branch="false" />
-			<line number="838"  hits="319"  branch="true"  condition-coverage="100% (2/2)" />
-			<line number="839"  hits="318"  branch="false" />
-			<line number="840"  hits="318"  branch="false" />
-			<line number="853"  hits="29"  branch="false" />
-			<line number="854"  hits="29"  branch="false" />
-			<line number="855"  hits="29"  branch="false" />
+			<line number="836"  hits="318"  branch="false" />
+			<line number="837"  hits="318"  branch="false" />
+			<line number="838"  hits="318"  branch="true"  condition-coverage="100% (2/2)" />
+			<line number="839"  hits="317"  branch="false" />
+			<line number="840"  hits="317"  branch="false" />
+			<line number="853"  hits="27"  branch="false" />
+			<line number="854"  hits="27"  branch="false" />
+			<line number="855"  hits="27"  branch="false" />
 			<line number="865"  hits="202"  branch="false" />
 			<line number="866"  hits="196"  branch="true"  condition-coverage="100% (2/2)" />
 			<line number="868"  hits="4"  branch="false" />
