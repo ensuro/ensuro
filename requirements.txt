@@ -138,7 +138,7 @@ typing-extensions==4.14.1
     #   web3
 typing-inspection==0.4.1
     # via pydantic
-urllib3==2.5.0
+urllib3==2.6.0
     # via
     #   requests
     #   types-requests
