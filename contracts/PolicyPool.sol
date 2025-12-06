@@ -835,7 +835,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   function setExposureLimit(IRiskModule rm, uint256 newLimit) external {
     Exposure storage exposure = _exposureByRm[rm];
     uint128 newLimit128 = newLimit.toUint128();
-    require(exposure.active < newLimit128, ExposureLimitExceeded(exposure.active, newLimit128));
+    require(exposure.active <= newLimit128, ExposureLimitExceeded(exposure.active, newLimit128));
     emit ExposureLimitChanged(rm, exposure.limit, newLimit128);
     exposure.limit = newLimit128;
   }
