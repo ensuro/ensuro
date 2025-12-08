@@ -928,6 +928,10 @@ describe("PolicyPool contract", function () {
 
     await premiumsAccount.connect(owner).setLoanLimits(_A(1), _A(6));
 
+    await expect(rm.cancelPolicy([...p1], _A("8.1"), 0n, 0n))
+      .to.be.revertedWithCustomError(premiumsAccount, "CannotBeBorrowed")
+      .withArgs(_A("6.1"));
+
     await expect(rm.cancelPolicy([...p1], _A(8), 0n, 0n))
       .to.emit(jrEtk, "InternalLoan")
       .withArgs(premiumsAccount, _A(1), _A(1))
