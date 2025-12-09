@@ -159,6 +159,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    */
   error NoEmptySymbol();
 
+  /// @notice Thrown when trying to change the currency during an upgrade
+  error UpgradeCannotChangeCurrency();
+
   /**
    * @notice Error when trying to add a component that was already added to the PolicyPool
    */
@@ -380,8 +383,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     _setTreasury(treasury_);
   }
 
-  // solhint-disable-next-line no-empty-blocks
-  function _authorizeUpgrade(address newImpl) internal view override {}
+  function _authorizeUpgrade(address newImpl) internal view override {
+    IPolicyPool newPool = IPolicyPool(newImpl);
+    if (newPool.currency() != _currency) revert UpgradeCannotChangeCurrency();
+  }
 
   /**
    * @notice Pauses the contract.
