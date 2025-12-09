@@ -421,17 +421,18 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
   function _borrowFromEtk(uint256 borrow, address receiver, bool jrEtk) internal {
     uint256 left = borrow;
     if (jrEtk) {
-      if (_juniorEtk.getLoan(address(this)) + borrow <= jrLoanLimit()) {
+      uint256 jrLoan = _juniorEtk.getLoan(address(this));
+      if (jrLoan + borrow <= jrLoanLimit()) {
         left = _juniorEtk.internalLoan(borrow, receiver);
-      } else if (_juniorEtk.getLoan(address(this)) < jrLoanLimit()) {
+      } else if (jrLoan < jrLoanLimit()) {
         // Partial loan
-        uint256 loanExcess = _juniorEtk.getLoan(address(this)) + borrow - jrLoanLimit();
+        uint256 loanExcess = jrLoan + borrow - jrLoanLimit();
         left = loanExcess + _juniorEtk.internalLoan(borrow - loanExcess, receiver);
       }
     }
     if (left != 0) {
-      // Consume Senior Pool only up to SCR
-      if (_seniorEtk.getLoan(address(this)) + left < srLoanLimit()) {
+      // if _seniorEtk == address(0) it will revert without message, instead of CannotBeBorrowed
+      if (_seniorEtk.getLoan(address(this)) + left <= srLoanLimit()) {
         left = _seniorEtk.internalLoan(left, receiver);
       } // in the senior eToken doesn't make sense to handle partial loan
       require(left == 0, CannotBeBorrowed(left));
