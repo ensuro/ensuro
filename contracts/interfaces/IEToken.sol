@@ -125,7 +125,7 @@ interface IEToken {
 
   /**
    * @notice Withdraws an amount from an eToken.
-   * @dev `withdrawn` eTokens are be burned and the user receives the same amount in `currency()`. 
+   * @dev `withdrawn` eTokens are be burned and the user receives the same amount in `currency()`.
    * If `amount == type(uint256).max`, it withdraws up to `maxWithdraw` (i.e., as much as possible).
    * Otherwise, it reverts if `amount > maxWithdraw`.
    *
