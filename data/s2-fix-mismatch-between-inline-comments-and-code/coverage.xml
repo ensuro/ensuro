@@ -1,6 +1,6 @@
 <?xml version="1.0" ?>
 <!DOCTYPE coverage SYSTEM "http://cobertura.sourceforge.net/xml/coverage-04.dtd">
-<coverage lines-valid="780"  lines-covered="780"  line-rate="1"  branches-valid="526"  branches-covered="509"  branch-rate="0.9677"  timestamp="1765310520016" complexity="0" version="0.1">
+<coverage lines-valid="780"  lines-covered="780"  line-rate="1"  branches-valid="526"  branches-covered="509"  branch-rate="0.9677"  timestamp="1765310747430" complexity="0" version="0.1">
 <sources>
 	<source>/home/runner/work/ensuro/ensuro</source>
 </sources>
