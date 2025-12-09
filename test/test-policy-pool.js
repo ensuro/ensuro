@@ -407,6 +407,22 @@ describe("PolicyPool contract", function () {
       .withArgs(active, _A(999));
   });
 
+  it("Can change the exposure limit to exactly equal the active exposure", async () => {
+    const { pool, rm } = await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    const [active, limit] = await pool.getExposure(rm);
+    expect(limit).to.equal(_A(2000));
+    expect(active).to.equal(_A(1000));
+
+    await expect(pool.setExposureLimit(rm, active))
+      .to.emit(pool, "ExposureLimitChanged")
+      .withArgs(rm, limit, active);
+
+    const [active2, limit2] = await pool.getExposure(rm);
+    expect(active2).to.equal(active);
+    expect(limit2).to.equal(active);
+  });
+
   it("Can't have two policies with the same internalId", async () => {
     const { pool, rm, cust, backend, policy } = await helpers.loadFixture(deployRmWithPolicyFixture);
     const now = await helpers.time.latest();
