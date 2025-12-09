@@ -61,7 +61,7 @@ library ETKLib {
   }
 
   /**
-   * @notice unchecked version of Math.mulDiv that returns the result of a * b / c.
+   * @notice unchecked version of Math.mulDiv that returns the result of a * b / c, rounding up when there is non-zero remainder.
    *
    * Assumes a * b < 2**256
    */
@@ -96,49 +96,55 @@ library ETKLib {
   }
 
   /**
-   * @notice Converts a "current amount" (end user value, after applying earnings) to the scaled amount (raw value)
-   * @param currentAmount The `current amount` as the ones obtainted by the user in balanceOf or totalSupply()
-   * @param scale        The scale to un-apply.
-   * @return The scaled amount, that results of `currentAmount / scale`
+   * @notice Converts a "current amount" (user-facing value, after applying earnings/scale) into a scaled amount (raw value).
+   * @dev Un-applies the scale (in WAD): `scaled = currentAmount * WAD / scale`.
+   * @param scale The scale (WAD) to un-apply.
+   * @param currentAmount The current amount as obtained from balanceOf() or totalSupply().
+   * @return scaledAmount The scaled amount (raw value).
    */
   function toScaled(Scale scale, uint256 currentAmount) internal pure returns (uint256) {
     return _mulDiv(currentAmount, WAD, scale.toUint256());
   }
 
   /**
-   * @notice Converts a "current amount" (end user value, after applying earnings) to the scaled amount (raw value),
-   *      rounding to the ceil
-   * @param currentAmount The `current amount` as the ones obtainted by the user in balanceOf or totalSupply()
-   * @param scale        The scale to un-apply.
-   * @return The scaled amount, that results of `currentAmount / scale`
+   * @notice Same as {toScaled}, but rounds up when there is a non-zero remainder.
+   * @dev `scaled = ceil(currentAmount * WAD / scale)`.
+   * @param scale The scale (WAD) to un-apply.
+   * @param currentAmount The current amount as obtained from balanceOf() or totalSupply().
+   * @return scaledAmount The scaled amount (raw value), rounded up.
    */
   function toScaledCeil(Scale scale, uint256 currentAmount) internal pure returns (uint256) {
     return _mulDivCeil(currentAmount, WAD, scale.toUint256());
   }
 
   /**
-   * @notice Increases the scale for a given factor
-   * @param factor In wad
-   * @return newScale Returns a `newScale = scale * (1 + factor)`
+   * @notice Multiplies the scale by (1 + factor).
+   *
+   * @param scale The base scale.
+   * @param factor The multiplicative increment, in WAD.
+   * @return newScale The updated scale.
    */
   function grow(Scale scale, uint256 factor) internal pure returns (Scale newScale) {
     return Scale.wrap(_mulDiv(scale.toUint256(), factor + WAD, WAD).toUint96());
   }
 
   /**
-   * @notice Increases the scale for a given factor
-   * @param factor In wad
-   * @return newScale Returns a `newScale = scale * (1 + factor)`
+   * @notice Adds `factor` to the scale (i.e., `newScale = scale + factor`).
+   *
+   * @param scale The base scale.
+   * @param factor The additive increment (same units as `scale`).
+   * @return newScale The updated scale.
    */
   function add(Scale scale, uint256 factor) internal pure returns (Scale newScale) {
     return Scale.wrap((scale.toUint256() + factor).toUint96());
   }
 
   /**
-   * @notice Increases the scale for a given factor. The factor is signed, so the new scale can be lower. Checks
-   *      the resulting scale is greater than MIN_SCALE.
-   * @param factor In wad
-   * @return newScale Returns a `newScale = scale * (1 + factor)`
+   * @notice Adds a signed `factor` to the scale (i.e., `newScale = scale + factor`), allowing it to increase or decrease.
+   *         Reverts if the resulting scale would be below `MIN_SCALE`.
+   * @param scale The base scale.
+   * @param factor The signed additive increment (same units as `scale`).
+   * @return newScale The updated scale.
    */
   function add(Scale scale, int256 factor) internal pure returns (Scale newScale) {
     uint256 newScaleInt = uint256(int256(scale.toUint256()) + factor);
