@@ -1,6 +1,6 @@
 <?xml version="1.0" ?>
 <!DOCTYPE coverage SYSTEM "http://cobertura.sourceforge.net/xml/coverage-04.dtd">
-<coverage lines-valid="780"  lines-covered="780"  line-rate="1"  branches-valid="526"  branches-covered="509"  branch-rate="0.9677"  timestamp="1765310747430" complexity="0" version="0.1">
+<coverage lines-valid="780"  lines-covered="780"  line-rate="1"  branches-valid="526"  branches-covered="509"  branch-rate="0.9677"  timestamp="1765315225235" complexity="0" version="0.1">
 <sources>
 	<source>/home/runner/work/ensuro/ensuro</source>
 </sources>
@@ -1348,13 +1348,13 @@
 				<lines><line number="241"  hits="1463" /></lines>
 			</method>
 			<method name="withdrawFromYieldVault"  hits="4"  signature="()V" >
-				<lines><line number="252"  hits="4" /></lines>
+				<lines><line number="254"  hits="4" /></lines>
 			</method>
 			<method name="depositIntoYieldVault"  hits="16"  signature="()V" >
-				<lines><line number="265"  hits="16" /></lines>
+				<lines><line number="267"  hits="16" /></lines>
 			</method>
 			<method name="recordEarnings"  hits="13"  signature="()V" >
-				<lines><line number="284"  hits="13" /></lines>
+				<lines><line number="286"  hits="13" /></lines>
 			</method>
 		</methods>
 		<lines>
@@ -1398,26 +1398,26 @@
 			<line number="233"  hits="1"  branch="false" />
 			<line number="234"  hits="1"  branch="false" />
 			<line number="242"  hits="1463"  branch="false" />
-			<line number="253"  hits="4"  branch="false" />
-			<line number="254"  hits="4"  branch="true"  condition-coverage="100% (2/2)" />
-			<line number="255"  hits="3"  branch="true"  condition-coverage="100% (2/2)" />
-			<line number="256"  hits="3"  branch="false" />
-			<line number="257"  hits="3"  branch="false" />
-			<line number="266"  hits="16"  branch="false" />
-			<line number="267"  hits="16"  branch="true"  condition-coverage="100% (2/2)" />
-			<line number="268"  hits="15"  branch="false" />
-			<line number="269"  hits="15"  branch="true"  condition-coverage="100% (2/2)" />
-			<line number="270"  hits="8"  branch="false" />
-			<line number="272"  hits="7"  branch="true"  condition-coverage="100% (2/2)" />
-			<line number="274"  hits="14"  branch="false" />
-			<line number="275"  hits="14"  branch="false" />
+			<line number="255"  hits="4"  branch="false" />
+			<line number="256"  hits="4"  branch="true"  condition-coverage="100% (2/2)" />
+			<line number="257"  hits="3"  branch="true"  condition-coverage="100% (2/2)" />
+			<line number="258"  hits="3"  branch="false" />
+			<line number="259"  hits="3"  branch="false" />
+			<line number="268"  hits="16"  branch="false" />
+			<line number="269"  hits="16"  branch="true"  condition-coverage="100% (2/2)" />
+			<line number="270"  hits="15"  branch="false" />
+			<line number="271"  hits="15"  branch="true"  condition-coverage="100% (2/2)" />
+			<line number="272"  hits="8"  branch="false" />
+			<line number="274"  hits="7"  branch="true"  condition-coverage="100% (2/2)" />
 			<line number="276"  hits="14"  branch="false" />
-			<line number="285"  hits="13"  branch="false" />
-			<line number="286"  hits="13"  branch="true"  condition-coverage="100% (2/2)" />
-			<line number="287"  hits="12"  branch="false" />
-			<line number="288"  hits="12"  branch="false" />
+			<line number="277"  hits="14"  branch="false" />
+			<line number="278"  hits="14"  branch="false" />
+			<line number="287"  hits="13"  branch="false" />
+			<line number="288"  hits="13"  branch="true"  condition-coverage="100% (2/2)" />
 			<line number="289"  hits="12"  branch="false" />
 			<line number="290"  hits="12"  branch="false" />
+			<line number="291"  hits="12"  branch="false" />
+			<line number="292"  hits="12"  branch="false" />
 		</lines>
 		</class>
 		<class name="RiskModule.sol"  filename="contracts/RiskModule.sol"  line-rate="1"  branch-rate="0.9231" >
