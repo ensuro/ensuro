@@ -176,16 +176,12 @@ abstract contract Reserve is PolicyPoolComponent {
           deinvested = oldYV.redeem(yvShares, address(this), address(this));
         }
       }
-      asset.approve(address(oldYV), 0); // Reset allowance
     }
     _setYieldVault(newYieldVault); // Stores the new YV
 
     // Records the earnings
     _yieldEarnings(int256(deinvested) - int256(_invested));
     _invested = 0;
-    if (address(newYieldVault) != address(0)) {
-      asset.approve(address(newYieldVault), type(uint256).max);
-    }
     emit YieldVaultChanged(oldYV, newYieldVault, forced);
   }
 
@@ -276,6 +272,7 @@ abstract contract Reserve is PolicyPoolComponent {
       require(amount <= balance, NotEnoughCash(amount, balance));
     }
     _invested += amount;
+    currency().approve(address(yv), amount);
     yv.deposit(amount, address(this));
   }
 

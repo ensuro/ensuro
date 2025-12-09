@@ -64,9 +64,7 @@ describe("PremiumsAccount", () => {
       .to.emit(pa, "EarningsRecorded")
       .withArgs(0)
       .to.emit(pa, "YieldVaultChanged")
-      .withArgs(ZeroAddress, yieldVault, false)
-      .to.emit(currency, "Approval")
-      .withArgs(pa, yieldVault, MaxUint256);
+      .withArgs(ZeroAddress, yieldVault, false);
 
     await currency.connect(lp).approve(pa, MaxUint256);
 
