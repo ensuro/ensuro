@@ -118,7 +118,7 @@ library ETKLib {
   }
 
   /**
-   * @notice Multiplies the scale by (1 + factor).
+   * @notice Returns a `newScale = scale * (1 + factor)`
    *
    * @param scale The base scale.
    * @param factor The multiplicative increment, in WAD.
@@ -129,7 +129,7 @@ library ETKLib {
   }
 
   /**
-   * @notice Adds `factor` to the scale (i.e., `newScale = scale + factor`).
+   * @notice Returns a `newScale = scale + factor`.
    *
    * @param scale The base scale.
    * @param factor The additive increment (same units as `scale`).
@@ -140,7 +140,7 @@ library ETKLib {
   }
 
   /**
-   * @notice Adds a signed `factor` to the scale (i.e., `newScale = scale + factor`), allowing it to increase or decrease.
+   * @notice Returns a `newScale = scale + factor`, allowing it to increase or decrease.
    *         Reverts if the resulting scale would be below `MIN_SCALE`.
    * @param scale The base scale.
    * @param factor The signed additive increment (same units as `scale`).
