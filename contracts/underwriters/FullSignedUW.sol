@@ -151,7 +151,7 @@ contract FullSignedUW is IUnderwriter {
       inputData[0:CANCEL_POLICY_DATA_SIZE],
       (Policy.PolicyData, uint256, uint256, uint256)
     );
-    require(address(uint160(policyToCancel.id >> 96)) == rm, SignatureRmMismatch());
+    require(Policy.extractRiskModule(policyToCancel.id) == rm, SignatureRmMismatch());
     if (jrCocRefund == type(uint256).max) jrCocRefund = policyToCancel.jrCoc - policyToCancel.jrAccruedInterest();
     if (srCocRefund == type(uint256).max) srCocRefund = policyToCancel.srCoc - policyToCancel.srAccruedInterest();
   }
