@@ -109,7 +109,6 @@ contract RiskModule is IRiskModule, PolicyPoolComponent {
     return _underwriter;
   }
 
-
   /**
    * @dev Changes the underwriter contract, responsible for pricing and validating new policies, replacements and cancellations.
    * Events:
