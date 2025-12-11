@@ -935,7 +935,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
       jrCocRefund,
       srCocRefund
     );
-    // PolicyHolder can revert and cancel the policy replacement
+    // PolicyHolder can revert and cancel the policy cancellation
     if (retval != IPolicyHolder.onPolicyCancelled.selector) revert InvalidNotificationResponse(retval);
   }
 

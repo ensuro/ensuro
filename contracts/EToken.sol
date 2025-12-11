@@ -204,10 +204,10 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
 
   /**
    * @dev Initializes the eToken
-   * @param maxUtilizationRate_ Max utilization rate (scr/totalSupply) (in Ray - default=1 Ray)
-   * @param internalLoanInterestRate_ Rate of loans givencrto the policy pool (in Ray)
    * @param name_ Name of the eToken
    * @param symbol_ Symbol of the eToken
+   * @param maxUtilizationRate_ Max utilization rate (scr / totalSupply), in WAD (1e18)
+   * @param internalLoanInterestRate_ Annualized interest rate charged on internal loans, in WAD (1e18)
    */
   function initialize(
     string memory name_,
@@ -335,9 +335,9 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
   }
 
   /**
-   * @dev Returns the (un)scaled total supply of the EToken. Equals to the sum of `scaledBalanceOf(x)` of all users
-   * @return The scaled total supply
-   **/
+   * @notice Returns the total supply in scaled/raw units (without applying the current scale index). Equals the sum of {scaledBalanceOf} across all users.
+   * @return The total supply in scaled/raw units.
+   */
   function scaledTotalSupply() external view returns (uint256) {
     return uint256(_tsScaled.amount);
   }

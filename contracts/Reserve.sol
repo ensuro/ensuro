@@ -247,7 +247,9 @@ abstract contract Reserve is PolicyPoolComponent {
    *
    * @param amount Amount to withdraw from the `yieldVault()`. If equal type(uint256).max, deinvests maxWithdraw()
    * @return deinvested The amount that was deinvested and added as liquid funds to the reserve
-   * @custom:pre yieldVault() != address(0) and yieldVault().maxWithdraw() <= amount
+   * @custom:pre yieldVault() != address(0)
+   * @custom:pre yieldVault().maxWithdraw(address(this)) >= amount
+   *             (this condition is not checked here; exceeding it is expected to revert in the vault during _deinvest()).
    */
   function withdrawFromYieldVault(uint256 amount) external returns (uint256 deinvested) {
     IERC4626 yv = yieldVault();
