@@ -503,6 +503,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    */
   function withdrawWonPremiums(uint256 amount, address destination) external returns (uint256) {
     require(destination != address(0), InvalidDestination(destination));
+    if (address(yieldVault()) != address(0)) recordEarnings();
     if (amount == type(uint256).max) {
       if (_surplus <= 0) return 0;
       amount = uint256(_surplus);
@@ -662,6 +663,7 @@ contract PremiumsAccount is IPremiumsAccount, Reserve {
    * @return available The funds still available after repayment
    */
   function repayLoans() external returns (uint256 available) {
+    if (address(yieldVault()) != address(0)) recordEarnings();
     available = fundsAvailable();
     if (available != 0 && address(_seniorEtk) != address(0)) available = _repayLoan(available, _seniorEtk);
     if (available != 0 && address(_juniorEtk) != address(0)) available = _repayLoan(available, _juniorEtk);

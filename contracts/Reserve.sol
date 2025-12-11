@@ -191,6 +191,10 @@ abstract contract Reserve is PolicyPoolComponent {
    * It calls `withdraw(amount, address(this), address(this))` on the vault and updates `_invested`,
    * also recording earnings if more than the tracked `_invested` is recovered.
    *
+   * Although the protocol usually operates with safe investments where significant losses are not expected,
+   * there could be losses anyway. Calls to deinvest should be preceded by a call to `recordEarnings()`
+   * in situations where accurate earnings/losses tracking is required (like LP withdrawals).
+   *
    * @param yieldVault_ Yield vault to deinvest from
    * @param amount Amount of assets to withdraw from the vault
    */
@@ -252,8 +256,8 @@ abstract contract Reserve is PolicyPoolComponent {
    *             (this condition is not checked here; exceeding it is expected to revert in the vault during _deinvest()).
    */
   function withdrawFromYieldVault(uint256 amount) external returns (uint256 deinvested) {
+    recordEarnings();
     IERC4626 yv = yieldVault();
-    require(address(yv) != address(0), InvalidYieldVault());
     if (amount == type(uint256).max) amount = yv.maxWithdraw(address(this));
     _deinvest(yv, amount);
     return amount;
@@ -279,8 +283,8 @@ abstract contract Reserve is PolicyPoolComponent {
   }
 
   /**
-   * @dev Computes the value of the assets invested in the yieldVault() and then calls `_assetEarnings` to
-   *      reflect the earnings in the way defined for each reserve.
+   * @dev Computes the value of the assets invested in the yieldVault() and then calls `_yieldEarnings` to
+   *      reflect the earnings/losses in the way defined for each reserve.
    * @custom:emits {EarningsRecorded}
    */
   function recordEarnings() public {
@@ -288,8 +292,10 @@ abstract contract Reserve is PolicyPoolComponent {
     require(address(yv) != address(0), InvalidYieldVault());
     uint256 assetsInvested = yv.convertToAssets(yv.balanceOf(address(this)));
     int256 earned = int256(assetsInvested) - int256(_invested);
-    _invested = assetsInvested;
-    _yieldEarnings(earned);
+    if (earned != 0) {
+      _invested = assetsInvested;
+      _yieldEarnings(earned);
+    }
   }
 
   /**

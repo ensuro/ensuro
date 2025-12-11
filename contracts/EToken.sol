@@ -526,6 +526,10 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
      * The only limit for withdraws is the `totalWithdrawable()` function, that's affected by the relation between the
      * scr and the totalSupply.
      */
+    if (address(yieldVault()) != address(0)) {
+      // Always update the accounting before a withdrawal. There may be unrecorded earnings/losses otherwise.
+      recordEarnings();
+    }
     uint256 maxWithdraw = Math.min(balanceOf(owner), totalWithdrawable());
     if (amount == type(uint256).max) amount = maxWithdraw;
     if (amount == 0) return 0;

@@ -462,6 +462,50 @@ describe("Etoken", () => {
     expect(captureAny.lastUint).to.closeTo(await yieldVault.convertToShares(_A(200)), 2n);
   });
 
+  it("LP cannot exit the pool before yieldVault losses are recorded", async () => {
+    const { etk, yieldVault, lp, pool, currency } = await helpers.loadFixture(etkFixtureWithVault);
+
+    await etk.setYieldVault(yieldVault, false);
+
+    await etk.depositIntoYieldVault(_A(1200));
+
+    expect(await etk.balanceOf(lp)).to.equal(_A(3000)); // sanity check
+    expect(await etk.totalSupply()).to.equal(_A(3000)); // sanity check
+
+
+    await yieldVault.discreteEarning(-_A(300)); // simulate a loss of 300
+
+    // Losses are not recorded yet
+    expect(await etk.totalSupply()).to.equal(_A(3000));
+    expect(await etk.balanceOf(lp)).to.equal(_A(3000));
+
+    // When the LP withdraws, the losses are recorded
+    await expect(pool.connect(lp).withdraw(etk, _A(100), lp, lp))
+      .to.emit(currency, "Transfer").withArgs(etk, lp, _A(100))
+      .to.emit(etk, "EarningsRecorded")
+      .withArgs(-_A(300));
+
+
+    // The LP took the loss
+    expect(await etk.totalSupply()).to.be.closeTo(_A(2600), _A(1));
+    expect(await etk.balanceOf(lp)).to.be.closeTo(_A(2600), _A(1)); // 3000 - 300 in losses - 100 withdrawn
+
+    // Additional losses are incurred
+    await yieldVault.discreteEarning(-_A(500));
+
+    // When the LP withdraws all, the losses are recorded and they less than expected
+    const initialUSDC = await currency.balanceOf(lp);
+    await expect(pool.connect(lp).withdraw(etk, MaxUint256, lp, lp))
+      .to.emit(etk, "EarningsRecorded")
+      .withArgs(-_A(500));
+
+    // Cannot use changeTokenBalance assertion because we need a closeTo check
+    expect(await currency.balanceOf(lp)).to.be.closeTo(initialUSDC + _A(2100), _A(1)); // 2600 - 500 in losses
+
+    expect(await etk.totalSupply()).to.equal(_A(0));
+    expect(await etk.balanceOf(lp)).to.equal(_A(0)); // All withdrawn
+  })
+
   it("Can combines returns from locked SCR and from YV", async () => {
     const { etk, yieldVault, lp, fakePA, currency, pool } = await helpers.loadFixture(etkFixtureWithVault);
 
