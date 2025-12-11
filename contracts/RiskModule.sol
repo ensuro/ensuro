@@ -103,11 +103,12 @@ contract RiskModule is IRiskModule, PolicyPoolComponent {
   }
 
   /**
-   * @dev Returns the underwriter contract, responsible for pricing and validating new policies, replacements and cancellations.
+   * @notice Returns the underwriter contract, responsible for pricing and validating new policies, replacements and cancellations.
    */
   function underwriter() public view returns (IUnderwriter) {
     return _underwriter;
   }
+
 
   /**
    * @dev Changes the underwriter contract, responsible for pricing and validating new policies, replacements and cancellations.
@@ -121,6 +122,7 @@ contract RiskModule is IRiskModule, PolicyPoolComponent {
     _underwriter = newUW;
   }
 
+  /// @inheritdoc IRiskModule
   function premiumsAccount() external view override returns (IPremiumsAccount) {
     return _premiumsAccount;
   }

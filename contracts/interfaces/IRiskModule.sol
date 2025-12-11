@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {IPremiumsAccount} from "./IPremiumsAccount.sol";
+import {IUnderwriter} from "./IUnderwriter.sol";
 
 /**
  * @title IRiskModule interface
@@ -18,4 +19,5 @@ interface IRiskModule {
    * @notice Returns the {PremiumsAccount} where the premiums of this risk module are collected. Never changes.
    */
   function premiumsAccount() external view returns (IPremiumsAccount);
+
 }
