@@ -41,6 +41,9 @@ contract FullSignedUW is IUnderwriter {
    */
   error InvalidInputSize(uint256 actual, uint256 expected);
 
+  /// @notice Thrown when the received signature doesn't match the calling rm
+  error SignatureRmMismatch();
+
   /**
    * @notice Validates the signature appended to `inputData` and checks the recovered signer is authorized in `rm`.
    *
@@ -88,7 +91,13 @@ contract FullSignedUW is IUnderwriter {
     )
   {
     _checkSignature(rm, inputData, NEW_POLICY_DATA_SIZE, FULL_PRICE_NEW_POLICY);
-    return abi.decode(inputData[0:NEW_POLICY_DATA_SIZE], (uint256, uint256, uint256, uint40, uint96, Policy.Params));
+    uint256 policyId;
+    (payout, premium, lossProb, expiration, policyId, params) = abi.decode(
+      inputData[0:NEW_POLICY_DATA_SIZE],
+      (uint256, uint256, uint256, uint40, uint256, Policy.Params)
+    );
+    require(address(uint160(policyId >> 96)) == rm, SignatureRmMismatch());
+    internalId = uint96(policyId % (2 ** 96));
   }
 
   /// @inheritdoc IUnderwriter
@@ -110,11 +119,13 @@ contract FullSignedUW is IUnderwriter {
     )
   {
     _checkSignature(rm, inputData, REPLACE_POLICY_DATA_SIZE, FULL_PRICE_REPLACE_POLICY);
-    return
-      abi.decode(
-        inputData[0:REPLACE_POLICY_DATA_SIZE],
-        (Policy.PolicyData, uint256, uint256, uint256, uint40, uint96, Policy.Params)
-      );
+    uint256 policyId;
+    (oldPolicy, payout, premium, lossProb, expiration, policyId, params) = abi.decode(
+      inputData[0:REPLACE_POLICY_DATA_SIZE],
+      (Policy.PolicyData, uint256, uint256, uint256, uint40, uint256, Policy.Params)
+    );
+    require(address(uint160(policyId >> 96)) == rm, SignatureRmMismatch());
+    internalId = uint96(policyId % (2 ** 96));
   }
 
   /// @inheritdoc IUnderwriter
@@ -137,6 +148,7 @@ contract FullSignedUW is IUnderwriter {
       inputData[0:CANCEL_POLICY_DATA_SIZE],
       (Policy.PolicyData, uint256, uint256, uint256)
     );
+    require(address(uint160(policyToCancel.id >> 96)) == rm, SignatureRmMismatch());
     if (jrCocRefund == type(uint256).max) jrCocRefund = policyToCancel.jrCoc - policyToCancel.jrAccruedInterest();
     if (srCocRefund == type(uint256).max) srCocRefund = policyToCancel.srCoc - policyToCancel.srAccruedInterest();
   }

@@ -5,10 +5,10 @@ const {
   defaultTestParams,
   getPremium,
   makeFTUWInputData,
-  makeAndSignFTUWInputData,
   makeFTUWReplacementInputData,
   makeFTUWCancelInputData,
   makeHashSelector,
+  makeAndSignFSUWInputData,
 } = require("../js/utils");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const {
@@ -27,8 +27,8 @@ const { getAccessManager } = require("@ensuro/access-managed-proxy/js/deployProx
 
 const _A = amountFunction(6);
 
-function makeInputData({ payout, premium, lossProb, expiration, internalId, params, signer }) {
-  return (signer === undefined ? makeFTUWInputData : makeAndSignFTUWInputData)({
+function makeInputData({ payout, premium, lossProb, expiration, internalId, params, signer }, rm) {
+  return (signer === undefined ? makeFTUWInputData : input => makeAndSignFSUWInputData(rm, input))({
     payout: payout || _A(1000),
     premium: premium || _A(200),
     lossProb: lossProb || _W("0.10"),
@@ -262,7 +262,7 @@ describe("RiskModule contract", function () {
     await expect(
       rm
         .connect(backend)
-        .newPolicy(makeInputData({ expiration: now + HOUR * 5, premium: MaxUint256, signer: backend }), cust)
+        .newPolicy(makeInputData({ expiration: now + HOUR * 5, premium: MaxUint256, signer: backend }, rm), cust)
     )
       .to.revertedWithCustomError(newUW, "UnauthorizedSigner")
       .withArgs(backend, operationSelector);
@@ -273,7 +273,7 @@ describe("RiskModule contract", function () {
     await expect(
       rm
         .connect(backend)
-        .newPolicy(makeInputData({ expiration: now + HOUR * 5, premium: MaxUint256, signer: backend }), cust)
+        .newPolicy(makeInputData({ expiration: now + HOUR * 5, premium: MaxUint256, signer: backend }, rm), cust)
     )
       .to.emit(pool, "NewPolicy")
       .withArgs(rm, captureAny.value);

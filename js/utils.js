@@ -239,8 +239,23 @@ function makeFTUWInputData({ payout, premium, lossProb, expiration, internalId, 
   );
 }
 
-async function makeAndSignFTUWInputData({ payout, premium, lossProb, expiration, internalId, params, signer }) {
-  const input = makeFTUWInputData({ payout, premium, lossProb, expiration, internalId, params });
+function makeFSUWInputData(rm, { payout, premium, lossProb, expiration, internalId, params }) {
+  return abiCoder.encode(
+    [
+      "uint256",
+      "uint256",
+      "uint256",
+      "uint40",
+      "uint256",
+      "(uint256, uint256, uint256, uint256, uint256, uint256, uint256)",
+    ],
+    [payout, premium, lossProb, expiration, makePolicyId(rm, internalId), params.asParams()]
+  );
+}
+
+
+async function makeAndSignFSUWInputData(rm, { payout, premium, lossProb, expiration, internalId, params, signer }) {
+  const input = makeFSUWInputData(rm, { payout, premium, lossProb, expiration, internalId, params });
   return ethers.concat([input, await signer.signMessage(ethers.getBytes(input))]);
 }
 
@@ -252,14 +267,29 @@ function makeFTUWReplacementInputData({ oldPolicy, payout, premium, lossProb, ex
       "uint256",
       "uint256",
       "uint40",
-      "uint96",
+      "uint256",
       "(uint256, uint256, uint256, uint256, uint256, uint256, uint256)",
     ],
     [oldPolicy, payout, premium, lossProb, expiration, internalId, params.asParams()]
   );
 }
 
-async function makeAndSignFTUWReplacementInputData({
+function makeFSUWReplacementInputData(rm, { oldPolicy, payout, premium, lossProb, expiration, internalId, params }) {
+  return abiCoder.encode(
+    [
+      "(uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint40, uint40)",
+      "uint256",
+      "uint256",
+      "uint256",
+      "uint40",
+      "uint256",
+      "(uint256, uint256, uint256, uint256, uint256, uint256, uint256)",
+    ],
+    [oldPolicy, payout, premium, lossProb, expiration, makePolicyId(rm, internalId), params.asParams()]
+  );
+}
+
+async function makeAndSignFSUWReplacementInputData(rm, {
   oldPolicy,
   payout,
   premium,
@@ -269,7 +299,7 @@ async function makeAndSignFTUWReplacementInputData({
   params,
   signer,
 }) {
-  const input = makeFTUWReplacementInputData({ oldPolicy, payout, premium, lossProb, expiration, internalId, params });
+  const input = makeFSUWReplacementInputData(rm, { oldPolicy, payout, premium, lossProb, expiration, internalId, params });
   return ethers.concat([input, await signer.signMessage(ethers.getBytes(input))]);
 }
 
@@ -326,9 +356,11 @@ module.exports = {
   defaultBucketParams,
   defaultTestParams,
   makeFTUWInputData,
-  makeAndSignFTUWInputData,
+  makeFSUWInputData,
+  makeAndSignFSUWInputData,
   makeFTUWReplacementInputData,
-  makeAndSignFTUWReplacementInputData,
+  makeFSUWReplacementInputData,
+  makeAndSignFSUWReplacementInputData,
   makeFTUWCancelInputData,
   makeAndSignFTUWCancelInputData,
   makeHashSelector,

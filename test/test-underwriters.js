@@ -9,13 +9,16 @@ const { getAccessManager } = require("@ensuro/access-managed-proxy/js/deployProx
 const { addEToken, deployPool, deployPremiumsAccount, addRiskModule } = require("../js/test-utils");
 const {
   makeFTUWInputData,
-  makeAndSignFTUWInputData,
   defaultBucketParams,
   makeFTUWReplacementInputData,
   makeFTUWCancelInputData,
   makeHashSelector,
-  makeAndSignFTUWReplacementInputData,
   makeAndSignFTUWCancelInputData,
+  makeFSUWInputData,
+  makeAndSignFSUWInputData,
+  makeAndSignFSUWReplacementInputData,
+  makeFSUWReplacementInputData,
+  makePolicyId,
 } = require("../js/utils");
 const { ethers } = hre;
 
@@ -234,21 +237,26 @@ describe("FullSignedUW", () => {
       const input = makeRandomPriceNewInput();
 
       // Send wrong input
-      await expect(uw.priceNewPolicy(ZeroAddress, makeFTUWInputData(input)))
+      await expect(uw.priceNewPolicy(ZeroAddress, makeFSUWInputData(rm, input)))
         .to.be.revertedWithCustomError(uw, "InvalidInputSize")
         .withArgs(
-          ethers.getBytes(makeFTUWInputData(input)).length,
-          ethers.getBytes(makeFTUWInputData(input)).length + SIGNATURE_SIZE
+          ethers.getBytes(makeFSUWInputData(rm, input)).length,
+          ethers.getBytes(makeFSUWInputData(rm, input)).length + SIGNATURE_SIZE
         );
       // Send correct input, but ZeroAddress as RM
       await expect(
-        uw.priceNewPolicy(ZeroAddress, await makeAndSignFTUWInputData({ signer, ...input }))
+        uw.priceNewPolicy(ZeroAddress, await makeAndSignFSUWInputData(ZeroAddress, { signer, ...input }))
       ).to.be.revertedWithoutReason();
+
+      // Send correct input, but rm mismatch
+      await expect(uw.priceNewPolicy(rm, await makeAndSignFSUWInputData(ZeroAddress, { signer, ...input })))
+        .to.be.revertedWithCustomError(uw, "SignatureRmMismatch")
+
       // Send correct input, rm but invalid signer
-      await expect(uw.priceNewPolicy(rm, await makeAndSignFTUWInputData({ signer: other, ...input })))
+      await expect(uw.priceNewPolicy(rm, await makeAndSignFSUWInputData(rm, { signer: other, ...input })))
         .to.be.revertedWithCustomError(uw, "UnauthorizedSigner")
         .withArgs(other, operationSelector);
-      const output = await uw.priceNewPolicy(rm, await makeAndSignFTUWInputData({ signer, ...input }));
+      const output = await uw.priceNewPolicy(rm, await makeAndSignFSUWInputData(rm, { signer, ...input }));
       expect(output.length).to.equal(6);
       expect(output[0]).to.equal(input.payout);
       expect(output[1]).to.equal(input.premium);
@@ -271,25 +279,31 @@ describe("FullSignedUW", () => {
     for (let i = 0; i < 5; i++) {
       const input = makeRandomPriceReplaceInput();
       // Send wrong input
-      await expect(uw.pricePolicyReplacement(ZeroAddress, makeFTUWReplacementInputData(input)))
+      await expect(uw.pricePolicyReplacement(ZeroAddress, makeFSUWReplacementInputData(rm, input)))
         .to.be.revertedWithCustomError(uw, "InvalidInputSize")
         .withArgs(
-          ethers.getBytes(makeFTUWReplacementInputData(input)).length,
-          ethers.getBytes(makeFTUWReplacementInputData(input)).length + SIGNATURE_SIZE
+          ethers.getBytes(makeFSUWReplacementInputData(rm, input)).length,
+          ethers.getBytes(makeFSUWReplacementInputData(rm, input)).length + SIGNATURE_SIZE
         );
       // Send correct input, but ZeroAddress as RM
       await expect(
-        uw.pricePolicyReplacement(ZeroAddress, await makeAndSignFTUWReplacementInputData({ signer, ...input }))
+        uw.pricePolicyReplacement(ZeroAddress, await makeAndSignFSUWReplacementInputData(ZeroAddress, { signer, ...input }))
       ).to.be.revertedWithoutReason();
+
+      // Send correct input, but RM mismatch
+      await expect(
+        uw.pricePolicyReplacement(rm, await makeAndSignFSUWReplacementInputData(ZeroAddress, { signer, ...input }))
+      ).to.be.revertedWithCustomError(uw, "SignatureRmMismatch");
+
       // Send correct input, rm but invalid signer
       await expect(
-        uw.pricePolicyReplacement(rm, await makeAndSignFTUWReplacementInputData({ signer: other, ...input }))
+        uw.pricePolicyReplacement(rm, await makeAndSignFSUWReplacementInputData(rm, { signer: other, ...input }))
       )
         .to.be.revertedWithCustomError(uw, "UnauthorizedSigner")
         .withArgs(other, operationSelector);
       const output = await uw.pricePolicyReplacement(
         rm,
-        await makeAndSignFTUWReplacementInputData({ signer, ...input })
+        await makeAndSignFSUWReplacementInputData(rm, { signer, ...input })
       );
       expect(output.length).to.equal(7);
       expect(output[0]).to.deep.equal(input.oldPolicy);
@@ -313,6 +327,14 @@ describe("FullSignedUW", () => {
 
     for (let i = 0; i < 5; i++) {
       const input = makeRandomPriceCancellationInput();
+
+      // Send correct input, but rm mismatch
+      await expect(
+        uw.pricePolicyCancellation(rm, await makeAndSignFTUWCancelInputData({ signer, ...input }))
+      ).to.be.revertedWithCustomError(uw, "SignatureRmMismatch");
+
+      input.policyToCancel[0] = makePolicyId(rm, input.policyToCancel[0]);
+
       // Send wrong input
       await expect(uw.pricePolicyCancellation(ZeroAddress, makeFTUWCancelInputData(input)))
         .to.be.revertedWithCustomError(uw, "InvalidInputSize")
@@ -324,6 +346,7 @@ describe("FullSignedUW", () => {
       await expect(
         uw.pricePolicyCancellation(ZeroAddress, await makeAndSignFTUWCancelInputData({ signer, ...input }))
       ).to.be.revertedWithoutReason();
+
       // Send correct input, rm but invalid signer
       await expect(uw.pricePolicyCancellation(rm, await makeAndSignFTUWCancelInputData({ signer: other, ...input })))
         .to.be.revertedWithCustomError(uw, "UnauthorizedSigner")
@@ -350,6 +373,7 @@ describe("FullSignedUW", () => {
 
     for (let i = 0; i < 5; i++) {
       const input = makeRandomPriceCancellationInput();
+      input.policyToCancel[0] = makePolicyId(rm, input.policyToCancel[0]);
       input.policyToCancel[10] = now - DAY;
       input.policyToCancel[11] = now + 9 * DAY;
       input.jrCocRefund = MaxUint256;
@@ -364,6 +388,7 @@ describe("FullSignedUW", () => {
 
     for (let i = 0; i < 10; i++) {
       const input = makeRandomPriceCancellationInput();
+      input.policyToCancel[0] = makePolicyId(rm, input.policyToCancel[0]);
       input.policyToCancel[10] = now - DAY;
       input.policyToCancel[11] = now + 9 * DAY;
       input.srCocRefund = MaxUint256;
