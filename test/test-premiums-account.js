@@ -94,4 +94,27 @@ describe("PremiumsAccount", () => {
     expect(await pa.surplus()).to.equal(_A(700));
     expect(await pa.investedInYV()).to.equal(0);
   });
+
+  it("Updates accounting before withdrawal of won premiums", async () => {
+    const { pa, currency, lp, yieldVault } = await helpers.loadFixture(setUpWithVault);
+    await pa.setYieldVault(yieldVault, false);
+
+    await currency.connect(lp).approve(pa, MaxUint256);
+
+    await pa.connect(lp).receiveGrant(_A(1000));
+    await pa.depositIntoYieldVault(_A(300))
+
+
+    // yield vault had losses
+    await yieldVault.discreteEarning(-_A(100));
+
+    // losses have not been recorded yet
+    expect(await pa.wonPurePremiums()).to.equal(_A(1000));
+
+    // withdrawing the won premiums records the losses first
+    await expect(pa.withdrawWonPremiums(MaxUint256, lp.address))
+      .to.emit(pa, "EarningsRecorded").withArgs(-_A(100))
+      .to.emit(currency, "Transfer").withArgs(pa, lp.address, _A(900));
+
+  });
 });
