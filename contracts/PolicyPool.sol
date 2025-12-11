@@ -601,7 +601,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     _requireCompActive(address(pa), ComponentKind.premiumsAccount);
 
     // Effects
-    policy.id = makePolicyId(rm, internalId);
+    policy.id = Policy.makePolicyId(address(rm), internalId);
     policy.start = uint40(block.timestamp);
     require(_policies[policy.id] == bytes32(0), PolicyAlreadyExists(policy.id));
     _policies[policy.id] = policy.hash();
@@ -640,7 +640,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     // Checks
     _validatePolicy(oldPolicy);
     IRiskModule rm = IRiskModule(_msgSender());
-    if (extractRiskModule(oldPolicy.id) != rm) revert OnlyRiskModuleAllowed();
+    if (Policy.extractRiskModule(oldPolicy.id) != address(rm)) revert OnlyRiskModuleAllowed();
     _requireCompActive(address(rm), ComponentKind.riskModule);
     IPremiumsAccount pa = rm.premiumsAccount();
     _requireCompActive(address(pa), ComponentKind.premiumsAccount);
@@ -660,7 +660,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     // payout, jrScr, srScr, expiration can change in any direction
 
     // Effects
-    newPolicy_.id = makePolicyId(rm, internalId);
+    newPolicy_.id = Policy.makePolicyId(address(rm), internalId);
     require(_policies[newPolicy_.id] == bytes32(0), PolicyAlreadyExists(newPolicy_.id));
     _policies[newPolicy_.id] = newPolicy_.hash();
     address policyHolder = ownerOf(oldPolicy.id);
@@ -703,7 +703,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     // Checks
     _validatePolicy(policyToCancel);
     IRiskModule rm = IRiskModule(_msgSender());
-    if (extractRiskModule(policyToCancel.id) != rm) revert OnlyRiskModuleAllowed();
+    if (Policy.extractRiskModule(policyToCancel.id) != address(rm)) revert OnlyRiskModuleAllowed();
     _requireCompActiveOrDeprecated(address(rm), ComponentKind.riskModule);
     IPremiumsAccount pa = rm.premiumsAccount();
     _requireCompActiveOrDeprecated(address(pa), ComponentKind.premiumsAccount);
@@ -736,24 +736,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
 
   function _validatePolicy(Policy.PolicyData memory policy) internal view {
     require(policy.id != 0 && policy.hash() == _policies[policy.id], PolicyNotFound(policy.id));
-  }
-
-  /**
-   * @notice Generates a policyId, combining the riskModule (first 20 bytes) with the internalId (last 12 bytes)
-   *
-   * @param rm The risk module
-   * @param internalId An identifier for the policy that is unique within a given risk module
-   * @return The policy id, that will be used as the tokenId for the minted policy NFT
-   */
-  function makePolicyId(IRiskModule rm, uint96 internalId) public pure returns (uint256) {
-    return (uint256(uint160(address(rm))) << 96) + internalId;
-  }
-
-  /**
-   * @notice Extracts the risk module address from a policyId (first 20 bytes)
-   */
-  function extractRiskModule(uint256 policyId) public pure returns (IRiskModule) {
-    return IRiskModule(address(uint160(policyId >> 96)));
   }
 
   /// @inheritdoc IPolicyPool
@@ -790,7 +772,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   function _resolvePolicy(Policy.PolicyData memory policy, uint256 payout, bool expired) internal {
     // Checks
     _validatePolicy(policy);
-    IRiskModule rm = extractRiskModule(policy.id);
+    IRiskModule rm = IRiskModule(Policy.extractRiskModule(policy.id));
     if (!expired && address(rm) != _msgSender()) revert OnlyRiskModuleAllowed();
     require(payout == 0 || policy.expiration > block.timestamp, PolicyAlreadyExpired(policy.id));
     _requireCompActiveOrDeprecated(address(rm), ComponentKind.riskModule);

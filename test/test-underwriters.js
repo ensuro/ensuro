@@ -92,9 +92,9 @@ function makeRandomPriceNewInput() {
   };
 }
 
-function makeRandomPolicy() {
+function makeRandomPolicy(rm = ZeroAddress) {
   return {
-    id: randint(100000000),
+    id: makePolicyId(rm, randint(100000000)),
     payout: randAmount(),
     jrScr: randAmount(),
     srScr: randAmount(),
@@ -125,9 +125,9 @@ function makeRandomPolicy() {
   };
 }
 
-function makeRandomPriceReplaceInput() {
+function makeRandomPriceReplaceInput(rm = ZeroAddress) {
   return {
-    oldPolicy: makeRandomPolicy().asParams(),
+    oldPolicy: makeRandomPolicy(rm).asParams(),
     ...makeRandomPriceNewInput(),
   };
 }
@@ -249,8 +249,9 @@ describe("FullSignedUW", () => {
       ).to.be.revertedWithoutReason();
 
       // Send correct input, but rm mismatch
-      await expect(uw.priceNewPolicy(rm, await makeAndSignFSUWInputData(ZeroAddress, { signer, ...input })))
-        .to.be.revertedWithCustomError(uw, "SignatureRmMismatch")
+      await expect(
+        uw.priceNewPolicy(rm, await makeAndSignFSUWInputData(ZeroAddress, { signer, ...input }))
+      ).to.be.revertedWithCustomError(uw, "SignatureRmMismatch");
 
       // Send correct input, rm but invalid signer
       await expect(uw.priceNewPolicy(rm, await makeAndSignFSUWInputData(rm, { signer: other, ...input })))
@@ -272,12 +273,13 @@ describe("FullSignedUW", () => {
 
     const FULL_REPLACE_POLICY_SIGNER = getAccessManagerRole("FULL_REPLACE_POLICY_SIGNER");
     const operationSelector = makeHashSelector("FULL_PRICE_REPLACE_POLICY");
+    const RANDOM_RM = "0xcA4793C93A94E7A70a4631b1CecE6546e76eb19e";
 
     await acMgr.setTargetFunctionRole(rm, [operationSelector], FULL_REPLACE_POLICY_SIGNER);
     await acMgr.grantRole(FULL_REPLACE_POLICY_SIGNER, signer, 0);
 
     for (let i = 0; i < 5; i++) {
-      const input = makeRandomPriceReplaceInput();
+      const input = makeRandomPriceReplaceInput(rm);
       // Send wrong input
       await expect(uw.pricePolicyReplacement(ZeroAddress, makeFSUWReplacementInputData(rm, input)))
         .to.be.revertedWithCustomError(uw, "InvalidInputSize")
@@ -287,12 +289,22 @@ describe("FullSignedUW", () => {
         );
       // Send correct input, but ZeroAddress as RM
       await expect(
-        uw.pricePolicyReplacement(ZeroAddress, await makeAndSignFSUWReplacementInputData(ZeroAddress, { signer, ...input }))
+        uw.pricePolicyReplacement(
+          ZeroAddress,
+          await makeAndSignFSUWReplacementInputData(ZeroAddress, { signer, ...input })
+        )
       ).to.be.revertedWithoutReason();
 
       // Send correct input, but RM mismatch
       await expect(
         uw.pricePolicyReplacement(rm, await makeAndSignFSUWReplacementInputData(ZeroAddress, { signer, ...input }))
+      ).to.be.revertedWithCustomError(uw, "SignatureRmMismatch");
+
+      const inputWrongReplace = makeRandomPriceReplaceInput(RANDOM_RM);
+
+      // Send correct rm in the newPolicy, but wrong RM in the oldPolicy
+      await expect(
+        uw.pricePolicyReplacement(rm, await makeAndSignFSUWReplacementInputData(rm, { signer, ...inputWrongReplace }))
       ).to.be.revertedWithCustomError(uw, "SignatureRmMismatch");
 
       // Send correct input, rm but invalid signer

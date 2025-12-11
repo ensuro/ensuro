@@ -96,8 +96,8 @@ contract FullSignedUW is IUnderwriter {
       inputData[0:NEW_POLICY_DATA_SIZE],
       (uint256, uint256, uint256, uint40, uint256, Policy.Params)
     );
-    require(address(uint160(policyId >> 96)) == rm, SignatureRmMismatch());
-    internalId = uint96(policyId % (2 ** 96));
+    require(Policy.extractRiskModule(policyId) == rm, SignatureRmMismatch());
+    internalId = Policy.extractInternalId(policyId);
   }
 
   /// @inheritdoc IUnderwriter
@@ -124,8 +124,11 @@ contract FullSignedUW is IUnderwriter {
       inputData[0:REPLACE_POLICY_DATA_SIZE],
       (Policy.PolicyData, uint256, uint256, uint256, uint40, uint256, Policy.Params)
     );
-    require(address(uint160(policyId >> 96)) == rm, SignatureRmMismatch());
-    internalId = uint96(policyId % (2 ** 96));
+    require(
+      Policy.extractRiskModule(policyId) == rm && Policy.extractRiskModule(oldPolicy.id) == rm,
+      SignatureRmMismatch()
+    );
+    internalId = Policy.extractInternalId(policyId);
   }
 
   /// @inheritdoc IUnderwriter
