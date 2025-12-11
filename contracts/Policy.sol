@@ -258,4 +258,25 @@ library Policy {
     require(retHash != bytes32(0), ZeroHash(policy));
     return retHash;
   }
+
+  /// @notice Extracts the risk module address from a policyId (first 20 bytes)
+  function extractRiskModule(uint256 policyId) internal pure returns (address) {
+    return address(uint160(policyId >> 96));
+  }
+
+  /// @notice Extracts the internalId from a policyId (last 96 bits)
+  function extractInternalId(uint256 policyId) internal pure returns (uint96) {
+    return uint96(policyId % (2 ** 96));
+  }
+
+  /**
+   * @notice Generates a policyId, combining the riskModule (first 20 bytes) with the internalId (last 12 bytes)
+   *
+   * @param rm The risk module
+   * @param internalId An identifier for the policy that is unique within a given risk module
+   * @return The policy id, that will be used as the tokenId for the minted policy NFT
+   */
+  function makePolicyId(address rm, uint96 internalId) internal pure returns (uint256) {
+    return (uint256(uint160(address(rm))) << 96) + internalId;
+  }
 }
