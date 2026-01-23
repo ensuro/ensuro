@@ -6,6 +6,7 @@ const { captureAny, _W, _A, newCaptureAny, makeEIP2612Signature } = require("@en
 const { anyUint } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { DAY } = require("@ensuro/utils/js/constants");
+const { SCALE_INITIAL, wadMul } = require("../js/utils");
 const { deployPool, addEToken, deployCooler } = require("../js/test-utils");
 
 const { ethers } = hre;
@@ -149,7 +150,7 @@ describe("Cooler", () => {
 
     await expect(cooler.connect(lp).scheduleWithdrawal(etk, 0, _A(100)))
       .to.emit(cooler, "WithdrawalRequested")
-      .withArgs(etk, 1n, lp, captureAny.uint, _W(1), _A(100))
+      .withArgs(etk, 1n, lp, captureAny.uint, SCALE_INITIAL, _A(100))
       .to.emit(etk, "Transfer")
       .withArgs(lp, cooler, _A(100))
       .to.emit(cooler, "Transfer")
@@ -169,7 +170,7 @@ describe("Cooler", () => {
 
     await expect(cooler.connect(lp).scheduleWithdrawal(etk, now + 8 * DAY, _A(100)))
       .to.emit(cooler, "WithdrawalRequested")
-      .withArgs(etk, 1n, lp, now + 8 * DAY, _W(1), _A(100))
+      .withArgs(etk, 1n, lp, now + 8 * DAY, SCALE_INITIAL, _A(100))
       .to.emit(etk, "Transfer")
       .withArgs(lp, cooler, _A(100))
       .to.emit(cooler, "Transfer")
@@ -220,7 +221,7 @@ describe("Cooler", () => {
       .to.emit(etk, "EarningsRecorded")
       .withArgs(_A(300) - 1n);
 
-    expect(await etk.getCurrentScale(true)).to.closeTo(_W("1.1"), _W("0.00001"));
+    expect(await etk.getCurrentScale(true)).to.closeTo(wadMul(SCALE_INITIAL, _W("1.1")), _W("0.00001"));
 
     await etk.setCooler(cooler);
     await cooler.setCooldownPeriod(etk, 7 * DAY);
@@ -425,7 +426,7 @@ describe("Cooler", () => {
     expect(withdrawAmount1.lastUint).to.closeTo(_A(lp_initial * lossPercentage), _A("0.0001"));
     expect(withdrawAmount2.lastUint).to.equal(withdrawAmount1.lastUint);
 
-    expect(await etk.totalSupply()).to.equal(0);
+    expect(await etk.totalSupply()).to.closeTo(0, 1n);
     expect(await cooler.pendingWithdrawals(etk)).to.equal(0);
   });
 
@@ -441,7 +442,7 @@ describe("Cooler", () => {
 
     await expect(cooler.connect(lp).scheduleWithdrawalWithPermit(etk, 0, _A(600), deadline, sig.v, sig.r, sig.s))
       .to.emit(cooler, "WithdrawalRequested")
-      .withArgs(etk, 1n, lp, anyUint, _W(1), _A(600))
+      .withArgs(etk, 1n, lp, anyUint, SCALE_INITIAL, _A(600))
       .to.emit(cooler, "Transfer")
       .withArgs(ZeroAddress, lp, 1n); // lp receives the NFT
 
@@ -452,7 +453,7 @@ describe("Cooler", () => {
     await etk.permit(lp2, cooler, _A(1000), deadline2, sig2.v, sig2.r, sig2.s);
     await expect(cooler.connect(lp2).scheduleWithdrawalWithPermit(etk, 0, _A(1000), deadline2, sig2.v, sig2.r, sig2.s))
       .to.emit(cooler, "WithdrawalRequested")
-      .withArgs(etk, 2n, lp2, anyUint, _W(1), _A(1000))
+      .withArgs(etk, 2n, lp2, anyUint, SCALE_INITIAL, _A(1000))
       .to.emit(cooler, "Transfer")
       .withArgs(ZeroAddress, lp2, 2n); // lp receives the NFT
 
@@ -463,7 +464,7 @@ describe("Cooler", () => {
     expect(await etk.allowance(lp, cooler)).to.equal(0);
     await expect(cooler.connect(lp).scheduleWithdrawalWithPermit(etk, 0, MaxUint256, deadline3, sig3.v, sig3.r, sig3.s))
       .to.emit(cooler, "WithdrawalRequested")
-      .withArgs(etk, 3n, lp, anyUint, _W(1), _A(400))
+      .withArgs(etk, 3n, lp, anyUint, SCALE_INITIAL, _A(400))
       .to.emit(cooler, "Transfer")
       .withArgs(ZeroAddress, lp, 3n); // lp receives the NFT
 

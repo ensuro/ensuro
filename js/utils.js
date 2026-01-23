@@ -4,7 +4,18 @@ const { DAY } = require("@ensuro/utils/js/constants");
 const { amountFunction, getAddress, _W } = require("@ensuro/utils/js/utils");
 const { WhitelistStatus } = require("./enums");
 
+// Initial scale used by eTokens
+const SCALE_INITIAL = 10n ** 14n;
+
 const abiCoder = ethers.AbiCoder.defaultAbiCoder();
+
+function wadMul(a, b) {
+  return (a * b) / _W(1);
+}
+
+function wadDiv(a, b) {
+  return (a * _W(1)) / b;
+}
 
 /**
  * Create a policy id by combining the riskmodule address and the internal id.
@@ -253,7 +264,6 @@ function makeFSUWInputData(rm, { payout, premium, lossProb, expiration, internal
   );
 }
 
-
 async function makeAndSignFSUWInputData(rm, { payout, premium, lossProb, expiration, internalId, params, signer }) {
   const input = makeFSUWInputData(rm, { payout, premium, lossProb, expiration, internalId, params });
   return ethers.concat([input, await signer.signMessage(ethers.getBytes(input))]);
@@ -289,17 +299,19 @@ function makeFSUWReplacementInputData(rm, { oldPolicy, payout, premium, lossProb
   );
 }
 
-async function makeAndSignFSUWReplacementInputData(rm, {
-  oldPolicy,
-  payout,
-  premium,
-  lossProb,
-  expiration,
-  internalId,
-  params,
-  signer,
-}) {
-  const input = makeFSUWReplacementInputData(rm, { oldPolicy, payout, premium, lossProb, expiration, internalId, params });
+async function makeAndSignFSUWReplacementInputData(
+  rm,
+  { oldPolicy, payout, premium, lossProb, expiration, internalId, params, signer }
+) {
+  const input = makeFSUWReplacementInputData(rm, {
+    oldPolicy,
+    payout,
+    premium,
+    lossProb,
+    expiration,
+    internalId,
+    params,
+  });
   return ethers.concat([input, await signer.signMessage(ethers.getBytes(input))]);
 }
 
@@ -350,6 +362,9 @@ function encodePolicy(policy) {
 }
 
 module.exports = {
+  SCALE_INITIAL,
+  wadMul,
+  wadDiv,
   defaultPolicyParams,
   defaultPolicyParamsWithBucket,
   defaultPolicyParamsWithParams,

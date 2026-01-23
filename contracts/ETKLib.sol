@@ -18,8 +18,8 @@ library ETKLib {
   type Scale is uint96;
 
   uint256 private constant SECONDS_PER_YEAR = 365 days;
-  uint256 private constant MIN_SCALE = 1e8; // 0.0000000001 == 1e-10 in wad
-  Scale private constant SCALE_ONE = Scale.wrap(1e18);
+  Scale private constant SCALE_INITIAL = Scale.wrap(1e14);
+  uint256 private constant MIN_SCALE = 1e6; // 0.0000000001 == 1e-12 in wad = SCALE_INITIAL / 1e8
   uint256 internal constant WAD = 1e18;
   int256 internal constant SWAD = 1e18;
 
@@ -183,7 +183,7 @@ library ETKLib {
   }
 
   function init(ScaledAmount storage scaledAmount) internal {
-    scaledAmount.scale = SCALE_ONE;
+    scaledAmount.scale = SCALE_INITIAL;
     scaledAmount.amount = 0;
     scaledAmount.lastUpdate = uint32(block.timestamp);
   }
@@ -244,7 +244,7 @@ library ETKLib {
     }
     if (newAmount == 0) {
       // Reset scale if amount == 0
-      scale = SCALE_ONE;
+      scale = SCALE_INITIAL;
     }
     return (
       ScaledAmount({scale: scale, amount: newAmount.toUint128(), lastUpdate: uint32(block.timestamp)}),

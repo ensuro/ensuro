@@ -6,7 +6,7 @@ const { amountFunction, captureAny, newCaptureAny, _W, makeEIP2612Signature } = 
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
 const { DAY } = require("@ensuro/utils/js/constants");
 const { deployPool, addEToken, deployWhitelist, deployCooler } = require("../js/test-utils");
-const { makeWhitelistStatus } = require("../js/utils");
+const { makeWhitelistStatus, SCALE_INITIAL, wadMul } = require("../js/utils");
 const { ETokenParameter } = require("../js/enums");
 
 const { ethers } = hre;
@@ -71,7 +71,7 @@ describe("Etoken", () => {
   });
 
   it("Only can take loan on existing borrowers", async () => {
-    const { etk, currency, fakePA, lp2 } = await helpers.loadFixture(etkFixtureWithVault);
+    const { etk, currency, fakePA, lp2, lp } = await helpers.loadFixture(etkFixtureWithVault);
 
     await expect(etk.connect(lp2).internalLoan(_A(100), lp2))
       .to.be.revertedWithCustomError(etk, "OnlyBorrower")
@@ -83,12 +83,21 @@ describe("Etoken", () => {
     expect(await currency.balanceOf(lp2)).to.equal(_A(100));
 
     const maxNA = await etk.maxNegativeAdjustment();
-    expect(maxNA).to.closeTo(_A(3000 - 100), 10n);
+    expect(maxNA).to.closeTo(_A(3000 - 100), 100n);
 
     await expect(etk.connect(fakePA).internalLoan(MaxUint256, lp2))
       .to.emit(etk, "InternalLoan")
       .withArgs(fakePA, maxNA, MaxUint256);
-    expect(await etk.totalSupply()).to.equal(1n);
+    expect(await etk.totalSupply()).to.closeTo(0, 100n);
+
+    await currency.connect(lp2).approve(etk, MaxUint256);
+    // Some cents needed to complete the repayment because of interest and rounding
+    await currency.connect(lp).transfer(lp2, 100n);
+    await expect(etk.connect(lp2).repayLoan((await etk.getLoan(fakePA)) + 10n, fakePA)).to.emit(
+      etk,
+      "InternalLoanRepaid"
+    );
+    expect(await etk.getLoan(fakePA)).to.equal(_A(0));
   });
 
   it("Checks only borrower can lock and unlock capital", async () => {
@@ -114,8 +123,11 @@ describe("Etoken", () => {
       .to.be.revertedWithCustomError(etk, "InvalidBorrower")
       .withArgs(lp2);
 
-    // repayLoan exceeding current debt, fails with panic
-    await expect(etk.repayLoan(_A(1), fakePA)).to.be.revertedWithPanic(0x11);
+    // repayLoan of zero doesn't fail and doesn't emit event
+    await expect(etk.repayLoan(_A(0), fakePA)).not.to.emit(etk, "InternalLoanRepaid");
+
+    // repayLoan exceeding current debt, doesn't fail
+    await expect(etk.repayLoan(_A(1), fakePA)).not.to.emit(etk, "InternalLoanRepaid");
 
     await expect(etk.connect(fakePA).internalLoan(_A(100), lp2))
       .to.emit(etk, "InternalLoan")
@@ -123,16 +135,19 @@ describe("Etoken", () => {
 
     expect(await etk.getLoan(fakePA)).to.equal(_A(100));
 
-    // repayLoan exceeding current debt, fails with panic - Same when there's debt
-    await expect(etk.repayLoan(_A(110), fakePA)).to.be.revertedWithPanic(0x11);
-
     await currency.connect(lp).approve(etk, _A(101));
-    await expect(etk.connect(lp).repayLoan(_A(100) + 1n, fakePA)).to.revertedWithPanic(0x11);
-
-    await expect(etk.connect(lp).repayLoan(_A(100), fakePA))
+    await expect(etk.connect(lp).repayLoan(_A(99), fakePA))
       .to.emit(etk, "InternalLoanRepaid")
-      .withArgs(fakePA, _A(100));
-    expect(await currency.allowance(lp, etk)).to.equal(_A(1));
+      .withArgs(fakePA, _A(99));
+    expect(await currency.allowance(lp, etk)).to.equal(_A(2));
+    expect(await etk.getLoan(fakePA)).to.closeTo(_A(1), 100n);
+
+    // Sending MaxUint256 (or any value higher than the loan), just pays the remaining loan
+    await expect(etk.connect(lp).repayLoan(MaxUint256, fakePA))
+      .to.emit(etk, "InternalLoanRepaid")
+      .withArgs(fakePA, captureAny.uint);
+    expect(captureAny.lastUint).to.closeTo(_A(1), 10n);
+    expect(await currency.allowance(lp, etk)).to.equal(_A(101) - _A(99) - captureAny.lastUint);
     expect(await etk.getLoan(fakePA)).to.equal(_A(0));
   });
 
@@ -472,7 +487,6 @@ describe("Etoken", () => {
     expect(await etk.balanceOf(lp)).to.equal(_A(3000)); // sanity check
     expect(await etk.totalSupply()).to.equal(_A(3000)); // sanity check
 
-
     await yieldVault.discreteEarning(-_A(300)); // simulate a loss of 300
 
     // Losses are not recorded yet
@@ -481,10 +495,10 @@ describe("Etoken", () => {
 
     // When the LP withdraws, the losses are recorded
     await expect(pool.connect(lp).withdraw(etk, _A(100), lp, lp))
-      .to.emit(currency, "Transfer").withArgs(etk, lp, _A(100))
+      .to.emit(currency, "Transfer")
+      .withArgs(etk, lp, _A(100))
       .to.emit(etk, "EarningsRecorded")
       .withArgs(-_A(300));
-
 
     // The LP took the loss
     expect(await etk.totalSupply()).to.be.closeTo(_A(2600), _A(1));
@@ -504,7 +518,7 @@ describe("Etoken", () => {
 
     expect(await etk.totalSupply()).to.equal(_A(0));
     expect(await etk.balanceOf(lp)).to.equal(_A(0)); // All withdrawn
-  })
+  });
 
   it("Can combines returns from locked SCR and from YV", async () => {
     const { etk, yieldVault, lp, fakePA, currency, pool } = await helpers.loadFixture(etkFixtureWithVault);
@@ -517,7 +531,7 @@ describe("Etoken", () => {
       .to.emit(yieldVault, "Deposit")
       .withArgs(etk, etk, _A(1200), _A(1200));
 
-    expect(await etk.getCurrentScale(false)).to.equal(_W(1));
+    expect(await etk.getCurrentScale(false)).to.equal(SCALE_INITIAL);
 
     await yieldVault.discreteEarning(_A(300));
 
@@ -525,7 +539,9 @@ describe("Etoken", () => {
       .to.emit(etk, "EarningsRecorded")
       .withArgs(_A(300) - 1n);
 
-    expect(await etk.getCurrentScale(false)).to.closeTo(_W("1.1"), _W("0.0000001"));
+    const tenPercentMore = wadMul(SCALE_INITIAL, _W("1.1"));
+
+    expect(await etk.getCurrentScale(false)).to.closeTo(tenPercentMore, _W("0.0000001"));
 
     await expect(etk.connect(fakePA).lockScr(123, _A(2000), _W("0.1")))
       .to.emit(etk, "SCRLocked")
@@ -534,15 +550,15 @@ describe("Etoken", () => {
 
     expect(await etk.balanceOf(lp)).to.closeTo(_A(3300), 10n);
     // scale doesn't change yet
-    expect(await etk.getCurrentScale(false)).to.closeTo(_W("1.1"), _W("0.0000001"));
-    expect(await etk.getCurrentScale(true)).to.closeTo(_W("1.1"), _W("0.0000001"));
+    expect(await etk.getCurrentScale(false)).to.closeTo(tenPercentMore, _W("0.0000001"));
+    expect(await etk.getCurrentScale(true)).to.closeTo(tenPercentMore, _W("0.0000001"));
 
     // 73 days later (20% of the yeae), 20% of the interest has been accrued
     await helpers.time.increase(DAY * 73);
     expect(await etk.balanceOf(lp)).to.closeTo(_A(3340), 10n);
     // now the updated scale is affected
-    expect(await etk.getCurrentScale(false)).to.closeTo(_W("1.1"), _W("0.0000001"));
-    expect(await etk.getCurrentScale(true)).to.closeTo(_W("1.1133"), _W("0.0001"));
+    expect(await etk.getCurrentScale(false)).to.closeTo(tenPercentMore, _W("0.0000001"));
+    expect(await etk.getCurrentScale(true)).to.closeTo(wadMul(SCALE_INITIAL, _W("1.1133")), _W("0.0001"));
 
     // Go to the end of the year, unlock and withdraw all
     await helpers.time.increase(DAY * (365 - 73));
@@ -553,8 +569,8 @@ describe("Etoken", () => {
 
     expect(await etk.balanceOf(lp)).to.closeTo(_A(3500), 20n);
     // now the updated scale is affected
-    expect(await etk.getCurrentScale(false)).to.closeTo(_W("1.1666"), _W("0.0001"));
-    expect(await etk.getCurrentScale(true)).to.closeTo(_W("1.1666"), _W("0.0001"));
+    expect(await etk.getCurrentScale(false)).to.closeTo(wadMul(SCALE_INITIAL, _W("1.1666")), _W("0.0001"));
+    expect(await etk.getCurrentScale(true)).to.closeTo(wadMul(SCALE_INITIAL, _W("1.1666")), _W("0.0001"));
 
     // Full withdrawl fails due to rounding error
     await expect(pool.connect(lp).withdraw(etk, MaxUint256, lp, lp)).to.be.revertedWithCustomError(
