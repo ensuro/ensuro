@@ -132,10 +132,6 @@ module.exports = {
       "missing-receive": "off",
       "unused-param": "off",
     },
-    "@ensuro/access-managed-proxy/contracts/amps/AccessManagedProxyS*.sol": {
-      "missing-receive": "off",
-      "unused-param": "off",
-    },
     "contracts/mocks/PolicyPoolMock.sol": {
       "missing-receive": "off",
     },
