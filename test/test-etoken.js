@@ -53,6 +53,63 @@ describe("Etoken", () => {
       .withArgs(fakePA);
   });
 
+  it("Checks that when the scale increases 10000x some invariants break", async () => {
+    const { etk, yieldVault, lp, lp2, pool, fakePA, currency } = await helpers.loadFixture(etkFixtureWithVault);
+
+    await etk.setYieldVault(yieldVault, false);
+
+    // Withdraw all except 1 unit
+    await pool.connect(lp).withdraw(etk, _A(3000) - 1n, lp2, lp);
+    expect(await etk.totalSupply()).to.equal(1n);
+    expect(await etk.scaledTotalSupply()).to.equal(10000n);
+    expect(await etk.getCurrentScale(true)).to.equal(SCALE_INITIAL);
+
+    // Generate artificial yield
+    await etk.depositIntoYieldVault(MaxUint256);
+    await yieldVault.discreteEarning(_A(10) - 1n);
+    await expect(etk.recordEarnings())
+      .to.emit(etk, "EarningsRecorded")
+      .withArgs(_A(5) - 1n); // Only half of the earnings, because yieldVault has a virtual share
+
+    expect(await etk.totalSupply()).to.equal(_A(5));
+    expect(await etk.scaledTotalSupply()).to.equal(10000n);
+    expect(await etk.getCurrentScale(true)).to.equal(SCALE_INITIAL * 5000000n);
+    expect(await etk.getCurrentScale(true)).to.gt(_W(1)); // Higher than 1 wad
+    expect(await etk.getCurrentScale(true)).to.equal(_W(500)); // Higher than 1 wad
+
+    await etk.setYieldVault(ZeroAddress, false); // Disconnect the yield vault now the profits are recorded
+
+    // Withdraw all except 1 unit
+    await pool.connect(lp).withdraw(etk, _A(5) - 500n, lp2, lp);
+    expect(await etk.totalSupply()).to.equal(500n);
+    expect(await etk.scaledTotalSupply()).to.equal(1n);
+    expect(await etk.balanceOf(lp)).to.equal(500n);
+
+    // Known "bug". If scale increases from SCALE_INITIAL > 10000x, then transfers more than allowed
+    await etk.connect(lp).approve(fakePA, 100n);
+    expect(await etk.allowance(lp, fakePA)).to.equal(100n);
+    await etk.connect(fakePA).transferFrom(lp, lp2, 100n);
+    expect(await etk.totalSupply()).to.equal(500n);
+    expect(await etk.scaledTotalSupply()).to.equal(1n);
+    expect(await etk.balanceOf(lp)).to.equal(0);
+    expect(await etk.balanceOf(lp2)).to.equal(500n);
+    expect(await etk.allowance(lp, fakePA)).to.equal(0n);
+
+    // Deposits of less than 1 unit of scaledAmount go to nowhere
+    await currency.connect(lp2).approve(pool, MaxUint256);
+    await pool.connect(lp2).deposit(etk, 50n, lp2);
+    expect(await etk.balanceOf(lp2)).to.equal(500n);
+
+    await expect(pool.connect(lp2).withdraw(etk, 550n, lp2, lp2))
+      .to.be.revertedWithCustomError(etk, "ExceedsMaxWithdraw")
+      .withArgs(550n, 500n);
+    await pool.connect(lp2).withdraw(etk, 500n, lp2, lp2);
+    expect(await etk.totalSupply()).to.equal(0n);
+    expect(await etk.scaledTotalSupply()).to.equal(0n);
+    expect(await etk.balanceOf(lp2)).to.equal(0n);
+    expect(await etk.getCurrentScale(true)).to.equal(SCALE_INITIAL); // When totalSupply goes to zero, scale resets
+  });
+
   it("Only allows PolicyPool to remove borrowers", async () => {
     const { etk, lp } = await helpers.loadFixture(etokenFixture);
 

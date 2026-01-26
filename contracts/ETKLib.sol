@@ -235,13 +235,7 @@ library ETKLib {
   ) internal view returns (ScaledAmount memory newScaledAmount, uint256 scaledSub) {
     scaledSub = scale.toScaledCeil(amount);
     uint256 oldAmount = uint256(scaledAmount.amount);
-    (bool success, uint256 newAmount) = Math.trySub(oldAmount, scaledSub);
-    if (!success) {
-      // The operation can fail if scaledSub was rounded up and `scaledSub - 1 = scaledAmount.amount`
-      // try again using toScaled to floor
-      scaledSub = scale.toScaled(amount);
-      newAmount = oldAmount - scaledSub; // If it was a different error, it will fail
-    }
+    uint256 newAmount = oldAmount - scaledSub;
     if (newAmount == 0) {
       // Reset scale if amount == 0
       scale = SCALE_INITIAL;
