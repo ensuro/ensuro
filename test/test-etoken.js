@@ -39,6 +39,14 @@ describe("Etoken", () => {
     expect(await etk.fundsAvailable()).to.equal(_A(0));
   });
 
+  it("Checks utilizationRate is zero when totalSupply = 0", async () => {
+    const { etk, pool, lp } = await helpers.loadFixture(etokenFixture);
+    await pool.connect(lp).withdraw(etk, _A(3000), lp, lp);
+
+    expect(await etk.totalSupply()).to.equal(_A(0));
+    expect(await etk.utilizationRate()).to.equal(_A(0));
+  });
+
   it("Only allows PolicyPool to add new borrowers", async () => {
     const { etk, lp } = await helpers.loadFixture(etokenFixture);
 
@@ -472,7 +480,6 @@ describe("Etoken", () => {
     expect(await etk.balanceOf(lp)).to.equal(_A(3000)); // sanity check
     expect(await etk.totalSupply()).to.equal(_A(3000)); // sanity check
 
-
     await yieldVault.discreteEarning(-_A(300)); // simulate a loss of 300
 
     // Losses are not recorded yet
@@ -481,10 +488,10 @@ describe("Etoken", () => {
 
     // When the LP withdraws, the losses are recorded
     await expect(pool.connect(lp).withdraw(etk, _A(100), lp, lp))
-      .to.emit(currency, "Transfer").withArgs(etk, lp, _A(100))
+      .to.emit(currency, "Transfer")
+      .withArgs(etk, lp, _A(100))
       .to.emit(etk, "EarningsRecorded")
       .withArgs(-_A(300));
-
 
     // The LP took the loss
     expect(await etk.totalSupply()).to.be.closeTo(_A(2600), _A(1));
@@ -504,7 +511,7 @@ describe("Etoken", () => {
 
     expect(await etk.totalSupply()).to.equal(_A(0));
     expect(await etk.balanceOf(lp)).to.equal(_A(0)); // All withdrawn
-  })
+  });
 
   it("Can combines returns from locked SCR and from YV", async () => {
     const { etk, yieldVault, lp, fakePA, currency, pool } = await helpers.loadFixture(etkFixtureWithVault);
