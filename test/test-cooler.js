@@ -426,7 +426,12 @@ describe("Cooler", () => {
     expect(withdrawAmount1.lastUint).to.closeTo(_A(lp_initial * lossPercentage), _A("0.0001"));
     expect(withdrawAmount2.lastUint).to.equal(withdrawAmount1.lastUint);
 
-    expect(await etk.totalSupply()).to.closeTo(0, 1n);
+    expect(await etk.totalSupply()).to.equal(1n);
+    // Why 1n instead of 0? "Known issue", some left-over scaled units accumulated in the cooler on each withdrawal
+    expect(await etk.scaledTotalSupply()).to.equal(
+      (await etk.scaledBalanceOf(lp)) + (await etk.scaledBalanceOf(lp2)) + (await etk.scaledBalanceOf(cooler))
+    );
+    expect(await etk.balanceOf(cooler)).to.equal(1n);
     expect(await cooler.pendingWithdrawals(etk)).to.equal(0);
   });
 
