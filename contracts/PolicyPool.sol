@@ -135,11 +135,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   mapping(IRiskModule => Exposure) internal _exposureByRm;
 
   /**
-   * @notice Constructor error when address(0) is sent as `access()`
-   */
-  error NoZeroAccess();
-
-  /**
    * @notice Constructor error when address(0) is sent as `currency()`
    */
   error NoZeroCurrency();
