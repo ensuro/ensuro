@@ -596,9 +596,15 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
 
   function repayLoan(uint256 amount, address onBehalfOf) external override {
     // Anyone can call this method, since it has to pay
+    uint256 currentLoan = getLoan(onBehalfOf);
     ETKLib.ScaledAmount storage loan = _loans[onBehalfOf];
-    require(loan.lastUpdate != 0, InvalidBorrower(onBehalfOf));
-    (_loans[onBehalfOf], ) = loan.sub(amount, internalLoanInterestRate());
+    if (currentLoan <= amount) {
+      amount = currentLoan;
+      if (currentLoan != 0) loan.init(); // Just resets the loan to zero
+    } else {
+      (_loans[onBehalfOf], ) = loan.sub(amount, internalLoanInterestRate());
+    }
+    if (amount == 0) return; // I accept amount = 0 to simplify caller's code, but I don't do anything in that case
     _discreteChange(int256(amount));
     emit InternalLoanRepaid(onBehalfOf, amount);
     // Interaction at the end for security reasons

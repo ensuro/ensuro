@@ -399,7 +399,8 @@ class ScaledAmount(Model):
 
 
 class EToken(ReserveMixin, ERC20Token):
-    MIN_SCALE = _W("0.0000000001")  # 1e-10
+    MIN_SCALE = _W("0.000001")  # 1e-12
+
     policy_pool = ContractProxyField()
     yield_vault = ContractProxyField(default=None, allow_none=True)
     scale_factor = WadField(default=_W(1), validation_hook=non_negative)

@@ -2,7 +2,6 @@
 
 pragma solidity ^0.8.28;
 
-import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 /**
@@ -18,8 +17,8 @@ library ETKLib {
   type Scale is uint96;
 
   uint256 private constant SECONDS_PER_YEAR = 365 days;
-  uint256 private constant MIN_SCALE = 1e8; // 0.0000000001 == 1e-10 in wad
-  Scale private constant SCALE_ONE = Scale.wrap(1e18);
+  Scale private constant SCALE_INITIAL = Scale.wrap(1e14);
+  uint256 private constant MIN_SCALE = 1e6; // 0.0000000001 == 1e-12 in wad = SCALE_INITIAL / 1e8
   uint256 internal constant WAD = 1e18;
   int256 internal constant SWAD = 1e18;
 
@@ -183,7 +182,7 @@ library ETKLib {
   }
 
   function init(ScaledAmount storage scaledAmount) internal {
-    scaledAmount.scale = SCALE_ONE;
+    scaledAmount.scale = SCALE_INITIAL;
     scaledAmount.amount = 0;
     scaledAmount.lastUpdate = uint32(block.timestamp);
   }
@@ -235,16 +234,10 @@ library ETKLib {
   ) internal view returns (ScaledAmount memory newScaledAmount, uint256 scaledSub) {
     scaledSub = scale.toScaledCeil(amount);
     uint256 oldAmount = uint256(scaledAmount.amount);
-    (bool success, uint256 newAmount) = Math.trySub(oldAmount, scaledSub);
-    if (!success) {
-      // The operation can fail if scaledSub was rounded up and `scaledSub - 1 = scaledAmount.amount`
-      // try again using toScaled to floor
-      scaledSub = scale.toScaled(amount);
-      newAmount = oldAmount - scaledSub; // If it was a different error, it will fail
-    }
+    uint256 newAmount = oldAmount - scaledSub;
     if (newAmount == 0) {
       // Reset scale if amount == 0
-      scale = SCALE_ONE;
+      scale = SCALE_INITIAL;
     }
     return (
       ScaledAmount({scale: scale, amount: newAmount.toUint128(), lastUpdate: uint32(block.timestamp)}),
