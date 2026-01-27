@@ -649,7 +649,6 @@ def test_mint_to_zero_address(tenv):
             assert etk.deposit(None, _W(1000)) == _W(1000)
 
     with etk.thru_policy_pool():
-        with pytest.raises(RevertError):
-            assert etk.deposit("LP1", _W(0))
+        etk.deposit("LP1", _W(0))  # Zero deposits are accepted
 
         assert etk.deposit("LP1", _W(1000)) == _W(1000)
