@@ -5,6 +5,7 @@ const WhitelistStatus = {
 };
 
 const ComponentKind = {
+  unknown: 0,
   eToken: 1,
   riskModule: 2,
   premiumsAccount: 3,
