@@ -409,10 +409,7 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
   /// @inheritdoc IEToken
   function tokenInterestRate() public view override returns (uint256) {
     uint256 ts = totalSupply();
-    if (ts == 0) return 0;
-    else {
-      return uint256(_scr.interestRate).mulDiv(_scr.scr, ts);
-    }
+    return ts == 0 ? 0 : uint256(_scr.interestRate).mulDiv(_scr.scr, ts);
   }
 
   /**
@@ -444,7 +441,8 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
    * @dev Returns the percentage of the total supply that is used as SCR (solvency capital backing risks)
    */
   function utilizationRate() public view returns (uint256) {
-    return _scr.scrAmount().mulDiv(WAD, this.totalSupply());
+    uint256 ts = totalSupply();
+    return ts == 0 ? 0 : _scr.scrAmount().mulDiv(WAD, ts);
   }
 
   function lockScr(uint256 policyId, uint256 scrAmount, uint256 policyInterestRate) external override onlyBorrower {
@@ -509,9 +507,8 @@ contract EToken is Reserve, ERC20PermitUpgradeable, IEToken {
   /// @inheritdoc IEToken
   function totalWithdrawable() public view virtual override returns (uint256) {
     uint256 locked = _scr.scrAmount().mulDiv(liquidityRequirement(), WAD);
-    uint256 totalSupply_ = totalSupply();
-    if (totalSupply_ >= locked) return totalSupply_ - locked;
-    else return 0;
+    uint256 ts = totalSupply();
+    return (ts >= locked) ? ts - locked : 0;
   }
 
   function withdraw(

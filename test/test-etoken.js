@@ -39,6 +39,28 @@ describe("Etoken", () => {
     expect(await etk.fundsAvailable()).to.equal(_A(0));
   });
 
+  it("Checks utilizationRate is zero when totalSupply = 0", async () => {
+    const { etk, pool, lp } = await helpers.loadFixture(etokenFixture);
+    await pool.connect(lp).withdraw(etk, _A(3000), lp, lp);
+
+    expect(await etk.totalSupply()).to.equal(_A(0));
+    expect(await etk.utilizationRate()).to.equal(_A(0));
+  });
+
+  /**
+   * Even when both Grok and DeepSeek say that typically zero deposits and transfers are rejected by other
+   * protocols, the fact is OZ's ERC4626 and Morpho metavaults accept them, so we will accept it too
+   */
+  it("Checks zero amount deposits are ACCEPTED", async () => {
+    const { etk, pool, lp } = await helpers.loadFixture(etokenFixture);
+    await pool.connect(lp).deposit(etk, _A(0), lp);
+  });
+
+  it("Checks zero amount transfers are ACCEPTED", async () => {
+    const { etk, lp, lp2 } = await helpers.loadFixture(etokenFixture);
+    await etk.connect(lp).transfer(lp2, _A(0));
+  });
+
   it("Only allows PolicyPool to add new borrowers", async () => {
     const { etk, lp } = await helpers.loadFixture(etokenFixture);
 
