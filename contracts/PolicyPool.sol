@@ -442,6 +442,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     if (component.policyPool() != this) revert ComponentNotLinkedToThisPool();
 
     if (
+      (kind == ComponentKind.unknown) ||
       (kind == ComponentKind.eToken && !component.supportsInterface(type(IEToken).interfaceId)) ||
       (kind == ComponentKind.premiumsAccount && !component.supportsInterface(type(IPremiumsAccount).interfaceId)) ||
       (kind == ComponentKind.riskModule && !component.supportsInterface(type(IRiskModule).interfaceId))
