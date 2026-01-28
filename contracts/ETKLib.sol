@@ -306,6 +306,7 @@ library ETKLib {
     // Adds to the discrete change what was earned from SCR returns
     amount += int256(earnings(scr, scaledAmount.lastUpdate));
     Scale newScale = scaledAmount.scale.add(_mulDiv(amount, SWAD, int256(uint256(scaledAmount.amount))));
+    if (Scale.unwrap(newScale) < MIN_SCALE) revert ScaleTooSmall(Scale.unwrap(newScale));
     return ScaledAmount({amount: scaledAmount.amount, scale: newScale, lastUpdate: uint32(block.timestamp)});
   }
 

@@ -110,6 +110,28 @@ describe("Etoken", () => {
     expect(await etk.getCurrentScale(true)).to.equal(SCALE_INITIAL); // When totalSupply goes to zero, scale resets
   });
 
+  it("Checks that losses in yieldVault can't leave the scale under MIN_SCALE", async () => {
+    const { etk, yieldVault } = await helpers.loadFixture(etkFixtureWithVault);
+
+    expect(await etk.maxNegativeAdjustment()).to.equal(_A(3000) - 30n);
+
+    await etk.setYieldVault(yieldVault, false);
+    await etk.depositIntoYieldVault(MaxUint256);
+    await yieldVault.discreteEarning(-_A(2970)); // Initial liquidity is 3000, loss to 1% of the value
+
+    // 99% loss is OK
+    await expect(etk.recordEarnings()).to.emit(etk, "EarningsRecorded").withArgs(_A(-2970));
+    expect(await etk.getCurrentScale(true)).to.equal(SCALE_INITIAL / 100n);
+
+    // 99.999% loss is OK too
+    await yieldVault.discreteEarning(-_A("30") + _A("0.03"));
+    await expect(etk.recordEarnings()).to.emit(etk, "EarningsRecorded").withArgs(_A("-29.97"));
+
+    // 99.9999999% loss isn't acceptable
+    await yieldVault.discreteEarning(-30000n + 3n);
+    await expect(etk.recordEarnings()).to.be.revertedWithCustomError(etk, "ScaleTooSmall").withArgs(100000n);
+  });
+
   it("Only allows PolicyPool to remove borrowers", async () => {
     const { etk, lp } = await helpers.loadFixture(etokenFixture);
 
