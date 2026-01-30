@@ -61,13 +61,14 @@ async function createRiskModule(
 async function addRiskModule(
   pool,
   premiumsAccount,
-  { underwriter, exposureLimit, wallet, extraArgs, extraConstructorArgs }
+  { underwriter, exposureLimit, wallet, extraArgs, extraConstructorArgs, disableAC }
 ) {
   const rm = await createRiskModule(pool, premiumsAccount, {
     underwriter,
     wallet,
     extraArgs,
     extraConstructorArgs,
+    disableAC,
   });
 
   await pool.addComponent(rm, ComponentKind.riskModule);
@@ -112,7 +113,7 @@ async function createEToken(
 
 async function addEToken(
   pool,
-  { etkName, etkSymbol, maxUtilizationRate, poolLoanInterestRate, extraArgs, extraConstructorArgs }
+  { etkName, etkSymbol, maxUtilizationRate, poolLoanInterestRate, extraArgs, extraConstructorArgs, disableAC }
 ) {
   const etk = await createEToken(pool, {
     etkName,
@@ -121,6 +122,7 @@ async function addEToken(
     poolLoanInterestRate,
     extraArgs,
     extraConstructorArgs,
+    disableAC,
   });
   await pool.addComponent(etk, ComponentKind.eToken);
   return etk;
