@@ -52,7 +52,7 @@ module.exports = {
         enabled: true,
         runs: 200,
       },
-      evmVersion: "cancun",
+      evmVersion: "prague",
     },
   },
   contractSizer: {
@@ -69,7 +69,7 @@ module.exports = {
       url: "http://ganache-cli:8545",
     },
     hardhat: {
-      hardfork: "cancun",
+      hardfork: "prague",
       // base fee of 0 allows use of 0 gas price when testing
       initialBaseFeePerGas: 0,
     },
