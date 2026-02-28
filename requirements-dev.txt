@@ -65,6 +65,7 @@ packaging==25.0
     #   build
     #   mkdocs
     #   pytest
+    #   wheel
 parso==0.8.4
     # via jedi
 pathspec==0.12.1
@@ -135,7 +136,7 @@ watchdog==6.0.0
     # via mkdocs
 wcwidth==0.2.13
     # via prompt-toolkit
-wheel==0.45.1
+wheel==0.46.2
     # via pip-tools
 
 # The following packages are considered to be unsafe in a requirements file:
