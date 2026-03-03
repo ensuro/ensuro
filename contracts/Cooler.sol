@@ -316,4 +316,14 @@ contract Cooler is ICooler, PolicyPoolComponent, ERC721Upgradeable {
     if (request.requestedAt == 0) return 0;
     return Math.min(_computeCurrentValue(request), request.requestedAmount);
   }
+
+  /**
+   * @notice Returns the information of a pending withdrawal request
+   *
+   * @param tokenId The ID of the token representing the withdrawal position
+   * @return The information about the withdrawal request
+   */
+  function getWithdrawalRequestInfo(uint256 tokenId) external view returns (WithdrawalRequest memory) {
+    return _withdrawalRequests[tokenId];
+  }
 }
