@@ -1,6 +1,6 @@
 <?xml version="1.0" ?>
 <!DOCTYPE coverage SYSTEM "http://cobertura.sourceforge.net/xml/coverage-04.dtd">
-<coverage lines-valid="795"  lines-covered="795"  line-rate="1"  branches-valid="546"  branches-covered="528"  branch-rate="0.9670000000000001"  timestamp="1770380452898" complexity="0" version="0.1">
+<coverage lines-valid="796"  lines-covered="796"  line-rate="1"  branches-valid="546"  branches-covered="528"  branch-rate="0.9670000000000001"  timestamp="1773243258763" complexity="0" version="0.1">
 <sources>
 	<source>/home/runner/work/ensuro/ensuro</source>
 </sources>
@@ -48,6 +48,9 @@
 			<method name="getCurrentValue"  hits="11"  signature="()V" >
 				<lines><line number="314"  hits="11" /></lines>
 			</method>
+			<method name="getWithdrawalRequestInfo"  hits="1"  signature="()V" >
+				<lines><line number="326"  hits="1" /></lines>
+			</method>
 		</methods>
 		<lines>
 			<line number="142"  hits="3"  branch="false" />
@@ -92,6 +95,7 @@
 			<line number="315"  hits="11"  branch="false" />
 			<line number="316"  hits="11"  branch="true"  condition-coverage="100% (2/2)" />
 			<line number="317"  hits="8"  branch="false" />
+			<line number="327"  hits="1"  branch="false" />
 		</lines>
 		</class>
 		<class name="ETKLib.sol"  filename="contracts/ETKLib.sol"  line-rate="1"  branch-rate="0.9375" >
