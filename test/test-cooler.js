@@ -177,6 +177,15 @@ describe("Cooler", () => {
       .withArgs(ZeroAddress, lp, 1n); // lp receives the NFT
 
     expect(await cooler.getCurrentValue(1n)).to.equal(_A(100));
+
+    // Check getWithdrawalRequestInfo output
+    const [scaleAtRequest, rEtk, requestedAmount, requestedAt, expiration] = await cooler.getWithdrawalRequestInfo(1n);
+    expect(rEtk).to.equal(etk);
+    expect(requestedAmount).to.equal(_A(100));
+    expect(scaleAtRequest).to.equal(SCALE_INITIAL);
+    expect(expiration).to.equal(now + 8 * DAY);
+    expect(requestedAt).to.closeTo(now, 10n);
+
     expect(await cooler.getCurrentValue(2n)).to.equal(_A(0)); // Non-existent return 0
     expect(await cooler.ownerOf(1n)).to.equal(lp);
 
