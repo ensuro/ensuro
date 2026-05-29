@@ -70,9 +70,7 @@ describe("WEToken", () => {
     const expectedWetk = (etkAmount * WAD) / SCALE_INITIAL;
 
     expect(await wetk.getWETokenByEToken(etkAmount)).to.equal(expectedWetk);
-    await expect(wetk.connect(lp).wrap(etkAmount))
-      .to.emit(wetk, "Transfer")
-      .withArgs(ZeroAddress, lp, expectedWetk);
+    await expect(wetk.connect(lp).wrap(etkAmount)).to.emit(wetk, "Transfer").withArgs(ZeroAddress, lp, expectedWetk);
     expect(await wetk.balanceOf(lp)).to.equal(expectedWetk);
     expect(await etk.balanceOf(wetk)).to.equal(etkAmount);
   });
@@ -134,9 +132,7 @@ describe("WEToken", () => {
 
   it("setFreezer updates freezer and emits FreezerChanged", async () => {
     const { wetk, owner, lp, freezerAcc } = await helpers.loadFixture(wetokenFixture);
-    await expect(wetk.connect(owner).setFreezer(lp.address))
-      .to.emit(wetk, "FreezerChanged")
-      .withArgs(freezerAcc, lp);
+    await expect(wetk.connect(owner).setFreezer(lp.address)).to.emit(wetk, "FreezerChanged").withArgs(freezerAcc, lp);
     expect(await wetk.freezer()).to.equal(lp.address);
   });
 
@@ -221,9 +217,7 @@ describe("WEToken", () => {
     await wl.whitelistAddress(lp.address, makeWhitelistStatus("UUBW"));
 
     // lp2 is not the (now-removed) freezer but can still call setFrozen
-    await expect(wetk.connect(lp2).setFrozen(lp.address, true))
-      .to.emit(wetk, "AccountFrozen")
-      .withArgs(lp, true);
+    await expect(wetk.connect(lp2).setFrozen(lp.address, true)).to.emit(wetk, "AccountFrozen").withArgs(lp, true);
     expect(await wetk.frozen(lp.address)).to.equal(true);
   });
 
@@ -263,8 +257,6 @@ describe("WEToken", () => {
 
     // But anyone can still call setFrozen, validated against the whitelist
     await wl.whitelistAddress(lp.address, makeWhitelistStatus("UUBW"));
-    await expect(wetk.connect(lp2).setFrozen(lp.address, true))
-      .to.emit(wetk, "AccountFrozen")
-      .withArgs(lp, true);
+    await expect(wetk.connect(lp2).setFrozen(lp.address, true)).to.emit(wetk, "AccountFrozen").withArgs(lp, true);
   });
 });

@@ -100,8 +100,7 @@ describe("PremiumsAccount", () => {
     await currency.connect(lp).approve(pa, MaxUint256);
 
     await pa.connect(lp).receiveGrant(_A(1000));
-    await pa.depositIntoYieldVault(_A(300))
-
+    await pa.depositIntoYieldVault(_A(300));
 
     // yield vault had losses
     await yieldVault.discreteEarning(-_A(100));
@@ -111,8 +110,9 @@ describe("PremiumsAccount", () => {
 
     // withdrawing the won premiums records the losses first
     await expect(pa.withdrawWonPremiums(MaxUint256, lp.address))
-      .to.emit(pa, "EarningsRecorded").withArgs(-_A(100))
-      .to.emit(currency, "Transfer").withArgs(pa, lp.address, _A(900));
-
+      .to.emit(pa, "EarningsRecorded")
+      .withArgs(-_A(100))
+      .to.emit(currency, "Transfer")
+      .withArgs(pa, lp.address, _A(900));
   });
 });

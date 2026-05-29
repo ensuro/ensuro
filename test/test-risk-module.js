@@ -28,7 +28,7 @@ const { getAccessManager } = require("@ensuro/access-managed-proxy/js/deployProx
 const _A = amountFunction(6);
 
 function makeInputData({ payout, premium, lossProb, expiration, internalId, params, signer }, rm) {
-  return (signer === undefined ? makeFTUWInputData : input => makeAndSignFSUWInputData(rm, input))({
+  return (signer === undefined ? makeFTUWInputData : (input) => makeAndSignFSUWInputData(rm, input))({
     payout: payout || _A(1000),
     premium: premium || _A(200),
     lossProb: lossProb || _W("0.10"),

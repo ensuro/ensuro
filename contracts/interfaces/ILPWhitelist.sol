@@ -24,11 +24,7 @@ interface ILPWhitelist {
    * @param operation The operation to check.
    * @return true if the operation is accepted, false otherwise.
    */
-  function acceptsOperation(
-    IEToken etoken,
-    address provider,
-    Operation operation
-  ) external view returns (bool);
+  function acceptsOperation(IEToken etoken, address provider, Operation operation) external view returns (bool);
   /**
    * @dev Indicates whether or not a liquidity provider can do a deposit in an eToken.
    *
