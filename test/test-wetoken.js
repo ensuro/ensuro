@@ -53,50 +53,42 @@ describe("WEToken", () => {
     return { yieldVault, ...ret };
   }
 
-  it("Rejects wrap with zero amount", async () => {
-    const { wetk } = await helpers.loadFixture(wetokenFixture);
-    await expect(wetk.wrap(0n)).to.be.revertedWithCustomError(wetk, "ZeroAmount");
-  });
-
-  it("Rejects unwrap with zero amount", async () => {
-    const { wetk } = await helpers.loadFixture(wetokenFixture);
-    await expect(wetk.unwrap(0n)).to.be.revertedWithCustomError(wetk, "ZeroAmount");
-  });
-
-  it("Wraps eTokens to WETokens at initial scale", async () => {
+  it("Deposits eTokens for WETokens at initial scale", async () => {
     const { etk, wetk, lp } = await helpers.loadFixture(wetokenFixture);
     const etkAmount = _A(1000);
-    // wetkAmount = etkAmount * WAD / scale; at SCALE_INITIAL each eToken unit gives 10000 WEToken units
+    // shares = assets * WAD / scale; at SCALE_INITIAL each eToken unit gives 10000 WEToken units
     const expectedWetk = (etkAmount * WAD) / SCALE_INITIAL;
 
-    expect(await wetk.getWETokenByEToken(etkAmount)).to.equal(expectedWetk);
-    await expect(wetk.connect(lp).wrap(etkAmount)).to.emit(wetk, "Transfer").withArgs(ZeroAddress, lp, expectedWetk);
+    expect(await wetk.convertToShares(etkAmount)).to.equal(expectedWetk);
+    await expect(wetk.connect(lp).deposit(etkAmount, lp.address))
+      .to.emit(wetk, "Deposit")
+      .withArgs(lp, lp, etkAmount, expectedWetk);
     expect(await wetk.balanceOf(lp)).to.equal(expectedWetk);
     expect(await etk.balanceOf(wetk)).to.equal(etkAmount);
   });
 
-  it("Unwraps WETokens to eTokens at initial scale", async () => {
+  it("Redeems WETokens for eTokens at initial scale", async () => {
     const { etk, wetk, lp } = await helpers.loadFixture(wetokenFixture);
     const etkAmount = _A(1000);
     const expectedWetk = (etkAmount * WAD) / SCALE_INITIAL;
-    await wetk.connect(lp).wrap(etkAmount);
+    await wetk.connect(lp).deposit(etkAmount, lp.address);
 
-    expect(await wetk.getETokenByWEToken(expectedWetk)).to.equal(etkAmount);
-    await expect(wetk.connect(lp).unwrap(expectedWetk))
-      .to.emit(wetk, "Transfer")
-      .withArgs(lp, ZeroAddress, expectedWetk);
+    expect(await wetk.convertToAssets(expectedWetk)).to.equal(etkAmount);
+    await expect(wetk.connect(lp).redeem(expectedWetk, lp.address, lp.address))
+      .to.emit(wetk, "Withdraw")
+      .withArgs(lp, lp, lp, etkAmount, expectedWetk);
     expect(await etk.balanceOf(lp)).to.closeTo(_A(3000), 1n);
     expect(await wetk.balanceOf(lp)).to.equal(0n);
   });
 
-  it("Round-trips wrap then unwrap with no loss", async () => {
+  it("Round-trips deposit then redeem with no loss", async () => {
     const { etk, wetk, lp } = await helpers.loadFixture(wetokenFixture);
     const etkBefore = await etk.balanceOf(lp);
     const etkAmount = _A(1000);
     const wetkMinted = (etkAmount * WAD) / SCALE_INITIAL;
 
-    await wetk.connect(lp).wrap(etkAmount);
-    await wetk.connect(lp).unwrap(wetkMinted);
+    await wetk.connect(lp).deposit(etkAmount, lp.address);
+    await wetk.connect(lp).redeem(wetkMinted, lp.address, lp.address);
 
     expect(await wetk.balanceOf(lp)).to.equal(0n);
     expect(await etk.balanceOf(lp)).to.closeTo(etkBefore, 1n);
@@ -104,23 +96,25 @@ describe("WEToken", () => {
 
   it("Conversion view functions return correct rates at initial scale", async () => {
     const { wetk } = await helpers.loadFixture(wetokenFixture);
-    expect(await wetk.eTokenPerWEToken()).to.equal(SCALE_INITIAL);
-    expect(await wetk.weTokenPerEToken()).to.equal((WAD * WAD) / SCALE_INITIAL);
+    // convertToAssets(WAD) = WAD * scale / WAD = scale
+    expect(await wetk.convertToAssets(WAD)).to.equal(SCALE_INITIAL);
+    // convertToShares(WAD) = WAD * WAD / scale
+    expect(await wetk.convertToShares(WAD)).to.equal((WAD * WAD) / SCALE_INITIAL);
   });
 
   it("WETokens gain value as yield accrues", async () => {
     const { etk, wetk, lp, yieldVault } = await helpers.loadFixture(wetokenWithYieldFixture);
     const etkAmount = _A(1000);
     const wetkMinted = (etkAmount * WAD) / SCALE_INITIAL;
-    await wetk.connect(lp).wrap(etkAmount);
+    await wetk.connect(lp).deposit(etkAmount, lp.address);
 
     // Generate yield: move USDC to vault, earn 100 USDC (etk receives ~50 due to virtual share)
     await etk.depositIntoYieldVault(MaxUint256);
     await yieldVault.discreteEarning(_A(100));
     await etk.recordEarnings();
 
-    expect(await wetk.eTokenPerWEToken()).to.be.gt(SCALE_INITIAL);
-    expect(await wetk.getETokenByWEToken(wetkMinted)).to.be.gt(etkAmount);
+    expect(await wetk.convertToAssets(WAD)).to.be.gt(SCALE_INITIAL);
+    expect(await wetk.convertToAssets(wetkMinted)).to.be.gt(etkAmount);
   });
 
   it("setFreezer can only be called by owner", async () => {
@@ -143,7 +137,7 @@ describe("WEToken", () => {
 
   it("setFrozen freezes account and blocks outgoing transfers", async () => {
     const { wetk, lp, lp2, freezerAcc, wl } = await helpers.loadFixture(wetokenWithWLFixture);
-    await wetk.connect(lp).wrap(_A(1000));
+    await wetk.connect(lp).deposit(_A(1000), lp.address);
 
     // Blacklist lp for sendTransfer so freeze is consistent with whitelist
     await wl.whitelistAddress(lp.address, makeWhitelistStatus("UUBW"));
@@ -159,20 +153,20 @@ describe("WEToken", () => {
       .withArgs(lp);
   });
 
-  it("Unwrap is not blocked for frozen accounts", async () => {
+  it("Redeem is not blocked for frozen accounts", async () => {
     const { wetk, lp, freezerAcc, wl } = await helpers.loadFixture(wetokenWithWLFixture);
-    await wetk.connect(lp).wrap(_A(1000));
+    await wetk.connect(lp).deposit(_A(1000), lp.address);
     await wl.whitelistAddress(lp.address, makeWhitelistStatus("UUBW"));
     await wetk.connect(freezerAcc).setFrozen(lp.address, true);
 
     // burn: to == address(0), so _update freeze check is skipped
     const wetkBalance = await wetk.balanceOf(lp);
-    await expect(wetk.connect(lp).unwrap(wetkBalance)).not.to.be.reverted;
+    await expect(wetk.connect(lp).redeem(wetkBalance, lp.address, lp.address)).not.to.be.reverted;
   });
 
   it("Receiving WETokens is not blocked for frozen accounts", async () => {
     const { wetk, lp, lp2, freezerAcc, wl } = await helpers.loadFixture(wetokenWithWLFixture);
-    await wetk.connect(lp).wrap(_A(1000));
+    await wetk.connect(lp).deposit(_A(1000), lp.address);
 
     // Freeze lp2: freeze check only looks at `from`, not `to`
     await wl.whitelistAddress(lp2.address, makeWhitelistStatus("UUBW"));

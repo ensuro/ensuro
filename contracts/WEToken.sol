@@ -2,10 +2,10 @@
 pragma solidity ^0.8.28;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
 import {ILPWhitelist} from "./interfaces/ILPWhitelist.sol";
@@ -17,24 +17,19 @@ interface IETokenWithWhitelist is IEToken {
 }
 
 /**
- * @title WEToken - Non-rebasing wrapper for Ensuro EToken
- * @notice Wraps the rebasing EToken into a non-rebasing ERC20 token with static balances.
- *         1 WEToken = 1 unit of scaled balance in the underlying EToken.
+ * @title WEToken - Non-rebasing ERC-4626 wrapper for Ensuro EToken
+ * @notice Wraps the rebasing EToken into a non-rebasing ERC-4626 vault token with static balances.
+ *         1 WEToken (share) = 1 unit of scaled balance in the underlying EToken.
  *         As the EToken accrues yield, each WEToken becomes redeemable for more eTokens.
- * @dev The conversion between eTokens and WETokens uses {IEToken-getCurrentScale}:
- *        wetkAmount = etkAmount * WAD / scale
- *        etkAmount  = wetkAmount * scale / WAD
+ * @dev The conversion between eTokens (assets) and WETokens (shares) uses {IEToken-getCurrentScale}:
+ *        shares = assets * WAD / scale
+ *        assets = shares * scale / WAD
  *      If the underlying eToken has a whitelist, this contract's address must be whitelisted.
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
-contract WEToken is ERC20, ERC20Permit, Ownable {
-  using SafeERC20 for IERC20;
-
+contract WEToken is ERC4626, ERC20Permit, Ownable {
   uint256 internal constant WAD = 1e18;
-
-  /// @notice Thrown when wrapping or unwrapping a zero amount
-  error ZeroAmount();
 
   /// @notice Thrown when a transfer is attempted from a frozen account
   error FrozenAccount(address account);
@@ -53,9 +48,6 @@ contract WEToken is ERC20, ERC20Permit, Ownable {
 
   /// @notice Emitted when the freezer address is changed by the owner
   event FreezerChanged(address indexed oldFreezer, address indexed newFreezer);
-
-  /// @notice The underlying rebasing EToken
-  IEToken public immutable eToken;
 
   /**
    * @notice Address authorized to call {setFrozen}. If address(0), anyone may call it but
@@ -86,21 +78,30 @@ contract WEToken is ERC20, ERC20Permit, Ownable {
     string memory symbol_,
     address freezer_,
     address owner_
-  ) ERC20(name_, symbol_) ERC20Permit(name_) Ownable(owner_) {
-    eToken = eToken_;
+  ) ERC4626(IERC20(address(eToken_))) ERC20(name_, symbol_) ERC20Permit(name_) Ownable(owner_) {
     _setFreezer(freezer_);
   }
 
-  /// @inheritdoc ERC20
-  function decimals() public pure override returns (uint8) {
+  /// @inheritdoc ERC4626
+  function decimals() public pure override(ERC4626, ERC20) returns (uint8) {
     return 18;
+  }
+
+  /// @dev Uses the eToken scale directly rather than the totalAssets/totalSupply ratio.
+  function _convertToShares(uint256 assets, Math.Rounding rounding) internal view override returns (uint256) {
+    return Math.mulDiv(assets, WAD, IEToken(asset()).getCurrentScale(true), rounding);
+  }
+
+  /// @dev Uses the eToken scale directly rather than the totalAssets/totalSupply ratio.
+  function _convertToAssets(uint256 shares, Math.Rounding rounding) internal view override returns (uint256) {
+    return Math.mulDiv(shares, IEToken(asset()).getCurrentScale(true), WAD, rounding);
   }
 
   /**
    * @dev Only blocks outgoing transfers (from != address(0), to != address(0)).
-   *      Wrap (mint: from == address(0)) is already gated by the eToken's safeTransferFrom —
+   *      Deposit (mint: from == address(0)) is already gated by the eToken's safeTransferFrom —
    *      a blacklisted user's eToken transfer will revert at the eToken level.
-   *      Unwrap (burn: to == address(0)) is intentionally unrestricted here — the user
+   *      Redeem (burn: to == address(0)) is intentionally unrestricted here — the user
    *      can retrieve their underlying eTokens, but cannot transfer those eTokens onward
    *      because the eToken's own whitelist restrictions apply.
    */
@@ -109,32 +110,6 @@ contract WEToken is ERC20, ERC20Permit, Ownable {
       require(!frozen[from], FrozenAccount(from));
     }
     super._update(from, to, value);
-  }
-
-  /**
-   * @notice Exchanges eTokens for WETokens
-   * @param etkAmount Amount of eTokens to wrap (in eToken units)
-   * @return wetkAmount Amount of WETokens minted
-   */
-  function wrap(uint256 etkAmount) external returns (uint256 wetkAmount) {
-    require(etkAmount != 0, ZeroAmount());
-    wetkAmount = getWETokenByEToken(etkAmount);
-    IERC20(address(eToken)).safeTransferFrom(msg.sender, address(this), etkAmount);
-    _mint(msg.sender, wetkAmount);
-    return wetkAmount;
-  }
-
-  /**
-   * @notice Exchanges WETokens back for eTokens
-   * @param wetkAmount Amount of WETokens to unwrap
-   * @return etkAmount Amount of eTokens returned
-   */
-  function unwrap(uint256 wetkAmount) external returns (uint256 etkAmount) {
-    require(wetkAmount != 0, ZeroAmount());
-    etkAmount = getETokenByWEToken(wetkAmount);
-    _burn(msg.sender, wetkAmount);
-    IERC20(address(eToken)).safeTransfer(msg.sender, etkAmount);
-    return etkAmount;
   }
 
   /**
@@ -164,48 +139,14 @@ contract WEToken is ERC20, ERC20Permit, Ownable {
    */
   function setFrozen(address user, bool frozen_) external {
     require(freezer == address(0) || freezer == msg.sender, NotFreezer());
-    ILPWhitelist wl = IETokenWithWhitelist(address(eToken)).whitelist();
+    ILPWhitelist wl = IETokenWithWhitelist(address(asset())).whitelist();
     if (address(wl) != address(0)) {
-      bool wlFrozen = !wl.acceptsOperation(eToken, user, ILPWhitelist.Operation.sendTransfer);
+      bool wlFrozen = !wl.acceptsOperation(IEToken(asset()), user, ILPWhitelist.Operation.sendTransfer);
       require(frozen_ == wlFrozen, FrozenStateMismatch(user, wlFrozen, frozen_));
     } else {
       require(freezer != address(0), NoWhitelistConfigured());
     }
     frozen[user] = frozen_;
     emit AccountFrozen(user, frozen_);
-  }
-
-  /**
-   * @notice Returns the amount of WETokens for a given amount of eTokens
-   * @param etkAmount Amount of eTokens (in eToken units)
-   * @return Amount of WETokens
-   */
-  function getWETokenByEToken(uint256 etkAmount) public view returns (uint256) {
-    return Math.mulDiv(etkAmount, WAD, eToken.getCurrentScale(true));
-  }
-
-  /**
-   * @notice Returns the amount of eTokens for a given amount of WETokens
-   * @param wetkAmount Amount of WETokens
-   * @return Amount of eTokens (in eToken units)
-   */
-  function getETokenByWEToken(uint256 wetkAmount) public view returns (uint256) {
-    return Math.mulDiv(wetkAmount, eToken.getCurrentScale(true), WAD);
-  }
-
-  /**
-   * @notice Returns the amount of eTokens for 1 WEToken (i.e. 1e18 WEToken units)
-   * @return The current scale from the underlying eToken, in WAD
-   */
-  function eTokenPerWEToken() external view returns (uint256) {
-    return eToken.getCurrentScale(true);
-  }
-
-  /**
-   * @notice Returns the amount of WETokens for 1e18 eToken units
-   * @return Amount of WETokens per WAD of eTokens
-   */
-  function weTokenPerEToken() external view returns (uint256) {
-    return Math.mulDiv(WAD, WAD, eToken.getCurrentScale(true));
   }
 }
