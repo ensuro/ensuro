@@ -98,15 +98,14 @@ contract WEToken is ERC4626, ERC20Permit, Ownable {
   }
 
   /**
-   * @dev Only blocks outgoing transfers (from != address(0), to != address(0)).
+   * @dev Blocks any share movement where `from` is frozen (transfers and burns).
    *      Deposit (mint: from == address(0)) is already gated by the eToken's safeTransferFrom —
    *      a blacklisted user's eToken transfer will revert at the eToken level.
-   *      Redeem (burn: to == address(0)) is intentionally unrestricted here — the user
-   *      can retrieve their underlying eTokens, but cannot transfer those eTokens onward
-   *      because the eToken's own whitelist restrictions apply.
+   *      Burns (redeem/withdraw) must also be blocked: ERC-4626 allows an arbitrary `receiver`,
+   *      so a frozen owner could otherwise drain their underlying eTokens to another address.
    */
   function _update(address from, address to, uint256 value) internal override {
-    if (from != address(0) && to != address(0)) {
+    if (from != address(0)) {
       require(!frozen[from], FrozenAccount(from));
     }
     super._update(from, to, value);

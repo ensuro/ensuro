@@ -153,15 +153,18 @@ describe("WEToken", () => {
       .withArgs(lp);
   });
 
-  it("Redeem is not blocked for frozen accounts", async () => {
+  it("Redeem is blocked for frozen accounts", async () => {
     const { wetk, lp, freezerAcc, wl } = await helpers.loadFixture(wetokenWithWLFixture);
     await wetk.connect(lp).deposit(_A(1000), lp.address);
     await wl.whitelistAddress(lp.address, makeWhitelistStatus("UUBW"));
     await wetk.connect(freezerAcc).setFrozen(lp.address, true);
 
-    // burn: to == address(0), so _update freeze check is skipped
+    // ERC-4626 allows arbitrary receiver, so burns must also be blocked to prevent
+    // a frozen owner from draining underlying eTokens to another address.
     const wetkBalance = await wetk.balanceOf(lp);
-    await expect(wetk.connect(lp).redeem(wetkBalance, lp.address, lp.address)).not.to.be.reverted;
+    await expect(wetk.connect(lp).redeem(wetkBalance, lp.address, lp.address))
+      .to.be.revertedWithCustomError(wetk, "FrozenAccount")
+      .withArgs(lp);
   });
 
   it("Receiving WETokens is not blocked for frozen accounts", async () => {
