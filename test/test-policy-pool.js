@@ -414,9 +414,7 @@ describe("PolicyPool contract", function () {
     expect(limit).to.equal(_A(2000));
     expect(active).to.equal(_A(1000));
 
-    await expect(pool.setExposureLimit(rm, active))
-      .to.emit(pool, "ExposureLimitChanged")
-      .withArgs(rm, limit, active);
+    await expect(pool.setExposureLimit(rm, active)).to.emit(pool, "ExposureLimitChanged").withArgs(rm, limit, active);
 
     const [active2, limit2] = await pool.getExposure(rm);
     expect(active2).to.equal(active);
@@ -914,30 +912,18 @@ describe("PolicyPool contract", function () {
   });
 
   it("Allows borrowing exactly up to srLoanLimit", async () => {
-    const { owner, rm, pool, currency, cust, backend, premiumsAccount, jrEtk, srEtk, policy } =
+    const { owner, rm, pool, cust, backend, premiumsAccount, jrEtk, srEtk, policy } =
       await helpers.loadFixture(deployRmWithPolicyFixture);
 
     const now = await helpers.time.latest();
-    const p1 = await createNewPolicy(
-      rm,
-      backend,
-      pool,
-      _A(1000),
-      _A(9),
-      _W(0),
-      now + HOUR * 5,
-      cust,
-      cust,
-      222,
-      {
-        partnerCommission: _A("0.4"),
-        jrScr: _A(200),
-        srScr: _A(800),
-        jrCoc: _A("0.3"),
-        srCoc: _A("0.2"),
-        ensuroCommission: _A("0.1"),
-      }
-    );
+    const p1 = await createNewPolicy(rm, backend, pool, _A(1000), _A(9), _W(0), now + HOUR * 5, cust, cust, 222, {
+      partnerCommission: _A("0.4"),
+      jrScr: _A(200),
+      srScr: _A(800),
+      jrCoc: _A("0.3"),
+      srCoc: _A("0.2"),
+      ensuroCommission: _A("0.1"),
+    });
 
     await rm.resolvePolicy([...policy], _A(108));
     expect(await premiumsAccount.purePremiums()).to.equal(_A(1));

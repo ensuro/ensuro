@@ -184,6 +184,30 @@ contract LPManualWhitelist is ILPWhitelist, PolicyPoolComponent {
     return wl == WhitelistOptions.whitelisted;
   }
 
+  /// @inheritdoc ILPWhitelist
+  function acceptsOperation(
+    IEToken,
+    address provider,
+    ILPWhitelist.Operation operation
+  ) external view override returns (bool) {
+    WhitelistOptions wl;
+    if (operation == ILPWhitelist.Operation.deposit) {
+      wl = _wlStatus[provider].deposit;
+      if (wl == WhitelistOptions.undefined) wl = _wlStatus[address(0)].deposit;
+    } else if (operation == ILPWhitelist.Operation.withdraw) {
+      wl = _wlStatus[provider].withdraw;
+      if (wl == WhitelistOptions.undefined) wl = _wlStatus[address(0)].withdraw;
+    } else if (operation == ILPWhitelist.Operation.sendTransfer) {
+      wl = _wlStatus[provider].sendTransfer;
+      if (wl == WhitelistOptions.undefined) wl = _wlStatus[address(0)].sendTransfer;
+    } else {
+      // receiveTransfer
+      wl = _wlStatus[provider].receiveTransfer;
+      if (wl == WhitelistOptions.undefined) wl = _wlStatus[address(0)].receiveTransfer;
+    }
+    return wl == WhitelistOptions.whitelisted;
+  }
+
   /**
    * @dev This empty reserved space is put in place to allow future versions to add new
    * variables without shifting down storage in the inheritance chain.

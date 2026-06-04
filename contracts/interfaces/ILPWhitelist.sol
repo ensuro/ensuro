@@ -8,6 +8,23 @@ import {IEToken} from "./IEToken.sol";
  * @author Ensuro
  */
 interface ILPWhitelist {
+  /// @notice Enum of the operations that can be checked against the whitelist
+  enum Operation {
+    deposit,
+    withdraw,
+    sendTransfer,
+    receiveTransfer
+  }
+
+  /**
+   * @dev Returns whether `provider` is allowed to perform `operation` on `etoken`.
+   *
+   * @param etoken The eToken context.
+   * @param provider The address of the liquidity provider.
+   * @param operation The operation to check.
+   * @return true if the operation is accepted, false otherwise.
+   */
+  function acceptsOperation(IEToken etoken, address provider, Operation operation) external view returns (bool);
   /**
    * @dev Indicates whether or not a liquidity provider can do a deposit in an eToken.
    *
