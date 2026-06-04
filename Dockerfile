@@ -1,7 +1,5 @@
 FROM python:3.12
 
-RUN curl -sL https://solc-bin.ethereum.org/linux-amd64/solc-linux-amd64-v0.8.30+commit.73712a01 > /usr/local/bin/solc && chmod +x /usr/local/bin/solc
-
 ENV NODE_MAJOR=22
 RUN mkdir -p /etc/apt/keyrings \
     && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \

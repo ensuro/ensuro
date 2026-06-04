@@ -68,7 +68,8 @@ describe("Supports interface implementation", function () {
       // IPremiumsAccount: "0x42a0fe0b", - Before `refactoring-rms` branch that changed Policy struct
       // IPremiumsAccount: "0x19fb2a71", - Before `policy-cancellation` branch
       IPremiumsAccount: "0xf7e4b01b",
-      ILPWhitelist: "0xf8722d89",
+      // ILPWhitelist: "0xf8722d89", - Before acceptsOperation was added
+      ILPWhitelist: "0x439a13dc",
       IPolicyHolder: "0x3ece0a89",
       ICooler: "0xaf14a2ed",
     };
