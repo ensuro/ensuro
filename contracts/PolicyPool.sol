@@ -601,11 +601,13 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     policy.start = uint40(block.timestamp);
     require(_policies[policy.id] == bytes32(0), PolicyAlreadyExists(policy.id));
     _policies[policy.id] = policy.hash();
-    _safeMint(policyHolder, policy.id, "");
     _changeExposure(rm, true, policy.payout);
 
     // Interactions
     pa.policyCreated(policy);
+    // _safeMint is both an effect (mints the NFT) and an interaction (calls onERC721Received on the holder),
+    // to avoid reentrancy attack, I move it to the interactions section
+    _safeMint(policyHolder, policy.id, "");
 
     // Distribute the premium
     _currency.safeTransferFrom(payer, address(pa), policy.purePremium);
@@ -660,13 +662,15 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     require(_policies[newPolicy_.id] == bytes32(0), PolicyAlreadyExists(newPolicy_.id));
     _policies[newPolicy_.id] = newPolicy_.hash();
     address policyHolder = ownerOf(oldPolicy.id);
-    _safeMint(policyHolder, newPolicy_.id, "");
     if (newPolicy_.payout > oldPolicy.payout) _changeExposure(rm, true, newPolicy_.payout - oldPolicy.payout);
     else _changeExposure(rm, false, oldPolicy.payout - newPolicy_.payout);
     delete _policies[oldPolicy.id];
 
     // Interactions
     pa.policyReplaced(oldPolicy, newPolicy_);
+    // _safeMint is both an effect (mints the NFT) and an interaction (calls onERC721Received on the holder),
+    // to avoid reentrancy attack, I move it to the interactions section
+    _safeMint(policyHolder, newPolicy_.id, "");
 
     // Distribute the premium
     _transferIfNonZero(payer, address(pa), newPolicy_.purePremium, oldPolicy.purePremium);
