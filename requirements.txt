@@ -6,7 +6,7 @@
 #
 aiohappyeyeballs==2.6.1
     # via aiohttp
-aiohttp==3.12.15
+aiohttp==3.14.1
     # via web3
 aiosignal==1.4.0
     # via aiohttp
@@ -130,6 +130,7 @@ types-requests==2.32.4.20250809
     # via web3
 typing-extensions==4.14.1
     # via
+    #   aiohttp
     #   aiosignal
     #   eth-typing
     #   pydantic
