@@ -10,7 +10,7 @@
   "author": "",
   "license": "Apache-2.0",
   "devDependencies": {
-    "@nomicfoundation/hardhat-toolbox": "^6.1.0",
+    "@nomicfoundation/hardhat-toolbox": "^7.0.0",
     "@openzeppelin/hardhat-upgrades": "^3.9.1",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
