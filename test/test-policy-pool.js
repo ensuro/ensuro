@@ -101,7 +101,7 @@ async function deployRiskModuleFixture() {
   const rm = PolicyPool.attach(rmMock);
   await pool.addComponent(rm, ComponentKind.riskModule);
 
-  return { jrEtk, srEtk, premiumsAccount, rm, ...ret };
+  return { jrEtk, srEtk, premiumsAccount, rm, PolicyPool, RiskModuleMock, ...ret };
 }
 
 async function deployRmWithPolicyFixture() {
@@ -497,11 +497,47 @@ describe("PolicyPool contract", function () {
   });
 
   it("Only RM can replace policies", async () => {
-    const { policy, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
-    await expect(pool.replacePolicy([...policy], [...policy], ZeroAddress, 1234)).to.be.revertedWithCustomError(
+    const { policy, premiumsAccount, lp, pool, RiskModuleMock, PolicyPool } =
+      await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    // Create and add another RM
+    const rmMock = await RiskModuleMock.deploy(pool, premiumsAccount, lp);
+    const rmNew = PolicyPool.attach(rmMock);
+    await pool.addComponent(rmNew, ComponentKind.riskModule);
+
+    await expect(rmNew.replacePolicy([...policy], [...policy], ZeroAddress, 1234)).to.be.revertedWithCustomError(
       pool,
       "OnlyRiskModuleAllowed"
     );
+  });
+
+  it("Rejects batch creation with mismatched array lengths", async () => {
+    const { rm, pool, cust } = await helpers.loadFixture(deployRiskModuleFixture);
+    const now = await helpers.time.latest();
+
+    const policyData = [
+      0, // id - Ignored
+      _A(1000), // payout
+      _A(0), // jrScr
+      _A(0), // srScr
+      5000, // lossProb
+      _A(10), // purePremium
+      _A(0), // ensuroCommission
+      _A(0), // partnerCommission
+      _A(0), // jrCoc
+      _A(0), // srCoc
+      now,
+      now + HOUR,
+    ];
+
+    await expect(
+      rm.newPoliciesBatch(
+        [policyData, [...policyData]],
+        cust.address,
+        cust.address,
+        [1] // Only 1 internalId for 2 policies
+      )
+    ).to.be.revertedWithCustomError(pool, "BatchInputLengthMismatch");
   });
 
   it("Rejects replace policy if the pool is paused", async () => {

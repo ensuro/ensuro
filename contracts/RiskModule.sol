@@ -172,9 +172,28 @@ contract RiskModule is IRiskModule, PolicyPoolComponent {
    * @param onBehalfOf The address that will be the owner of the created policy (same for all the policies)
    */
   function newPolicies(bytes[] calldata inputData, address onBehalfOf) external {
+    Policy.PolicyData[] memory policies = new Policy.PolicyData[](inputData.length);
+    uint96[] memory internalIds = new uint96[](inputData.length);
+    uint40 now_ = uint40(block.timestamp);
+    require(onBehalfOf != address(0), InvalidCustomer(onBehalfOf));
+
     for (uint256 i = 0; i < inputData.length; ++i) {
-      newPolicy(inputData[i], onBehalfOf);
+      (
+        uint256 payout,
+        uint256 premium,
+        uint256 lossProb,
+        uint40 expiration,
+        uint96 internalId,
+        Policy.Params memory params_
+      ) = _underwriter.priceNewPolicy(address(this), inputData[i]);
+      if (premium == type(uint256).max) {
+        premium = getMinimumPremium(payout, lossProb, now_, expiration, params_);
+      }
+      require(expiration > now_, ExpirationMustBeInTheFuture(expiration, now_));
+      policies[i] = Policy.initialize(params_, premium, payout, lossProb, expiration, now_);
+      internalIds[i] = internalId;
     }
+    _policyPool.newPoliciesBatch(policies, msg.sender, onBehalfOf, internalIds);
   }
 
   /**

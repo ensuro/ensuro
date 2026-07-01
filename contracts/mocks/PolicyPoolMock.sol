@@ -42,6 +42,19 @@ contract PolicyPoolMock is IPolicyPool {
     return policy.id;
   }
 
+  function newPoliciesBatch(
+    Policy.PolicyData[] memory policies,
+    address payer,
+    address policyHolder,
+    uint96[] memory internalIds
+  ) external override {
+    for (uint256 i = 0; i < policies.length; ++i) {
+      policies[i].id = (uint256(uint160(msg.sender)) << 96) + internalIds[i];
+      policyHashes[policies[i].id] = policies[i].hash();
+      emit NewPolicy(IRiskModule(msg.sender), policies[i]);
+    }
+  }
+
   function replacePolicy(
     Policy.PolicyData memory oldPolicy,
     Policy.PolicyData memory newPolicy_,

@@ -272,6 +272,9 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   /// @notice Thrown when an invalid receiver address (address(0)) is provided as received of deposit or withdraw
   error InvalidReceiver(address receiver);
 
+  /// @notice Thrown when batch input arrays have different lengths
+  error BatchInputLengthMismatch(uint256 policiesLength, uint256 internalIdsLength);
+
   /**
    * @notice Event emitted when the treasury (who receives ensuroCommission) changes
    *
@@ -583,19 +586,13 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     emit Withdraw(eToken, _msgSender(), receiver, owner, amountWithdrawn);
   }
 
-  /// @inheritdoc IPolicyPool
-  function newPolicy(
+  function _newPolicyEffects(
+    IRiskModule rm,
+    IPremiumsAccount pa,
     Policy.PolicyData memory policy,
-    address payer,
-    address policyHolder,
-    uint96 internalId
-  ) external override whenNotPaused returns (uint256) {
-    // Checks
-    IRiskModule rm = IRiskModule(_msgSender());
-    _requireCompActive(address(rm), ComponentKind.riskModule);
-    IPremiumsAccount pa = rm.premiumsAccount();
-    _requireCompActive(address(pa), ComponentKind.premiumsAccount);
-
+    uint96 internalId,
+    address policyHolder
+  ) internal {
     // Effects
     policy.id = Policy.makePolicyId(address(rm), internalId);
     policy.start = uint40(block.timestamp);
@@ -608,6 +605,26 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     // _safeMint is both an effect (mints the NFT) and an interaction (calls onERC721Received on the holder),
     // to avoid reentrancy attack, I move it to the interactions section
     _safeMint(policyHolder, policy.id, "");
+  }
+
+  function _validateRMAndPAActive() internal view returns (IRiskModule rm, IPremiumsAccount pa) {
+    rm = IRiskModule(_msgSender());
+    _requireCompActive(address(rm), ComponentKind.riskModule);
+    pa = rm.premiumsAccount();
+    _requireCompActive(address(pa), ComponentKind.premiumsAccount);
+  }
+
+  /// @inheritdoc IPolicyPool
+  function newPolicy(
+    Policy.PolicyData memory policy,
+    address payer,
+    address policyHolder,
+    uint96 internalId
+  ) external override whenNotPaused returns (uint256) {
+    // Checks
+    (IRiskModule rm, IPremiumsAccount pa) = _validateRMAndPAActive();
+
+    _newPolicyEffects(rm, pa, policy, internalId, policyHolder);
 
     // Distribute the premium
     _currency.safeTransferFrom(payer, address(pa), policy.purePremium);
@@ -627,6 +644,42 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     return policy.id;
   }
 
+  function newPoliciesBatch(
+    Policy.PolicyData[] memory policies,
+    address payer,
+    address policyHolder,
+    uint96[] memory internalIds
+  ) external override whenNotPaused {
+    // Checks
+    (IRiskModule rm, IPremiumsAccount pa) = _validateRMAndPAActive();
+    require(policies.length == internalIds.length, BatchInputLengthMismatch(policies.length, internalIds.length));
+
+    uint256 purePremiumSum;
+    uint256 srCocSum;
+    uint256 jrCocSum;
+    uint256 ensuroCommissionSum;
+    uint256 partnerCommissionSum;
+
+    for (uint256 i = 0; i < policies.length; ++i) {
+      _newPolicyEffects(rm, pa, policies[i], internalIds[i], policyHolder);
+      purePremiumSum += policies[i].purePremium;
+      srCocSum += policies[i].srCoc;
+      jrCocSum += policies[i].jrCoc;
+      ensuroCommissionSum += policies[i].ensuroCommission;
+      partnerCommissionSum += policies[i].partnerCommission;
+      emit NewPolicy(rm, policies[i]);
+    }
+
+    // Distribute the premium
+    _currency.safeTransferFrom(payer, address(pa), purePremiumSum);
+    (IEToken jrEtk, IEToken srEtk) = pa.etks();
+    if (srCocSum > 0) _currency.safeTransferFrom(payer, address(srEtk), srCocSum);
+    if (jrCocSum > 0) _currency.safeTransferFrom(payer, address(jrEtk), jrCocSum);
+    _currency.safeTransferFrom(payer, _treasury, ensuroCommissionSum);
+    if (partnerCommissionSum > 0 && payer != rm.wallet())
+      _currency.safeTransferFrom(payer, rm.wallet(), partnerCommissionSum);
+  }
+
   /// @inheritdoc IPolicyPool
   // solhint-disable-next-line function-max-lines
   function replacePolicy(
@@ -637,11 +690,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   ) external override whenNotPaused returns (uint256) {
     // Checks
     _validatePolicy(oldPolicy);
-    IRiskModule rm = IRiskModule(_msgSender());
+    (IRiskModule rm, IPremiumsAccount pa) = _validateRMAndPAActive();
     if (Policy.extractRiskModule(oldPolicy.id) != address(rm)) revert OnlyRiskModuleAllowed();
-    _requireCompActive(address(rm), ComponentKind.riskModule);
-    IPremiumsAccount pa = rm.premiumsAccount();
-    _requireCompActive(address(pa), ComponentKind.premiumsAccount);
     require(
       oldPolicy.expiration > uint40(block.timestamp) && newPolicy_.expiration >= uint40(block.timestamp),
       PolicyAlreadyExpired(oldPolicy.id)

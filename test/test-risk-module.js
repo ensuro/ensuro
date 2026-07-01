@@ -242,7 +242,11 @@ describe("RiskModule contract", function () {
       makeInputData({ expiration: now + HOUR * 5, premium: MaxUint256, internalId: 200 + i, payout: _A(100) })
     );
 
-    await expect(rm.connect(backend).newPolicies(inputData, cust)).to.emit(pool, "NewPolicy");
+    const tx = await rm.connect(backend).newPolicies(inputData, cust);
+
+    await expect(tx).to.emit(pool, "NewPolicy");
+    const receipt = await tx.wait();
+    console.log(`gasUsed: ${receipt.gasUsed}`);
   });
 
   it("Can create policies using FullSignedUW", async () => {

@@ -102,6 +102,13 @@ interface IPolicyPool {
     uint96 internalId
   ) external returns (uint256);
 
+  function newPoliciesBatch(
+    Policy.PolicyData[] memory policies,
+    address payer,
+    address policyHolder,
+    uint96[] memory internalIds
+  ) external;
+
   /**
    * @notice Replaces a policy with another
    * @dev After this call, the oldPolicy is no longer active and a new policy is created. Diferencial changes to
