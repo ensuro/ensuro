@@ -60,7 +60,7 @@ describe("Supports interface implementation", function () {
       // IPolicyPool: "0xea84868b", - Before `permit-operate-on-behalf` branch that changed deposit/withdraw
       // IPolicyPool: "0xab249cf4", - Before `policy-cancellation` branch
       // IPolicyPool: "0xc4769787", - Before `feat/new-policies-batch` branch
-      IPolicyPool: "0xc3d77bad",
+      IPolicyPool: "0xbbf6be62",
       IPolicyPoolComponent: "0x4d15eb03",
       // IRiskModule: "0xda40804f", - Up to v2.9
       IRiskModule: "0x21b7e09b",

@@ -159,8 +159,8 @@ contract RiskModule is IRiskModule, PolicyPoolComponent {
     }
     require(expiration > now_, ExpirationMustBeInTheFuture(expiration, now_));
     require(onBehalfOf != address(0), InvalidCustomer(onBehalfOf));
-    policy = Policy.initialize(params_, premium, payout, lossProb, expiration, now_);
-    policy.id = _policyPool.newPolicy(policy, msg.sender, onBehalfOf, internalId);
+    policy = Policy.initialize(address(this), internalId, params_, premium, payout, lossProb, expiration, now_);
+    _policyPool.newPolicy(policy, msg.sender, onBehalfOf);
     return policy;
   }
 
@@ -173,7 +173,6 @@ contract RiskModule is IRiskModule, PolicyPoolComponent {
    */
   function newPolicies(bytes[] calldata inputData, address onBehalfOf) external {
     Policy.PolicyData[] memory policies = new Policy.PolicyData[](inputData.length);
-    uint96[] memory internalIds = new uint96[](inputData.length);
     uint40 now_ = uint40(block.timestamp);
     require(onBehalfOf != address(0), InvalidCustomer(onBehalfOf));
 
@@ -190,10 +189,9 @@ contract RiskModule is IRiskModule, PolicyPoolComponent {
         premium = getMinimumPremium(payout, lossProb, now_, expiration, params_);
       }
       require(expiration > now_, ExpirationMustBeInTheFuture(expiration, now_));
-      policies[i] = Policy.initialize(params_, premium, payout, lossProb, expiration, now_);
-      internalIds[i] = internalId;
+      policies[i] = Policy.initialize(address(this), internalId, params_, premium, payout, lossProb, expiration, now_);
     }
-    _policyPool.newPoliciesBatch(policies, msg.sender, onBehalfOf, internalIds);
+    _policyPool.newPoliciesBatch(policies, msg.sender, onBehalfOf);
   }
 
   /**
@@ -217,9 +215,18 @@ contract RiskModule is IRiskModule, PolicyPoolComponent {
       premium = getMinimumPremium(payout, lossProb, oldPolicy.start, expiration, params_);
     }
     if (expiration < uint40(block.timestamp)) revert ExpirationMustBeInTheFuture(expiration, uint40(block.timestamp));
-    policy = Policy.initialize(params_, premium, payout, lossProb, expiration, oldPolicy.start);
+    policy = Policy.initialize(
+      address(this),
+      internalId,
+      params_,
+      premium,
+      payout,
+      lossProb,
+      expiration,
+      oldPolicy.start
+    );
 
-    policy.id = _policyPool.replacePolicy(oldPolicy, policy, msg.sender, internalId);
+    _policyPool.replacePolicy(oldPolicy, policy, msg.sender);
 
     return policy;
   }

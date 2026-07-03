@@ -3,6 +3,7 @@ const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 
 const { amountFunction, _W, getTransactionEvent } = require("@ensuro/utils/js/utils");
+const { makePolicyId } = require("../js/utils");
 
 const _A = amountFunction(6);
 const { ZeroAddress } = hre.ethers;
@@ -55,6 +56,20 @@ describe("Policy initialize", () => {
     expect(policy.srCoc).to.equal(_A(10 * 0.01));
   });
 
+  it("Sets policy.id to makePolicyId(rm, internalId)", async () => {
+    const { pool } = await helpers.loadFixture(poolFixture);
+
+    const internalId = 42;
+    const policyArgs = await makePolicyArgs({ internalId });
+    const tx = await pool.initializeAndEmitPolicy(...policyArgs);
+    const receipt = await tx.wait();
+
+    const policy = getTransactionEvent(pool.interface, receipt, "NewPolicy").args.policy;
+
+    const expectedId = makePolicyId(ZeroAddress, internalId);
+    expect(policy.id).to.equal(expectedId);
+  });
+
   async function poolFixture() {
     const PolicyPool = await hre.ethers.getContractFactory("PolicyPoolMock");
     const pool = await PolicyPool.deploy(ZeroAddress);
@@ -65,6 +80,8 @@ describe("Policy initialize", () => {
   async function makePolicyArgs(options = {}, rmParams = {}) {
     const now = await helpers.time.latest();
     return [
+      options.rm || ZeroAddress, // rm
+      options.internalId || 1, // internalId
       [
         rmParams.moc || _W(1), // moc
         rmParams.jrCollRatio || _W(0), // jrCollRatio

@@ -19,9 +19,10 @@ const NotificationKind = {
   PolicyCancelled: 4,
 };
 
-function toPolicyStruct(policy, start = 0) {
+function toPolicyStruct(policy, rm, internalId, start = 0) {
+  const policyId = makePolicyId(rm, internalId);
   return [
-    0, // id - Ignored
+    policyId,
     policy.payout, // payout
     _A(0), // jrScr
     _A(0), // srScr
@@ -40,7 +41,7 @@ describe("PoliyHolder policy creation handling", () => {
   it("Receiving with a functioning holder contract succeeds and executes the handler code", async () => {
     const { rm, ph, backend } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
-    await expect(rm.newPolicy(toPolicyStruct(policy), backend, ph, 1))
+    await expect(rm.newPolicy(toPolicyStruct(policy, rm, 1), backend, ph))
       .to.emit(ph, "NotificationReceived")
       .withArgs(NotificationKind.PolicyReceived, makePolicyId(rm, 1), rm, ZeroAddress);
   });
@@ -49,7 +50,7 @@ describe("PoliyHolder policy creation handling", () => {
     const { rm, ph, backend } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
     await ph.setFail(true);
-    await expect(rm.newPolicy(toPolicyStruct(policy), backend, ph, 1)).to.be.revertedWith(
+    await expect(rm.newPolicy(toPolicyStruct(policy, rm, 1), backend, ph)).to.be.revertedWith(
       "onERC721Received: They told me I have to fail"
     );
   });
@@ -59,7 +60,7 @@ describe("PoliyHolder policy creation handling", () => {
     const policy = await defaultPolicyParams({});
     await ph.setFail(true);
     await ph.setEmptyRevert(true);
-    await expect(rm.newPolicy(toPolicyStruct(policy), backend, ph, 1)).to.be.revertedWithCustomError(
+    await expect(rm.newPolicy(toPolicyStruct(policy, rm, 1), backend, ph)).to.be.revertedWithCustomError(
       pool,
       "ERC721InvalidReceiver"
     );
@@ -69,7 +70,7 @@ describe("PoliyHolder policy creation handling", () => {
     const { rm, ph, backend, pool } = await helpers.loadFixture(deployPoolFixture);
     const policy = await defaultPolicyParams({});
     await ph.setBadlyImplemented(true);
-    await expect(rm.newPolicy(toPolicyStruct(policy), backend, ph, 1)).to.be.revertedWithCustomError(
+    await expect(rm.newPolicy(toPolicyStruct(policy, rm, 1), backend, ph)).to.be.revertedWithCustomError(
       pool,
       "ERC721InvalidReceiver"
     );
@@ -152,7 +153,7 @@ describe("PolicyHolder replacement handling", () => {
     const chainPolicy = policyEvt.args.policy;
     const policyNew = await defaultPolicyParams({ expiration: policy.expiration, premium: chainPolicy.premium });
     const replaceReceipt = await getReceipt(
-      rm.replacePolicy([...chainPolicy], toPolicyStruct(policyNew, chainPolicy.start), backend, 2)
+      rm.replacePolicy([...chainPolicy], toPolicyStruct(policyNew, rm, 2, chainPolicy.start), backend)
     );
 
     const evts = getTransactionEvent(ph.interface, replaceReceipt, "NotificationReceived", false, getAddress(ph));
@@ -173,7 +174,7 @@ describe("PolicyHolder replacement handling", () => {
 
     await ph.setSpendGasCount(10);
     const replaceReceipt = await getReceipt(
-      rm.replacePolicy([...chainPolicy], toPolicyStruct(policyNew, chainPolicy.start), backend, 2)
+      rm.replacePolicy([...chainPolicy], toPolicyStruct(policyNew, rm, 2, chainPolicy.start), backend)
     );
 
     const evts = getTransactionEvent(ph.interface, replaceReceipt, "NotificationReceived", false, getAddress(ph));
@@ -189,18 +190,18 @@ describe("PolicyHolder replacement handling", () => {
 
     await ph.setFailReplace(true);
     await expect(
-      rm.replacePolicy([...chainPolicy], toPolicyStruct(policyNew, chainPolicy.start), backend, 2)
+      rm.replacePolicy([...chainPolicy], toPolicyStruct(policyNew, rm, 2, chainPolicy.start), backend)
     ).to.be.revertedWith("onPolicyReplaced: They told me I have to fail");
 
     // Same happens with an empty revert
     await ph.setEmptyRevert(true);
-    await expect(rm.replacePolicy([...chainPolicy], toPolicyStruct(policyNew, chainPolicy.start), backend, 2)).to.be
+    await expect(rm.replacePolicy([...chainPolicy], toPolicyStruct(policyNew, rm, 2, chainPolicy.start), backend)).to.be
       .reverted;
 
     // Also fails if returns wrong value
     await ph.setFailReplace(false);
     await ph.setBadlyImplementedReplace(true);
-    await expect(rm.replacePolicy([...chainPolicy], toPolicyStruct(policyNew, chainPolicy.start), backend, 2))
+    await expect(rm.replacePolicy([...chainPolicy], toPolicyStruct(policyNew, rm, 2, chainPolicy.start), backend))
       .to.be.revertedWithCustomError(pool, "InvalidNotificationResponse")
       .withArgs("0x0badf00d");
   });
@@ -422,7 +423,7 @@ async function deployPoolFixture() {
 }
 
 async function createPolicy(rm, pool, policy, payer, onBehalfOf, internalId) {
-  const tx = await rm.newPolicy(toPolicyStruct(policy), payer, onBehalfOf, internalId);
+  const tx = await rm.newPolicy(toPolicyStruct(policy, rm, internalId), payer, onBehalfOf);
   const receipt = await tx.wait();
 
   return getTransactionEvent(pool.interface, receipt, "NewPolicy");

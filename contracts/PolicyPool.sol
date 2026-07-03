@@ -227,6 +227,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   /// @notice Thrown when attempting to execute an action on a policy that does not exist (or was already expired)
   error PolicyNotFound(uint256 policyId);
 
+  error NewPoliciesMustStartNow();
+
   /**
    * @notice Thrown when attempting to expire a policy, but the policy is still active (policy.expiration >
    * block.timestamp)
@@ -589,13 +591,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   function _newPolicyEffects(
     IRiskModule rm,
     IPremiumsAccount pa,
-    Policy.PolicyData memory policy,
-    uint96 internalId,
+    Policy.PolicyData calldata policy,
     address policyHolder
   ) internal {
     // Effects
-    policy.id = Policy.makePolicyId(address(rm), internalId);
-    policy.start = uint40(block.timestamp);
     require(_policies[policy.id] == bytes32(0), PolicyAlreadyExists(policy.id));
     _policies[policy.id] = policy.hash();
     _changeExposure(rm, true, policy.payout);
@@ -616,15 +615,16 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
 
   /// @inheritdoc IPolicyPool
   function newPolicy(
-    Policy.PolicyData memory policy,
+    Policy.PolicyData calldata policy,
     address payer,
-    address policyHolder,
-    uint96 internalId
-  ) external override whenNotPaused returns (uint256) {
+    address policyHolder
+  ) external override whenNotPaused {
     // Checks
     (IRiskModule rm, IPremiumsAccount pa) = _validateRMAndPAActive();
+    require(Policy.extractRiskModule(policy.id) == address(rm), OnlyRiskModuleAllowed());
+    require(policy.start == block.timestamp, NewPoliciesMustStartNow());
 
-    _newPolicyEffects(rm, pa, policy, internalId, policyHolder);
+    _newPolicyEffects(rm, pa, policy, policyHolder);
 
     // Distribute the premium
     _currency.safeTransferFrom(payer, address(pa), policy.purePremium);
@@ -641,27 +641,28 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
      */
 
     emit NewPolicy(rm, policy);
-    return policy.id;
   }
 
+  /// @inheritdoc IPolicyPool
   function newPoliciesBatch(
-    Policy.PolicyData[] memory policies,
+    Policy.PolicyData[] calldata policies,
     address payer,
-    address policyHolder,
-    uint96[] memory internalIds
+    address policyHolder
   ) external override whenNotPaused {
     // Checks
     (IRiskModule rm, IPremiumsAccount pa) = _validateRMAndPAActive();
-    require(policies.length == internalIds.length, BatchInputLengthMismatch(policies.length, internalIds.length));
 
     uint256 purePremiumSum;
     uint256 srCocSum;
     uint256 jrCocSum;
     uint256 ensuroCommissionSum;
     uint256 partnerCommissionSum;
+    uint40 now_ = uint40(block.timestamp);
 
     for (uint256 i = 0; i < policies.length; ++i) {
-      _newPolicyEffects(rm, pa, policies[i], internalIds[i], policyHolder);
+      require(Policy.extractRiskModule(policies[i].id) == address(rm), OnlyRiskModuleAllowed());
+      require(policies[i].start == now_, NewPoliciesMustStartNow());
+      _newPolicyEffects(rm, pa, policies[i], policyHolder);
       purePremiumSum += policies[i].purePremium;
       srCocSum += policies[i].srCoc;
       jrCocSum += policies[i].jrCoc;
@@ -684,14 +685,16 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   // solhint-disable-next-line function-max-lines
   function replacePolicy(
     Policy.PolicyData calldata oldPolicy,
-    Policy.PolicyData memory newPolicy_,
-    address payer,
-    uint96 internalId
-  ) external override whenNotPaused returns (uint256) {
+    Policy.PolicyData calldata newPolicy_,
+    address payer
+  ) external override whenNotPaused {
     // Checks
     _validatePolicy(oldPolicy);
     (IRiskModule rm, IPremiumsAccount pa) = _validateRMAndPAActive();
-    if (Policy.extractRiskModule(oldPolicy.id) != address(rm)) revert OnlyRiskModuleAllowed();
+    require(
+      Policy.extractRiskModule(oldPolicy.id) == address(rm) && Policy.extractRiskModule(newPolicy_.id) == address(rm),
+      OnlyRiskModuleAllowed()
+    );
     require(
       oldPolicy.expiration > uint40(block.timestamp) && newPolicy_.expiration >= uint40(block.timestamp),
       PolicyAlreadyExpired(oldPolicy.id)
@@ -708,7 +711,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     // payout, jrScr, srScr, expiration can change in any direction
 
     // Effects
-    newPolicy_.id = Policy.makePolicyId(address(rm), internalId);
     require(_policies[newPolicy_.id] == bytes32(0), PolicyAlreadyExists(newPolicy_.id));
     _policies[newPolicy_.id] = newPolicy_.hash();
     address policyHolder = ownerOf(oldPolicy.id);
@@ -740,7 +742,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     emit NewPolicy(rm, newPolicy_);
     emit PolicyReplaced(rm, oldPolicy.id, newPolicy_.id);
     _notifyReplacement(oldPolicy.id, newPolicy_.id);
-    return newPolicy_.id;
   }
 
   /// @inheritdoc IPolicyPool
@@ -753,7 +754,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     // Checks
     _validatePolicy(policyToCancel);
     IRiskModule rm = IRiskModule(_msgSender());
-    if (Policy.extractRiskModule(policyToCancel.id) != address(rm)) revert OnlyRiskModuleAllowed();
+    require(Policy.extractRiskModule(policyToCancel.id) == address(rm), OnlyRiskModuleAllowed());
     _requireCompActiveOrDeprecated(address(rm), ComponentKind.riskModule);
     IPremiumsAccount pa = rm.premiumsAccount();
     _requireCompActiveOrDeprecated(address(pa), ComponentKind.premiumsAccount);

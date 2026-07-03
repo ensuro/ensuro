@@ -31,42 +31,34 @@ contract PolicyPoolMock is IPolicyPool {
   }
 
   function newPolicy(
-    Policy.PolicyData memory policy,
+    Policy.PolicyData calldata policy,
     address /* payer */,
-    address /* policyHolder */,
-    uint96 internalId
-  ) external override returns (uint256) {
-    policy.id = (uint256(uint160(msg.sender)) << 96) + internalId;
+    address /* policyHolder */
+  ) external override {
     policyHashes[policy.id] = policy.hash();
     emit NewPolicy(IRiskModule(msg.sender), policy);
-    return policy.id;
   }
 
   function newPoliciesBatch(
-    Policy.PolicyData[] memory policies,
+    Policy.PolicyData[] calldata policies,
     address payer,
-    address policyHolder,
-    uint96[] memory internalIds
+    address policyHolder
   ) external override {
     for (uint256 i = 0; i < policies.length; ++i) {
-      policies[i].id = (uint256(uint160(msg.sender)) << 96) + internalIds[i];
       policyHashes[policies[i].id] = policies[i].hash();
       emit NewPolicy(IRiskModule(msg.sender), policies[i]);
     }
   }
 
   function replacePolicy(
-    Policy.PolicyData memory oldPolicy,
-    Policy.PolicyData memory newPolicy_,
-    address /* payer */,
-    uint96 internalId
-  ) external override returns (uint256) {
-    newPolicy_.id = (uint256(uint160(msg.sender)) << 96) + internalId;
+    Policy.PolicyData calldata oldPolicy,
+    Policy.PolicyData calldata newPolicy_,
+    address /* payer */
+  ) external override {
     policyHashes[newPolicy_.id] = newPolicy_.hash();
     IRiskModule rm = IRiskModule(msg.sender);
     emit NewPolicy(rm, newPolicy_);
     emit PolicyReplaced(IRiskModule(msg.sender), oldPolicy.id, newPolicy_.id);
-    return newPolicy_.id;
   }
 
   function cancelPolicy(
@@ -120,6 +112,8 @@ contract PolicyPoolMock is IPolicyPool {
    * @dev Simple passthrough method for testing Policy.initialize
    */
   function initializeAndEmitPolicy(
+    address rm,
+    uint96 internalId,
     Policy.Params memory rmParams,
     uint256 premium,
     uint256 payout,
@@ -128,6 +122,8 @@ contract PolicyPoolMock is IPolicyPool {
     uint40 start
   ) external {
     Policy.PolicyData memory policy = Policy.initialize(
+      rm,
+      internalId,
       rmParams,
       premium,
       payout,
