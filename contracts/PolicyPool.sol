@@ -274,9 +274,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
   /// @notice Thrown when an invalid receiver address (address(0)) is provided as received of deposit or withdraw
   error InvalidReceiver(address receiver);
 
-  /// @notice Thrown when batch input arrays have different lengths
-  error BatchInputLengthMismatch(uint256 policiesLength, uint256 internalIdsLength);
-
   /**
    * @notice Event emitted when the treasury (who receives ensuroCommission) changes
    *
@@ -613,6 +610,27 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     _requireCompActive(address(pa), ComponentKind.premiumsAccount);
   }
 
+  function _distributePremium(
+    address payer,
+    IPremiumsAccount pa,
+    IRiskModule rm,
+    uint256 purePremium,
+    uint256 srCoc,
+    uint256 jrCoc,
+    uint256 ensuroCommission,
+    uint256 partnerCommission
+  ) internal {
+    if (purePremium > 0) _currency.safeTransferFrom(payer, address(pa), purePremium);
+    (IEToken jrEtk, IEToken srEtk) = pa.etks();
+    if (srCoc > 0) _currency.safeTransferFrom(payer, address(srEtk), srCoc);
+    if (jrCoc > 0) _currency.safeTransferFrom(payer, address(jrEtk), jrCoc);
+    if (ensuroCommission > 0) _currency.safeTransferFrom(payer, _treasury, ensuroCommission);
+    if (partnerCommission > 0) {
+      address partnerAddress = rm.wallet();
+      if (payer != partnerAddress) _currency.safeTransferFrom(payer, partnerAddress, partnerCommission);
+    }
+  }
+
   /// @inheritdoc IPolicyPool
   function newPolicy(
     Policy.PolicyData calldata policy,
@@ -626,20 +644,16 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
 
     _newPolicyEffects(rm, pa, policy, policyHolder);
 
-    // Distribute the premium
-    _currency.safeTransferFrom(payer, address(pa), policy.purePremium);
-    (IEToken jrEtk, IEToken srEtk) = pa.etks();
-    if (policy.srCoc > 0) _currency.safeTransferFrom(payer, address(srEtk), policy.srCoc);
-    if (policy.jrCoc > 0) _currency.safeTransferFrom(payer, address(jrEtk), policy.jrCoc);
-    _currency.safeTransferFrom(payer, _treasury, policy.ensuroCommission);
-    if (policy.partnerCommission > 0 && payer != rm.wallet())
-      _currency.safeTransferFrom(payer, rm.wallet(), policy.partnerCommission);
-    /**
-     * This code does up to 5 ERC20 transfers. This can be avoided to reduce the gas cost, by implementing delayed
-     * transfers. This might be considered in the future, but to avoid increasing the complexity and since so far we
-     * operate on low gas-cost blockchains, we keep it as it is.
-     */
-
+    _distributePremium(
+      payer,
+      pa,
+      rm,
+      policy.purePremium,
+      policy.srCoc,
+      policy.jrCoc,
+      policy.ensuroCommission,
+      policy.partnerCommission
+    );
     emit NewPolicy(rm, policy);
   }
 
@@ -671,14 +685,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
       emit NewPolicy(rm, policies[i]);
     }
 
-    // Distribute the premium
-    _currency.safeTransferFrom(payer, address(pa), purePremiumSum);
-    (IEToken jrEtk, IEToken srEtk) = pa.etks();
-    if (srCocSum > 0) _currency.safeTransferFrom(payer, address(srEtk), srCocSum);
-    if (jrCocSum > 0) _currency.safeTransferFrom(payer, address(jrEtk), jrCocSum);
-    _currency.safeTransferFrom(payer, _treasury, ensuroCommissionSum);
-    if (partnerCommissionSum > 0 && payer != rm.wallet())
-      _currency.safeTransferFrom(payer, rm.wallet(), partnerCommissionSum);
+    _distributePremium(payer, pa, rm, purePremiumSum, srCocSum, jrCocSum, ensuroCommissionSum, partnerCommissionSum);
   }
 
   /// @inheritdoc IPolicyPool
@@ -724,20 +731,16 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     // to avoid reentrancy attack, I move it to the interactions section
     _safeMint(policyHolder, newPolicy_.id, "");
 
-    // Distribute the premium
-    _transferIfNonZero(payer, address(pa), newPolicy_.purePremium, oldPolicy.purePremium);
-    (IEToken jrEtk, IEToken srEtk) = pa.etks();
-    _transferIfNonZero(payer, address(srEtk), newPolicy_.srCoc, oldPolicy.srCoc);
-    _transferIfNonZero(payer, address(jrEtk), newPolicy_.jrCoc, oldPolicy.jrCoc);
-    _transferIfNonZero(payer, _treasury, newPolicy_.ensuroCommission, oldPolicy.ensuroCommission);
-    address rmWallet = rm.wallet();
-    if (payer != rmWallet)
-      _transferIfNonZero(payer, rmWallet, newPolicy_.partnerCommission, oldPolicy.partnerCommission);
-    /**
-     * This code does up to 5 ERC20 transfers. This can be avoided to reduce the gas cost, by implementing delayed
-     * transfers. This might be considered in the future, but to avoid increasing the complexity and since so far we
-     * operate on low gas-cost blockchains, we keep it as it is.
-     */
+    _distributePremium(
+      payer,
+      pa,
+      rm,
+      newPolicy_.purePremium - oldPolicy.purePremium,
+      newPolicy_.srCoc - oldPolicy.srCoc,
+      newPolicy_.jrCoc - oldPolicy.jrCoc,
+      newPolicy_.ensuroCommission - oldPolicy.ensuroCommission,
+      newPolicy_.partnerCommission - oldPolicy.partnerCommission
+    );
 
     emit NewPolicy(rm, newPolicy_);
     emit PolicyReplaced(rm, oldPolicy.id, newPolicy_.id);
@@ -776,13 +779,6 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
 
     emit PolicyCancelled(rm, policyToCancel.id, purePremiumRefund, jrCocRefund, srCocRefund);
     _notifyCancellation(policyToCancel.id, purePremiumRefund, jrCocRefund, srCocRefund);
-  }
-
-  function _transferIfNonZero(address payer, address target, uint256 new_, uint256 old_) internal {
-    uint256 aux = new_ - old_;
-    if (aux != 0) {
-      _currency.safeTransferFrom(payer, target, aux);
-    }
   }
 
   function _validatePolicy(Policy.PolicyData memory policy) internal view {
