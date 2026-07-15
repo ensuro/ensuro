@@ -11,6 +11,7 @@ import {MulticallUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Mu
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
+import {AMPUtils} from "@ensuro/access-managed-proxy/contracts/AMPUtils.sol";
 
 import {IEToken} from "./interfaces/IEToken.sol";
 import {IPolicyHolder} from "./interfaces/IPolicyHolder.sol";
@@ -368,6 +369,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     __ERC721_init(name_, symbol_);
     __Pausable_init();
     __PolicyPool_init_unchained(treasury_);
+  }
+
+  function reinitializePashThruMethods(bytes4[] memory newPassThruMethods) public reinitializer(2) {
+    AMPUtils.replacePassThruMethods(newPassThruMethods);
   }
 
   /// @inheritdoc IERC165

@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { amountFunction } = require("@ensuro/utils/js/utils");
 const { initCurrency } = require("@ensuro/utils/js/test-utils");
-const { deployAMPProxy, getAccessManager } = require("@ensuro/access-managed-proxy/js/deployProxy");
+const { deployAMPProxy, getAccessManager, attachAsAMP } = require("@ensuro/access-managed-proxy/js/deployProxy");
 const { deployPool, deployPremiumsAccount, addRiskModule, addEToken, makeAllPublic } = require("../js/test-utils");
 const { ampConfig } = require("../js/ampConfig");
 
@@ -99,6 +99,28 @@ describe("Test Upgrade contracts", function () {
       pool,
       "UpgradeCannotChangeCurrency"
     );
+  });
+
+  it("Can update pass-thru methods during upgrade via reinitializePashThruMethods", async () => {
+    const { pool, guardian, currency } = await helpers.loadFixture(setupFixtureWithPool);
+    const poolAsAMP = await attachAsAMP(pool);
+
+    const oldMethods = await poolAsAMP.PASS_THRU_METHODS();
+    expect(oldMethods.length).to.be.greaterThan(0);
+
+    // Compute a new set removing the last method to prove replacement works
+    const newSelectors = oldMethods.slice(0, oldMethods.length - 1);
+
+    const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
+    const newImpl = await PolicyPool.deploy(currency);
+    const data = PolicyPool.interface.encodeFunctionData("reinitializePashThruMethods", [newSelectors]);
+
+    await expect(pool.connect(guardian).upgradeToAndCall(newImpl, data))
+      .to.emit(pool, "PassThruMethodsChanged")
+      .withArgs(newSelectors);
+
+    const updatedMethods = await poolAsAMP.PASS_THRU_METHODS();
+    expect(updatedMethods).to.deep.equal(newSelectors);
   });
 
   it("Should be able to upgrade EToken", async () => {
