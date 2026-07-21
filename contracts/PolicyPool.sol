@@ -371,7 +371,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     __PolicyPool_init_unchained(treasury_);
   }
 
-  function reinitializePashThruMethods(bytes4[] memory newPassThruMethods) public reinitializer(2) {
+  function reinitializePassThruMethods(bytes4[] memory newPassThruMethods) public reinitializer(2) {
     AMPUtils.replacePassThruMethods(newPassThruMethods);
   }
 

@@ -101,7 +101,7 @@ describe("Test Upgrade contracts", function () {
     );
   });
 
-  it("Can update pass-thru methods during upgrade via reinitializePashThruMethods", async () => {
+  it("Can update pass-thru methods during upgrade via reinitializePassThruMethods", async () => {
     const { pool, guardian, currency } = await helpers.loadFixture(setupFixtureWithPool);
     const poolAsAMP = await attachAsAMP(pool);
 
@@ -113,7 +113,7 @@ describe("Test Upgrade contracts", function () {
 
     const PolicyPool = await hre.ethers.getContractFactory("PolicyPool");
     const newImpl = await PolicyPool.deploy(currency);
-    const data = PolicyPool.interface.encodeFunctionData("reinitializePashThruMethods", [newSelectors]);
+    const data = PolicyPool.interface.encodeFunctionData("reinitializePassThruMethods", [newSelectors]);
 
     await expect(pool.connect(guardian).upgradeToAndCall(newImpl, data))
       .to.emit(pool, "PassThruMethodsChanged")
