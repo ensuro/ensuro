@@ -512,7 +512,7 @@ describe("PolicyPool contract", function () {
     );
   });
 
-  it("Rejects batch creation with policies not starting now", async () => {
+  it("Rejects policies that do not start now", async () => {
     const { rm, pool, cust } = await helpers.loadFixture(deployRiskModuleFixture);
     const policyId = makePolicyId(await rm.getAddress(), 1);
 
@@ -527,17 +527,74 @@ describe("PolicyPool contract", function () {
       _A(0), // partnerCommission
       _A(0), // jrCoc
       _A(0), // srCoc
-      1, // start != block.timestamp -> triggers NewPoliciesMustStartNow
+      1, // start != block.timestamp
       1 + HOUR,
     ];
 
+    // Batch path
     await expect(
-      rm.newPoliciesBatch(
-        [policyData],
-        cust.address,
-        cust.address
-      )
+      rm.newPoliciesBatch([policyData], cust.address, cust.address)
     ).to.be.revertedWithCustomError(pool, "NewPoliciesMustStartNow");
+
+    // Single policy path (non-batch)
+    await expect(
+      rm.newPolicy(policyData, cust.address, cust.address)
+    ).to.be.revertedWithCustomError(pool, "NewPoliciesMustStartNow");
+  });
+
+  it("Emits one NewPolicy event per policy in newPoliciesBatch", async () => {
+    const { rm, pool, cust, currency } = await helpers.loadFixture(deployRiskModuleFixture);
+
+    await pool.setExposureLimit(rm, _A(5000));
+
+    const now = await helpers.time.latest();
+    const rmAddress = await rm.getAddress();
+    const n = 3;
+    const policies = [...Array(n)].map((_, i) => {
+      const id = makePolicyId(rmAddress, 100 + i);
+      return [id, _A(1000), _A(0), _A(0), 5000, _A(10), _A(0), _A(0), _A(0), _A(0), 0, now + HOUR];
+    });
+
+    await currency.connect(cust).approve(pool, _A(30));
+
+    const tx = await rm.newPoliciesBatch(policies, cust.address, cust.address);
+    const receipt = await tx.wait();
+
+    const newPolicyEvents = getTransactionEvent(pool.interface, receipt, "NewPolicy", false);
+    expect(newPolicyEvents.length).to.equal(n);
+  });
+
+  it("Rejects batch with policies from different risk modules", async () => {
+    const { rm, pool, cust } = await helpers.loadFixture(deployRiskModuleFixture);
+
+    await pool.setExposureLimit(rm, _A(2000));
+
+    const rmAddress = await rm.getAddress();
+    const goodId = makePolicyId(rmAddress, 1);
+    const badId = makePolicyId(ZeroAddress, 2);
+
+    const now = await helpers.time.latest();
+    const goodPolicy = [goodId, _A(1000), _A(0), _A(0), 5000, _A(10), _A(0), _A(0), _A(0), _A(0), 0, now + HOUR];
+    const badPolicy = [badId, _A(1000), _A(0), _A(0), 5000, _A(10), _A(0), _A(0), _A(0), _A(0), 0, now + HOUR];
+
+    await expect(
+      rm.newPoliciesBatch([goodPolicy, badPolicy], cust.address, cust.address)
+    ).to.be.revertedWithCustomError(pool, "OnlyRiskModuleAllowed");
+  });
+
+  it("Rejects batch with duplicate policy IDs", async () => {
+    const { rm, pool, cust } = await helpers.loadFixture(deployRiskModuleFixture);
+
+    await pool.setExposureLimit(rm, _A(2000));
+
+    const policyId = makePolicyId(await rm.getAddress(), 1);
+    const now = await helpers.time.latest();
+    const policyData = [policyId, _A(1000), _A(0), _A(0), 5000, _A(10), _A(0), _A(0), _A(0), _A(0), 0, now + HOUR];
+
+    await expect(
+      rm.newPoliciesBatch([[...policyData], [...policyData]], cust.address, cust.address)
+    ).to.be.revertedWithCustomError(pool, "PolicyAlreadyExists")
+     .withArgs(policyId);
   });
 
   it("Rejects replace policy if the pool is paused", async () => {
