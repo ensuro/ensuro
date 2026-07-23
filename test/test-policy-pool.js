@@ -13,7 +13,7 @@ const { addEToken, createEToken, deployPool, deployPremiumsAccount } = require("
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { ComponentStatus, ComponentKind } = require("../js/enums.js");
 const hre = require("hardhat");
-const { encodePolicy } = require("../js/utils.js");
+const { makePolicyId, encodePolicy } = require("../js/utils.js");
 const { ethers } = hre;
 const { ZeroAddress, ZeroHash } = ethers;
 
@@ -33,8 +33,9 @@ async function createNewPolicy(
   internalId,
   overrides = {}
 ) {
+  const policyId = makePolicyId(await rm.getAddress(), internalId);
   const policyData = [
-    0, // id - ignored
+    policyId,
     payout,
     overrides.jrScr || _A(0), // jrScr
     overrides.srScr || _A(0), // srScr
@@ -44,15 +45,14 @@ async function createNewPolicy(
     overrides.partnerCommission || _A(0), // partnerCommission
     overrides.jrCoc || _A(0), // jrCoc
     overrides.srCoc || _A(0), // srCoc
-    await helpers.time.latest(),
+    0, // start - RiskModuleMock replaces with block.timestamp
     expiration,
   ];
 
-  const tx = await rm.connect(cust).newPolicy([...policyData], payer, holder, internalId);
+  const tx = await rm.connect(cust).newPolicy([...policyData], payer, holder);
   const receipt = await tx.wait();
   const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
-  const policy = newPolicyEvt.args.policy;
-  return policy;
+  return newPolicyEvt.args.policy;
 }
 
 async function deployPoolFixture() {
@@ -101,7 +101,7 @@ async function deployRiskModuleFixture() {
   const rm = PolicyPool.attach(rmMock);
   await pool.addComponent(rm, ComponentKind.riskModule);
 
-  return { jrEtk, srEtk, premiumsAccount, rm, ...ret };
+  return { jrEtk, srEtk, premiumsAccount, rm, PolicyPool, RiskModuleMock, ...ret };
 }
 
 async function deployRmWithPolicyFixture() {
@@ -114,8 +114,9 @@ async function deployRmWithPolicyFixture() {
   // Deploy a new policy
   await currency.connect(cust).approve(pool, _A(110));
 
+  const policyId = makePolicyId(await rm.getAddress(), 123);
   const policyData = [
-    0, // id - Ignored
+    policyId,
     _A(1000), // payout
     _A(0), // jrScr
     _A(0), // srScr
@@ -125,11 +126,11 @@ async function deployRmWithPolicyFixture() {
     _A(0), // partnerCommission
     _A(0), // jrCoc
     _A(0), // srCoc
-    0, // start
+    0, // start - RiskModuleMock replaces with block.timestamp
     now + HOUR * 5, // expiration
   ];
 
-  const tx = await rm.newPolicy(policyData, cust, cust, 123);
+  const tx = await rm.newPolicy(policyData, cust, cust);
 
   const receipt = await tx.wait();
 
@@ -316,7 +317,7 @@ describe("PolicyPool contract", function () {
       now + HOUR * 5, // expiration
     ];
 
-    await expect(pool.newPolicy(policyData, cust, backend, 11))
+    await expect(pool.newPolicy(policyData, cust, backend))
       .to.be.revertedWithCustomError(pool, "ComponentNotTheRightKind")
       .withArgs(owner, ComponentKind.riskModule);
   });
@@ -425,7 +426,7 @@ describe("PolicyPool contract", function () {
     const { pool, rm, cust, backend, policy } = await helpers.loadFixture(deployRmWithPolicyFixture);
     const now = await helpers.time.latest();
     const policyData = [
-      1, // id
+      policy.id,
       _A(1000), // payout
       _W(0), // jrScr
       _W(0), // srScr
@@ -435,11 +436,11 @@ describe("PolicyPool contract", function () {
       _W(0), // partnerCommission
       _W(0), // jrCoc
       _W(0), // srCoc
-      now, // start
+      0, // start - RiskModuleMock replaces with block.timestamp
       now + HOUR * 5, // expiration
     ];
 
-    await expect(rm.newPolicy(policyData, cust, backend, 123))
+    await expect(rm.newPolicy(policyData, cust, backend))
       .to.be.revertedWithCustomError(pool, "PolicyAlreadyExists")
       .withArgs(policy.id);
   });
@@ -491,17 +492,109 @@ describe("PolicyPool contract", function () {
     const { policy, rm, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
     await expect(rm.resolvePolicy([...policy], policy.payout)).not.to.be.reverted;
     expect(await pool.isActive(policy.id)).to.be.false;
-    await expect(pool.replacePolicy([...policy], [...policy], ZeroAddress, 1234))
+    await expect(pool.replacePolicy([...policy], [...policy], ZeroAddress))
       .to.be.revertedWithCustomError(pool, "PolicyNotFound")
       .withArgs(policy.id);
   });
 
   it("Only RM can replace policies", async () => {
-    const { policy, pool } = await helpers.loadFixture(deployRmWithPolicyFixture);
-    await expect(pool.replacePolicy([...policy], [...policy], ZeroAddress, 1234)).to.be.revertedWithCustomError(
+    const { policy, premiumsAccount, lp, pool, RiskModuleMock, PolicyPool } =
+      await helpers.loadFixture(deployRmWithPolicyFixture);
+
+    // Create and add another RM
+    const rmMock = await RiskModuleMock.deploy(pool, premiumsAccount, lp);
+    const rmNew = PolicyPool.attach(rmMock);
+    await pool.addComponent(rmNew, ComponentKind.riskModule);
+
+    await expect(rmNew.replacePolicy([...policy], [...policy], ZeroAddress)).to.be.revertedWithCustomError(
       pool,
       "OnlyRiskModuleAllowed"
     );
+  });
+
+  it("Rejects policies that do not start now", async () => {
+    const { rm, pool, cust } = await helpers.loadFixture(deployRiskModuleFixture);
+    const policyId = makePolicyId(await rm.getAddress(), 1);
+
+    const policyData = [
+      policyId,
+      _A(1000), // payout
+      _A(0), // jrScr
+      _A(0), // srScr
+      5000, // lossProb
+      _A(10), // purePremium
+      _A(0), // ensuroCommission
+      _A(0), // partnerCommission
+      _A(0), // jrCoc
+      _A(0), // srCoc
+      1, // start != block.timestamp
+      1 + HOUR,
+    ];
+
+    // Batch path
+    await expect(
+      rm.newPoliciesBatch([policyData], cust.address, cust.address)
+    ).to.be.revertedWithCustomError(pool, "NewPoliciesMustStartNow");
+
+    // Single policy path (non-batch)
+    await expect(
+      rm.newPolicy(policyData, cust.address, cust.address)
+    ).to.be.revertedWithCustomError(pool, "NewPoliciesMustStartNow");
+  });
+
+  it("Emits one NewPolicy event per policy in newPoliciesBatch", async () => {
+    const { rm, pool, cust, currency } = await helpers.loadFixture(deployRiskModuleFixture);
+
+    await pool.setExposureLimit(rm, _A(5000));
+
+    const now = await helpers.time.latest();
+    const rmAddress = await rm.getAddress();
+    const n = 3;
+    const policies = [...Array(n)].map((_, i) => {
+      const id = makePolicyId(rmAddress, 100 + i);
+      return [id, _A(1000), _A(0), _A(0), 5000, _A(10), _A(0), _A(0), _A(0), _A(0), 0, now + HOUR];
+    });
+
+    await currency.connect(cust).approve(pool, _A(30));
+
+    const tx = await rm.newPoliciesBatch(policies, cust.address, cust.address);
+    const receipt = await tx.wait();
+
+    const newPolicyEvents = getTransactionEvent(pool.interface, receipt, "NewPolicy", false);
+    expect(newPolicyEvents.length).to.equal(n);
+  });
+
+  it("Rejects batch with policies from different risk modules", async () => {
+    const { rm, pool, cust } = await helpers.loadFixture(deployRiskModuleFixture);
+
+    await pool.setExposureLimit(rm, _A(2000));
+
+    const rmAddress = await rm.getAddress();
+    const goodId = makePolicyId(rmAddress, 1);
+    const badId = makePolicyId(ZeroAddress, 2);
+
+    const now = await helpers.time.latest();
+    const goodPolicy = [goodId, _A(1000), _A(0), _A(0), 5000, _A(10), _A(0), _A(0), _A(0), _A(0), 0, now + HOUR];
+    const badPolicy = [badId, _A(1000), _A(0), _A(0), 5000, _A(10), _A(0), _A(0), _A(0), _A(0), 0, now + HOUR];
+
+    await expect(
+      rm.newPoliciesBatch([goodPolicy, badPolicy], cust.address, cust.address)
+    ).to.be.revertedWithCustomError(pool, "OnlyRiskModuleAllowed");
+  });
+
+  it("Rejects batch with duplicate policy IDs", async () => {
+    const { rm, pool, cust } = await helpers.loadFixture(deployRiskModuleFixture);
+
+    await pool.setExposureLimit(rm, _A(2000));
+
+    const policyId = makePolicyId(await rm.getAddress(), 1);
+    const now = await helpers.time.latest();
+    const policyData = [policyId, _A(1000), _A(0), _A(0), 5000, _A(10), _A(0), _A(0), _A(0), _A(0), 0, now + HOUR];
+
+    await expect(
+      rm.newPoliciesBatch([[...policyData], [...policyData]], cust.address, cust.address)
+    ).to.be.revertedWithCustomError(pool, "PolicyAlreadyExists")
+     .withArgs(policyId);
   });
 
   it("Rejects replace policy if the pool is paused", async () => {
@@ -509,7 +602,7 @@ describe("PolicyPool contract", function () {
 
     await expect(pool.pause()).to.emit(pool, "Paused");
 
-    await expect(pool.replacePolicy([...policy], [...policy], ZeroAddress, 1234)).to.be.revertedWithCustomError(
+    await expect(pool.replacePolicy([...policy], [...policy], ZeroAddress)).to.be.revertedWithCustomError(
       pool,
       "EnforcedPause"
     );
@@ -527,13 +620,13 @@ describe("PolicyPool contract", function () {
     const { policy, pool, rm, premiumsAccount, backend } = await helpers.loadFixture(deployRmWithPolicyFixture);
     await pool.changeComponentStatus(premiumsAccount, ComponentStatus.deprecated);
 
-    await expect(rm.replacePolicy([...policy], [...policy], backend, 1234)).to.be.revertedWithCustomError(
+    await expect(rm.replacePolicy([...policy], [...policy], backend)).to.be.revertedWithCustomError(
       pool,
       "ComponentNotFoundOrNotActive"
     );
     await pool.changeComponentStatus(premiumsAccount, ComponentStatus.active);
     await pool.changeComponentStatus(rm, ComponentStatus.deprecated);
-    await expect(rm.replacePolicy([...policy], [...policy], backend, 1234)).to.be.revertedWithCustomError(
+    await expect(rm.replacePolicy([...policy], [...policy], backend)).to.be.revertedWithCustomError(
       pool,
       "ComponentNotFoundOrNotActive"
     );
@@ -562,7 +655,7 @@ describe("PolicyPool contract", function () {
     await helpers.time.increaseTo(policy.expiration + 100n);
     const newPolicy = [...policy];
     newPolicy[11] += 1000n; // change expiration
-    await expect(rm.replacePolicy([...policy], [...newPolicy], backend, 1234))
+    await expect(rm.replacePolicy([...policy], [...newPolicy], backend))
       .to.be.revertedWithCustomError(pool, "PolicyAlreadyExpired")
       .withArgs(policy.id);
   });
@@ -582,7 +675,7 @@ describe("PolicyPool contract", function () {
     await helpers.time.increaseTo(policy.expiration - BigInt(HOUR));
     const newPolicy = [...policy];
     newPolicy[11] = policy.expiration - BigInt(2 * HOUR); // change expiration
-    await expect(rm.replacePolicy([...policy], [...newPolicy], backend, 1234))
+    await expect(rm.replacePolicy([...policy], [...newPolicy], backend))
       .to.be.revertedWithCustomError(pool, "PolicyAlreadyExpired")
       .withArgs(policy.id);
   });
@@ -599,31 +692,31 @@ describe("PolicyPool contract", function () {
     });
     let p2 = [...p1];
     p2[7] -= _A("0.1"); // decrease partnerCommission
-    await expect(rm.replacePolicy([...p1], [...p2], backend, 1234))
+    await expect(rm.replacePolicy([...p1], [...p2], backend))
       .to.be.revertedWithCustomError(pool, "InvalidPolicyReplacement")
       .withArgs(p1, p2);
 
     p2 = [...p1];
     p2[6] -= _A("0.1"); // decrease ensuroCommission
-    await expect(rm.replacePolicy([...p1], [...p2], backend, 1234))
+    await expect(rm.replacePolicy([...p1], [...p2], backend))
       .to.be.revertedWithCustomError(pool, "InvalidPolicyReplacement")
       .withArgs(p1, p2);
 
     p2 = [...p1];
     p2[8] -= _A("0.1"); // decrease jrCoc
-    await expect(rm.replacePolicy([...p1], [...p2], backend, 1234))
+    await expect(rm.replacePolicy([...p1], [...p2], backend))
       .to.be.revertedWithCustomError(pool, "InvalidPolicyReplacement")
       .withArgs(p1, p2);
 
     p2 = [...p1];
     p2[9] -= _A("0.1"); // decrease srCoc
-    await expect(rm.replacePolicy([...p1], [...p2], backend, 1234))
+    await expect(rm.replacePolicy([...p1], [...p2], backend))
       .to.be.revertedWithCustomError(pool, "InvalidPolicyReplacement")
       .withArgs(p1, p2);
 
     p2 = [...p1];
     p2[5] -= _A("0.1"); // decrease purePremium
-    await expect(rm.replacePolicy([...p1], [...p2], backend, 1234))
+    await expect(rm.replacePolicy([...p1], [...p2], backend))
       .to.be.revertedWithCustomError(pool, "InvalidPolicyReplacement")
       .withArgs(p1, p2);
   });
@@ -634,7 +727,7 @@ describe("PolicyPool contract", function () {
     await helpers.time.increaseTo(policy.start + 100n);
     const now = await helpers.time.latest();
     const p = await createNewPolicy(rm, backend, pool, _A(1000), _A(10), _W(0), now + HOUR * 5, cust, cust, 1234);
-    await expect(rm.replacePolicy([...policy], [...p], backend, 123))
+    await expect(rm.replacePolicy([...policy], [...p], backend))
       .to.be.revertedWithCustomError(pool, "InvalidPolicyReplacement")
       .withArgs(policy, p);
   });
@@ -660,8 +753,10 @@ describe("PolicyPool contract", function () {
     const replacementIRSr = newCaptureAny();
     const originalIRSr = newCaptureAny();
     const adjustmentSr = newCaptureAny();
-    const [oldPolicyId, newPolicyId] = [p1[0], p1[0] - 222n + 234n];
-    await expect(rm.replacePolicy([...p1], [...p2], backend, 234))
+    const newPolicyId = makePolicyId(await rm.getAddress(), 234);
+    p2[0] = newPolicyId;
+    const oldPolicyId = p1[0];
+    await expect(rm.replacePolicy([...p1], [...p2], backend))
       .to.emit(pool, "PolicyReplaced")
       .withArgs(rm, oldPolicyId, newPolicyId)
       .to.emit(jrEtk, "SCRLocked")
@@ -704,8 +799,10 @@ describe("PolicyPool contract", function () {
     const replacementIRSr = newCaptureAny();
     const originalIRSr = newCaptureAny();
     const adjustmentSr = newCaptureAny();
-    const [oldPolicyId, newPolicyId] = [p1[0], p1[0] - 222n + 234n];
-    await expect(rm.replacePolicy([...p1], [...p2], backend, 234))
+    const newPolicyId = makePolicyId(await rm.getAddress(), 234);
+    p2[0] = newPolicyId;
+    const oldPolicyId = p1[0];
+    await expect(rm.replacePolicy([...p1], [...p2], backend))
       .to.emit(pool, "PolicyReplaced")
       .withArgs(rm, oldPolicyId, newPolicyId)
       .to.emit(jrEtk, "SCRLocked")
@@ -740,6 +837,8 @@ describe("PolicyPool contract", function () {
       ensuroCommission: _A("0.1"),
     });
     let p2 = [...p1];
+    const newPolicyId = makePolicyId(await rm.getAddress(), 234);
+    p2[0] = newPolicyId;
     p2[1] = _A(2000); // payout 2x
     p2[2] = _A(50); // jrScr 1/2x
     p2[3] = _A(1000); // srScr 2x
@@ -748,14 +847,14 @@ describe("PolicyPool contract", function () {
     await helpers.time.increaseTo(now + HOUR * 3);
 
     // Check exposure is increased
-    await expect(rm.replacePolicy([...p1], [...p2], backend, 234))
+    await expect(rm.replacePolicy([...p1], [...p2], backend))
       .to.be.revertedWithCustomError(pool, "ExposureLimitExceeded")
       .withArgs(_A(3000), _A(2000));
 
     await pool.setExposureLimit(rm, _A(3000));
 
     // Increase in srCoc requires new allowance
-    await expect(rm.replacePolicy([...p1], [...p2], backend, 234))
+    await expect(rm.replacePolicy([...p1], [...p2], backend))
       .to.be.revertedWithCustomError(currency, "ERC20InsufficientAllowance")
       .withArgs(pool, _A(0), _A("0.4"));
 
@@ -767,8 +866,8 @@ describe("PolicyPool contract", function () {
     const replacementIRSr = newCaptureAny();
     const originalIRSr = newCaptureAny();
     const adjustmentSr = newCaptureAny();
-    const [oldPolicyId, newPolicyId] = [p1[0], p1[0] - 222n + 234n];
-    await expect(rm.replacePolicy([...p1], [...p2], backend, 234))
+    const oldPolicyId = p1[0];
+    await expect(rm.replacePolicy([...p1], [...p2], backend))
       .to.emit(pool, "PolicyReplaced")
       .withArgs(rm, oldPolicyId, newPolicyId)
       .to.emit(jrEtk, "SCRLocked")
@@ -951,7 +1050,7 @@ describe("PolicyPool contract", function () {
 
   it("Replacement policy must have a new unique internalId", async () => {
     const { policy, rm, pool, backend } = await helpers.loadFixture(deployRmWithPolicyFixture);
-    await expect(rm.replacePolicy([...policy], [...policy], backend, 123))
+    await expect(rm.replacePolicy([...policy], [...policy], backend))
       .to.be.revertedWithCustomError(pool, "PolicyAlreadyExists")
       .withArgs(policy.id);
   });

@@ -81,26 +81,48 @@ interface IPolicyPool {
    * @custom:pre `msg.sender` must be an active RiskModule
    * @custom:pre `rm.premiumsAccount()` must be an active PremiumsAccount
    * @custom:pre `payer` approved the spending of `currency()` for at least `policy.premium`
-   * @custom:pre `internalId` must be unique within the risk module (`msg.sender`) and not used before
+   * @custom:pre `policy.id` must be `Policy.makePolicyId(rm, internalId)` and not used before
+   * @custom:pre `policy.start` must be equal to `block.timestamp`
    *
    * @custom:emits NewPolicy with all the details about the policy
    * @custom:emits ERC20-Transfer transfers from `payer` to the different receivers of the premium
    *               (see Premium Split in the docs)
    *
    * @custom:throws PolicyAlreadyExists when reusing an internalId
-
+   * @custom:throws NewPoliciesMustStartNow when `policy.start != block.timestamp`
+   *
    * @param policy A policy created with {Policy-initialize}
    * @param payer The address that will pay for the premium
    * @param policyHolder The address of the policy holder
-   * @param internalId A unique id within the RiskModule, that will be used to compute the policy id
-   * @return The policy id, identifying the NFT and the policy
    */
-  function newPolicy(
-    Policy.PolicyData memory policy,
-    address payer,
-    address policyHolder,
-    uint96 internalId
-  ) external returns (uint256);
+  function newPolicy(Policy.PolicyData calldata policy, address payer, address policyHolder) external;
+
+  /**
+   * @notice Creates multiple policies in a single call, aggregating premium transfers
+   * @dev It charges the sum of all premiums and distributes it to the different parties
+   *      (PremiumsAccount, ETokens, treasury) in a single transfer per component, instead of
+   *      one transfer per policy. This reduces the number of ERC20 transfers from 5N to 5
+   *      for N policies.
+   *
+   * @custom:pre `msg.sender` must be an active RiskModule
+   * @custom:pre `rm.premiumsAccount()` must be an active PremiumsAccount
+   * @custom:pre `payer` approved the spending of `currency()` for at least the sum of all premiums
+   * @custom:pre Each `policies[i].start` must be equal to `block.timestamp`
+   * @custom:pre Each `policies[i].id` must be unique and not used before
+   *
+   * @custom:emits NewPolicy for each policy with all the details
+   * @custom:emits ERC20-Transfer transfers from `payer` to the different receivers of the premium
+   *               (see Premium Split in the docs)
+   *
+   * @custom:throws NewPoliciesMustStartNow when `policies[i].start != block.timestamp`
+   * @custom:throws PolicyAlreadyExists when reusing a policy id
+   * @custom:throws OnlyRiskModuleAllowed when `policies[i].id` doesn't match the sender risk module
+   *
+   * @param policies An array of policies created with {Policy-initialize}
+   * @param payer The address that will pay for the premium
+   * @param policyHolder The address that will own the minted policy NFTs (same for all policies)
+   */
+  function newPoliciesBatch(Policy.PolicyData[] calldata policies, address payer, address policyHolder) external;
 
   /**
    * @notice Replaces a policy with another
@@ -110,13 +132,11 @@ interface IPolicyPool {
    * @param oldPolicy A policy created previously and not expired
    * @param newPolicy_ A policy created with {Policy-initialize}
    * @param payer The address that will pay for the premium difference
-   * @param internalId A unique id within the RiskModule, that will be used to compute the policy id
-   * @return The policy id, identifying the NFT and the policy
    *
    * @custom:pre `msg.sender` must be an active RiskModule
    * @custom:pre `rm.premiumsAccount()` must be an active PremiumsAccount
    * @custom:pre `payer` approved the spending of `currency()` for at least `newPolicy_.premium - oldPolicy.premium`
-   * @custom:pre `internalId` must be unique within `policy.riskModule` and not used before
+   * @custom:pre `newPolicy_.id` must be `Policy.makePolicyId(rm, internalId)` and not used before
    *
    * @custom:throws PolicyAlreadyExpired when trying to replace an expired policy
    * @custom:throws InvalidPolicyReplacement when trying to reduce some of the premium componentsa
@@ -125,11 +145,10 @@ interface IPolicyPool {
    * @custom:emits NewPolicy with all the details of the new policy
    */
   function replacePolicy(
-    Policy.PolicyData memory oldPolicy,
-    Policy.PolicyData memory newPolicy_,
-    address payer,
-    uint96 internalId
-  ) external returns (uint256);
+    Policy.PolicyData calldata oldPolicy,
+    Policy.PolicyData calldata newPolicy_,
+    address payer
+  ) external;
 
   /**
    * @notice Cancels a policy, doing optional refunds of parts of the premium.

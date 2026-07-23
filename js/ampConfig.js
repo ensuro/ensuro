@@ -3,6 +3,7 @@ const ampConfig = {
     skipViewsAndPure: true,
     skipMethods: [
       "newPolicy",
+      "newPoliciesBatch",
       "resolvePolicy",
       "replacePolicy",
       "expirePolicy", // To guarantee that all policies expire

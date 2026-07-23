@@ -162,6 +162,8 @@ library Policy {
    *
    * @custom:throws PremiumLessThanMinimum when `premium` parameter is less than the computed minPremium
    *
+   * @param rm Address of the risk module
+   * @param internalId Internal id of the policy within the risk module
    * @param rmParams Struct with the business and quantitative parameters that define the risk (see {Params}).
    * @param premium The premium that will be paid for the policy
    * @param payout Maximum payout (exposure) of the policy
@@ -171,6 +173,8 @@ library Policy {
    * @return newPolicy PolicyData struct with the fields initialized (all except .id)
    */
   function initialize(
+    address rm,
+    uint96 internalId,
     Params memory rmParams,
     uint256 premium,
     uint256 payout,
@@ -181,6 +185,7 @@ library Policy {
     require(premium < payout, PremiumExceedsPayout(premium, payout));
     PolicyData memory policy;
 
+    policy.id = makePolicyId(rm, internalId);
     policy.payout = payout;
     policy.lossProb = lossProb;
     policy.start = start;

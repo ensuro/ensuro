@@ -207,28 +207,33 @@ describe("RiskModule contract", function () {
       makeInputData({ expiration: now + HOUR * 5, premium: MaxUint256, internalId: 200 + i })
     );
 
-    const capturePolicies = [...Array(5)].map(() => newCaptureAny());
+    const tx = await rm.connect(backend).newPolicies(inputData, cust);
+    const receipt = await tx.wait();
 
-    await expect(rm.connect(backend).newPolicies(inputData, cust))
-      .to.emit(pool, "NewPolicy")
-      .withArgs(rm, capturePolicies[0].value)
-      .to.emit(pool, "NewPolicy")
-      .withArgs(rm, capturePolicies[1].value)
-      .to.emit(pool, "NewPolicy")
-      .withArgs(rm, capturePolicies[2].value)
-      .to.emit(pool, "NewPolicy")
-      .withArgs(rm, capturePolicies[3].value)
-      .to.emit(pool, "NewPolicy")
-      .withArgs(rm, capturePolicies[4].value);
+    // Verify 5 NewPolicy events
+    const newPolicyEvents = getTransactionEvent(pool.interface, receipt, "NewPolicy", false);
+    expect(newPolicyEvents.length).to.equal(5);
 
-    for (const capturedPolicy of capturePolicies) {
-      const createdPolicy = capturedPolicy.lastValue;
+    // Verify each policy's premium breakdown
+    for (let i = 0; i < 5; i++) {
+      const createdPolicy = newPolicyEvents[i].args.policy;
       expect(createdPolicy.partnerCommission).to.equal(0);
       expect(getPremium(createdPolicy)).not.to.equal(createdPolicy.purePremium);
       expect(getPremium(createdPolicy)).to.equal(
         createdPolicy.purePremium + createdPolicy.srCoc + createdPolicy.jrCoc + createdPolicy.ensuroCommission
       );
     }
+
+    // Verify aggregated transfers: only 2 Transfer events (not 10)
+    // With default params and minimum premium, only purePremium and srCoc are non-zero
+    const transferEvents = getTransactionEvent(
+      currency.interface,
+      receipt,
+      "Transfer",
+      false,
+      await currency.getAddress()
+    );
+    expect(transferEvents.length).to.equal(2);
   });
 
   it("Can create a lot of policies with a single call", async () => {
@@ -242,7 +247,68 @@ describe("RiskModule contract", function () {
       makeInputData({ expiration: now + HOUR * 5, premium: MaxUint256, internalId: 200 + i, payout: _A(100) })
     );
 
-    await expect(rm.connect(backend).newPolicies(inputData, cust)).to.emit(pool, "NewPolicy");
+    const tx = await rm.connect(backend).newPolicies(inputData, cust);
+
+    await expect(tx).to.emit(pool, "NewPolicy");
+    const receipt = await tx.wait();
+    console.log(`gasUsed: ${receipt.gasUsed}`);
+  });
+
+  async function deployFullComponentsFixture() {
+    const { pool, currency } = await helpers.loadFixture(deployPoolFixture);
+    const srEtk = await addEToken(pool, {});
+    const jrEtk = await addEToken(pool, {});
+    const premiumsAccount = await deployPremiumsAccount(pool, { srEtk, jrEtk });
+
+    await currency.connect(lp).approve(pool, _A(5000));
+    await pool.connect(lp).deposit(srEtk, _A(4000), lp);
+    await pool.connect(lp).deposit(jrEtk, _A(1000), lp);
+
+    const FullTrustedUW = await hre.ethers.getContractFactory("FullTrustedUW");
+    const uw = await FullTrustedUW.deploy();
+    const rm = await addRiskModule(pool, premiumsAccount, { underwriter: uw });
+    const now = await helpers.time.latest();
+
+    return { srEtk, jrEtk, premiumsAccount, rm, pool, currency, uw, now };
+  }
+
+  it("Batch creation aggregates premium into exactly 5 ERC20 transfers", async () => {
+    const { rm, pool, currency, now } = await helpers.loadFixture(deployFullComponentsFixture);
+
+    await pool.setExposureLimit(rm, _A(11000));
+
+    // Params that produce all 5 premium components: purePremium, srCoc, jrCoc, ensuroCommission, partnerCommission
+    const params = {
+      jrCollRatio: _W("0.2"),
+      collRatio: _W("1.0"),
+      ensuroPpFee: _W("0.1"),
+    };
+
+    const n = 5;
+    const premium = _A(200);
+    await currency.connect(backend).approve(pool, premium * BigInt(n));
+
+    const inputData = [...Array(n)].map((_, i) =>
+      makeInputData({
+        expiration: now + HOUR * 5,
+        premium,
+        internalId: 200 + i,
+        params,
+      })
+    );
+
+    const tx = await rm.connect(backend).newPolicies(inputData, cust);
+    const receipt = await tx.wait();
+
+    const transferEvents = getTransactionEvent(
+      currency.interface,
+      receipt,
+      "Transfer",
+      false,
+      await currency.getAddress()
+    );
+
+    expect(transferEvents.length).to.equal(5);
   });
 
   it("Can create policies using FullSignedUW", async () => {
