@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
+import {ERC721Utils} from "@openzeppelin/contracts/token/ERC721/utils/ERC721Utils.sol";
 import {ERC721Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -600,12 +601,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     require(_policies[policy.id] == bytes32(0), PolicyAlreadyExists(policy.id));
     _policies[policy.id] = policy.hash();
     _changeExposure(rm, true, policy.payout);
+    _mint(policyHolder, policy.id);
 
     // Interactions
     pa.policyCreated(policy);
-    // _safeMint is both an effect (mints the NFT) and an interaction (calls onERC721Received on the holder),
-    // to avoid reentrancy attack, I move it to the interactions section
-    _safeMint(policyHolder, policy.id, "");
   }
 
   function _validateRMAndPAActive() internal view returns (IRiskModule rm, IPremiumsAccount pa) {
@@ -660,6 +659,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
       policy.partnerCommission
     );
     emit NewPolicy(rm, policy);
+    // Notification to the policyHolder at the end, to avoid reentrancy risk, decoupled from NFT mint
+    _notifyNewPolicy(policy.id, policyHolder);
   }
 
   /// @inheritdoc IPolicyPool
@@ -691,6 +692,12 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     }
 
     _distributePremium(payer, pa, rm, purePremiumSum, srCocSum, jrCocSum, ensuroCommissionSum, partnerCommissionSum);
+
+    if (policyHolder.code.length > 0) {
+      for (uint256 i = 0; i < policies.length; ++i) {
+        _notifyNewPolicy(policies[i].id, policyHolder);
+      }
+    }
   }
 
   /// @inheritdoc IPolicyPool
@@ -729,12 +736,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     if (newPolicy_.payout > oldPolicy.payout) _changeExposure(rm, true, newPolicy_.payout - oldPolicy.payout);
     else _changeExposure(rm, false, oldPolicy.payout - newPolicy_.payout);
     delete _policies[oldPolicy.id];
+    _mint(policyHolder, newPolicy_.id);
 
     // Interactions
     pa.policyReplaced(oldPolicy, newPolicy_);
-    // _safeMint is both an effect (mints the NFT) and an interaction (calls onERC721Received on the holder),
-    // to avoid reentrancy attack, I move it to the interactions section
-    _safeMint(policyHolder, newPolicy_.id, "");
 
     _distributePremium(
       payer,
@@ -749,7 +754,8 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
 
     emit NewPolicy(rm, newPolicy_);
     emit PolicyReplaced(rm, oldPolicy.id, newPolicy_.id);
-    _notifyReplacement(oldPolicy.id, newPolicy_.id);
+    _notifyNewPolicy(newPolicy_.id, policyHolder);
+    _notifyReplacement(oldPolicy.id, newPolicy_.id, policyHolder);
   }
 
   /// @inheritdoc IPolicyPool
@@ -783,7 +789,7 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     pa.policyCancelled(policyToCancel, purePremiumRefund, jrCocRefund, srCocRefund, policyHolder);
 
     emit PolicyCancelled(rm, policyToCancel.id, purePremiumRefund, jrCocRefund, srCocRefund);
-    _notifyCancellation(policyToCancel.id, purePremiumRefund, jrCocRefund, srCocRefund);
+    _notifyCancellation(policyToCancel.id, purePremiumRefund, jrCocRefund, srCocRefund, policyHolder);
   }
 
   function _validatePolicy(Policy.PolicyData memory policy) internal view {
@@ -837,21 +843,21 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     _requireCompActiveOrDeprecated(address(pa), ComponentKind.premiumsAccount);
     // Effects
     delete _policies[policy.id];
+    _changeExposure(rm, false, policy.payout);
+
     // Interactions
+    address policyHolder = ownerOf(policy.id);
     if (customerWon) {
-      address policyOwner = ownerOf(policy.id);
-      pa.policyResolvedWithPayout(policyOwner, policy, payout);
+      pa.policyResolvedWithPayout(policyHolder, policy, payout);
     } else {
       pa.policyExpired(policy);
     }
 
-    _changeExposure(rm, false, policy.payout);
-
     emit PolicyResolved(rm, policy.id, payout);
     if (payout > 0) {
-      _notifyPayout(policy.id, payout);
+      _notifyPayout(policy.id, payout, policyHolder);
     } else {
-      _notifyExpiration(policy.id);
+      _notifyExpiration(policy.id, policyHolder);
     }
   }
 
@@ -904,11 +910,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * Reverts if the policyholder contract explicitly reverts or it doesn't return the
    * IPolicyHolder.onPayoutReceived selector.
    */
-  function _notifyPayout(uint256 policyId, uint256 payout) internal {
-    address customer = ownerOf(policyId);
-    if (!ERC165Checker.supportsInterface(customer, type(IPolicyHolder).interfaceId)) return;
+  function _notifyPayout(uint256 policyId, uint256 payout, address policyHolder) internal {
+    if (!ERC165Checker.supportsInterface(policyHolder, type(IPolicyHolder).interfaceId)) return;
 
-    bytes4 retval = IPolicyHolder(customer).onPayoutReceived(_msgSender(), address(this), policyId, payout);
+    bytes4 retval = IPolicyHolder(policyHolder).onPayoutReceived(_msgSender(), address(this), policyId, payout);
     if (retval != IPolicyHolder.onPayoutReceived.selector) revert InvalidNotificationResponse(retval);
   }
 
@@ -917,18 +922,25 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * @dev Only if the policyholder implements the IPolicyHolder interface. Never reverts. The onPolicyExpired has
    * a gas limit = HOLDER_GAS_LIMIT
    */
-  function _notifyExpiration(uint256 policyId) internal {
-    address customer = ownerOf(policyId);
-    if (!ERC165Checker.supportsInterface(customer, type(IPolicyHolder).interfaceId)) return;
+  function _notifyExpiration(uint256 policyId, address policyHolder) internal {
+    if (!ERC165Checker.supportsInterface(policyHolder, type(IPolicyHolder).interfaceId)) return;
 
-    try IPolicyHolder(customer).onPolicyExpired{gas: HOLDER_GAS_LIMIT}(_msgSender(), address(this), policyId) returns (
-      bytes4
-    ) {
+    try
+      IPolicyHolder(policyHolder).onPolicyExpired{gas: HOLDER_GAS_LIMIT}(_msgSender(), address(this), policyId)
+    returns (bytes4) {
       return;
     } catch {
-      emit ExpirationNotificationFailed(policyId, IPolicyHolder(customer));
+      emit ExpirationNotificationFailed(policyId, IPolicyHolder(policyHolder));
       return;
     }
+  }
+
+  /**
+   * @notice Notifies a policy was created with a callback
+   * @dev Uses the standard ERC721 notification for NFT holders, not a specific call
+   */
+  function _notifyNewPolicy(uint256 policyId, address policyHolder) internal {
+    ERC721Utils.checkOnERC721Received(_msgSender(), address(0), policyHolder, policyId, "");
   }
 
   /**
@@ -937,11 +949,10 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
    * Reverts if the policyholder contract explicitly reverts or it doesn't return the
    * IPolicyHolder.onPolicyReplaced selector.
    */
-  function _notifyReplacement(uint256 oldPolicyId, uint256 newPolicyId) internal {
-    address customer = ownerOf(oldPolicyId);
-    if (!ERC165Checker.supportsInterface(customer, type(IPolicyHolder).interfaceId)) return;
+  function _notifyReplacement(uint256 oldPolicyId, uint256 newPolicyId, address policyHolder) internal {
+    if (!ERC165Checker.supportsInterface(policyHolder, type(IPolicyHolder).interfaceId)) return;
 
-    bytes4 retval = IPolicyHolder(customer).onPolicyReplaced(_msgSender(), address(this), oldPolicyId, newPolicyId);
+    bytes4 retval = IPolicyHolder(policyHolder).onPolicyReplaced(_msgSender(), address(this), oldPolicyId, newPolicyId);
     // PolicyHolder can revert and cancel the policy replacement
     if (retval != IPolicyHolder.onPolicyReplaced.selector) revert InvalidNotificationResponse(retval);
   }
@@ -956,12 +967,12 @@ contract PolicyPool is IPolicyPool, PausableUpgradeable, UUPSUpgradeable, ERC721
     uint256 cancelledPolicyId,
     uint256 purePremiumRefund,
     uint256 jrCocRefund,
-    uint256 srCocRefund
+    uint256 srCocRefund,
+    address policyHolder
   ) internal {
-    address customer = ownerOf(cancelledPolicyId);
-    if (!ERC165Checker.supportsInterface(customer, type(IPolicyHolder).interfaceId)) return;
+    if (!ERC165Checker.supportsInterface(policyHolder, type(IPolicyHolder).interfaceId)) return;
 
-    bytes4 retval = IPolicyHolder(customer).onPolicyCancelled(
+    bytes4 retval = IPolicyHolder(policyHolder).onPolicyCancelled(
       _msgSender(),
       address(this),
       cancelledPolicyId,
