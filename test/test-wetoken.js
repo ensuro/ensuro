@@ -12,6 +12,8 @@ const { ZeroAddress, MaxUint256 } = ethers;
 
 const _A = amountFunction(6);
 const WAD = _W(1);
+// Share scale so 1 WEToken = 1 eToken at the eToken's initial scale: SCALE_INITIAL * 10^(18-6)
+const SHARE_SCALE = SCALE_INITIAL * 10n ** 12n;
 
 describe("WEToken", () => {
   async function wetokenFixture() {
@@ -56,8 +58,8 @@ describe("WEToken", () => {
   it("Deposits eTokens for WETokens at initial scale", async () => {
     const { etk, wetk, lp } = await helpers.loadFixture(wetokenFixture);
     const etkAmount = _A(1000);
-    // shares = assets * WAD / scale; at SCALE_INITIAL each eToken unit gives 10000 WEToken units
-    const expectedWetk = (etkAmount * WAD) / SCALE_INITIAL;
+    // shares = assets * SHARE_SCALE / scale; at SCALE_INITIAL 1 eToken gives exactly 1 WEToken
+    const expectedWetk = (etkAmount * SHARE_SCALE) / SCALE_INITIAL;
 
     expect(await wetk.convertToShares(etkAmount)).to.equal(expectedWetk);
     await expect(wetk.connect(lp).deposit(etkAmount, lp.address))
@@ -70,7 +72,7 @@ describe("WEToken", () => {
   it("Redeems WETokens for eTokens at initial scale", async () => {
     const { etk, wetk, lp } = await helpers.loadFixture(wetokenFixture);
     const etkAmount = _A(1000);
-    const expectedWetk = (etkAmount * WAD) / SCALE_INITIAL;
+    const expectedWetk = (etkAmount * SHARE_SCALE) / SCALE_INITIAL;
     await wetk.connect(lp).deposit(etkAmount, lp.address);
 
     expect(await wetk.convertToAssets(expectedWetk)).to.equal(etkAmount);
@@ -85,7 +87,7 @@ describe("WEToken", () => {
     const { etk, wetk, lp } = await helpers.loadFixture(wetokenFixture);
     const etkBefore = await etk.balanceOf(lp);
     const etkAmount = _A(1000);
-    const wetkMinted = (etkAmount * WAD) / SCALE_INITIAL;
+    const wetkMinted = (etkAmount * SHARE_SCALE) / SCALE_INITIAL;
 
     await wetk.connect(lp).deposit(etkAmount, lp.address);
     await wetk.connect(lp).redeem(wetkMinted, lp.address, lp.address);
@@ -96,16 +98,16 @@ describe("WEToken", () => {
 
   it("Conversion view functions return correct rates at initial scale", async () => {
     const { wetk } = await helpers.loadFixture(wetokenFixture);
-    // convertToAssets(WAD) = WAD * scale / WAD = scale
-    expect(await wetk.convertToAssets(WAD)).to.equal(SCALE_INITIAL);
-    // convertToShares(WAD) = WAD * WAD / scale
-    expect(await wetk.convertToShares(WAD)).to.equal((WAD * WAD) / SCALE_INITIAL);
+    // convertToAssets(WAD) = WAD * scale / SHARE_SCALE = 1e6 (= 1 eToken)
+    expect(await wetk.convertToAssets(WAD)).to.equal(10n ** 6n);
+    // convertToShares(WAD) = WAD * SHARE_SCALE / scale
+    expect(await wetk.convertToShares(WAD)).to.equal((WAD * SHARE_SCALE) / SCALE_INITIAL);
   });
 
   it("WETokens gain value as yield accrues", async () => {
     const { etk, wetk, lp, yieldVault } = await helpers.loadFixture(wetokenWithYieldFixture);
     const etkAmount = _A(1000);
-    const wetkMinted = (etkAmount * WAD) / SCALE_INITIAL;
+    const wetkMinted = (etkAmount * SHARE_SCALE) / SCALE_INITIAL;
     await wetk.connect(lp).deposit(etkAmount, lp.address);
 
     // Generate yield: move USDC to vault, earn 100 USDC (etk receives ~50 due to virtual share)
@@ -113,8 +115,47 @@ describe("WEToken", () => {
     await yieldVault.discreteEarning(_A(100));
     await etk.recordEarnings();
 
-    expect(await wetk.convertToAssets(WAD)).to.be.gt(SCALE_INITIAL);
+    // 1 WEToken was worth 1 eToken (1e6 base units) at the initial scale and appreciates with the yield
+    expect(await wetk.convertToAssets(WAD)).to.be.gt(10n ** 6n);
     expect(await wetk.convertToAssets(wetkMinted)).to.be.gt(etkAmount);
+  });
+
+  it("Redeeming dust WEToken shares floors the eToken amount; below 1e-6 WEToken no eToken is received", async () => {
+    const { etk, wetk, lp } = await helpers.loadFixture(wetokenFixture);
+    await wetk.connect(lp).deposit(_A(1000), lp.address);
+
+    let etkBalance = await etk.balanceOf(lp);
+    let wetkBalance = await wetk.balanceOf(lp);
+
+    // Redeem from 0.1 WEToken down to 0.000000000000000001 (1 base unit)
+    for (let exp = 17n; exp >= 0n; exp--) {
+      const shares = 10n ** exp;
+      const expectedAssets = (shares * SCALE_INITIAL) / SHARE_SCALE; // floors to 0 for dust
+      expect(await wetk.previewRedeem(shares)).to.equal(expectedAssets);
+
+      await wetk.connect(lp).redeem(shares, lp.address, lp.address);
+
+      etkBalance += expectedAssets;
+      wetkBalance -= shares;
+      expect(await etk.balanceOf(lp)).to.equal(etkBalance);
+      expect(await wetk.balanceOf(lp)).to.equal(wetkBalance);
+    }
+  });
+
+  it("Dust threshold: 1e-6 WEToken redeems exactly 1 eToken base unit, 1 unit less redeems nothing", async () => {
+    const { etk, wetk, lp } = await helpers.loadFixture(wetokenFixture);
+    await wetk.connect(lp).deposit(_A(1000), lp.address);
+
+    const etkBefore = await etk.balanceOf(lp);
+    const threshold = SHARE_SCALE / SCALE_INITIAL; // 1e12 shares = 1e-6 WEToken
+
+    expect(await wetk.previewRedeem(threshold - 1n)).to.equal(0n);
+    await wetk.connect(lp).redeem(threshold - 1n, lp.address, lp.address);
+    expect(await etk.balanceOf(lp)).to.equal(etkBefore);
+
+    expect(await wetk.previewRedeem(threshold)).to.equal(1n);
+    await wetk.connect(lp).redeem(threshold, lp.address, lp.address);
+    expect(await etk.balanceOf(lp)).to.equal(etkBefore + 1n);
   });
 
   it("setFreezer can only be called by owner", async () => {
