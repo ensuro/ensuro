@@ -1,4 +1,3 @@
-require("mocha");
 const { expect } = require("chai");
 
 const { getStorageLayout } = require("@ensuro/utils/js/utils");

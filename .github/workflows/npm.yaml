@@ -31,11 +31,11 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version-file: ".nvmrc"
           cache: "npm"
           registry-url: 'https://registry.npmjs.org'
 
@@ -52,7 +52,7 @@ jobs:
             # No manual input, we must be running on a tag
             SEMVER="${GITHUB_REF/refs\/tags\/v/}"
           fi
-          echo "::set-output name=semver::${SEMVER}"
+          echo "semver=${SEMVER}" >> "$GITHUB_OUTPUT"
 
       - run: scripts/make-npm-package.sh "${{ steps.semver.outputs.semver }}" ./build/npm-package
 

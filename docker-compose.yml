@@ -1,5 +1,3 @@
-version: "3.4"
-
 services:
   devenv:
     command: ["sh", "-c", "while [ 0 ]; do date; sleep 30 ; done"]

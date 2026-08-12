@@ -1,6 +1,5 @@
 [![Tests](https://github.com/ensuro/ensuro/actions/workflows/tests.yaml/badge.svg)](https://github.com/ensuro/ensuro/actions/workflows/tests.yaml)
 [![cov](https://raw.githubusercontent.com/ensuro/ensuro/_xml_coverage_reports/data/main/badge.svg)](https://github.com/ensuro/ensuro/actions/workflows/tests.yaml)
-[![Build](https://github.com/ensuro/ensuro/actions/workflows/build-base-image.yaml/badge.svg)](https://github.com/ensuro/ensuro/actions/workflows/build-base-image.yaml)
 [![release](https://badgen.net/github/release/ensuro/ensuro)](https://github.com/ensuro/ensuro/releases)
 [![NPM Package](https://github.com/ensuro/ensuro/actions/workflows/npm.yaml/badge.svg)](https://www.npmjs.com/package/@ensuro/core)
 
@@ -169,7 +168,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 pip install -r requirements-dev.txt
 # Install javascript dependencies
-nvm use  # To change to node v22
+nvm use  # To change to node v24
 npm install
 ```
 
