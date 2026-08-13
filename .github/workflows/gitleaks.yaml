@@ -8,7 +8,7 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v7
       - name: gitleaks-action
         # TODO: use the latest version (paid)
         uses: zricethezav/gitleaks-action@v1.6.0

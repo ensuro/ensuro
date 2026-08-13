@@ -1,6 +1,6 @@
 # AGENTS.md — Ensuro
 
-Ensuro is a Solidity smart-contract protocol for blockchain-based insurance/reinsurance. Node 22, Python ≥ 3.12, Solidity 0.8.30 (EVM Prague).
+Ensuro is a Solidity smart-contract protocol for blockchain-based insurance/reinsurance. Node 24, Python ≥ 3.12, Solidity 0.8.30 (EVM Prague).
 
 ---
 
@@ -9,7 +9,7 @@ Ensuro is a Solidity smart-contract protocol for blockchain-based insurance/rein
 ```bash
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt
-nvm use          # switches to Node 22 per .nvmrc
+nvm use          # switches to Node 24 per .nvmrc
 npm install
 npx hardhat compile   # must run before any tests; artifacts/ is the output
 ```

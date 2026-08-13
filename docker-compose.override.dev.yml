@@ -1,8 +1,10 @@
-version: "3.4"
+x-podman:
+  in_pod: false
 
 services:
   devenv:
     command: ["sh", "-c", "while [ 0 ]; do date; sleep 30 ; done"]
+    userns_mode: keep-id
     build:
       args:
         DEV_ENV: "1"
