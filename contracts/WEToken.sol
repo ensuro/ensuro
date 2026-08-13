@@ -5,6 +5,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {ERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IEToken} from "./interfaces/IEToken.sol";
@@ -19,17 +20,30 @@ interface IETokenWithWhitelist is IEToken {
 /**
  * @title WEToken - Non-rebasing ERC-4626 wrapper for Ensuro EToken
  * @notice Wraps the rebasing EToken into a non-rebasing ERC-4626 vault token with static balances.
- *         1 WEToken (share) = 1 unit of scaled balance in the underlying EToken.
+ *         1 WEToken (share) is worth 1 eToken at the eToken's initial scale ({ETKLib.SCALE_INITIAL}).
  *         As the EToken accrues yield, each WEToken becomes redeemable for more eTokens.
  * @dev The conversion between eTokens (assets) and WETokens (shares) uses {IEToken-getCurrentScale}:
- *        shares = assets * WAD / scale
- *        assets = shares * scale / WAD
+ *        shares = assets * _shareScale / scale
+ *        assets = shares * scale / _shareScale
+ *      where `_shareScale = SCALE_INITIAL * 10**decimals` (computed at construction) normalizes the
+ *      share unit so that 1 WEToken = 1 eToken when the eToken has no accrued returns.
  *      If the underlying eToken has a whitelist, this contract's address must be whitelisted.
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
 contract WEToken is ERC4626, ERC20Permit, Ownable {
   uint256 internal constant WAD = 1e18;
+
+  /// @notice Initial scale of the underlying eToken (see {ETKLib.SCALE_INITIAL}), in WAD.
+  uint256 internal constant SCALE_INITIAL = 1e14;
+
+  /**
+   * @notice Factor that maps 1 eToken base unit (at the initial scale) to WEToken base units.
+   * @dev `SCALE_INITIAL * 10**(WEToken decimals - eToken decimals)`. For an eToken with 6 decimals
+   *      this equals 1e26: at the initial scale, shares = assets * 1e26 / 1e14 = assets * 1e12,
+   *      so 1 eToken (1e6) wraps into exactly 1 WEToken (1e18).
+   */
+  uint256 internal immutable _shareScale;
 
   /// @notice Thrown when a transfer is attempted from a frozen account
   error FrozenAccount(address account);
@@ -42,6 +56,9 @@ contract WEToken is ERC4626, ERC20Permit, Ownable {
 
   /// @notice Thrown when freezer is address(0) and the eToken has no whitelist to validate against
   error NoWhitelistConfigured();
+
+  /// @notice Thrown when the underlying eToken has more than 18 decimals (can't be represented in the share scale)
+  error InvalidAssetDecimals(uint8 decimals);
 
   /// @notice Emitted when an account is frozen or unfrozen
   event AccountFrozen(address indexed account, bool frozen);
@@ -79,6 +96,9 @@ contract WEToken is ERC4626, ERC20Permit, Ownable {
     address freezer_,
     address owner_
   ) ERC4626(IERC20(address(eToken_))) ERC20(name_, symbol_) ERC20Permit(name_) Ownable(owner_) {
+    uint8 eTokenDecimals = IERC20Metadata(address(eToken_)).decimals();
+    require(eTokenDecimals <= 18, InvalidAssetDecimals(eTokenDecimals));
+    _shareScale = SCALE_INITIAL * 10 ** (18 - eTokenDecimals);
     _setFreezer(freezer_);
   }
 
@@ -89,12 +109,12 @@ contract WEToken is ERC4626, ERC20Permit, Ownable {
 
   /// @dev Uses the eToken scale directly rather than the totalAssets/totalSupply ratio.
   function _convertToShares(uint256 assets, Math.Rounding rounding) internal view override returns (uint256) {
-    return Math.mulDiv(assets, WAD, IEToken(asset()).getCurrentScale(true), rounding);
+    return Math.mulDiv(assets, _shareScale, IEToken(asset()).getCurrentScale(true), rounding);
   }
 
   /// @dev Uses the eToken scale directly rather than the totalAssets/totalSupply ratio.
   function _convertToAssets(uint256 shares, Math.Rounding rounding) internal view override returns (uint256) {
-    return Math.mulDiv(shares, IEToken(asset()).getCurrentScale(true), WAD, rounding);
+    return Math.mulDiv(shares, IEToken(asset()).getCurrentScale(true), _shareScale, rounding);
   }
 
   /**
