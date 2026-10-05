@@ -17,23 +17,29 @@ repos:
       - id: mixed-line-ending
         args: ["--fix=auto"] # replace 'auto' with 'lf' to enforce Linux/Mac line endings or 'crlf' for Windows
 
-  - repo: https://github.com/pycqa/isort
-    rev: 5.13.2
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.8
     hooks:
-      - id: isort
+      - id: ruff
+        args: ["--fix"]
+      - id: ruff-format
 
-  - repo: https://github.com/psf/black
-    rev: 24.2.0
+  - repo: https://github.com/google/osv-scanner/
+    rev: v2.5.0
     hooks:
-      - id: black
-        language_version: python3
-
-  - repo: https://github.com/PyCQA/flake8
-    rev: 7.0.0
-    hooks:
-      - id: flake8
-    ## You can add flake8 plugins via `additional_dependencies`:
-    #  additional_dependencies: [flake8-bugbear]
+      - id: osv-scanner
+        always_run: false
+        files: '^requirements.*\.(in|txt)$'
+        args:
+          # Only scan the uv-compiled Python lockfiles (not package-lock.json,
+          # which has its own pre-existing findings).
+          - scan
+          - source
+          - --format=vertical
+          - --verbosity=error
+          - --no-resolve
+          - --lockfile=requirements.txt
+          - --lockfile=requirements-dev.txt
 
   - repo: https://github.com/zricethezav/gitleaks
     rev: v8.18.2

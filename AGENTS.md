@@ -1,6 +1,6 @@
 # AGENTS.md — Ensuro
 
-Ensuro is a Solidity smart-contract protocol for blockchain-based insurance/reinsurance. Node 24, Python ≥ 3.12, Solidity 0.8.30 (EVM Prague).
+Ensuro is a Solidity smart-contract protocol for blockchain-based insurance/reinsurance. Node 24, Python ≥ 3.13, Solidity 0.8.30 (EVM Prague).
 
 ---
 
@@ -8,11 +8,16 @@ Ensuro is a Solidity smart-contract protocol for blockchain-based insurance/rein
 
 ```bash
 python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt -r requirements-dev.txt
+pip install uv
+uv pip install -r requirements.txt -r requirements-dev.txt
+uv pip compile requirements.in --python 3.13            # refresh pinned deps
+uv pip compile requirements-dev.in --python 3.13 --upgrade
 nvm use          # switches to Node 24 per .nvmrc
 npm install
 npx hardhat compile   # must run before any tests; artifacts/ is the output
 ```
+
+Dependency resolution ignores releases newer than 14 days (`exclude-newer` in `pyproject.toml`).
 
 ---
 
@@ -58,9 +63,8 @@ npx hardhat test test/test-etoken.js
 ```bash
 npm run solhint          # Solidity linting
 npm run prettier         # format contracts/**/*.sol, test/**/*.js, tasks/**/*.js
-black .                  # Python (line-length 110)
-isort .                  # Python import order
-flake8                   # Python lint
+ruff check .             # Python lint (includes import sorting)
+ruff format .            # Python format (black-compatible, line-length 110)
 ```
 
 Pre-commit hooks enforce all of the above plus gitleaks. Install once with `pre-commit install`.
@@ -108,7 +112,7 @@ scripts/deploySmokeTest.sh
 ## CI order (tests.yaml)
 
 ```
-npm ci + pip install
+npm ci + uv pip install
 → npx hardhat compile
 → npx hardhat size-contracts
 → npm run solhint

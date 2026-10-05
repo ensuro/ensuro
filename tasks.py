@@ -13,7 +13,7 @@ add_tasks(ns, util_tasks, "ramdisk")
 def gunicorn(c):
     docker_tasks.docker_exec(
         c,
-        "/usr/local/bin/gunicorn --config /usr/local/app/gunicorn.py " "-b :8000 app.server:app",
+        "/usr/local/bin/gunicorn --config /usr/local/app/gunicorn.py -b :8000 app.server:app",
     )
 
 
@@ -50,15 +50,17 @@ def test(c, coverage=False, longrun=False):
 @ns.add_task
 @task
 def refresh_requirements_txt(c, upgrade=False, package=None):
-    """Refresh requirements.txt and requirements-dev.txt using pip-tools
+    """Refresh requirements.txt and requirements-dev.txt using uv
 
     --upgrade will upgrade all packages to latest version
     --package will upgrade a single package
     """
     upgrade = "--upgrade" if upgrade else ""
-    package = f"-P {package}" if package is not None else ""
-    docker_exec(c, f"pip-compile {upgrade} {package} requirements.in")
-    docker_exec(c, f"pip-compile {upgrade} {package} requirements-dev.in")
+    package = f"--upgrade-package {package}" if package is not None else ""
+    docker_exec(c, f"uv pip compile {upgrade} {package} requirements.in -o requirements.txt --python 3.13")
+    docker_exec(
+        c, f"uv pip compile {upgrade} {package} requirements-dev.in -o requirements-dev.txt --python 3.13"
+    )
 
 
 @ns.add_task

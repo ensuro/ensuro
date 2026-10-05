@@ -29,8 +29,8 @@ jobs:
       - name: Setup
         run: |
           npm ci
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
+          pip install uv
+          uv pip install --system -r requirements.txt -r requirements-dev.txt
       - run: npx hardhat compile
       - run: npx hardhat size-contracts
       - run: npm run solhint
@@ -75,8 +75,8 @@ jobs:
       - name: Setup
         run: |
           npm ci
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
+          pip install uv
+          uv pip install --system -r requirements.txt -r requirements-dev.txt
 
       - env:
           USE_CUSTOM_ERRORS: "Y"

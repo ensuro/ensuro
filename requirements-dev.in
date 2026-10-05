@@ -1,3 +1,9 @@
+# Including main requirements.txt here prevents incompatible versions to be baked into requirements-dev.txt.
+# See https://github.com/jazzband/pip-tools/issues/398 for more details.
+-c requirements.txt
+uv
+ruff
+pre-commit
 ipdb
 ipython
 rpdb
@@ -6,5 +12,4 @@ responses
 pytest
 pytest-cov
 pytest-timeout
-pip-tools
 mkdocs
