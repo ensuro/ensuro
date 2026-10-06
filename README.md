@@ -155,7 +155,7 @@ Not all the core logic is implemented in the Python prototype, but most of it.
 
 ### Without Docker
 
-You can also run the development environment without using Docker, just Python (>=3.12) and Node v22 are required as
+You can also run the development environment without using Docker, just Python (>=3.13) and Node v22 are required as
 pre-requisites.
 
 Initial setup:
@@ -164,9 +164,9 @@ Initial setup:
 # Setup a virtualenv
 python3 -m venv venv
 source venv/bin/activate
-# Install python dependencies
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
+# Install python dependencies (uses uv)
+pip install uv
+uv pip install -r requirements.txt -r requirements-dev.txt
 # Install javascript dependencies
 nvm use  # To change to node v24
 npm install
