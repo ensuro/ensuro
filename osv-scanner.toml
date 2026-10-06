@@ -1,6 +1,7 @@
 # OSV-Scanner configuration
 # See https://google.github.io/osv-scanner/configuration/ for the full schema.
 
-# No vulnerabilities are currently ignored.
-# Add [[IgnoredVulns]] entries here after the first scan, following the
-# `id` / `ignoreUntil` / `reason` schema documented above.
+[[IgnoredVulns]]
+id = "GHSA-2cv4-cqwr-gwf7"
+ignoreUntil = 2026-11-06
+reason = "Windows-only path traversal; fixed in uv 0.12.18, which is blocked by exclude-newer for 14 days"
