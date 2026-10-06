@@ -1,0 +1,60 @@
+name: OSV-Scanner PR Scan
+
+on:
+  pull_request:
+    branches: [main]
+  merge_group:
+    branches: [main]
+
+permissions:
+  # Required to upload SARIF file to CodeQL. See: https://github.com/github/codeql-action/issues/2117
+  actions: read
+  # Require writing security events to upload SARIF file to security tab
+  security-events: write
+  # Only need to read contents
+  contents: read
+  # Required to post/update the sticky results comment on the PR
+  pull-requests: write
+
+jobs:
+  scan-pr:
+    # Full scan (not PR-delta): fails on ANY known vulnerability, including pre-existing ones
+    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.5.0"
+    with:
+      upload-sarif: false
+      # Scan the uv-compiled Python lockfiles; requirements files are fully pinned
+      # (uv-compiled), so no transitive re-resolution is needed.
+      scan-args: |-
+        --lockfile requirements.txt
+        --lockfile requirements-dev.txt
+        --no-resolve
+
+  scan-comment:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install osv-scanner
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl -sL -o "$RUNNER_TEMP/bin/osv-scanner" \
+            https://github.com/google/osv-scanner/releases/download/v2.5.0/osv-scanner_linux_amd64
+          chmod +x "$RUNNER_TEMP/bin/osv-scanner"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Scan dependencies
+        # Exit code 1 when findings exist is expected; output is captured either way
+        run: >-
+          osv-scanner scan source --format=markdown --no-resolve
+          --lockfile requirements.txt --lockfile requirements-dev.txt
+          > osv-results.md || true
+      - name: Prepare comment
+        run: |
+          {
+            echo "### OSV-Scanner results (${{ github.event.pull_request.head.sha }})"
+            echo
+            cat osv-results.md
+          } > comment.md
+      - name: Post sticky comment
+        uses: marocchino/sticky-pull-request-comment@v3.0.5
+        with:
+          path: comment.md

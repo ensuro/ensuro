@@ -1,5 +1,17 @@
-[tool.black]
+[tool.uv]
+exclude-newer = "14 days"
+
+[tool.ruff]
 line-length = 110
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I"]
+ignore = ["E203"]
+exclude = [".tox", "build", "dist", ".eggs", "docs/conf.py"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["prototype", "tests"]
 
 [tool.pytest.ini_options]
 testpaths = [

@@ -2,8 +2,14 @@ from contextlib import contextmanager
 
 from eth_abi import encode as abi_encode
 from ethproto.wadray import _W, Wad
-from ethproto.wrappers import AddressBook  # noqa: F401
-from ethproto.wrappers import IERC20, IERC721, ETHWrapper, MethodAdapter, get_provider
+from ethproto.wrappers import (
+    IERC20,
+    IERC721,
+    AddressBook,  # noqa: F401
+    ETHWrapper,
+    MethodAdapter,
+    get_provider,
+)
 
 SECONDS_IN_YEAR = 365 * 24 * 3600
 MAX_UINT = 2**256 - 1

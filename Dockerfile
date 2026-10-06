@@ -1,4 +1,4 @@
-FROM python:3.12
+FROM python:3.13
 
 ENV NODE_MAJOR=24
 RUN mkdir -p /etc/apt/keyrings \
@@ -7,22 +7,24 @@ RUN mkdir -p /etc/apt/keyrings \
     && apt-get update \
     && apt-get install nodejs -y
 
-# Let's make this work with an unprivileged user using user-local packages
+# Install uv (system-wide, as root) and use it to install the Python dependencies
+RUN pip install uv==0.12.17
+
+COPY requirements.txt /requirements.txt
+RUN uv pip install --system -r /requirements.txt
+
+# Installs some utils for debugging
+COPY requirements-dev.txt /requirements-dev.txt
+RUN uv pip install --system -r /requirements-dev.txt && uv cache clean
+
+# Let's make this work with an unprivileged user
 RUN useradd --create-home ensuro
 USER ensuro
 WORKDIR /home/ensuro
 
 ENV HOME_DIR /home/ensuro
-ENV PATH ${PATH}:${HOME_DIR}/.local/bin
 
 RUN echo 'alias hh="npx hardhat"\nsource $HOME/code/scripts/utils.sh' >> $HOME/.bashrc
-
-COPY requirements.txt /requirements.txt
-RUN pip install --no-cache-dir -r /requirements.txt
-
-# Installs some utils for debugging
-COPY requirements-dev.txt /requirements-dev.txt
-RUN pip install -r /requirements-dev.txt
 
 ARG DEV_ENV
 ENV DEV_ENV $DEV_ENV
