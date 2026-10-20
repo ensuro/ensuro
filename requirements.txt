@@ -2,7 +2,7 @@
 #    uv pip compile requirements.in -o requirements.txt --python 3.13
 aiohappyeyeballs==2.7.1
     # via aiohttp
-aiohttp==3.14.3
+aiohttp==3.14.4
     # via web3
 aiosignal==1.4.0
     # via aiohttp
@@ -30,7 +30,7 @@ eth-abi==6.0.0
     #   web3
 eth-account==0.14.0
     # via web3
-eth-hash==0.8.0
+eth-hash[pycryptodome]==0.8.0
     # via
     #   eth-utils
     #   web3
@@ -40,7 +40,7 @@ eth-keys==0.8.0
     # via
     #   eth-account
     #   eth-keyfile
-eth-prototype==1.6.1
+eth-prototype[web3]==1.6.1
     # via -r requirements.in
 eth-rlp==3.0.0
     # via eth-account
@@ -130,6 +130,8 @@ types-requests==2.33.0.20260906
     # via web3
 typing-extensions==4.16.0
     # via
+    #   aiohttp
+    #   aiosignal
     #   eth-typing
     #   pydantic
     #   pydantic-core
